@@ -67,8 +67,11 @@ jobs:
         shell: bash
         run: |
           useradd --create-home tester
-          chown -R tester:tester "$GITHUB_WORKSPACE" "$FLUTTER_ROOT"
-          runuser -u tester -- env PATH="$PATH" bash -c '
+          # A fresh repository has no restored pub cache, so tester must be able to fill it.
+          export PUB_CACHE="${PUB_CACHE:-/home/tester/.pub-cache}"
+          mkdir -p "$PUB_CACHE"
+          chown -R tester:tester "$GITHUB_WORKSPACE" "$FLUTTER_ROOT" "$PUB_CACHE"
+          runuser -u tester -- env PATH="$PATH" PUB_CACHE="$PUB_CACHE" bash -c '
             flutter pub get &&
             flutter analyze &&
             dart run tool/ci_test.dart &&
