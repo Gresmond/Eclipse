@@ -11,6 +11,7 @@ void main() {
   late AppState state;
 
   setUp(() {
+    collapseAllTasks();
     store = Store.memory();
     state = AppState(store, clock: () => DateTime(2026, 10, 26));
     for (final task in [...state.todos[TodoScope.today]!]) {
@@ -85,6 +86,8 @@ void main() {
         const TodoSubtask('Charlie step'),
       ]);
       await show(tester);
+      await tester.tap(find.byTooltip('Expand subtasks'));
+      await tester.pumpAndSettle();
       double top(String name) => tester.getTopLeft(find.text(name)).dy;
       final start = top('Alpha step');
       final end = top('Charlie step');

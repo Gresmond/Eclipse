@@ -22,6 +22,7 @@ void main() {
   late Store store;
   late AppState state;
   setUp(() {
+    collapseAllTasks();
     store = Store.memory();
     state = AppState(store, clock: () => today);
     for (final scope in TodoScope.values) {
@@ -195,8 +196,7 @@ void main() {
       const TodoSubtask('First step'),
     ]);
     await show(tester);
-    await tester.tap(find.byTooltip('Collapse subtasks'));
-    await tester.pumpAndSettle();
+    expect(find.byTooltip('Expand subtasks'), findsOneWidget);
     expect(find.text('First step'), findsNothing);
     final start = tester.getCenter(find.text('Small task'));
     await tester.dragFrom(start, tester.getCenter(find.text('Larger task')) - start);

@@ -10,6 +10,7 @@ import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/widgets/todo_panel.dart';
 
 const _shots = String.fromEnvironment('SCREENSHOT_DIR');
 
@@ -41,6 +42,7 @@ void main() {
   });
 
   setUp(() {
+    collapseAllTasks();
     store = Store.memory();
     state = AppState(store, clock: () => today);
     for (final scope in TodoScope.values) {
@@ -85,6 +87,10 @@ void main() {
         ]);
       }
       await show(tester);
+      if (existing) {
+        await tester.tap(find.byTooltip('Expand subtasks'));
+        await tester.pumpAndSettle();
+      }
       await _shot(tester, 'nest_${existing}_before');
       await drop(tester);
       expect(state.todos[TodoScope.today]!.single.text, 'Research the project');

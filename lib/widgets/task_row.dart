@@ -1,5 +1,9 @@
 part of 'todo_panel.dart';
 
+/// Collapses every task again, as when the app opens.
+@visibleForTesting
+void collapseAllTasks() => _TodoRowState._opened.clear();
+
 class _TodoRow extends StatefulWidget {
   const _TodoRow({
     required this.scope,
@@ -35,9 +39,16 @@ class _TodoRow extends StatefulWidget {
 }
 
 class _TodoRowState extends State<_TodoRow> {
+  /// Tasks opened since the app started. Every task starts collapsed when the
+  /// app opens, and one opened stays open while the app runs, across views.
+  static final _opened = <(TodoScope, int)>{};
+
   bool _hover = false;
   bool _pressed = false;
-  bool _expanded = true;
+
+  bool get _expanded => _opened.contains((widget.scope, widget.item.id));
+  set _expanded(bool open) =>
+      open ? _opened.add((widget.scope, widget.item.id)) : _opened.remove((widget.scope, widget.item.id));
   bool _nestingOut = false;
   bool _acceptingNest = false;
   int? _incomingSubtask;
