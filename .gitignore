@@ -1,0 +1,98 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview related
+.widget_preview/
+
+# Trial fonts copied from ~/.local/share/fonts. Only the files listed in
+# pubspec.yaml are committed (force-added); the rest stay local.
+/assets/fonts/
+
+# Eclipse's Google sign-in client, kept out of the public repo. Copy
+# google_client.example.dart to make it; the Mac release writes it from the
+# GOOGLE_CLIENT_SECRET secret.
+/lib/data/google_client.dart
+
+# Local agent instructions, sessions and working notes
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/.agents/
+/.codex/
+/.claude/
+/.aws/
+
+# Local credentials and environment settings; keep safe examples shareable.
+.env
+.env.*
+!.env.example
+!.env.*.example
+credentials.json
+credentials.*.json
+!credentials.example.json
+client_secret*.json
+*.pem
+*.key
+*.p12
+*.pfx
+sync.json
+
+# Personal app data, backups, exports and development screenshots
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+/backups/
+/exports/
+/screenshots/
+/journal/
+/journals/
+/journal.md
+/journal-*.md
+/Eclipse Journal/
+/Eclipse Journals/

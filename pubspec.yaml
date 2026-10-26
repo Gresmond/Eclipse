@@ -1,0 +1,65 @@
+name: eclipse
+description: "A habit tracker and to-do planner."
+publish_to: 'none'
+
+# <two-digit year>.<month>.<release that month>+<build count>.
+# .githooks/pre-commit bumps this when enabled; pushes to main publish per-user Linux, Windows and Mac releases.
+version: 26.10.1+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqlite3: ^3.8.0
+  path_provider: ^2.1.6
+  path: ^1.9.1
+  crypto: ^3.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  # Generated with the macOS icons by tool/make_icons.sh.
+  assets:
+    - assets/icon/eclipse.png
+
+  fonts:
+    - family: Gellix
+      fonts:
+        - asset: assets/fonts/gellix/Gellix-TRIAL-Regular.otf
+          weight: 400
+        - asset: assets/fonts/gellix/Gellix-TRIAL-Medium.otf
+          weight: 500
+        - asset: assets/fonts/gellix/Gellix-TRIAL-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/gellix/Gellix-TRIAL-Bold.otf
+          weight: 700
+    - family: Matter
+      fonts:
+        - asset: assets/fonts/matter/Matter-TRIAL-Regular.otf
+          weight: 400
+        - asset: assets/fonts/matter/Matter-TRIAL-Medium.otf
+          weight: 500
+        - asset: assets/fonts/matter/Matter-TRIAL-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/matter/Matter-TRIAL-Bold.otf
+          weight: 700
+    - family: Haffer SemiMono
+      fonts:
+        - asset: assets/fonts/haffer/HafferSemiMono-TRIAL-Medium.otf
+          weight: 500
+        - asset: assets/fonts/haffer/HafferSemiMono-TRIAL-SemiBold.otf
+          weight: 600
+
+# Linux builds use the system SQLite package; other platforms keep their native asset.
+hooks:
+  user_defines:
+    sqlite3:
+      source:
+        linux: system
+        default: sqlite3

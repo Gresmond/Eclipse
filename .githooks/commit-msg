@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Keeps AI assistants off the contributor list: GitHub credits anyone named
+# in a Co-authored-by trailer, so refuse any that names Claude, Anthropic,
+# Codex or OpenAI, and refuse an author or committer address from them.
+set -euo pipefail
+
+ai='claude|anthropic|codex|openai'
+
+if grep -iE "^co-authored-by:.*($ai)" "$1" >/dev/null; then
+  echo 'commit-msg: remove the AI Co-authored-by trailer and commit again.' >&2
+  exit 1
+fi
+
+for ident in "$(git var GIT_AUTHOR_IDENT)" "$(git var GIT_COMMITTER_IDENT)"; do
+  if grep -iqE "$ai" <<<"$ident"; then
+    echo "commit-msg: commit identity looks like an AI assistant: $ident" >&2
+    exit 1
+  fi
+done

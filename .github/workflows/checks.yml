@@ -1,0 +1,49 @@
+name: Checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  arch:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install native Arch build dependencies
+        run: pacman -Syu --noconfirm --needed git curl jq unzip xz clang cmake ninja pkgconf gtk3 libdbusmenu-glib sqlite libglvnd libx11 xdg-utils zstd
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - name: Trust the checked-out repository and Flutter SDK in the container
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$FLUTTER_ROOT"
+          flutter --version
+      - name: Configure a build without Google credentials
+        run: cp lib/data/google_client.example.dart lib/data/google_client.dart
+      - name: Analyze, test and build as an ordinary user
+        shell: bash
+        run: |
+          useradd --create-home tester
+          chown -R tester:tester "$GITHUB_WORKSPACE" "$FLUTTER_ROOT"
+          runuser -u tester -- env PATH="$PATH" bash -c '
+            flutter pub get &&
+            flutter analyze &&
+            dart run tool/ci_test.dart &&
+            flutter build linux --release
+          '
+      - name: Verify per-user packaging and installation
+        run: |
+          bash linux/package.sh
+          mkdir /tmp/eclipse-install
+          tar --zstd -xf build/Eclipse.tar.zst -C /tmp/eclipse-install
+          chown -R tester:tester /tmp/eclipse-install
+          runuser -u tester -- bash /tmp/eclipse-install/Eclipse/install.sh

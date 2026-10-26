@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Gives every commit the next version in pubspec.yaml:
+# <two-digit year>.<month>.<release that month>, counting from 1 each month
+# (October 2026: 26.10.1, 26.10.2, ...; January 2027: 27.1.1), and the build
+# number one up. A version changed by hand in the commit is left as it is.
+# Turned on once per clone with: git config core.hooksPath .githooks
+set -euo pipefail
+
+version_of() { sed -n 's/^version: *//p'; }
+
+staged="$(git show :pubspec.yaml | version_of)"
+committed="$(git show HEAD:pubspec.yaml 2>/dev/null | version_of || true)"
+[[ -n $staged && $staged == "$committed" ]] || exit 0
+
+IFS=. read -r major month release <<<"${staged%%+*}"
+build="${staged#*+}"
+[[ $build == "$staged" ]] && build=0
+
+year_major=$((10#$(date +%y)))
+this_month=$(date +%-m)
+if [[ $major == "$year_major" && $month == "$this_month" ]]; then
+  release=$((release + 1))
+else
+  release=1
+fi
+next="$year_major.$this_month.$release+$((build + 1))"
+
+# Only the version line changes, in the commit and on disk; anything else
+# in pubspec.yaml that isn't staged stays unstaged.
+blob="$(git show :pubspec.yaml | sed "s/^version: .*/version: $next/" | git hash-object -w --stdin)"
+git update-index --cacheinfo "100644,$blob,pubspec.yaml"
+sed "s/^version: .*/version: $next/" pubspec.yaml > pubspec.yaml.tmp && mv pubspec.yaml.tmp pubspec.yaml
