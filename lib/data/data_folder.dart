@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import 'store.dart';
@@ -111,35 +112,25 @@ class DataFolder {
   }
 
   /// Asks for a folder with the desktop's own picker; null if cancelled or
-  /// there's no picker to ask with.
+  /// there's no picker to ask with. Windows and Mac ask the app's window
+  /// (Explorer's picker, Finder's panel as a sheet), so it opens in front.
   static Future<Directory?> pick({String? start, String title = 'Keep Eclipse\'s data in'}) async {
     final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '/';
-    if (Platform.isWindows) {
-      String quote(String value) => "'${value.replaceAll("'", "''")}'";
-      final script =
-          'Add-Type -AssemblyName System.Windows.Forms; '
-          '\$dialog = New-Object System.Windows.Forms.FolderBrowserDialog; '
-          '\$dialog.Description = ${quote(title)}; '
-          '\$dialog.SelectedPath = ${quote(start ?? home)}; '
-          'if (\$dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { '
-          '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; '
-          '[Console]::WriteLine(\$dialog.SelectedPath) }';
+    if (Platform.isWindows || Platform.isMacOS) {
       try {
-        final result = await Process.run('powershell.exe', ['-NoProfile', '-STA', '-Command', script]);
-        final path = (result.stdout as String).trim();
-        return result.exitCode == 0 && path.isNotEmpty ? Directory(path) : null;
-      } on ProcessException {
+        final path = await const MethodChannel('eclipse/folders')
+            .invokeMethod<String>('pick', {'title': title, 'start': start ?? home});
+        return path == null || path.isEmpty ? null : Directory(path);
+      } on PlatformException {
+        return null;
+      } on MissingPluginException {
         return null;
       }
     }
-    final commands = Platform.isMacOS
-        ? [
-            ['osascript', '-e', 'POSIX path of (choose folder with prompt "$title")'],
-          ]
-        : [
-            ['kdialog', '--title', title, '--getexistingdirectory', start ?? home],
-            ['zenity', '--file-selection', '--directory', '--title=$title', '--filename=${start ?? home}/'],
-          ];
+    final commands = [
+      ['kdialog', '--title', title, '--getexistingdirectory', start ?? home],
+      ['zenity', '--file-selection', '--directory', '--title=$title', '--filename=${start ?? home}/'],
+    ];
     for (final command in commands) {
       try {
         final result = await Process.run(command.first, command.skip(1).toList());

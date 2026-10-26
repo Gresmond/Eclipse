@@ -32,6 +32,10 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 [Files]
 Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Registry]
+; Created by the app, to remember the tray notification was shown.
+Root: HKCU; Subkey: "Software\Eclipse"; Flags: uninsdeletekey dontcreatekey
+
 [Icons]
 Name: "{group}\Eclipse"; Filename: "{app}\eclipse.exe"
 Name: "{autodesktop}\Eclipse"; Filename: "{app}\eclipse.exe"; Tasks: desktopicon

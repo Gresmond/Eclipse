@@ -73,7 +73,7 @@ Future<void> main() async {
 void _showStartupError(Object error) {
   final updater = Updater.forThisApp();
   if (updater != null && updater is! GitUpdater) unawaited(updater.check());
-  if (Platform.isLinux) {
+  if (Platform.isLinux || Platform.isWindows) {
     // Nothing was opened, so the tray's Quit has nothing to save.
     const MethodChannel('eclipse/lifecycle').setMethodCallHandler((call) async {
       if (call.method != 'quit') throw MissingPluginException();
@@ -145,7 +145,8 @@ void _watchWindow(AppState state) {
       return AppExitResponse.exit;
     },
   );
-  if (Platform.isLinux) {
+  // The tray's Quit (Linux and Windows), which saves before the app closes.
+  if (Platform.isLinux || Platform.isWindows) {
     const MethodChannel('eclipse/lifecycle').setMethodCallHandler((call) async {
       if (call.method != 'quit') throw MissingPluginException();
       await _shutdown(state);

@@ -3,6 +3,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -25,16 +26,20 @@ class Win32Window {
         : width(width), height(height) {}
   };
 
+  // The window class, which a second copy of the app looks for.
+  static constexpr const wchar_t kClassName[] = L"EclipseWindow";
+
   Win32Window();
   virtual ~Win32Window();
 
-  // Creates a win32 window with |title| that is positioned and sized using
-  // |origin| and |size|. New windows are created on the default monitor. Window
-  // sizes are specified to the OS in physical pixels, hence to ensure a
-  // consistent size this function will scale the inputted width and height as
-  // as appropriate for the default monitor. The window is invisible until
-  // |Show| is called. Returns true if the window was created successfully.
+  // Creates a win32 window with |title|, |size| logical pixels, centred on the
+  // monitor nearest |origin| and shrunk to fit its work area: a 1080p laptop
+  // at 150% has room for only 1280x720. The window is invisible until |Show|
+  // is called. Returns true if the window was created successfully.
   bool Create(const std::wstring& title, const Point& origin, const Size& size);
+
+  // The smallest the window's content can be dragged to, in logical pixels.
+  void SetMinimumSize(const Size& size);
 
   // Show the current window. Returns true if the window was successfully shown.
   bool Show();
@@ -91,6 +96,8 @@ class Win32Window {
   static void UpdateTheme(HWND const window);
 
   bool quit_on_close_ = false;
+
+  Size minimum_size_{0, 0};
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;
