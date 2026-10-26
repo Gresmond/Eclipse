@@ -74,6 +74,7 @@ class AppState extends ChangeNotifier {
     saveDrafts();
     await flushFiles();
     sync?.stop();
+    store.flushToDisk();
     store.close();
   }
 
@@ -269,8 +270,10 @@ class AppState extends ChangeNotifier {
   void setTheme(String name) {
     themeName = name;
     themeNotifier.value = name;
-    store.setSetting('theme', name);
-    store.setSetting('themeNames', '$_themeNames');
+    store.transaction(() {
+      store.setSetting('theme', name);
+      store.setSetting('themeNames', '$_themeNames');
+    });
     notifyListeners();
   }
 
@@ -301,8 +304,11 @@ class AppState extends ChangeNotifier {
   void nightLightIs(bool on) {
     if (on == _nightLight) return;
     _nightLight = on;
-    store.setSetting('nightLight', on ? '1' : '0');
-    if (followNightLight) _matchNightLight(on);
+    // One save for the reading and the theme it switches to.
+    store.transaction(() {
+      store.setSetting('nightLight', on ? '1' : '0');
+      if (followNightLight) _matchNightLight(on);
+    });
   }
 
   void _matchNightLight(bool on) {

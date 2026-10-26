@@ -128,6 +128,7 @@ void _watchWindow(AppState state) {
   void leaving() {
     if (state.closing) return;
     state.saveDrafts();
+    state.store.flushToDisk();
     state.sync?.sendChanges();
   }
 

@@ -329,6 +329,8 @@ class SyncService extends ChangeNotifier {
       if (_stopped) return;
       _config['pushed'] = latest;
       await _save();
+      if (_stopped) return;
+      store.flushToDisk();
       lastSynced = DateTime.now();
       error = null;
     } on DriveError catch (e) {

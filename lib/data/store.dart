@@ -14,6 +14,11 @@ class Store {
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
+    // A save no longer waits for the disk (about 6 ms each on btrfs, on the
+    // UI thread). The database still can't be corrupted, and a crash of the
+    // app loses nothing; [flushToDisk] covers a power cut at the moments
+    // that matter.
+    _db.execute('PRAGMA synchronous = NORMAL');
     _migrate();
   }
 
@@ -39,6 +44,10 @@ class Store {
   Database get raw => _db;
 
   void close() => _db.close();
+
+  /// Puts every save so far safely on the disk, so a power cut can't take
+  /// it: when the window goes to the back, after sync, and before quitting.
+  void flushToDisk() => _db.select('PRAGMA wal_checkpoint(FULL)');
 
   /// Writes a consistent, compacted copy of the whole database to [path].
   /// Written beside it first and renamed, so a crash never leaves half a file.
