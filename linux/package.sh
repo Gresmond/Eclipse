@@ -17,6 +17,7 @@ rm -f "$stage/Eclipse/bundle/build-info" "$stage/Eclipse/bundle/lib/libdartjni.s
 printf '%s\n' "$app_version" > "$stage/Eclipse/bundle/version"
 printf '%s\n' "$build" > "$stage/Eclipse/bundle/package-release"
 install -m755 linux/install-release.sh "$stage/Eclipse/install.sh"
-install -m644 design/icon/eclipse.svg "$stage/Eclipse/eclipse.svg"
+install -m644 linux/icons/hicolor/scalable/apps/dev.nicholas.productivity_app.svg "$stage/Eclipse/eclipse.svg"
+cp -R linux/icons "$stage/Eclipse/icons"
 tar --zstd -cf build/Eclipse.tar.zst -C "$stage" Eclipse
 echo 'Created build/Eclipse.tar.zst'

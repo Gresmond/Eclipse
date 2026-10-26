@@ -1951,6 +1951,35 @@ void main() {
     expect(state.noteOf(day, weights), 'Sore back');
   });
 
+  testWidgets('Option-click selects other, like middle-click', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
+    await tester.pumpWidget(EclipseApp(state: state));
+    state.showMonth(10);
+    await tester.pumpAndSettle();
+
+    final habit = state.habits.firstWhere((h) => h.name == 'File notes');
+    final day = DateTime(2026, 10, 7);
+    final square = find.byWidgetPredicate((w) => w is StatusCell && w.day == day && w.habit.id == habit.id);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.tap(square);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pumpAndSettle();
+    expect(state.statusOf(day, habit), HabitStatus.other);
+    expect(find.text('What happened?'), findsOneWidget);
+    await tester.tap(find.text('Skip'));
+    await tester.pumpAndSettle();
+
+    // A plain click still marks done.
+    await tester.tap(square);
+    await tester.pumpAndSettle();
+    expect(state.statusOf(day, habit), HabitStatus.done);
+  });
+
   testWidgets('update banner', (tester) async {
     await _loadFonts();
     tester.view.physicalSize = const Size(1440, 900);

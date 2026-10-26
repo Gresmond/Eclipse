@@ -63,6 +63,9 @@ Keywords=habits;todo;planner;journal;
 Terminal=false
 DESKTOP
 install -m644 eclipse.svg "$prefix/icons/hicolor/scalable/apps/$app_id.svg"
+if [[ -d icons/hicolor ]]; then
+  cp -R icons/hicolor/. "$prefix/icons/hicolor/"
+fi
 install -m644 "$stage/launcher.desktop" "$prefix/applications/$app_id.desktop"
 ln -s "$stage" "$link"
 mv -Tf "$link" "$root/current"

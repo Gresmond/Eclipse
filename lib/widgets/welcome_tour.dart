@@ -118,11 +118,15 @@ List<_Step> _steps(AppState state) => [
     'A calm home for your daily rituals, your to-dos and a few lines of journal. '
         'Here is a quick look round the basics.',
   ),
-  const _Step(
+  _Step(
     'Daily rituals',
-    'Left-click a square for done, right-click for not done, or middle-click for other, '
-        'which asks for an optional note. Repeat the same mouse button to clear the mark. '
-        'Done days build each streak and fill the ring.',
+    Platform.isMacOS
+        ? 'Click a square for done, right-click for not done, or Option-click for other, '
+              'which asks for an optional note. Repeat the same click to clear the mark. '
+              'Done days build each streak and fill the ring.'
+        : 'Left-click a square for done, right-click for not done, or middle-click for other, '
+              'which asks for an optional note. Repeat the same mouse button to clear the mark. '
+              'Done days build each streak and fill the ring.',
     TourSpot.rituals,
   ),
   const _Step(
@@ -691,11 +695,6 @@ class _StepBody extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (welcome) ...[
-          // The app's own icon, drawn from design/icon/eclipse.svg.
-          Image.asset('assets/icon/eclipse.png', width: 72, height: 72, filterQuality: FilterQuality.medium),
-          const SizedBox(height: 18),
-        ],
         Text(
           step.title,
           style: TextStyle(

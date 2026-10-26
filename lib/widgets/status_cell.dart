@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_state.dart';
 import '../models.dart';
@@ -11,7 +12,8 @@ import 'mark.dart';
 import 'note_input.dart';
 
 /// A habit-day square: left-click done, right-click not done, middle-click
-/// other. Repeat the same button to clear its mark.
+/// or Option/Alt-click other (trackpads have no middle button). Repeat the
+/// same click to clear its mark.
 class StatusCell extends StatefulWidget {
   const StatusCell({
     super.key,
@@ -157,7 +159,15 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
         onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
         onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
         onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-        onTap: enabled ? () => _selectStatus(context, state, widget.day, widget.habit, HabitStatus.done) : null,
+        onTap: enabled
+            ? () => _selectStatus(
+                context,
+                state,
+                widget.day,
+                widget.habit,
+                HardwareKeyboard.instance.isAltPressed ? HabitStatus.other : HabitStatus.done,
+              )
+            : null,
         onSecondaryTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
         onSecondaryTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
         onSecondaryTapCancel: enabled ? () => setState(() => _pressed = false) : null,

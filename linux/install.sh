@@ -28,7 +28,8 @@ cp -R build/linux/x64/release/bundle/. "$dest/"
 # built from, and offer to run this script again.
 printf 'repo=%s\ncommit=%s\nschema=%s\n' "$PWD" "$commit" "$schema" > "$dest/build-info"
 
-install -Dm644 design/icon/eclipse.svg "$prefix/icons/hicolor/scalable/apps/$app_id.svg"
+mkdir -p "$prefix/icons/hicolor"
+cp -R linux/icons/hicolor/. "$prefix/icons/hicolor/"
 
 install -Dm644 /dev/stdin "$prefix/applications/$app_id.desktop" <<DESKTOP
 [Desktop Entry]
