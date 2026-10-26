@@ -79,6 +79,7 @@ class TodoItem {
     this.done = false,
     this.carried = 0,
     this.dueDate,
+    this.doneAt,
     this.uid,
     this.subtasks = const [],
   });
@@ -90,6 +91,10 @@ class TodoItem {
   String text;
   bool done;
 
+  /// When it was last ticked, which orders the ticked items. Null for items
+  /// ticked before this was recorded.
+  DateTime? doneAt;
+
   /// The day it was added. An item still open from an earlier day, week or
   /// month shows it as "From dd/mm".
   final DateTime since;
@@ -98,8 +103,8 @@ class TodoItem {
   int carried;
 
   bool sameContent(TodoItem other) {
-    if ((id, text, done, carried, since, dueDate, uid) !=
-            (other.id, other.text, other.done, other.carried, other.since, other.dueDate, other.uid) ||
+    if ((id, text, done, doneAt, carried, since, dueDate, uid) !=
+            (other.id, other.text, other.done, other.doneAt, other.carried, other.since, other.dueDate, other.uid) ||
         subtasks.length != other.subtasks.length) {
       return false;
     }
@@ -213,21 +218,29 @@ const monthNames = [
 const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 /// Stable priority ordering, preserving insertion order within equal groups.
+/// Ticked items follow the same groups below the open ones, each group in
+/// the order they were ticked (due dates first by date).
 List<TodoItem> sortTodos(Iterable<TodoItem> todos) {
   final indexed = todos.indexed.toList();
-  int group(TodoItem t) => t.done
-      ? 3
-      : t.subtasks.isNotEmpty
-      ? 0
-      : t.dueDate != null
-      ? 1
-      : 2;
+  int group(TodoItem t) =>
+      (t.done ? 3 : 0) +
+      (t.subtasks.isNotEmpty
+          ? 0
+          : t.dueDate != null
+          ? 1
+          : 2);
   indexed.sort((a, b) {
     final priority = group(a.$2).compareTo(group(b.$2));
     if (priority != 0) return priority;
-    if (!a.$2.done && a.$2.dueDate != null && b.$2.dueDate != null) {
+    if (a.$2.dueDate != null && b.$2.dueDate != null) {
       final due = a.$2.dueDate!.compareTo(b.$2.dueDate!);
       if (due != 0) return due;
+    }
+    if (a.$2.done) {
+      // Items ticked before tick times were kept count as ticked first.
+      final (x, y) = (a.$2.doneAt, b.$2.doneAt);
+      final ticked = x == null ? (y == null ? 0 : -1) : (y == null ? 1 : x.compareTo(y));
+      if (ticked != 0) return ticked;
     }
     return a.$1.compareTo(b.$1);
   });

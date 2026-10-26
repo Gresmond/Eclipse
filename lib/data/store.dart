@@ -10,7 +10,7 @@ part 'store_todos.dart';
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 16;
+  static const schemaVersion = 17;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -137,7 +137,7 @@ class Store {
       'habit_months': 'year, month',
       'month_habits': 'year, month, habit_id, name, position, note, added_on',
       'entries': 'day, habit_id, status, note',
-      'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks',
+      'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at',
       'todo_history': 'uid, day, snapshot',
       'journal': 'day, text',
       'sleep_habits': 'item, habit_id',
@@ -538,6 +538,12 @@ class Store {
         }
         _db.execute('PRAGMA user_version = 16');
       });
+    }
+    if (version < 17) {
+      if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'done_at')) {
+        _db.execute('ALTER TABLE todos ADD COLUMN done_at TEXT');
+      }
+      _db.execute('PRAGMA user_version = 17');
     }
   }
 

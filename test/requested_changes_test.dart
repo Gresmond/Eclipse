@@ -14,26 +14,54 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('unfinished projects, chronological due dates, plain tasks, then completed tasks', () {
+  test('unfinished projects, chronological due dates, plain tasks, then ticked ones in the same groups', () {
     final today = DateTime(2026, 10, 26);
-    TodoItem task(int id, {bool done = false, DateTime? due, bool project = false}) => TodoItem(
+    TodoItem task(int id, {int? ticked, DateTime? due, bool project = false}) => TodoItem(
       id,
       '$id',
       since: today,
-      done: done,
+      done: ticked != null,
+      doneAt: ticked == null || ticked == 0 ? null : today.add(Duration(minutes: ticked)),
       dueDate: due,
       subtasks: project ? [const TodoSubtask('Step')] : [],
     );
     final tasks = [
-      task(1, done: true, project: true),
+      task(1, ticked: 5, project: true),
       task(2),
       task(3, due: DateTime(2026, 10, 30)),
       task(4, project: true),
       task(5, due: DateTime(2026, 10, 28)),
       task(6),
-      task(7, done: true),
+      task(7, ticked: 3),
+      task(8, ticked: 1),
+      task(9, ticked: 2, project: true),
+      task(10, ticked: 9, due: DateTime(2026, 10, 29)),
+      task(11, ticked: 4, due: DateTime(2026, 10, 29)),
+      task(12, ticked: 8, due: DateTime(2026, 10, 27)),
+      task(13, ticked: 0),
     ];
-    expect(sortTodos(tasks).map((t) => t.id), [4, 5, 3, 2, 6, 1, 7]);
+    // Ticked before tick times were kept (13) counts as ticked first.
+    expect(sortTodos(tasks).map((t) => t.id), [4, 5, 3, 2, 6, 9, 1, 12, 11, 10, 13, 8, 7]);
+  });
+
+  test('ticking records when, a changed checklist keeps it and unticking clears it', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final day = DateTime(2026, 10, 26);
+    final first = store.addTodo(TodoScope.today, day, 'First');
+    final second = store.addTodo(TodoScope.today, day, 'Second');
+    store.setTodoDone(second.id, true, day: day);
+    store.setTodoDone(first.id, true, day: day);
+    expect(sortTodos(store.todos(TodoScope.today, dateKey(day))).map((t) => t.text), ['Second', 'First']);
+
+    final ticked = store.todos(TodoScope.today, dateKey(day)).firstWhere((t) => t.id == second.id).doneAt;
+    expect(ticked, isNotNull);
+    store.setTodoDone(second.id, true, day: day, cascade: false);
+    expect(store.todos(TodoScope.today, dateKey(day)).firstWhere((t) => t.id == second.id).doneAt, ticked);
+    expect(store.todoListsOn(day)[TodoScope.today]!.firstWhere((t) => t.id == second.id).doneAt, ticked);
+
+    store.setTodoDone(second.id, false, day: day);
+    expect(store.todos(TodoScope.today, dateKey(day)).firstWhere((t) => t.id == second.id).doneAt, isNull);
   });
 
   test('existing text is formatted without losing history, and ritual dates sync', () {

@@ -70,6 +70,7 @@ extension StoreTodos on Store {
           carried: s['carried'] as int,
           uid: r['uid'] as String,
           dueDate: DateTime.tryParse(s['due_date'] as String? ?? ''),
+          doneAt: DateTime.tryParse(s['done_at'] as String? ?? ''),
           subtasks: TodoSubtask.decode(s['subtasks'] as String?),
         ),
       );
@@ -107,6 +108,7 @@ extension StoreTodos on Store {
             'return_scope',
             'defer_promotion_day',
             'subtasks',
+            'done_at',
           ])
             key: r[key],
           'deleted': deleted,
@@ -137,6 +139,7 @@ extension StoreTodos on Store {
     carried: r['carried'] as int,
     uid: r['uid'] as String,
     dueDate: DateTime.tryParse(r['due_date'] as String? ?? ''),
+    doneAt: DateTime.tryParse(r['done_at'] as String? ?? ''),
     subtasks: TodoSubtask.decode(r['subtasks'] as String?),
   );
 
@@ -190,8 +193,8 @@ extension StoreTodos on Store {
   TodoItem addTodo(TodoScope scope, DateTime day, String text, {bool done = false}) {
     return transaction(() {
       _db.execute(
-        'INSERT INTO todos (uid, scope, period, text, done, since) VALUES (lower(hex(randomblob(8))), ?, ?, ?, ?, ?)',
-        [scope.name, scope.period(day), text, done ? 1 : 0, dateKey(day)],
+        'INSERT INTO todos (uid, scope, period, text, done, since, done_at) VALUES (lower(hex(randomblob(8))), ?, ?, ?, ?, ?, ?)',
+        [scope.name, scope.period(day), text, done ? 1 : 0, dateKey(day), done ? _tickTime() : null],
       );
       final id = _db.lastInsertRowId;
       _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [id]), day);
@@ -211,9 +214,10 @@ extension StoreTodos on Store {
         ]);
       }
       _db.execute(
-        'UPDATE todos SET done = ?, scope = ?, period = ?, return_scope = ?, return_to_tomorrow = ?, defer_promotion_day = ?, subtasks = ? WHERE id = ?',
+        'UPDATE todos SET done = ?, done_at = ?, scope = ?, period = ?, return_scope = ?, return_to_tomorrow = ?, defer_promotion_day = ?, subtasks = ? WHERE id = ?',
         [
           snapshot['done'],
+          snapshot['done_at'],
           snapshot['scope'],
           snapshot['period'],
           snapshot['return_scope'],
@@ -353,9 +357,10 @@ extension StoreTodos on Store {
       final historicalScope = TodoScope.values.byName(snapshot['scope'] as String);
       final liveScope = !done && historicalScope == TodoScope.tomorrow ? TodoScope.today : historicalScope;
       _db.execute(
-        'UPDATE todos SET done = ?, scope = ?, period = ?, return_to_tomorrow = ?, return_scope = ?, defer_promotion_day = ?, subtasks = ? WHERE uid = ?',
+        'UPDATE todos SET done = ?, done_at = ?, scope = ?, period = ?, return_to_tomorrow = ?, return_scope = ?, defer_promotion_day = ?, subtasks = ? WHERE uid = ?',
         [
           done ? 1 : 0,
+          snapshot['done_at'],
           liveScope.name,
           liveScope.period(done ? day : today),
           snapshot['return_to_tomorrow'] ?? 0,
@@ -463,6 +468,15 @@ extension StoreTodos on Store {
       }
     }
     snapshot['return_to_tomorrow'] = snapshot['return_scope'] == TodoScope.tomorrow.name ? 1 : 0;
+    // A ticked item that stays ticked (a checklist step changed) keeps its
+    // place among the ticked ones.
+    if (!done) {
+      snapshot['done_at'] = null;
+    } else if (snapshot['done'] != 1) {
+      snapshot['done_at'] = _tickTime();
+    }
     snapshot['done'] = done ? 1 : 0;
   }
+
+  static String _tickTime() => DateTime.now().toUtc().toIso8601String();
 }

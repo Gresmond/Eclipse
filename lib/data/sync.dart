@@ -112,7 +112,7 @@ class SyncEngine {
             {'status': 0, 'note': null};
       case 'todo':
         fields = row(
-          'SELECT scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks FROM todos WHERE uid = ?',
+          'SELECT scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at FROM todos WHERE uid = ?',
           [rowkey],
         );
       case 'journal':
@@ -190,11 +190,11 @@ class SyncEngine {
           _db.execute('DELETE FROM todos WHERE uid = ?', [rowkey]);
         } else {
           _db.execute(
-            'INSERT INTO todos (uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'INSERT INTO todos (uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT (uid) DO UPDATE SET scope = excluded.scope, period = excluded.period, text = excluded.text, '
             'done = excluded.done, carried = excluded.carried, since = excluded.since, due_date = excluded.due_date, '
             'return_to_tomorrow = excluded.return_to_tomorrow, return_scope = excluded.return_scope, '
-            'defer_promotion_day = excluded.defer_promotion_day, subtasks = excluded.subtasks',
+            'defer_promotion_day = excluded.defer_promotion_day, subtasks = excluded.subtasks, done_at = excluded.done_at',
             [
               rowkey,
               f['scope'] ?? 'today',
@@ -208,6 +208,7 @@ class SyncEngine {
               f['return_scope'] ?? (f['return_to_tomorrow'] == 1 ? 'tomorrow' : null),
               f['defer_promotion_day'],
               f['subtasks'] ?? '[]',
+              f['done_at'],
             ],
           );
         }
