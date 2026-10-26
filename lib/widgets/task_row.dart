@@ -53,6 +53,7 @@ class _TodoRowState extends State<_TodoRow> {
   bool _acceptingNest = false;
   int? _incomingSubtask;
   Timer? _incomingTimer;
+  Timer? _collapseTimer;
   _TaskDrag? _activeDrag;
 
   Future<void> _fadeForNesting() async {
@@ -99,9 +100,26 @@ class _TodoRowState extends State<_TodoRow> {
     });
   }
 
+  /// A finished task folds its subtasks away once it has glided to its
+  /// place among the ticked ones. Unticking leaves it as it is.
+  @override
+  void didUpdateWidget(_TodoRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final item = widget.item;
+    if (item.id != oldWidget.item.id || !item.done) {
+      _collapseTimer?.cancel();
+    } else if (!oldWidget.item.done && item.subtasks.isNotEmpty && _expanded) {
+      _collapseTimer?.cancel();
+      _collapseTimer = Timer(Motion.reorder, () {
+        if (mounted) setState(() => _expanded = false);
+      });
+    }
+  }
+
   @override
   void dispose() {
     _incomingTimer?.cancel();
+    _collapseTimer?.cancel();
     super.dispose();
   }
 

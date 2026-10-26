@@ -14,6 +14,7 @@ import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/theme/motion.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:eclipse/widgets/smooth_task_scroll.dart';
 
@@ -245,6 +246,38 @@ void main() {
     expect(state.todos[TodoScope.today]!.first.subtasks.single.text, 'Keep this child');
     final plain = state.todos[TodoScope.today]!.last;
     expect(state.nestTodo(TodoScope.today, plain, TodoScope.today, plain), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a finished project folds away once it has moved, and stays folded when reopened', (tester) async {
+    state.addTodo(TodoScope.today, 'Big project');
+    state.setTodoSubtasks(TodoScope.today, task(TodoScope.today), [
+      const TodoSubtask('Research', done: true),
+      const TodoSubtask('Build'),
+    ]);
+    state.addTodo(TodoScope.today, 'Plain task');
+    await show(tester);
+    await tester.tap(find.byTooltip('Expand subtasks'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Complete subtask'));
+    await tester.pump(Motion.reorder ~/ 2);
+    expect(find.text('Build'), findsOneWidget, reason: 'still open while it moves');
+    await tester.pumpAndSettle();
+    expect(find.text('Build'), findsNothing);
+    expect(find.byTooltip('Expand subtasks'), findsOneWidget);
+
+    final project = state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Big project');
+    state.toggleTodo(project);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Expand subtasks'), findsOneWidget);
+
+    // Ticking the project itself folds it too.
+    await tester.tap(find.byTooltip('Expand subtasks'));
+    await tester.pumpAndSettle();
+    state.toggleTodo(state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Big project'));
+    await tester.pumpAndSettle();
+    expect(find.text('Build'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
