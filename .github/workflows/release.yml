@@ -209,7 +209,9 @@ jobs:
 
   publish:
     needs: [version, arch, desktop]
-    if: github.event_name == 'push' && needs.version.outputs.new == 'true'
+    # A manual run publishes too, replacing the downloads of a release that
+    # already has this version (move its tag to the commit first).
+    if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
