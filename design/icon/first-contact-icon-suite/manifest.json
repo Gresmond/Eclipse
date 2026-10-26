@@ -1,0 +1,74 @@
+{
+  "design": "First Contact \u2014 original ivory moon, reference sun ripples and moon bumps",
+  "source": "source/eclipse.svg",
+  "sourceSha256": "f5cf3e92ef7510c4613af05fd14054d4db49c237c0cc338196265d029bf372af",
+  "appId": "dev.nicholas.productivity_app",
+  "palette": {
+    "background": "#C44430",
+    "sun": "#F8BD49",
+    "moon": "#FFF6DE"
+  },
+  "linuxSizes": [
+    16,
+    22,
+    24,
+    32,
+    48,
+    64,
+    96,
+    128,
+    256,
+    512,
+    1024
+  ],
+  "windowsIcoSizes": [
+    16,
+    20,
+    24,
+    32,
+    40,
+    48,
+    64,
+    128,
+    256
+  ],
+  "macosPngSizes": [
+    16,
+    32,
+    64,
+    128,
+    256,
+    512,
+    1024
+  ],
+  "masterPngSizes": [
+    16,
+    20,
+    22,
+    24,
+    32,
+    40,
+    48,
+    64,
+    96,
+    128,
+    256,
+    512,
+    1024,
+    2048
+  ],
+  "macosCanvas": {
+    "size": 1024,
+    "circleDiameter": 824,
+    "inset": 100
+  },
+  "applicationIntegration": true,
+  "validation": [
+    "14 native vector PNG renders validated (16\u20132048px)",
+    "9 ICO frames decoded and matched byte-for-byte to RGBA renders",
+    "11 ICNS representations decoded and matched byte-for-byte to RGBA renders",
+    "10 Xcode catalog slots and 10 iconset slots verified",
+    "Approved three-colour palette and original ivory moon verified",
+    "21 project assets copied and verified"
+  ]
+}
