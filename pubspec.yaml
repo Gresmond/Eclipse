@@ -3,7 +3,7 @@ description: "A habit tracker and to-do planner."
 publish_to: 'none'
 
 # <two-digit year>.<month>.<release that month>+<build count>.
-# .githooks/pre-commit bumps this when enabled; pushes to main publish per-user Linux, Windows and Mac releases.
+# tool/release.sh bumps this and tags the commit; the tag publishes per-user Linux, Windows and Mac releases.
 version: 26.10.1+3
 
 environment:

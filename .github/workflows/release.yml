@@ -1,8 +1,9 @@
 name: Release
 
 on:
+  # tool/release.sh pushes a v<version> tag for each release.
   push:
-    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -28,6 +29,10 @@ jobs:
         run: |
           full_version="$(sed -n 's/^version: *//p' pubspec.yaml)"
           version="${full_version%%+*}"
+          if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match pubspec.yaml version $version"
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "build=${full_version#*+}" >> "$GITHUB_OUTPUT"
           if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -48,7 +53,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: 3.47.7
+          flutter-version: 3.47.8
           cache: true
       - name: Trust the checked-out repository and Flutter SDK in the container
         shell: bash
@@ -121,7 +126,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: 3.47.7
+          flutter-version: 3.47.8
           cache: true
       - name: Write Google sign-in client
         env:
