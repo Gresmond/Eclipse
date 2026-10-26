@@ -1,6 +1,6 @@
 # Eclipse — First Contact icon suite
 
-The approved original ivory-moon design, with the exact reference sun ripples and lunar bumps. The source shapes, palette and placement are preserved; the darker moon studies are not used.
+The approved adjusted First Contact design: the original ivory moon is 5% smaller, the sun is a quarter of the way closer to the icon centre, and the moon is 15% closer to the sun's centre. The exact reference sun ripples and lunar bumps and the original palette are preserved; the darker moon studies are not used. This replaces the previous First Contact composition in the app.
 
 ## Assets
 

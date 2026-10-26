@@ -66,7 +66,7 @@ def preview(png,mac):
     d.text((40,24),'ECLIPSE / FIRST CONTACT — DESKTOP ICON SUITE',font=title,fill='#3D302D')
     for x,bg,fg in [(30,'#F8F6F0','#3D302D'),(820,'#24262C','#EEEAE2')]:
         d.rounded_rectangle((x,90,x+750,1090),radius=18,fill=bg)
-        d.text((x+28,115),'Approved ivory moon / original red and yellow',font=label,fill=fg)
+        d.text((x+28,115),'Adjusted composition / original ivory moon',font=label,fill=fg)
         im=frame(png[512]);im.thumbnail((340,340),Image.Resampling.LANCZOS)
         sheet.paste(im,(x+205,165),im)
         d.text((x+28,548),'Linux + Windows                         macOS circle',font=label,fill=fg)
@@ -151,7 +151,7 @@ def build(install=False):
     copied=update_project() if install else 0
     checks=[f'{len(png)} native vector PNG renders validated (16–2048px)',f'{len(WINDOWS)} ICO frames decoded and matched byte-for-byte to RGBA renders',f'{len(types)} ICNS representations decoded and matched byte-for-byte to RGBA renders','10 Xcode catalog slots and 10 iconset slots verified','Approved three-colour palette and original ivory moon verified',f'{copied} project assets copied and verified' if install else 'Standalone build; project assets not copied']
     preview(png,mac)
-    manifest={'design':'First Contact — original ivory moon, reference sun ripples and moon bumps','source':'source/eclipse.svg','sourceSha256':hashlib.sha256(source).hexdigest(),'appId':APP_ID,'palette':{'background':'#C44430','sun':'#F8BD49','moon':'#FFF6DE'},'linuxSizes':LINUX,'windowsIcoSizes':WINDOWS,'macosPngSizes':MAC,'masterPngSizes':SIZES,'macosCanvas':{'size':1024,'circleDiameter':824,'inset':100},'applicationIntegration':install,'validation':checks}
+    manifest={'design':'First Contact — adjusted sun and moon placement, 5% smaller original ivory moon, reference edge contours','source':'source/eclipse.svg','sourceSha256':hashlib.sha256(source).hexdigest(),'appId':APP_ID,'palette':{'background':'#C44430','sun':'#F8BD49','moon':'#FFF6DE'},'composition':{'canvas':64,'sun':{'centre':[29,29.75],'nominalRadius':19},'moon':{'centre':[37.5,36.55],'nominalRadius':16.15}},'linuxSizes':LINUX,'windowsIcoSizes':WINDOWS,'macosPngSizes':MAC,'masterPngSizes':SIZES,'macosCanvas':{'size':1024,'circleDiameter':824,'inset':100},'applicationIntegration':install,'validation':checks}
     write(ROOT/'manifest.json',(json.dumps(manifest,indent=2)+'\n').encode())
     files={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(ROOT.rglob('*')) if p.is_file() and p.name!='SHA256SUMS' and '__pycache__' not in p.parts}
     write(ROOT/'SHA256SUMS',''.join(f'{digest}  {name}\n' for name,digest in files.items()).encode())

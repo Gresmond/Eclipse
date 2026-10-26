@@ -1,12 +1,29 @@
 {
-  "design": "First Contact \u2014 original ivory moon, reference sun ripples and moon bumps",
+  "design": "First Contact \u2014 adjusted sun and moon placement, 5% smaller original ivory moon, reference edge contours",
   "source": "source/eclipse.svg",
-  "sourceSha256": "f5cf3e92ef7510c4613af05fd14054d4db49c237c0cc338196265d029bf372af",
+  "sourceSha256": "b6cfb65b79cfd1520f621b5e64a4ee99b077ac37f0b80a9ca8f88ab29aabb943",
   "appId": "dev.nicholas.productivity_app",
   "palette": {
     "background": "#C44430",
     "sun": "#F8BD49",
     "moon": "#FFF6DE"
+  },
+  "composition": {
+    "canvas": 64,
+    "sun": {
+      "centre": [
+        29,
+        29.75
+      ],
+      "nominalRadius": 19
+    },
+    "moon": {
+      "centre": [
+        37.5,
+        36.55
+      ],
+      "nominalRadius": 16.15
+    }
   },
   "linuxSizes": [
     16,
