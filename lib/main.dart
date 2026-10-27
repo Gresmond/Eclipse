@@ -17,6 +17,7 @@ import 'data/store.dart';
 import 'data/sync_service.dart';
 import 'data/system_time_zone.dart';
 import 'data/updates.dart';
+import 'data/windows_night_light.dart';
 import 'models.dart';
 import 'screens/shell.dart';
 import 'screens/startup_error.dart';
@@ -157,6 +158,7 @@ void _watchWindow(AppState state) {
 
 /// Mirrors night light into [AppState]: hyprsunset can't announce a
 /// change, so it's asked every few seconds and whenever the window comes back.
+/// Windows Night light is read from the registry the same way.
 /// A Mac has no night light to read (Night Shift has no public API), so
 /// there it follows Dark mode, which macOS's Auto appearance turns on at
 /// sunset and off at sunrise.
@@ -166,12 +168,12 @@ void _watchNightLight(AppState state) {
     WidgetsBinding.instance.addObserver(_DarkModeObserver(state));
     return;
   }
-  final nightLight = NightLight.forSession();
-  if (nightLight == null) return;
+  final isOn = Platform.isWindows ? WindowsNightLight.isOn : NightLight.forSession()?.isOn;
+  if (isOn == null) return;
   state.nightLightAvailable = true;
   Future<void> check() async {
     if (state.closing) return;
-    final on = await nightLight.isOn();
+    final on = await isOn();
     if (on != null && !state.closing) state.nightLightIs(on);
   }
 
