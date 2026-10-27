@@ -490,7 +490,6 @@ class _HabitRow extends StatelessWidget {
               habit: habit,
               size: cellSize,
               enabled: state.canEditDay(day) && habit.startedBy(day),
-              rest: state.restsFor(habit, day),
             ),
           ],
         ),

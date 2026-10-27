@@ -21,7 +21,6 @@ class StatusCell extends StatefulWidget {
     required this.habit,
     this.size = 34,
     this.enabled = true,
-    this.rest = false,
     this.paletteAnimation,
   });
 
@@ -29,9 +28,6 @@ class StatusCell extends StatefulWidget {
   final Habit habit;
   final double size;
   final bool enabled;
-
-  /// A rest day (a weekend, when that's turned on): greyed while blank.
-  final bool rest;
 
   /// Large grids repaint theme colors without rebuilding every cell.
   final ValueListenable<Palette>? paletteAnimation;
@@ -183,7 +179,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
             : null,
         onTertiaryTapCancel: enabled ? () => setState(() => _pressed = false) : null,
         child: LazyOpacity(
-          opacity: !enabled ? 0.35 : (widget.rest && status == HabitStatus.none ? 0.45 : 1),
+          opacity: enabled ? 1 : 0.35,
           duration: Motion.morph,
           curve: Motion.morphCurve,
           child: cell,

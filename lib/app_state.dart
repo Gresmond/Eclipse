@@ -331,7 +331,7 @@ class AppState extends ChangeNotifier {
 
   bool isRestDay(DateTime day) => restWeekends && day.weekday >= DateTime.saturday;
 
-  /// Whether [day] is a rest day for [h], greyed while blank: a weekend it
+  /// Whether [day] is a rest day for [h]: a weekend it
   /// isn't on (still tickable, see [isWeekend]), or for the sleep schedule,
   /// any weekend while they rest.
   bool restsFor(Habit h, DateTime day) => isWeekend(day) && (_isSleep(h) ? restWeekends : !h.onDay(day));
