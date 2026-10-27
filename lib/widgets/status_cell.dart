@@ -26,6 +26,7 @@ class StatusCell extends StatefulWidget {
     this.size = 34,
     this.enabled = true,
     this.rest = false,
+    this.off = false,
     this.paletteAnimation,
   });
 
@@ -36,6 +37,10 @@ class StatusCell extends StatefulWidget {
 
   /// A rest day (a weekend, when that's turned on): greyed while blank.
   final bool rest;
+
+  /// A day the ritual isn't on: no square, and nothing to click. Still a
+  /// cell, so a square turning off or on with the month fades like the rest.
+  final bool off;
 
   /// Large grids repaint theme colors without rebuilding every cell.
   final ValueListenable<Palette>? paletteAnimation;
@@ -142,7 +147,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     );
     final status = state.statusOf(widget.day, widget.habit);
     final note = state.noteOf(widget.day, widget.habit);
-    final enabled = widget.enabled;
+    final enabled = widget.enabled && !widget.off;
 
     final look = switch (status) {
       HabitStatus.none => const _Look(null, null),
@@ -169,7 +174,11 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     final scaleTarget = _pressed ? 0.91 : (_hover && enabled ? 1.04 : 1.0);
     final scale = _ease(_scale, _scaleTarget, scaleTarget, Motion.hover, Motion.hoverCurve, (c) => _scale = c);
     _scaleTarget = scaleTarget;
-    final opacityTarget = !enabled ? 0.35 : (widget.rest && status == HabitStatus.none ? 0.45 : 1.0);
+    final opacityTarget = widget.off
+        ? 0.0
+        : !enabled
+        ? 0.35
+        : (widget.rest && status == HabitStatus.none ? 0.45 : 1.0);
     final opacity = _ease(
       _opacity,
       _opacityTarget,
@@ -198,7 +207,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
       ),
     );
 
-    if (note != null) {
+    if (note != null && !widget.off) {
       cell = Tooltip(message: note, child: cell);
     }
 

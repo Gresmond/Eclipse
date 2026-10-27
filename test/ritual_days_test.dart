@@ -167,4 +167,36 @@ void main() {
     SyncEngine(store, 'pc').flush();
     expect(SyncEngine(store, 'pc').changesSince(0).values.expand((v) => v).length, before);
   });
+
+  test('a ritual added partway through a month stays out of the months before it', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.addHabit(2026, 10, 'Read');
+    store.addHabit(2026, 10, 'Sunlight', addedOn: DateTime(2026, 10, 27));
+    store.copyMonth((2026, 10), (2026, 9));
+    expect([for (final h in store.monthHabits(2026, 9)) h.name], ['Read']);
+    store.copyMonth((2026, 10), (2026, 11));
+    expect([for (final h in store.monthHabits(2026, 11)) h.name], ['Read', 'Sunlight']);
+  });
+
+  test('rituals copied back before the month they were added are taken out once', () {
+    final dir = Directory.systemTemp.createTempSync('eclipse-ritual-days');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final path = '${dir.path}/test.db';
+    var store = Store.open(path);
+    final read = store.addHabit(2026, 10, 'Read');
+    final sun = store.addHabit(2026, 10, 'Sunlight', addedOn: DateTime(2026, 10, 27));
+    // As an older build copied October back to September.
+    store.raw.execute(
+      'INSERT INTO month_habits (year, month, habit_id, name, position) VALUES (2026, 9, ?, ?, 0), (2026, 9, ?, ?, 1)',
+      [read.id, 'Read', sun.id, 'Sunlight'],
+    );
+    store.raw.execute('PRAGMA user_version = 24');
+    store.close();
+
+    store = Store.open(path);
+    addTearDown(store.close);
+    expect([for (final h in store.monthHabits(2026, 9)) h.name], ['Read']);
+    expect([for (final h in store.monthHabits(2026, 10)) h.name], ['Read', 'Sunlight']);
+  });
 }

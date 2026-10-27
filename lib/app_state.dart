@@ -569,7 +569,9 @@ class AppState extends ChangeNotifier {
     if (source != (year, month) && (beforeFirst || isFutureMonth(year, month))) {
       return _previewHabits[(year, month)] = [
         for (final h in store.monthHabits(source.$1, source.$2))
-          Habit(h.id, h.name, description: h.description, days: [if (h.weekdays != everyDay) (null, h.weekdays)]),
+          // Not one added partway through a later month: it didn't exist yet.
+          if (!beforeFirst || h.addedOn == null)
+            Habit(h.id, h.name, description: h.description, days: [if (h.weekdays != everyDay) (null, h.weekdays)]),
       ];
     }
     return _savedList(year, month);

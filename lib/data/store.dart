@@ -12,7 +12,7 @@ part 'store_todos.dart';
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 23;
+  static const schemaVersion = 25;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -612,6 +612,26 @@ class Store {
     // once, sending the ritual days that versions 20 and 21 changed without
     // sync seeing.
     if (version < 23) _db.execute('PRAGMA user_version = 23');
+    // Version 24 puts every ritual back on every day, in every month, once.
+    // Through the sync triggers, so the other computer follows.
+    if (version < 24) {
+      transaction(() {
+        _db.execute('UPDATE month_habits SET days = NULL WHERE days IS NOT NULL');
+        _db.execute('PRAGMA user_version = 24');
+      });
+    }
+    // Version 25 takes rituals out of months before the one they were added
+    // in, where copying a later month's list back had put them.
+    if (version < 25) {
+      transaction(() {
+        _db.execute('''
+          DELETE FROM month_habits WHERE EXISTS (
+            SELECT 1 FROM month_habits a WHERE a.habit_id = month_habits.habit_id AND a.added_on IS NOT NULL
+              AND a.year * 12 + a.month > month_habits.year * 12 + month_habits.month)
+        ''');
+        _db.execute('PRAGMA user_version = 25');
+      });
+    }
 
     // A migration can change synced rows where the sync triggers can't see
     // it (a column dropped or added back, say), so after any upgrade sync
@@ -733,9 +753,13 @@ class Store {
 
   void copyMonth((int, int) from, (int, int) to) {
     initializeMonth(to.$1, to.$2);
+    // Copied back to an earlier month, a ritual added partway through the
+    // later one stays out: it didn't exist yet.
+    final earlier = to.$1 * 12 + to.$2 < from.$1 * 12 + from.$2;
     _db.execute(
       'INSERT INTO month_habits (year, month, habit_id, name, position, note) '
-      'SELECT ?, ?, habit_id, name, position, note FROM month_habits WHERE year = ? AND month = ?',
+      'SELECT ?, ?, habit_id, name, position, note FROM month_habits WHERE year = ? AND month = ?'
+      '${earlier ? ' AND added_on IS NULL' : ''}',
       [to.$1, to.$2, from.$1, from.$2],
     );
     // The new month starts on the days each ritual was on last.
