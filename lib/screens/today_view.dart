@@ -271,8 +271,8 @@ class _HabitsCard extends StatelessWidget {
                     child: ListView.builder(
                       key: ValueKey([for (final h in habits) '${h.id} ${h.name}'].join('|')),
                       padding: EdgeInsets.zero,
-                      itemExtentBuilder: (i, _) => i < total ? rows.heights[i] : null,
-                      itemCount: total,
+                      itemExtentBuilder: (i, _) => i < habits.length ? rows.heights[i] : null,
+                      itemCount: habits.length,
                       itemBuilder: (context, i) => _HabitRow(
                         habit: habits[i],
                         day: day,

@@ -542,9 +542,10 @@ class AppState extends ChangeNotifier {
     if (source == null) return const [];
     final beforeFirst = source.$1 * 12 + source.$2 > year * 12 + month;
     if (source != (year, month) && (beforeFirst || isFutureMonth(year, month))) {
-      return _previewHabits[(year, month)] = [
-        for (final h in store.monthHabits(source.$1, source.$2)) Habit(h.id, h.name, description: h.description),
-      ];
+      return _previewHabits[(year, month)] = sortRituals([
+        for (final h in store.monthHabits(source.$1, source.$2))
+          Habit(h.id, h.name, description: h.description, days: [if (h.weekdays != everyDay) (null, h.weekdays)]),
+      ]);
     }
     return _savedList(year, month);
   }
@@ -564,7 +565,7 @@ class AppState extends ChangeNotifier {
       _previewHabits.clear();
       habitsRevision++;
     }
-    return _monthHabits[(year, month)] = store.monthHabits(year, month);
+    return _monthHabits[(year, month)] = sortRituals(store.monthHabits(year, month));
   }
 
   // Edits take the habit's id, because [h] may come from a preview list.
@@ -609,6 +610,7 @@ class AppState extends ChangeNotifier {
         addedOn: year == today.year && month == today.month ? today : null,
       ),
     );
+    _resort(year, month);
     _habitsChanged();
   }
 
@@ -637,6 +639,7 @@ class AppState extends ChangeNotifier {
     final from = year == today.year && month == today.month && today.day > 1 ? today : null;
     saved.days = changeDays(saved.days, from, bits);
     store.setHabitDays(year, month, h.id, saved.days);
+    _resort(year, month);
     _monthScores.remove((year, month));
     _streaks.remove(h.id);
     _habitsChanged();
@@ -649,11 +652,23 @@ class AppState extends ChangeNotifier {
     _habitsChanged();
   }
 
+  /// Only every-day rituals are arranged by hand, above the rest (see
+  /// [sortRituals]).
   void reorderHabit(int year, int month, int from, int to) {
     final list = _savedList(year, month);
-    list.insert(to, list.removeAt(from));
+    final everyDayCount = list.where((h) => h.weekdays == everyDay).length;
+    if (from >= everyDayCount) return;
+    list.insert(to.clamp(0, everyDayCount - 1), list.removeAt(from));
     store.reorderHabits(year, month, [for (final h in list) h.id]);
     _habitsChanged();
+  }
+
+  /// Puts the month's list back in order, saving the new positions.
+  void _resort(int year, int month) {
+    final list = _savedList(year, month);
+    final before = [for (final h in list) h.id];
+    final after = [for (final h in sortRituals(list)) h.id];
+    if (before.join(',') != after.join(',')) store.reorderHabits(year, month, after);
   }
 
   // Entries

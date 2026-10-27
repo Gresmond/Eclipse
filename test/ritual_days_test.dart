@@ -23,6 +23,32 @@ void main() {
     expect(decodeDays(encodeDays(days)), days);
   });
 
+  test('rituals on fewer days sort lower, ties by the earlier weekday', () {
+    int on(List<int> weekdays) => weekdays.fold(0, (bits, d) => bits | weekdayBit(d));
+    Habit ritual(String name, [List<int>? weekdays]) =>
+        Habit(name.hashCode, name, days: weekdays == null ? [] : [(null, on(weekdays))]);
+    final sorted = sortRituals([
+      ritual('Tue Wed', [2, 3]),
+      ritual('Daily A'),
+      ritual('Wed', [3]),
+      ritual('Mon Fri', [1, 5]),
+      ritual('Mon Wed Fri', [1, 3, 5]),
+      ritual('Daily B'),
+      ritual('Mon Wed', [1, 3]),
+      ritual('Mon Fri again', [1, 5]),
+    ]);
+    expect([for (final h in sorted) h.name], [
+      'Daily A',
+      'Daily B',
+      'Mon Wed Fri',
+      'Mon Wed',
+      'Mon Fri',
+      'Mon Fri again',
+      'Tue Wed',
+      'Wed',
+    ]);
+  });
+
   test('off days count for nothing: not in the score and not breaking a streak', () {
     final store = Store.memory();
     addTearDown(store.close);

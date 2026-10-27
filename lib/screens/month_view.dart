@@ -768,10 +768,24 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                         alignment: Alignment.centerLeft,
                         child: SizedBox(
                           width: widget.nameWidth - 16,
-                          child: RitualName(
-                            habit: widget.habit,
-                            maxLines: height >= 2 * 13.5 * 1.15 + 2 ? 2 : 1,
-                            style: nameStyle,
+                          // A ritual on only some days shows them after its name.
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: RitualName(
+                                  habit: widget.habit,
+                                  maxLines: height >= 2 * 13.5 * 1.15 + 2 ? 2 : 1,
+                                  style: nameStyle,
+                                ),
+                              ),
+                              if (widget.habit.weekdays != everyDay)
+                                for (var weekday = 1; weekday <= 7; weekday++)
+                                  if (widget.habit.weekdays & weekdayBit(weekday) != 0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 4),
+                                      child: _DayCircle(weekday: weekday, on: true, size: 16),
+                                    ),
+                            ],
                           ),
                         ),
                       ),

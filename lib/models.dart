@@ -78,6 +78,37 @@ List<(DateTime?, int)> changeDays(List<(DateTime?, int)> days, DateTime? from, i
   return kept.every((c) => c.$2 == everyDay) ? [] : kept;
 }
 
+/// Rituals in their list order: every-day ones first, as arranged; then
+/// the rest, fewer days lower, and with as many days, the one whose days
+/// come earlier in the week first (Mon+Fri before Tue+Wed). Rituals on the
+/// same days keep their arranged order. Sorts [habits] in place.
+List<Habit> sortRituals(List<Habit> habits) {
+  int compare(Habit a, Habit b) {
+    final (x, y) = (a.weekdays, b.weekdays);
+    if (x == y) return 0;
+    final count = _bitCount(y).compareTo(_bitCount(x));
+    if (count != 0) return count;
+    // The earliest weekday only one of them is on.
+    final first = (x ^ y) & -(x ^ y);
+    return x & first != 0 ? -1 : 1;
+  }
+
+  final indexed = habits.indexed.toList()
+    ..sort((a, b) {
+      final order = compare(a.$2, b.$2);
+      return order != 0 ? order : a.$1.compareTo(b.$1);
+    });
+  return habits..setAll(0, [for (final (_, h) in indexed) h]);
+}
+
+int _bitCount(int bits) {
+  var n = 0;
+  for (; bits != 0; bits &= bits - 1) {
+    n++;
+  }
+  return n;
+}
+
 /// The sleep schedule: the same four in every month, below the rituals.
 /// The items are fixed here; their times are set month by month.
 enum SleepItem {

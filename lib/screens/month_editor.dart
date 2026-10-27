@@ -479,16 +479,21 @@ class _EditableRowState extends State<_EditableRow> {
       ),
       child: Row(
         children: [
-          ReorderableDragStartListener(
-            index: widget.index,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.grab,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Icon(Icons.drag_indicator_rounded, size: 18, color: p.inkMuted.withValues(alpha: 0.6)),
+          // A ritual on only some days sorts itself (see sortRituals), so it
+          // has no handle, just the space one takes.
+          if (widget.habit.weekdays == everyDay)
+            ReorderableDragStartListener(
+              index: widget.index,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.grab,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(Icons.drag_indicator_rounded, size: 18, color: p.inkMuted.withValues(alpha: 0.6)),
+                ),
               ),
-            ),
-          ),
+            )
+          else
+            const SizedBox(width: 34),
           const SizedBox(width: 4),
           Expanded(
             child: Column(
@@ -568,7 +573,6 @@ class _DayToggles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     return Row(
       children: [
         for (var weekday = 1; weekday <= 7; weekday++)
@@ -586,27 +590,7 @@ class _DayToggles extends StatelessWidget {
                     cursor: last ? MouseCursor.defer : SystemMouseCursors.click,
                     child: GestureDetector(
                       onTap: last ? null : () => onChanged(bits ^ bit),
-                      child: AnimatedContainer(
-                        duration: Motion.click,
-                        curve: Motion.clickCurve,
-                        width: 22,
-                        height: 22,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: on ? p.done : Colors.transparent,
-                          border: Border.all(color: on ? p.done : p.inkMuted.withValues(alpha: 0.35)),
-                        ),
-                        child: Text(
-                          weekdayNames[weekday - 1][0],
-                          style: TextStyle(
-                            fontFamily: Fonts.ui,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                            color: on ? p.onAccent : p.inkMuted,
-                          ),
-                        ),
-                      ),
+                      child: _DayCircle(weekday: weekday, on: on, size: 22),
                     ),
                   ),
                 );
@@ -614,6 +598,42 @@ class _DayToggles extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// A weekday's letter in a circle, filled in the done colour when the
+/// ritual is on that day.
+class _DayCircle extends StatelessWidget {
+  const _DayCircle({required this.weekday, required this.on, required this.size});
+
+  final int weekday;
+  final bool on;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return AnimatedContainer(
+      duration: Motion.click,
+      curve: Motion.clickCurve,
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: on ? p.done : Colors.transparent,
+        border: Border.all(color: on ? p.done : p.inkMuted.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        weekdayNames[weekday - 1][0],
+        style: TextStyle(
+          fontFamily: Fonts.ui,
+          fontSize: size * 0.48,
+          fontWeight: FontWeight.w600,
+          color: on ? p.onAccent : p.inkMuted,
+        ),
+      ),
     );
   }
 }
