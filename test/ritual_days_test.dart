@@ -131,4 +131,40 @@ void main() {
     expect(store.monthHabits(2026, 10).single.weekdays, everyDay);
     expect(store.raw.select('PRAGMA user_version').single.columnAt(0), Store.schemaVersion);
   });
+
+  test('days an upgrade reset without sync seeing reach the other computer after the next upgrade', () {
+    final dir = Directory.systemTemp.createTempSync('eclipse-ritual-days');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final path = '${dir.path}/test.db';
+    var store = Store.open(path);
+    final gym = store.addHabit(2026, 10, 'Gym');
+    store.setEntry('2026-10-24', gym.id, HabitStatus.done);
+    store.setHabitDays(2026, 10, gym.id, [(null, mwf)]);
+    SyncEngine(store, 'pc').claimAll();
+    // As versions 20 and 21 did: the column dropped and added back, so the
+    // days are every day here while sync still has Mon/Wed/Fri.
+    store.raw.execute('ALTER TABLE month_habits DROP COLUMN days');
+    store.raw.execute('ALTER TABLE month_habits ADD COLUMN days TEXT');
+    store.raw.execute('PRAGMA user_version = 22');
+    store.close();
+
+    store = Store.open(path);
+    addTearDown(store.close);
+    final pc = SyncEngine(store, 'pc')..flush();
+    final laptop = Store.memory();
+    addTearDown(laptop.close);
+    SyncEngine(laptop, 'laptop')
+      ..clearForJoining()
+      ..mergeAll([(pc.changesSince(0).values.expand((v) => v).toList(), 'pc')]);
+    expect(laptop.monthHabits(2026, 10).single.weekdays, everyDay);
+    expect(laptop.monthHabits(2026, 10).single.onDay(DateTime(2026, 10, 24)), isTrue, reason: 'a Saturday');
+
+    // Nothing else changed, so nothing else is sent again.
+    store.raw.execute('PRAGMA user_version = 22');
+    final before = pc.changesSince(0).values.expand((v) => v).length;
+    store.close();
+    store = Store.open(path);
+    SyncEngine(store, 'pc').flush();
+    expect(SyncEngine(store, 'pc').changesSince(0).values.expand((v) => v).length, before);
+  });
 }

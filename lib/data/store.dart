@@ -12,7 +12,7 @@ part 'store_todos.dart';
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 22;
+  static const schemaVersion = 23;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -164,7 +164,9 @@ class Store {
             .isNotEmpty ||
         _db.select('SELECT 1 FROM sleep_habits').length != SleepItem.values.length ||
         _db
-            .select('SELECT 1 FROM exercises WHERE muscle NOT IN (${MuscleGroup.values.map((g) => "'${g.name}'").join(', ')}) LIMIT 1')
+            .select(
+              'SELECT 1 FROM exercises WHERE muscle NOT IN (${MuscleGroup.values.map((g) => "'${g.name}'").join(', ')}) LIMIT 1',
+            )
             .isNotEmpty ||
         _db.select('SELECT 1 FROM training_sets WHERE reps < 0 OR weight < 0 LIMIT 1').isNotEmpty) {
       throw StateError('Backup contains invalid data');
@@ -604,6 +606,20 @@ class Store {
           }
         }
         _db.execute('PRAGMA user_version = 22');
+      });
+    }
+    // Version 23 changes nothing itself: upgrading to it runs the check below
+    // once, sending the ritual days that versions 20 and 21 changed without
+    // sync seeing.
+    if (version < 23) _db.execute('PRAGMA user_version = 23');
+
+    // A migration can change synced rows where the sync triggers can't see
+    // it (a column dropped or added back, say), so after any upgrade sync
+    // compares every row with what it last sent and sends what differs.
+    if (version >= 1 && version < schemaVersion) {
+      transaction(() {
+        _db.execute('INSERT OR IGNORE INTO sync_dirty SELECT DISTINCT kind, rowkey, $_now FROM sync_reg');
+        markAllChanged();
       });
     }
   }
