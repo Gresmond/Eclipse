@@ -509,25 +509,29 @@ class _WeekTrail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.entriesRevision, s.restWeekends));
+    final state = AppScope.watch(context, (s) => (s.entriesRevision, s.restWeekends, s.habitsRevision));
+    final days = state.trailDays(habit, day);
     // Another day's week fades through in place.
     return FadeThrough(
       layoutBuilder: (current, previous) => Stack(alignment: Alignment.center, children: [...previous, ?current]),
       child: Row(
         key: ValueKey(dateKey(day)),
-        children: [for (var i = 7; i >= 1; i--) _mark(p, state, DateTime(day.year, day.month, day.day - i))],
+        children: [
+          // The ritual's last 7 days, skipping ones it isn't on; while it has
+          // fewer, the older places are left empty.
+          for (var i = 7; i > days.length; i--) _mark(p, state, null),
+          for (final past in days.reversed) _mark(p, state, past),
+        ],
       ),
     );
   }
 
   // A rest day's blank mark fades rather than snapping; the colour itself
-  // is read from the palette every frame, so it follows a theme change. A
-  // day the ritual isn't on has no mark, as it has no square.
-  Widget _mark(Palette p, AppState state, DateTime past) {
-    final status = state.statusOf(past, habit);
-    final off = !habit.onDay(past);
+  // is read from the palette every frame, so it follows a theme change.
+  Widget _mark(Palette p, AppState state, DateTime? past) {
+    final status = past == null ? null : state.statusOf(past, habit);
     return TweenAnimationBuilder<double>(
-      tween: Tween(end: state.isRestDay(past) ? 1 : 0),
+      tween: Tween(end: past != null && state.isRestDay(past) ? 1 : 0),
       duration: Motion.morph,
       curve: Motion.morphCurve,
       builder: (context, r, _) => Container(
@@ -537,7 +541,7 @@ class _WeekTrail extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(2.5),
           color: switch (status) {
-            _ when off => Colors.transparent,
+            null => Colors.transparent,
             HabitStatus.none => p.empty.withValues(alpha: 1 - 0.55 * r),
             HabitStatus.done => p.done,
             HabitStatus.missed => p.missed.withValues(alpha: 0.75),

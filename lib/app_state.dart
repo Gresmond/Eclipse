@@ -342,6 +342,7 @@ class AppState extends ChangeNotifier {
 
   void _habitsChanged() {
     _previewHabits.clear();
+    _trails.clear();
     habitsRevision++;
     notifyListeners();
   }
@@ -363,6 +364,13 @@ class AppState extends ChangeNotifier {
 
   /// (current, best) streak by ritual id, until a mark or the day changes.
   final _streaks = LruCache<int, (int, int)>(256);
+
+  /// The days behind each ritual's week trail, by ritual and day, until its days change.
+  final _trails = LruCache<(int, DateTime), List<DateTime>>(256);
+
+  /// The ritual's last 7 days before [day], latest first; fewer when it's new.
+  List<DateTime> trailDays(Habit h, DateTime day) =>
+      _trails[(h.id, dateOnly(day))] ??= store.pastDays(h.id, dateOnly(day), 7);
 
   String _cell(DateTime day, Habit h) => '${dateKey(day)}|${h.id}';
 
@@ -404,6 +412,7 @@ class AppState extends ChangeNotifier {
   void _load() {
     _monthHabits.clear();
     _previewHabits.clear();
+    _trails.clear();
     _entryMonths.clear();
     _monthScores.clear();
     habitsRevision++;

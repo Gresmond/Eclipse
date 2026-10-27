@@ -44,6 +44,41 @@ void main() {
     expect(store.streaks(habit.id, DateTime(2026, 10, 29), restWeekends: false), (0, 4));
   });
 
+  test("the week trail is a ritual's last 7 days, back across months, and no further than it goes", () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final habit = store.addHabit(2026, 9, 'Gym', addedOn: DateTime(2026, 9, 14));
+    store.setHabitDays(2026, 9, habit.id, [(null, weekdayBit(DateTime.monday))]);
+    // October isn't saved yet, so it's on September's days.
+    expect(store.pastDays(habit.id, DateTime(2026, 10, 27), 7), [
+      DateTime(2026, 10, 26),
+      DateTime(2026, 10, 19),
+      DateTime(2026, 10, 12),
+      DateTime(2026, 10, 5),
+      DateTime(2026, 9, 28),
+      DateTime(2026, 9, 21),
+      DateTime(2026, 9, 14),
+    ]);
+    // Saved, and on Mondays and Fridays from the 20th: only the day it was added stops it.
+    store.copyMonth((2026, 9), (2026, 10));
+    store.setHabitDays(
+      2026,
+      10,
+      habit.id,
+      changeDays(
+        [(null, weekdayBit(DateTime.monday))],
+        DateTime(2026, 10, 20),
+        weekdayBit(DateTime.monday) | weekdayBit(DateTime.friday),
+      ),
+    );
+    expect(store.pastDays(habit.id, DateTime(2026, 10, 27), 7).take(3), [
+      DateTime(2026, 10, 26),
+      DateTime(2026, 10, 23),
+      DateTime(2026, 10, 19),
+    ]);
+    expect(store.pastDays(habit.id, DateTime(2026, 9, 22), 7), [DateTime(2026, 9, 21), DateTime(2026, 9, 14)]);
+  });
+
   test('a new month starts on the latest days, and days sync', () {
     final store = Store.memory();
     addTearDown(store.close);

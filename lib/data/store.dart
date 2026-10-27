@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:sqlite3/sqlite3.dart';
 
@@ -824,6 +825,55 @@ class Store {
     }
     if (previous != null && gapBreaks(previous, today)) run = 0;
     return (run, best);
+  }
+
+  /// Up to [count] of the ritual's days before [day], latest first: each
+  /// month's own days for it, back to where it was added. A month not saved
+  /// yet is on the days of the month it would be copied from.
+  List<DateTime> pastDays(int habitId, DateTime day, int count) {
+    final months = {
+      for (final r in _db.select('SELECT year, month, days, added_on FROM month_habits WHERE habit_id = ?', [habitId]))
+        (r['year'] as int, r['month'] as int): (
+          decodeDays(r['days'] as String?),
+          DateTime.tryParse(r['added_on'] as String? ?? ''),
+        ),
+    };
+    final saved = {
+      for (final r in _db.select('SELECT year, month FROM habit_months')) (r['year'] as int, r['month'] as int),
+    };
+    if (months.isEmpty) return [];
+    final first = months.keys.map((m) => m.$1 * 12 + m.$2).reduce(min);
+
+    // A month's days for the ritual, or null when it wasn't in that month.
+    final resolved = <(int, int), (List<(DateTime?, int)>, DateTime?)?>{};
+    (List<(DateTime?, int)>, DateTime?)? daysIn(int year, int month) => resolved.putIfAbsent((year, month), () {
+      if (months[(year, month)] case final own?) return own;
+      if (saved.contains((year, month))) return null;
+      // Copied from the nearest saved month before it, as it stood at the end.
+      for (var i = year * 12 + month - 1; i >= first; i--) {
+        final m = ((i - 1) ~/ 12, (i - 1) % 12 + 1);
+        if (!saved.contains(m)) continue;
+        final source = months[m];
+        if (source == null) return null;
+        final bits = source.$1.isEmpty ? everyDay : source.$1.last.$2;
+        return ([if (bits != everyDay) (null, bits)], null);
+      }
+      return null;
+    });
+
+    final found = <DateTime>[];
+    for (
+      var d = DateTime(day.year, day.month, day.day - 1);
+      found.length < count;
+      d = DateTime(d.year, d.month, d.day - 1)
+    ) {
+      if (d.year * 12 + d.month < first) break;
+      final days = daysIn(d.year, d.month);
+      if (days == null) break;
+      if (days.$2 != null && d.isBefore(days.$2!)) break;
+      if (isOnDay(days.$1, d)) found.add(d);
+    }
+    return found;
   }
 
   void setEntry(String day, int habitId, HabitStatus status, {bool clearNote = false}) {
