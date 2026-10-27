@@ -276,7 +276,11 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
             day: c.day,
             habit: habit,
             size: size,
-            enabled: !c.leaving && !c.day.isAfter(state.today) && habit.startedBy(c.day) && (habit.onDay(c.day) || isWeekend(c.day)),
+            enabled:
+                !c.leaving &&
+                !c.day.isAfter(state.today) &&
+                habit.startedBy(c.day) &&
+                (habit.onDay(c.day) || isWeekend(c.day)),
             rest: state.restsFor(habit, c.day),
             paletteAnimation: _palette,
           ),
@@ -796,7 +800,15 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                                   if (days & weekdayBit(weekday) != 0)
                                     Padding(
                                       padding: const EdgeInsets.only(left: 4),
-                                      child: _DayCircle(weekday: weekday, on: true, size: 16),
+                                      // Saturday and Sunday as Sa and Su, to tell them apart.
+                                      child: _DayCircle(
+                                        weekday: weekday,
+                                        on: true,
+                                        size: 16,
+                                        label: weekday >= DateTime.saturday
+                                            ? weekdayNames[weekday - 1].substring(0, 2)
+                                            : null,
+                                      ),
                                     ),
                               ],
                             ],
