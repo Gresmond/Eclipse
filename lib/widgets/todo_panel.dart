@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -218,7 +219,7 @@ class _TodoPanelState extends State<TodoPanel> {
                 padding: const EdgeInsets.only(right: 8),
                 child: TileHeader(
                   title: _scope.label,
-                  titles: widget.tabbed ? [TodoScope.week.label, TodoScope.month.label] : const [],
+                  trailingAtEnd: true,
                   caption: open == 0 && items.isNotEmpty ? 'All clear' : '$open open',
                   trailing: widget.tabbed
                       ? Padding(

@@ -185,7 +185,8 @@ class SettingToggle extends StatelessWidget {
         child: Container(
           width: 16,
           height: 16,
-          decoration: BoxDecoration(color: Color.lerp(p.tile, p.onAccent, t), borderRadius: BorderRadius.circular(8)),
+          // One colour on and off: dark on light themes, light on dark ones.
+          decoration: BoxDecoration(color: p.ink, borderRadius: BorderRadius.circular(8)),
         ),
       ),
     );

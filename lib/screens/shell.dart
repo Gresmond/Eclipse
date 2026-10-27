@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
 import '../app_state.dart';
 import '../data/backups.dart';
@@ -458,7 +459,7 @@ class _TabBar extends StatefulWidget {
   State<_TabBar> createState() => _TabBarState();
 }
 
-class _TabBarState extends State<_TabBar> with SingleTickerProviderStateMixin {
+class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
   final _stackKey = GlobalKey();
   final _pastKey = GlobalKey();
   late final _keys = [for (final _ in widget.tabs) GlobalKey()];
@@ -467,6 +468,18 @@ class _TabBarState extends State<_TabBar> with SingleTickerProviderStateMixin {
   late final _pastOpen = AnimationController(vsync: this, duration: Motion.morph, value: widget.past == null ? 0 : 1);
   late String? _pastLabel = widget.past;
   Timer? _fold;
+
+  /// Eases the past tab, and the pill under it, from one day's label width
+  /// to the next while the labels fade through, like the big date.
+  late final _relabel = AnimationController(vsync: this, duration: Motion.morph, value: 1)
+    ..addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) setState(() {});
+    });
+  double _fromWidth = 0, _toWidth = 0;
+
+  double get _labelWidth => _relabel.isAnimating
+      ? _fromWidth + (_toWidth - _fromWidth) * Motion.morphCurve.transform(_relabel.value)
+      : _Tab.boldWidth(context, _pastLabel ?? '');
 
   /// From the bar's right edge, which stays put as the past tab folds.
   ({double right, double top, Size size})? _pill;
@@ -478,6 +491,11 @@ class _TabBarState extends State<_TabBar> with SingleTickerProviderStateMixin {
     super.didUpdateWidget(old);
     if (widget.past != null) {
       _fold?.cancel();
+      if (old.past != null && old.past != widget.past) {
+        _fromWidth = _labelWidth;
+        _toWidth = _Tab.boldWidth(context, widget.past!);
+        _relabel.forward(from: 0);
+      }
       _pastLabel = widget.past;
       _pastOpen.forward();
     } else if (old.past != null) {
@@ -491,13 +509,15 @@ class _TabBarState extends State<_TabBar> with SingleTickerProviderStateMixin {
   void dispose() {
     _fold?.cancel();
     _pastOpen.dispose();
+    _relabel.dispose();
     super.dispose();
   }
 
   /// Moves the pill under the selected tab once it has been laid out.
   /// Only a change of tab glides; resizing the window just follows along.
   void _measure(Duration _) {
-    if (!mounted) return;
+    // A changing label drives the pill itself, frame by frame.
+    if (!mounted || _relabel.isAnimating) return;
     final stack = _stackKey.currentContext?.findRenderObject() as RenderBox?;
     final key = widget.selected < 0 ? _pastKey : _keys[widget.selected];
     final tab = key.currentContext?.findRenderObject() as RenderBox?;
@@ -526,16 +546,22 @@ class _TabBarState extends State<_TabBar> with SingleTickerProviderStateMixin {
       color: p.tileBorder.withValues(alpha: 0.8),
     );
 
+    return AnimatedBuilder(animation: _relabel, builder: (context, _) => _bar(p, pill, divider));
+  }
+
+  Widget _bar(Palette p, ({double right, double top, Size size})? pill, Widget divider) {
+    final labelWidth = _labelWidth;
+    final relabeling = _relabel.isAnimating && widget.selected < 0;
     return Stack(
       key: _stackKey,
       children: [
         if (pill != null)
           AnimatedPositioned(
-            duration: _glide ? Motion.morph : Duration.zero,
+            duration: _glide && !relabeling ? Motion.morph : Duration.zero,
             curve: Motion.morphCurve,
             right: pill.right,
             top: pill.top,
-            width: pill.size.width,
+            width: relabeling ? labelWidth + _Tab.padding * 2 : pill.size.width,
             height: pill.size.height,
             // A rounded rect, not a StadiumBorder: Impeller on Linux draws
             // shape paths without anti-aliasing, but rounded rects smoothly.
@@ -564,7 +590,12 @@ class _TabBarState extends State<_TabBar> with SingleTickerProviderStateMixin {
                       children: [
                         KeyedSubtree(
                           key: _pastKey,
-                          child: _Tab(label: _pastLabel!, selected: widget.selected < 0, onTap: null),
+                          child: _Tab(
+                            label: _pastLabel!,
+                            selected: widget.selected < 0,
+                            onTap: null,
+                            labelWidth: labelWidth,
+                          ),
                         ),
                         const SizedBox(width: 2),
                         divider,
@@ -593,7 +624,31 @@ class _Tab extends StatefulWidget {
     required this.onTap,
     this.isCurrent = false,
     this.future = false,
+    this.labelWidth,
   });
+
+  static const padding = 14.0;
+
+  /// The width a label takes in bold, which a tab keeps whether or not it
+  /// is selected.
+  static double boldWidth(BuildContext context, String label) {
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: _style(FontWeight.w600, const Color(0xFF000000))),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
+  }
+
+  static TextStyle _style(FontWeight weight, Color color) =>
+      TextStyle(fontFamily: Fonts.ui, fontSize: 12.5, fontWeight: weight, color: color, letterSpacing: 0.2);
+
+  /// Set for a tab whose label changes: the label area eases to this width
+  /// while the old label fades through to the new one.
+  final double? labelWidth;
 
   final String label;
   final bool selected;
@@ -621,8 +676,21 @@ class _TabState extends State<_Tab> {
         : widget.future
         ? p.inkMuted.withValues(alpha: 0.4)
         : p.ink;
-    TextStyle style(FontWeight weight) =>
-        TextStyle(fontFamily: Fonts.ui, fontSize: 12.5, fontWeight: weight, color: fg, letterSpacing: 0.2);
+    TextStyle style(FontWeight weight) => _Tab._style(weight, fg);
+    final label = Stack(
+      alignment: Alignment.center,
+      children: [
+        // Reserves the bold width, so selecting a tab never resizes the bar.
+        Visibility.maintain(visible: false, child: Text(widget.label, style: style(FontWeight.w600))),
+        AnimatedDefaultTextStyle(
+          duration: Motion.morph,
+          curve: Motion.morphCurve,
+          style: style(selected || widget.isCurrent ? FontWeight.w600 : FontWeight.w500),
+          child: Text(widget.label),
+        ),
+      ],
+    );
+    final width = widget.labelWidth;
 
     // The selected background is the bar's gliding pill; a tab only draws
     // its hover shade, and its text colour eases as the pill arrives.
@@ -635,24 +703,25 @@ class _TabState extends State<_Tab> {
         child: AnimatedContainer(
           duration: Motion.hover,
           curve: Motion.hoverCurve,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: _Tab.padding, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(30),
             color: !selected && _hover ? p.empty : p.empty.withValues(alpha: 0),
           ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Reserves the bold width, so selecting a tab never resizes the bar.
-              Visibility.maintain(visible: false, child: Text(widget.label, style: style(FontWeight.w600))),
-              AnimatedDefaultTextStyle(
-                duration: Motion.morph,
-                curve: Motion.morphCurve,
-                style: style(selected || widget.isCurrent ? FontWeight.w600 : FontWeight.w500),
-                child: Text(widget.label),
-              ),
-            ],
-          ),
+          child: width == null
+              ? label
+              : SizedBox(
+                  width: width,
+                  child: OverflowBox(
+                    maxWidth: double.infinity,
+                    fit: OverflowBoxFit.deferToChild,
+                    child: FadeThrough(
+                      layoutBuilder: (current, previous) =>
+                          Stack(alignment: Alignment.center, children: [...previous, ?current]),
+                      child: KeyedSubtree(key: ValueKey(widget.label), child: label),
+                    ),
+                  ),
+                ),
         ),
       ),
     );

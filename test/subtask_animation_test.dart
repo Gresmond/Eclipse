@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -125,6 +126,39 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('subtasks drag to a new place in their task, the others gliding aside', (tester) async {
+    state.setTodoSubtasks(TodoScope.week, state.todos[TodoScope.week]!.single, [
+      for (final text in ['Step one', 'Step two', 'Step three']) TodoSubtask(text, numbered: true),
+    ]);
+    await show(tester);
+    await tester.tap(find.byTooltip('Expand subtasks'));
+    await tester.pumpAndSettle();
+    final start = tester.getCenter(find.text('Step one'));
+    final below = tester.getCenter(find.text('Step two')).dy - start.dy;
+    final drag = await tester.startGesture(start, kind: PointerDeviceKind.mouse);
+    for (var i = 0; i < 10; i++) {
+      await drag.moveBy(Offset(0, below * 1.2 / 10));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    // Shown in its new place before it's let go, and only saved when it is.
+    await tester.pumpAndSettle();
+    expect(tester.getCenter(find.text('Step two')).dy, lessThan(start.dy + 4), reason: 'Step two glides up');
+    expect(state.todos[TodoScope.week]!.single.subtasks.first.text, 'Step one');
+    await drag.up();
+    await tester.pumpAndSettle();
+    final task = state.todos[TodoScope.week]!.single;
+    expect(task.subtasks.map((s) => s.text), ['Step two', 'Step one', 'Step three']);
+    expect(task.numbered, isTrue);
+    expect(state.todos[TodoScope.today]!.single.text, 'Research the project', reason: 'the task itself stayed');
+    expect(find.text('1.'), findsOneWidget);
+    expect(
+      tester.getCenter(find.text('1.')).dy,
+      closeTo(tester.getCenter(find.text('Step two')).dy, 2),
+      reason: 'renumbered once dropped',
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('a source fades back in if the parent disappears during conversion', (tester) async {
     await show(tester);

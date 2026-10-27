@@ -116,6 +116,83 @@ class _TodoRowState extends State<_TodoRow> {
     }
   }
 
+  /// The subtasks' order while one is dragged, as indexes into the list.
+  List<int>? _dragOrder;
+
+  /// Numbered steps keep their places; others sink once ticked.
+  List<int> get _subtaskOrder {
+    final children = widget.item.subtasks;
+    final order = _dragOrder;
+    if (order != null && order.length == children.length) return order;
+    final all = [for (var i = 0; i < children.length; i++) i];
+    return widget.item.numbered ? all : [...all.where((i) => !children[i].done), ...all.where((i) => children[i].done)];
+  }
+
+  /// Keyed by text, so a subtask keeps its row, and glides, as the list is
+  /// reordered.
+  Key _subtaskKey(int index) {
+    final children = widget.item.subtasks;
+    final text = children[index].text;
+    var repeat = 0;
+    for (var i = 0; i < index; i++) {
+      if (children[i].text == text) repeat++;
+    }
+    return ValueKey((text, repeat));
+  }
+
+  /// Picked up anywhere on the row; the others glide aside as it passes
+  /// over them, and it stays where it was last shown when let go. Unless
+  /// they're numbered, open and ticked subtasks each keep to their own
+  /// group, as ticked ones sink below.
+  Widget _draggableSubtask(AppState state, int index, Widget row) {
+    final p = context.palette;
+    final item = widget.item;
+    final child = item.subtasks[index];
+    final canDrag = !widget.readOnly && !widget.leaving && item.subtasks.length > 1 && (item.numbered || !child.done);
+    return DragTarget<_SubtaskDrag>(
+      key: _subtaskKey(index),
+      onWillAcceptWithDetails: (details) {
+        final from = details.data.index;
+        if (details.data.itemId != item.id || from >= item.subtasks.length) return false;
+        if (!item.numbered && item.subtasks[from].done != child.done) return false;
+        if (from != index) {
+          final order = [..._subtaskOrder];
+          final to = order.indexOf(index);
+          order
+            ..remove(from)
+            ..insert(to, from);
+          setState(() => _dragOrder = order);
+        }
+        return true;
+      },
+      builder: (context, _, _) => Draggable<_SubtaskDrag>(
+        data: _SubtaskDrag(item.id, index),
+        maxSimultaneousDrags: canDrag ? 1 : 0,
+        onDragEnd: (_) {
+          final order = _dragOrder;
+          if (order == null || !mounted) return;
+          setState(() => _dragOrder = null);
+          if (order.length != item.subtasks.length || listEquals(order, _subtaskOrder)) return;
+          state.setTodoSubtasks(widget.scope, item, [for (final i in order) item.subtasks[i]], day: widget.day);
+        },
+        feedback: Material(
+          color: p.tile.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 220,
+            padding: const EdgeInsets.all(10),
+            child: Text(
+              child.text,
+              style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.ink),
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.3, child: row),
+        child: row,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _incomingTimer?.cancel();
@@ -333,75 +410,74 @@ class _TodoRowState extends State<_TodoRow> {
                     padding: const EdgeInsets.only(left: 46, bottom: 4),
                     child: GlidingColumn(
                       children: [
-                        // Numbered steps keep their places; others sink once ticked.
-                        for (final (index, child)
-                            in item.numbered
-                                ? item.subtasks.indexed
-                                : [
-                                    ...item.subtasks.indexed.where((e) => !e.$2.done),
-                                    ...item.subtasks.indexed.where((e) => e.$2.done),
-                                  ])
-                          Appear(
-                            key: ValueKey(index),
-                            animate: _incomingSubtask == index || widget.fadeIn,
-                            animateSize: false,
-                            child: _SubtaskHover(
-                              builder: (hover) => Row(
-                                children: [
-                                  IconButton(
-                                    tooltip: child.done ? 'Reopen subtask' : 'Complete subtask',
-                                    icon: _Check(done: child.done, hover: false, pressed: false),
-                                    onPressed: widget.readOnly
-                                        ? null
-                                        : () {
-                                            final next = [...item.subtasks];
-                                            next[index] = child.copyWith(done: !child.done);
-                                            state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
-                                          },
-                                    padding: const EdgeInsets.all(6),
-                                    constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-                                  ),
-                                  if (item.numbered)
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 6),
-                                      child: Text(
-                                        '${index + 1}.',
-                                        style: TextStyle(
-                                          fontFamily: Fonts.body,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: p.inkMuted,
-                                          fontFeatures: const [FontFeature.tabularFigures()],
+                        for (final index in _subtaskOrder)
+                          _draggableSubtask(
+                            state,
+                            index,
+                            Appear(
+                              animate: _incomingSubtask == index || widget.fadeIn,
+                              animateSize: false,
+                              child: _SubtaskHover(
+                                builder: (hover) {
+                                  final child = item.subtasks[index];
+                                  return Row(
+                                    children: [
+                                      IconButton(
+                                        tooltip: child.done ? 'Reopen subtask' : 'Complete subtask',
+                                        icon: _Check(done: child.done, hover: false, pressed: false),
+                                        onPressed: widget.readOnly
+                                            ? null
+                                            : () {
+                                                final next = [...item.subtasks];
+                                                next[index] = child.copyWith(done: !child.done);
+                                                state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
+                                              },
+                                        padding: const EdgeInsets.all(6),
+                                        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                                      ),
+                                      if (item.numbered)
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 6),
+                                          child: Text(
+                                            '${index + 1}.',
+                                            style: TextStyle(
+                                              fontFamily: Fonts.body,
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: p.inkMuted,
+                                              fontFeatures: const [FontFeature.tabularFigures()],
+                                            ),
+                                          ),
+                                        ),
+                                      Expanded(
+                                        child: Text(
+                                          child.text,
+                                          style: TextStyle(
+                                            fontFamily: Fonts.body,
+                                            fontSize: 13,
+                                            color: child.done ? p.inkMuted : p.ink,
+                                            decoration: child.done ? TextDecoration.lineThrough : null,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  Expanded(
-                                    child: Text(
-                                      child.text,
-                                      style: TextStyle(
-                                        fontFamily: Fonts.body,
-                                        fontSize: 13,
-                                        color: child.done ? p.inkMuted : p.ink,
-                                        decoration: child.done ? TextDecoration.lineThrough : null,
-                                      ),
-                                    ),
-                                  ),
-                                  if (!widget.readOnly && hover) ...[
-                                    _TaskAction(
-                                      tooltip: 'Edit subtask',
-                                      icon: Icons.edit_outlined,
-                                      onPressed: () => _editSubtask(state, index: index),
-                                    ),
-                                    _TaskAction(
-                                      tooltip: 'Remove subtask',
-                                      icon: Icons.close_rounded,
-                                      onPressed: () {
-                                        final next = [...item.subtasks]..removeAt(index);
-                                        state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
-                                      },
-                                    ),
-                                  ],
-                                ],
+                                      if (!widget.readOnly && hover) ...[
+                                        _TaskAction(
+                                          tooltip: 'Edit subtask',
+                                          icon: Icons.edit_outlined,
+                                          onPressed: () => _editSubtask(state, index: index),
+                                        ),
+                                        _TaskAction(
+                                          tooltip: 'Remove subtask',
+                                          icon: Icons.close_rounded,
+                                          onPressed: () {
+                                            final next = [...item.subtasks]..removeAt(index);
+                                            state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
+                                          },
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                },
                               ),
                             ),
                           ),
@@ -541,6 +617,13 @@ class _CheckPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_CheckPainter old) => old.palette != palette || old.fill != fill || old.hover != hover;
+}
+
+/// A subtask being dragged to a new place in its task.
+class _SubtaskDrag {
+  const _SubtaskDrag(this.itemId, this.index);
+  final int itemId;
+  final int index;
 }
 
 class _SubtaskHover extends StatefulWidget {

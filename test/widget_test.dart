@@ -2082,8 +2082,18 @@ void main() {
     expect(tester.getCenter(find.text('22 Oct').last).dx, lessThan(tester.getCenter(find.text('Today').last).dx));
     await _shoot(tester, 'past_day');
 
+    double pastTab(String label) =>
+        tester.getSize(find.ancestor(of: find.text(label), matching: find.byType(ClipRect)).first).width;
+    final before = pastTab('22 Oct');
     state.showDay(DateTime(2026, 10, 23));
+    // The tab eases to the new label's width while the labels fade through.
+    await tester.pump();
+    await tester.pump(Motion.morph ~/ 2);
+    final midway = pastTab('Yesterday');
     await tester.pumpAndSettle();
+    final after = pastTab('Yesterday');
+    expect(after, greaterThan(before));
+    expect(midway, inExclusiveRange(before, after));
     expect(find.text('FRIDAY  ·  YESTERDAY'), findsOneWidget);
     expect(find.textContaining('LOOKING BACK'), findsNothing);
     expect(find.text('Yesterday'), findsWidgets);

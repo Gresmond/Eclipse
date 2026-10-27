@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -33,82 +31,71 @@ class Tile extends StatelessWidget {
 
 /// Card heading with an optional small caption on the right.
 class TileHeader extends StatelessWidget {
-  const TileHeader({super.key, required this.title, this.caption, this.trailing, this.titles = const []});
+  const TileHeader({super.key, required this.title, this.caption, this.trailing, this.trailingAtEnd = false});
 
   final String title;
-
-  /// Every title this header switches between; the widest one's width is
-  /// kept, so what follows the title doesn't shift when it changes.
-  final List<String> titles;
   final String? caption;
   final Widget? trailing;
 
-  double _widest(BuildContext context, TextStyle style) {
-    var widest = 0.0;
-    for (final other in titles) {
-      final painter = TextPainter(
-        text: TextSpan(text: other, style: style),
-        textDirection: TextDirection.ltr,
-        textScaler: MediaQuery.textScalerOf(context),
-        maxLines: 1,
-      )..layout();
-      widest = math.max(widest, painter.width);
-      painter.dispose();
-    }
-    return widest;
-  }
+  /// Puts [trailing] at the far right, so it stays put however long the
+  /// title is.
+  final bool trailingAtEnd;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final titleStyle = TextStyle(
-      fontFamily: Fonts.display,
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
-      letterSpacing: -0.4,
-      color: p.ink,
-      height: 1.2,
-    );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Flexible(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: _widest(context, titleStyle)),
-            child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+    final lead = [
+      Flexible(
+        child: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: Fonts.display,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.4,
+            color: p.ink,
+            height: 1.2,
           ),
         ),
-        if (caption != null || trailing != null) const SizedBox(width: 8),
-        if (caption != null)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
-            decoration: BoxDecoration(
-              color: p.empty.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: p.tileBorder.withValues(alpha: 0.6), width: 0.8),
-            ),
-            child: SizedBox(
-              width: 70,
-              child: AnimatedSwitcher(
-                duration: Motion.morph,
-                switchInCurve: Motion.morphCurve,
-                switchOutCurve: Motion.morphCurve,
-                transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
-                child: Text(
-                  caption!.toUpperCase(),
-                  key: ValueKey(caption),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: Fonts.ui,
-                    fontSize: 10.5,
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w600,
-                    color: p.inkMuted,
-                  ),
+      ),
+      if (caption != null || (trailing != null && !trailingAtEnd)) const SizedBox(width: 8),
+      if (caption != null)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+          decoration: BoxDecoration(
+            color: p.empty.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: p.tileBorder.withValues(alpha: 0.6), width: 0.8),
+          ),
+          child: SizedBox(
+            width: 70,
+            child: AnimatedSwitcher(
+              duration: Motion.morph,
+              switchInCurve: Motion.morphCurve,
+              switchOutCurve: Motion.morphCurve,
+              transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+              child: Text(
+                caption!.toUpperCase(),
+                key: ValueKey(caption),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: Fonts.ui,
+                  fontSize: 10.5,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w600,
+                  color: p.inkMuted,
                 ),
               ),
             ),
           ),
+        ),
+    ];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (trailingAtEnd) Expanded(child: Row(children: lead)) else ...lead,
         ?trailing,
       ],
     );
