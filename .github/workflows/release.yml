@@ -1,7 +1,7 @@
 name: Release
 
 on:
-  # tool/release.sh pushes a v<version> tag for each release.
+  # Each release pushes a v<version> or v<version>+<build> tag.
   push:
     tags: ['v*']
   workflow_dispatch:
@@ -29,7 +29,8 @@ jobs:
         run: |
           full_version="$(sed -n 's/^version: *//p' pubspec.yaml)"
           version="${full_version%%+*}"
-          if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "v$version" ]]; then
+          # v<version>+<build> republishes the v<version> release with a newer build.
+          if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "v$version" && $GITHUB_REF_NAME != "v$full_version" ]]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match pubspec.yaml version $version"
             exit 1
           fi
