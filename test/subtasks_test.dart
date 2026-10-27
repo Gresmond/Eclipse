@@ -38,6 +38,24 @@ void main() {
   });
   TodoItem task(TodoScope scope) => state.todos[scope]!.single;
 
+  test('numbered subtasks keep their numbering through a round trip and ticks', () {
+    state.addTodo(TodoScope.week, 'Steps');
+    state.setTodoSubtasks(TodoScope.week, task(TodoScope.week), [
+      const TodoSubtask('One', numbered: true),
+      const TodoSubtask('Two', numbered: true),
+    ]);
+    expect(task(TodoScope.week).numbered, isTrue);
+    final next = [...task(TodoScope.week).subtasks];
+    next[0] = next[0].copyWith(done: true);
+    state.setTodoSubtasks(TodoScope.week, task(TodoScope.week), next);
+    expect(task(TodoScope.week).numbered, isTrue, reason: 'ticking keeps it');
+    expect(task(TodoScope.week).subtasks.map((s) => s.text), ['One', 'Two']);
+    expect(store.todoListsOn(today)[TodoScope.week]!.single.numbered, isTrue, reason: 'saved');
+    // Older lists, and older versions reading new ones, still decode.
+    expect(TodoSubtask.decode('[{"text":"Old","done":false}]').single.numbered, isFalse);
+    expect(TodoSubtask.encode([const TodoSubtask('Plain')]), '[{"text":"Plain","done":false}]');
+  });
+
   test('project completion, undo, moves, history and sync preserve subtasks', () {
     state.addTodo(TodoScope.week, 'Big project');
     state.setTodoSubtasks(TodoScope.week, task(TodoScope.week), [

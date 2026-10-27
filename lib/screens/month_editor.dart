@@ -305,19 +305,24 @@ class _TimeWheelState extends State<_TimeWheel> {
       );
       return SizedBox(
         width: width,
-        child: ListWheelScrollView.useDelegate(
-          controller: controller,
-          itemExtent: _row,
-          diameterRatio: 1.6,
-          perspective: 0.004,
-          physics: const FixedExtentScrollPhysics(),
-          onSelectedItemChanged: (i) {
-            onChanged(i % count);
-            _save();
-          },
-          childDelegate: loop
-              ? ListWheelChildLoopingListDelegate(children: [for (var i = 0; i < count; i++) item(i)])
-              : ListWheelChildListDelegate(children: [for (var i = 0; i < count; i++) item(i)]),
+        // A dragged wheel stops its rows taking the pointer, so their own
+        // cursors drop out; this one keeps the hand while it turns.
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: ListWheelScrollView.useDelegate(
+            controller: controller,
+            itemExtent: _row,
+            diameterRatio: 1.6,
+            perspective: 0.004,
+            physics: const FixedExtentScrollPhysics(),
+            onSelectedItemChanged: (i) {
+              onChanged(i % count);
+              _save();
+            },
+            childDelegate: loop
+                ? ListWheelChildLoopingListDelegate(children: [for (var i = 0; i < count; i++) item(i)])
+                : ListWheelChildListDelegate(children: [for (var i = 0; i < count; i++) item(i)]),
+          ),
         ),
       );
     }

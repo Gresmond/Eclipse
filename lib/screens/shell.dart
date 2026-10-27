@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -204,9 +205,23 @@ class _Header extends StatelessWidget {
                       scrollDirection: Axis.horizontal,
                       clipBehavior: Clip.none,
                       child: _TabBar(
-                        selected: state.viewingYear ? 13 : month ?? 0,
+                        selected: state.viewDay != null
+                            ? -1
+                            : state.viewingYear
+                            ? 13
+                            : month ?? 0,
+                        past: state.viewDay == null
+                            ? null
+                            : shown == DateTime(today.year, today.month, today.day - 1)
+                            ? 'Yesterday'
+                            : '${shown.day} ${monthNames[shown.month - 1].substring(0, 3)}'
+                                  '${shown.year != today.year ? ' ${shown.year}' : ''}',
                         tabs: [
-                          _Tab(label: 'Today', selected: month == null && !state.viewingYear, onTap: state.showToday),
+                          _Tab(
+                            label: 'Today',
+                            selected: month == null && !state.viewingYear && state.viewDay == null,
+                            onTap: state.showToday,
+                          ),
                           for (var m = 1; m <= 12; m++)
                             _Tab(
                               label: monthNames[m - 1].substring(0, 3),
@@ -428,34 +443,69 @@ class _PickerDayState extends State<_PickerDay> {
 /// The tabs in a row, with one highlight pill that glides to the selected
 /// tab instead of each tab lighting up on its own.
 class _TabBar extends StatefulWidget {
-  const _TabBar({required this.tabs, required this.selected});
+  const _TabBar({required this.tabs, required this.selected, this.past});
 
   /// Today first, then January to December, then the year.
   final List<Widget> tabs;
 
-  /// Index into [tabs].
+  /// Index into [tabs], or -1 for the [past] day's tab.
   final int selected;
+
+  /// The past day being looked at, which opens a tab left of Today.
+  final String? past;
 
   @override
   State<_TabBar> createState() => _TabBarState();
 }
 
-class _TabBarState extends State<_TabBar> {
+class _TabBarState extends State<_TabBar> with SingleTickerProviderStateMixin {
   final _stackKey = GlobalKey();
+  final _pastKey = GlobalKey();
   late final _keys = [for (final _ in widget.tabs) GlobalKey()];
 
-  Rect? _pill;
+  /// Unfolds the past day's tab; it folds only after the pill has left it.
+  late final _pastOpen = AnimationController(vsync: this, duration: Motion.morph, value: widget.past == null ? 0 : 1);
+  late String? _pastLabel = widget.past;
+  Timer? _fold;
+
+  /// From the bar's right edge, which stays put as the past tab folds.
+  ({double right, double top, Size size})? _pill;
   int? _pillFor;
   bool _glide = false;
+
+  @override
+  void didUpdateWidget(_TabBar old) {
+    super.didUpdateWidget(old);
+    if (widget.past != null) {
+      _fold?.cancel();
+      _pastLabel = widget.past;
+      _pastOpen.forward();
+    } else if (old.past != null) {
+      _fold = Timer(Motion.morph, () {
+        if (mounted) _pastOpen.reverse();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _fold?.cancel();
+    _pastOpen.dispose();
+    super.dispose();
+  }
 
   /// Moves the pill under the selected tab once it has been laid out.
   /// Only a change of tab glides; resizing the window just follows along.
   void _measure(Duration _) {
     if (!mounted) return;
     final stack = _stackKey.currentContext?.findRenderObject() as RenderBox?;
-    final tab = _keys[widget.selected].currentContext?.findRenderObject() as RenderBox?;
-    if (stack == null || tab == null || !tab.hasSize) return;
-    final rect = tab.localToGlobal(Offset.zero, ancestor: stack) & tab.size;
+    final key = widget.selected < 0 ? _pastKey : _keys[widget.selected];
+    final tab = key.currentContext?.findRenderObject() as RenderBox?;
+    if (stack == null || tab == null || !tab.hasSize || !stack.hasSize) return;
+    // Measured from the right, so a tab still unfolding is placed where it
+    // ends up.
+    final at = tab.localToGlobal(Offset.zero, ancestor: stack);
+    final rect = (right: stack.size.width - at.dx - tab.size.width, top: at.dy, size: tab.size);
     if (rect == _pill) return;
     setState(() {
       _glide = _pillFor != null && _pillFor != widget.selected;
@@ -469,6 +519,12 @@ class _TabBarState extends State<_TabBar> {
     final p = context.palette;
     WidgetsBinding.instance.addPostFrameCallback(_measure);
     final pill = _pill;
+    final divider = Container(
+      width: 1,
+      height: 18,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: p.tileBorder.withValues(alpha: 0.8),
+    );
 
     return Stack(
       key: _stackKey,
@@ -477,10 +533,10 @@ class _TabBarState extends State<_TabBar> {
           AnimatedPositioned(
             duration: _glide ? Motion.morph : Duration.zero,
             curve: Motion.morphCurve,
-            left: pill.left,
+            right: pill.right,
             top: pill.top,
-            width: pill.width,
-            height: pill.height,
+            width: pill.size.width,
+            height: pill.size.height,
             // A rounded rect, not a StadiumBorder: Impeller on Linux draws
             // shape paths without anti-aliasing, but rounded rects smoothly.
             child: DecoratedBox(
@@ -489,19 +545,39 @@ class _TabBarState extends State<_TabBar> {
           ),
         Row(
           children: [
+            // Grows in from Today's left, its label easing into view.
+            AnimatedBuilder(
+              animation: _pastOpen,
+              builder: (context, child) {
+                final t = Motion.morphCurve.transform(_pastOpen.value);
+                return ClipRect(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    widthFactor: t,
+                    child: Opacity(opacity: t, child: child),
+                  ),
+                );
+              },
+              child: _pastLabel == null
+                  ? const SizedBox.shrink()
+                  : Row(
+                      children: [
+                        KeyedSubtree(
+                          key: _pastKey,
+                          child: _Tab(label: _pastLabel!, selected: widget.selected < 0, onTap: null),
+                        ),
+                        const SizedBox(width: 2),
+                        divider,
+                      ],
+                    ),
+            ),
             for (final (i, tab) in widget.tabs.indexed) ...[
               // The gap sits outside the measured tab, so the pill centres on
               // the label.
               KeyedSubtree(key: _keys[i], child: tab),
               const SizedBox(width: 2),
               // Today and Year stand apart from the months.
-              if (i == 0 || i == widget.tabs.length - 2)
-                Container(
-                  width: 1,
-                  height: 18,
-                  margin: const EdgeInsets.symmetric(horizontal: 6),
-                  color: p.tileBorder.withValues(alpha: 0.8),
-                ),
+              if (i == 0 || i == widget.tabs.length - 2) divider,
             ],
           ],
         ),
@@ -523,7 +599,9 @@ class _Tab extends StatefulWidget {
   final bool selected;
   final bool isCurrent;
   final bool future;
-  final VoidCallback onTap;
+
+  /// Null for a tab that only shows where you are.
+  final VoidCallback? onTap;
 
   @override
   State<_Tab> createState() => _TabState();
@@ -549,7 +627,7 @@ class _TabState extends State<_Tab> {
     // The selected background is the bar's gliding pill; a tab only draws
     // its hover shade, and its text colour eases as the pill arrives.
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: widget.onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(

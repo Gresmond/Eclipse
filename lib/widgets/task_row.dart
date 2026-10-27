@@ -125,17 +125,19 @@ class _TodoRowState extends State<_TodoRow> {
 
   Future<void> _editSubtask(AppState state, {int? index}) async {
     final children = widget.item.subtasks;
-    final result = await showAppDialog<String>(
+    final result = await showAppDialog<({String text, bool numbered})>(
       context: context,
-      builder: (_) => _SubtaskDialog(text: index == null ? '' : children[index].text),
+      builder: (_) => _SubtaskDialog(text: index == null ? '' : children[index].text, numbered: widget.item.numbered),
     );
-    if (result == null || result.trim().isEmpty || !mounted) return;
-    final next = [...widget.item.subtasks];
+    if (result == null || result.text.trim().isEmpty || !mounted) return;
+    final text = normaliseNote(result.text.trim());
+    // The switch applies to the whole task, so every subtask takes it.
+    final next = [for (final child in widget.item.subtasks) child.copyWith(numbered: result.numbered)];
     if (index == null) {
-      next.add(TodoSubtask(normaliseNote(result.trim())));
+      next.add(TodoSubtask(text, numbered: result.numbered));
       _arrive(next.length - 1);
     } else {
-      next[index] = TodoSubtask(normaliseNote(result.trim()), done: next[index].done);
+      next[index] = next[index].copyWith(text: text);
     }
     state.setTodoSubtasks(widget.scope, widget.item, next, day: widget.day);
   }
@@ -331,10 +333,14 @@ class _TodoRowState extends State<_TodoRow> {
                     padding: const EdgeInsets.only(left: 46, bottom: 4),
                     child: GlidingColumn(
                       children: [
-                        for (final (index, child) in [
-                          ...item.subtasks.indexed.where((e) => !e.$2.done),
-                          ...item.subtasks.indexed.where((e) => e.$2.done),
-                        ])
+                        // Numbered steps keep their places; others sink once ticked.
+                        for (final (index, child)
+                            in item.numbered
+                                ? item.subtasks.indexed
+                                : [
+                                    ...item.subtasks.indexed.where((e) => !e.$2.done),
+                                    ...item.subtasks.indexed.where((e) => e.$2.done),
+                                  ])
                           Appear(
                             key: ValueKey(index),
                             animate: _incomingSubtask == index || widget.fadeIn,
@@ -349,12 +355,26 @@ class _TodoRowState extends State<_TodoRow> {
                                         ? null
                                         : () {
                                             final next = [...item.subtasks];
-                                            next[index] = TodoSubtask(child.text, done: !child.done);
+                                            next[index] = child.copyWith(done: !child.done);
                                             state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
                                           },
                                     padding: const EdgeInsets.all(6),
                                     constraints: const BoxConstraints.tightFor(width: 32, height: 32),
                                   ),
+                                  if (item.numbered)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 6),
+                                      child: Text(
+                                        '${index + 1}.',
+                                        style: TextStyle(
+                                          fontFamily: Fonts.body,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: p.inkMuted,
+                                          fontFeatures: const [FontFeature.tabularFigures()],
+                                        ),
+                                      ),
+                                    ),
                                   Expanded(
                                     child: Text(
                                       child.text,

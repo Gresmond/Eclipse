@@ -519,7 +519,7 @@ class Store {
         for (final row in _db.select('SELECT id, subtasks FROM todos')) {
           final children = TodoSubtask.decode(row['subtasks'] as String?);
           final text = TodoSubtask.encode([
-            for (final child in children) TodoSubtask(normaliseNote(child.text), done: child.done),
+            for (final child in children) child.copyWith(text: normaliseNote(child.text)),
           ]);
           if (text != row['subtasks']) _db.execute('UPDATE todos SET subtasks = ? WHERE id = ?', [text, row['id']]);
         }
@@ -528,7 +528,7 @@ class Store {
           if (snapshot['text'] is String) snapshot['text'] = normaliseNote(snapshot['text'] as String);
           snapshot['subtasks'] = TodoSubtask.encode([
             for (final child in TodoSubtask.decode(snapshot['subtasks'] as String?))
-              TodoSubtask(normaliseNote(child.text), done: child.done),
+              child.copyWith(text: normaliseNote(child.text)),
           ]);
           _db.execute('UPDATE todo_history SET snapshot = ? WHERE uid = ? AND day = ?', [
             jsonEncode(snapshot),

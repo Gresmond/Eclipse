@@ -210,7 +210,7 @@ extension StoreTodos on Store {
       _toggleTodoSnapshot(snapshot, done, day ?? _today);
       if (cascade) {
         snapshot['subtasks'] = TodoSubtask.encode([
-          for (final child in TodoSubtask.decode(snapshot['subtasks'] as String?)) TodoSubtask(child.text, done: done),
+          for (final child in TodoSubtask.decode(snapshot['subtasks'] as String?)) child.copyWith(done: done),
         ]);
       }
       _db.execute(
@@ -258,7 +258,7 @@ extension StoreTodos on Store {
       _setTodoSubtasks(
         scope,
         target,
-        [...target.subtasks, TodoSubtask(source.text, done: source.done)],
+        [...target.subtasks, TodoSubtask(source.text, done: source.done, numbered: target.numbered)],
         day,
         live: true,
       );
@@ -437,7 +437,7 @@ extension StoreTodos on Store {
       _toggleTodoSnapshot(snapshot, done, day);
       if (subtasks == null) {
         snapshot['subtasks'] = TodoSubtask.encode([
-          for (final child in TodoSubtask.decode(snapshot['subtasks'] as String?)) TodoSubtask(child.text, done: done),
+          for (final child in TodoSubtask.decode(snapshot['subtasks'] as String?)) child.copyWith(done: done),
         ]);
       }
     }

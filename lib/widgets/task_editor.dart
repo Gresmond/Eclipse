@@ -230,17 +230,20 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
   }
 }
 
+/// Names a subtask, and sets whether its task numbers all its subtasks.
 class _SubtaskDialog extends StatefulWidget {
-  const _SubtaskDialog({required this.text});
+  const _SubtaskDialog({required this.text, required this.numbered});
   final String text;
+  final bool numbered;
   @override
   State<_SubtaskDialog> createState() => _SubtaskDialogState();
 }
 
 class _SubtaskDialogState extends State<_SubtaskDialog> {
   late final _text = TextEditingController(text: widget.text);
+  late bool _numbered = widget.numbered;
   void _save() {
-    if (_text.text.trim().isNotEmpty) Navigator.pop(context, _text.text.trim());
+    if (_text.text.trim().isNotEmpty) Navigator.pop(context, (text: _text.text.trim(), numbered: _numbered));
   }
 
   @override
@@ -256,14 +259,39 @@ class _SubtaskDialogState extends State<_SubtaskDialog> {
       title: Text(widget.text.isEmpty ? 'Add subtask' : 'Edit subtask'),
       content: SizedBox(
         width: 340,
-        child: TextField(
-          inputFormatters: const [NoteInputFormatter()],
-          controller: _text,
-          autofocus: true,
-          minLines: 1,
-          maxLines: 4,
-          decoration: const InputDecoration(labelText: 'Subtask'),
-          onSubmitted: (_) => _save(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              inputFormatters: const [NoteInputFormatter()],
+              controller: _text,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Subtask'),
+              onSubmitted: (_) => _save(),
+            ),
+            const SizedBox(height: 14),
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _numbered = !_numbered),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Number the subtasks',
+                        style: TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, color: context.palette.ink),
+                      ),
+                    ),
+                    SettingToggle(on: _numbered),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       actions: [

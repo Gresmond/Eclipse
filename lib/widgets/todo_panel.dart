@@ -13,6 +13,7 @@ import 'fade_through.dart';
 import 'hover_fill.dart';
 import 'mark.dart';
 import 'note_input.dart';
+import 'setting_rows.dart';
 import 'smooth_task_scroll.dart';
 import 'task_motion.dart';
 import 'tile.dart';
@@ -217,6 +218,7 @@ class _TodoPanelState extends State<TodoPanel> {
                 padding: const EdgeInsets.only(right: 8),
                 child: TileHeader(
                   title: _scope.label,
+                  titles: widget.tabbed ? [TodoScope.week.label, TodoScope.month.label] : const [],
                   caption: open == 0 && items.isNotEmpty ? 'All clear' : '$open open',
                   trailing: widget.tabbed
                       ? Padding(

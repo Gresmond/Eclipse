@@ -1030,7 +1030,7 @@ void main() {
     await tester.tap(find.text('Data').hitTestable());
     await tester.pumpAndSettle();
     expect(find.text('Friday 23 October'), findsOneWidget);
-    expect(find.text('Yesterday'), findsOneWidget);
+    expect(find.text('Yesterday'), findsWidgets);
     await _shoot(tester, 'backups');
 
     await tester.tap(find.text('Restore').at(1)); // Thursday 22 October
@@ -1136,6 +1136,16 @@ void main() {
     await tester.drag(find.text('05').hitTestable().first, const Offset(0, -38.0 - kDragSlopDefault));
     await tester.pumpAndSettle();
     expect(state.sleepHabits.last.minutes, 23 * 60 + 10);
+    // The hand stays while the mouse drags the wheel round.
+    await mouse.moveTo(tester.getCenter(find.text('15').hitTestable().first));
+    await mouse.down(tester.getCenter(find.text('15').hitTestable().first));
+    for (var i = 0; i < 6; i++) {
+      await mouse.moveBy(const Offset(0, -12));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1), SystemMouseCursors.click);
+    }
+    await mouse.up();
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Clear time'));
     await tester.pumpAndSettle();
     expect(state.sleepHabits.last.minutes, isNull);
@@ -2068,16 +2078,27 @@ void main() {
     expect(find.text('A quiet Thursday.'), findsOneWidget);
     expect(find.text('Add a task').hitTestable(), findsNothing, reason: 'look only');
     expect(find.text('From 22/10'), findsNothing, reason: 'it was new that day');
+    expect(find.text('22 Oct'), findsWidgets, reason: 'the past day opens a tab left of Today');
+    expect(tester.getCenter(find.text('22 Oct').last).dx, lessThan(tester.getCenter(find.text('Today').last).dx));
     await _shoot(tester, 'past_day');
 
     state.showDay(DateTime(2026, 10, 23));
     await tester.pumpAndSettle();
     expect(find.text('FRIDAY  ·  YESTERDAY'), findsOneWidget);
     expect(find.textContaining('LOOKING BACK'), findsNothing);
+    expect(find.text('Yesterday'), findsWidgets);
 
+    double tabWidth() =>
+        tester.getSize(find.ancestor(of: find.text('Yesterday'), matching: find.byType(ClipRect)).first).width;
+    final open = tabWidth();
     await tester.tap(find.text('Today').hitTestable().first);
+    // The pill leaves first; the tab folds only once it has gone.
+    await tester.pump();
+    await tester.pump(Motion.morph ~/ 2);
+    expect(tabWidth(), open, reason: 'still open while the pill glides');
     await tester.pumpAndSettle();
     expect(state.viewDay, isNull);
+    expect(tabWidth(), 0, reason: 'folded away');
   });
 
   testWidgets('the year tab adds up every month', (tester) async {

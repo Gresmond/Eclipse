@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -31,31 +33,49 @@ class Tile extends StatelessWidget {
 
 /// Card heading with an optional small caption on the right.
 class TileHeader extends StatelessWidget {
-  const TileHeader({super.key, required this.title, this.caption, this.trailing});
+  const TileHeader({super.key, required this.title, this.caption, this.trailing, this.titles = const []});
 
   final String title;
+
+  /// Every title this header switches between; the widest one's width is
+  /// kept, so what follows the title doesn't shift when it changes.
+  final List<String> titles;
   final String? caption;
   final Widget? trailing;
+
+  double _widest(BuildContext context, TextStyle style) {
+    var widest = 0.0;
+    for (final other in titles) {
+      final painter = TextPainter(
+        text: TextSpan(text: other, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout();
+      widest = math.max(widest, painter.width);
+      painter.dispose();
+    }
+    return widest;
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final titleStyle = TextStyle(
+      fontFamily: Fonts.display,
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
+      letterSpacing: -0.4,
+      color: p.ink,
+      height: 1.2,
+    );
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Flexible(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontFamily: Fonts.display,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              letterSpacing: -0.4,
-              color: p.ink,
-              height: 1.2,
-            ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: _widest(context, titleStyle)),
+            child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
           ),
         ),
         if (caption != null || trailing != null) const SizedBox(width: 8),

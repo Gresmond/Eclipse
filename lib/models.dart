@@ -57,16 +57,24 @@ enum TodoScope {
 }
 
 class TodoSubtask {
-  const TodoSubtask(this.text, {this.done = false});
+  const TodoSubtask(this.text, {this.done = false, this.numbered = false});
   final String text;
   final bool done;
 
-  Map<String, dynamic> toJson() => {'text': text, 'done': done};
+  /// Whether its task numbers its subtasks. Every subtask of a task carries
+  /// the same value, so the setting rides along in the existing list and
+  /// older versions, which ignore it, still read the list.
+  final bool numbered;
+
+  TodoSubtask copyWith({String? text, bool? done, bool? numbered}) =>
+      TodoSubtask(text ?? this.text, done: done ?? this.done, numbered: numbered ?? this.numbered);
+
+  Map<String, dynamic> toJson() => {'text': text, 'done': done, if (numbered) 'numbered': true};
   static List<TodoSubtask> decode(String? value) => value == null
       ? []
       : [
           for (final entry in jsonDecode(value) as List)
-            TodoSubtask(entry['text'] as String, done: entry['done'] == true),
+            TodoSubtask(entry['text'] as String, done: entry['done'] == true, numbered: entry['numbered'] == true),
         ];
   static String encode(List<TodoSubtask> items) => jsonEncode([for (final item in items) item.toJson()]);
 }
@@ -87,6 +95,9 @@ class TodoItem {
   final int id;
   List<TodoSubtask> subtasks;
   final String? uid;
+
+  /// Its subtasks show 1, 2, 3 and stay in order when ticked.
+  bool get numbered => subtasks.isNotEmpty && subtasks.first.numbered;
   DateTime? dueDate;
   String text;
   bool done;
@@ -109,7 +120,10 @@ class TodoItem {
       return false;
     }
     for (var i = 0; i < subtasks.length; i++) {
-      if ((subtasks[i].text, subtasks[i].done) != (other.subtasks[i].text, other.subtasks[i].done)) return false;
+      if ((subtasks[i].text, subtasks[i].done, subtasks[i].numbered) !=
+          (other.subtasks[i].text, other.subtasks[i].done, other.subtasks[i].numbered)) {
+        return false;
+      }
     }
     return true;
   }
