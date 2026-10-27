@@ -479,21 +479,16 @@ class _EditableRowState extends State<_EditableRow> {
       ),
       child: Row(
         children: [
-          // A ritual on unusual days sorts itself (see sortRituals), so it
-          // has no handle, just the space one takes.
-          if (widget.habit.usualDays)
-            ReorderableDragStartListener(
-              index: widget.index,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.grab,
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Icon(Icons.drag_indicator_rounded, size: 18, color: p.inkMuted.withValues(alpha: 0.6)),
-                ),
+          ReorderableDragStartListener(
+            index: widget.index,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Icon(Icons.drag_indicator_rounded, size: 18, color: p.inkMuted.withValues(alpha: 0.6)),
               ),
-            )
-          else
-            const SizedBox(width: 34),
+            ),
+          ),
           const SizedBox(width: 4),
           Expanded(
             child: Column(
@@ -533,19 +528,12 @@ class _EditableRowState extends State<_EditableRow> {
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
-                    contentPadding: const EdgeInsets.only(bottom: 6),
+                    contentPadding: const EdgeInsets.only(bottom: 8),
                     hintText: 'Add a note',
                     hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.5)),
                   ),
                   onSubmitted: (_) => widget.onDone(),
                   onChanged: (v) => state.draftHabitNote(widget.year, widget.month, widget.habit, v),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _DayToggles(
-                    bits: widget.habit.weekdays,
-                    onChanged: (bits) => state.setHabitDays(widget.year, widget.month, widget.habit, bits),
-                  ),
                 ),
               ],
             ),
@@ -558,83 +546,6 @@ class _EditableRowState extends State<_EditableRow> {
             icon: const Icon(Icons.remove_circle_outline_rounded),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// The weekdays a ritual is on, Monday first: filled when on. The last one
-/// on can't be turned off.
-class _DayToggles extends StatelessWidget {
-  const _DayToggles({required this.bits, required this.onChanged});
-
-  final int bits;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (var weekday = 1; weekday <= 7; weekday++)
-          Padding(
-            padding: const EdgeInsets.only(right: 5),
-            child: Builder(
-              builder: (context) {
-                final bit = weekdayBit(weekday);
-                final on = bits & bit != 0;
-                final last = on && bits == bit;
-                return Tooltip(
-                  message: last ? 'A ritual needs at least one day' : weekdayNames[weekday - 1],
-                  waitDuration: const Duration(milliseconds: 400),
-                  child: MouseRegion(
-                    cursor: last ? MouseCursor.defer : SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: last ? null : () => onChanged(bits ^ bit),
-                      child: _DayCircle(weekday: weekday, on: on, size: 22),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// A weekday's letter in a circle, filled in the done colour when the
-/// ritual is on that day; with a [label], a pill holding that instead.
-class _DayCircle extends StatelessWidget {
-  const _DayCircle({required this.weekday, required this.on, required this.size, this.label});
-
-  final int weekday;
-  final bool on;
-  final double size;
-  final String? label;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return AnimatedContainer(
-      duration: Motion.click,
-      curve: Motion.clickCurve,
-      width: label == null ? size : null,
-      height: size,
-      padding: label == null ? null : EdgeInsets.symmetric(horizontal: size * 0.3),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size / 2),
-        color: on ? p.done : Colors.transparent,
-        border: Border.all(color: on ? p.done : p.inkMuted.withValues(alpha: 0.35)),
-      ),
-      child: Text(
-        label ?? weekdayNames[weekday - 1][0],
-        style: TextStyle(
-          fontFamily: Fonts.ui,
-          fontSize: size * 0.48,
-          fontWeight: FontWeight.w600,
-          color: on ? p.onAccent : p.inkMuted,
-        ),
       ),
     );
   }

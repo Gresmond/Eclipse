@@ -10,7 +10,7 @@ part 'store_todos.dart';
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 19;
+  static const schemaVersion = 20;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -135,7 +135,7 @@ class Store {
     const columns = {
       'habits': 'id, uid',
       'habit_months': 'year, month',
-      'month_habits': 'year, month, habit_id, name, position, note, added_on, days',
+      'month_habits': 'year, month, habit_id, name, position, note, added_on',
       'entries': 'day, habit_id, status, note',
       'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at',
       'todo_history': 'uid, day, snapshot',
@@ -545,24 +545,13 @@ class Store {
       }
       _db.execute('PRAGMA user_version = 17');
     }
-    if (version < 18) {
-      if (!_db.select('PRAGMA table_info(month_habits)').any((r) => r['name'] == 'days')) {
-        _db.execute('ALTER TABLE month_habits ADD COLUMN days TEXT');
+    // Versions 18 and 19 let a ritual be on only some weekdays, kept in a
+    // days column. Every ritual is on every day again.
+    if (version < 20) {
+      if (_db.select('PRAGMA table_info(month_habits)').any((r) => r['name'] == 'days')) {
+        _db.execute('ALTER TABLE month_habits DROP COLUMN days');
       }
-      _db.execute('PRAGMA user_version = 18');
-    }
-    // With weekends as rest days, a ritual on a weekend now treats it as any
-    // other day, so every-day rituals move to weekdays only, to keep resting.
-    if (version < 19) {
-      transaction(() {
-        if (setting('restWeekends') == '1') {
-          _db.execute(
-            'UPDATE month_habits SET days = ? WHERE days IS NULL AND habit_id NOT IN (SELECT habit_id FROM sleep_habits)',
-            [encodeDays([(null, weekdaysOnly)])],
-          );
-        }
-        _db.execute('PRAGMA user_version = 19');
-      });
+      _db.execute('PRAGMA user_version = 20');
     }
   }
 
@@ -641,7 +630,7 @@ class Store {
 
   List<Habit> monthHabits(int year, int month) => [
     for (final r in _db.select(
-      'SELECT habit_id, name, note, added_on, days FROM month_habits WHERE year = ? AND month = ? ORDER BY position',
+      'SELECT habit_id, name, note, added_on FROM month_habits WHERE year = ? AND month = ? ORDER BY position',
       [year, month],
     ))
       Habit(
@@ -649,7 +638,6 @@ class Store {
         r['name'] as String,
         description: r['note'] as String?,
         addedOn: DateTime.tryParse(r['added_on'] as String? ?? ''),
-        days: decodeDays(r['days'] as String?),
       ),
   ];
 
@@ -678,10 +666,6 @@ class Store {
       'SELECT ?, ?, habit_id, name, position, note FROM month_habits WHERE year = ? AND month = ?',
       [to.$1, to.$2, from.$1, from.$2],
     );
-    // The new month starts on the days each ritual was on last.
-    for (final h in monthHabits(from.$1, from.$2)) {
-      if (h.weekdays != everyDay) setHabitDays(to.$1, to.$2, h.id, [(null, h.weekdays)]);
-    }
   }
 
   Habit addHabit(int year, int month, String name, {DateTime? addedOn}) {
@@ -699,15 +683,6 @@ class Store {
   void renameHabit(int year, int month, int habitId, String name) {
     _db.execute('UPDATE month_habits SET name = ? WHERE year = ? AND month = ? AND habit_id = ?', [
       name,
-      year,
-      month,
-      habitId,
-    ]);
-  }
-
-  void setHabitDays(int year, int month, int habitId, List<(DateTime?, int)> days) {
-    _db.execute('UPDATE month_habits SET days = ? WHERE year = ? AND month = ? AND habit_id = ?', [
-      encodeDays(days),
       year,
       month,
       habitId,
@@ -742,23 +717,16 @@ class Store {
 
   // Entries
 
-  Map<int, (int, int)> monthScores(int year, int month) {
-    final habits = {for (final h in monthHabits(year, month)) h.id: h};
-    final scores = <int, (int, int)>{};
-    for (final r in _db.select('SELECT habit_id, day, status FROM entries WHERE day >= ? AND day < ? AND status != 0', [
-      dateKey(DateTime(year, month)),
-      dateKey(DateTime(year, month + 1)),
-    ])) {
-      final id = r['habit_id'] as int, day = DateTime.parse(r['day'] as String);
-      // Days before a ritual was added that month, or that aren't one of its
-      // days, don't count towards it, except a weekend it was done on.
-      final bonus = isWeekend(day) && r['status'] == HabitStatus.done.index;
-      if (habits[id] case final h? when !h.startedBy(day) || !h.onDay(day) && !bonus) continue;
-      final (done, logged) = scores[id] ?? (0, 0);
-      scores[id] = (done + (r['status'] == HabitStatus.done.index ? 1 : 0), logged + 1);
-    }
-    return scores;
-  }
+  Map<int, (int, int)> monthScores(int year, int month) => {
+    for (final row in _db.select(
+      // Days before a ritual was added that month don't count towards it.
+      'SELECT e.habit_id, SUM(e.status = 1) AS done, SUM(e.status != 0) AS logged FROM entries e '
+      'LEFT JOIN month_habits m ON m.year = ? AND m.month = ? AND m.habit_id = e.habit_id '
+      'WHERE e.day >= ? AND e.day < ? AND (m.added_on IS NULL OR e.day >= m.added_on) GROUP BY e.habit_id',
+      [year, month, dateKey(DateTime(year, month)), dateKey(DateTime(year, month + 1))],
+    ))
+      row['habit_id'] as int: (row['done'] as int, row['logged'] as int),
+  };
 
   Iterable<({String day, int habitId, HabitStatus status, String? note})> entriesInMonth(int year, int month) => _db
       .select('SELECT day, habit_id, status, note FROM entries WHERE day >= ? AND day < ?', [
@@ -776,17 +744,6 @@ class Store {
 
   /// Work proportional to logged entries, rather than every calendar day.
   (int, int) streaks(int habitId, DateTime today, {required bool restWeekends}) {
-    // Each month's days for the ritual; a day that isn't one of them is
-    // passed over, whatever was logged on it.
-    final months = {
-      for (final r in _db.select('SELECT year, month, days FROM month_habits WHERE habit_id = ? AND days IS NOT NULL', [
-        habitId,
-      ]))
-        (r['year'] as int, r['month'] as int): decodeDays(r['days'] as String),
-    };
-    bool off(DateTime day) => !isOnDay(months[(day.year, day.month)] ?? const [], day);
-    bool excused(DateTime day) => off(day) || restWeekends && day.weekday >= DateTime.saturday;
-
     bool gapBreaks(DateTime from, DateTime until) {
       final gap =
           DateTime.utc(
@@ -796,9 +753,9 @@ class Store {
           ).difference(DateTime.utc(from.year, from.month, from.day)).inDays -
           1;
       if (gap <= 0) return false;
-      if (!restWeekends && months.isEmpty) return true;
+      if (!restWeekends || gap > 2) return true;
       for (var i = 1; i <= gap; i++) {
-        if (!excused(DateTime(from.year, from.month, from.day + i))) return true;
+        if (DateTime(from.year, from.month, from.day + i).weekday < DateTime.saturday) return true;
       }
       return false;
     }
@@ -811,9 +768,7 @@ class Store {
     ])) {
       final day = DateTime.parse(r['day'] as String);
       final status = HabitStatus.values[r['status'] as int];
-      // An off day is passed over, unless it's a weekend it was done on.
       if (day == today && status == HabitStatus.none) continue;
-      if (off(day) && !(isWeekend(day) && status == HabitStatus.done)) continue;
       if (previous != null && gapBreaks(previous, day)) run = 0;
       if (status == HabitStatus.done) {
         run++;

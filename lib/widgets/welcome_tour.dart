@@ -178,8 +178,8 @@ List<_Step> _steps(AppState state) => [
   const _Step(
     'Settings',
     'Choose your day-start hour and journal folder. With weekends as rest days, '
-        'new rituals start on weekdays only; turn a weekend on for any ritual that needs it. '
-        'Reopen this tour here whenever you want.',
+        'blank weekends do not break streaks; done rituals still count. Reopen this '
+        'tour here whenever you want.',
     TourSpot.settingsPreview,
     0,
   ),

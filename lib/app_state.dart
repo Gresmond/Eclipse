@@ -316,10 +316,8 @@ class AppState extends ChangeNotifier {
     if (name != themeName) setTheme(name);
   }
 
-  /// Weekends shown greyed as rest days, and new rituals start on weekdays
-  /// only. A ritual that's on a weekend treats it as any other day; the
-  /// sleep schedule has no days of its own, so a blank weekend never breaks
-  /// its streaks.
+  /// Weekends shown greyed as rest days. A blank rest day doesn't break a
+  /// streak; a ritual done on one still counts.
   late bool restWeekends = store.setting('restWeekends') == '1';
 
   void setRestWeekends(bool rest) {
@@ -330,13 +328,6 @@ class AppState extends ChangeNotifier {
   }
 
   bool isRestDay(DateTime day) => restWeekends && day.weekday >= DateTime.saturday;
-
-  /// Whether [day] is a rest day for [h]: a weekend it
-  /// isn't on (still tickable, see [isWeekend]), or for the sleep schedule,
-  /// any weekend while they rest.
-  bool restsFor(Habit h, DateTime day) => isWeekend(day) && (_isSleep(h) ? restWeekends : !h.onDay(day));
-
-  bool _isSleep(Habit h) => sleepHabits.any((x) => x.id == h.id);
 
   int habitsRevision = 0, entriesRevision = 0, todosRevision = 0, journalRevision = 0;
   final _monthHabits = LruCache<(int, int), List<Habit>>(24);
@@ -551,10 +542,9 @@ class AppState extends ChangeNotifier {
     if (source == null) return const [];
     final beforeFirst = source.$1 * 12 + source.$2 > year * 12 + month;
     if (source != (year, month) && (beforeFirst || isFutureMonth(year, month))) {
-      return _previewHabits[(year, month)] = sortRituals([
-        for (final h in store.monthHabits(source.$1, source.$2))
-          Habit(h.id, h.name, description: h.description, days: [if (h.weekdays != everyDay) (null, h.weekdays)]),
-      ]);
+      return _previewHabits[(year, month)] = [
+        for (final h in store.monthHabits(source.$1, source.$2)) Habit(h.id, h.name, description: h.description),
+      ];
     }
     return _savedList(year, month);
   }
@@ -574,7 +564,7 @@ class AppState extends ChangeNotifier {
       _previewHabits.clear();
       habitsRevision++;
     }
-    return _monthHabits[(year, month)] = sortRituals(store.monthHabits(year, month));
+    return _monthHabits[(year, month)] = store.monthHabits(year, month);
   }
 
   // Edits take the habit's id, because [h] may come from a preview list.
@@ -611,18 +601,14 @@ class AppState extends ChangeNotifier {
 
   void addHabit(int year, int month, String name) {
     if (name.trim().isEmpty) return;
-    final h = store.addHabit(
-      year,
-      month,
-      normaliseNote(name.trim()),
-      addedOn: year == today.year && month == today.month ? today : null,
+    _savedList(year, month).add(
+      store.addHabit(
+        year,
+        month,
+        normaliseNote(name.trim()),
+        addedOn: year == today.year && month == today.month ? today : null,
+      ),
     );
-    if (restWeekends) {
-      h.days = [(null, weekdaysOnly)];
-      store.setHabitDays(year, month, h.id, h.days);
-    }
-    _savedList(year, month).add(h);
-    _resort(year, month);
     _habitsChanged();
   }
 
@@ -642,21 +628,6 @@ class AppState extends ChangeNotifier {
     _habitsChanged();
   }
 
-  /// The weekdays the ritual is on, as bits (see [weekdayBit]). In the current month
-  /// they change from today on, so earlier days keep the ones they had;
-  /// any other month changes as a whole.
-  void setHabitDays(int year, int month, Habit h, int bits) {
-    if (bits & everyDay == 0) return;
-    final saved = _savedList(year, month).firstWhere((x) => x.id == h.id);
-    final from = year == today.year && month == today.month && today.day > 1 ? today : null;
-    saved.days = changeDays(saved.days, from, bits);
-    store.setHabitDays(year, month, h.id, saved.days);
-    _resort(year, month);
-    _monthScores.remove((year, month));
-    _streaks.remove(h.id);
-    _habitsChanged();
-  }
-
   void removeHabit(int year, int month, Habit h) {
     saveHabitDrafts();
     _savedList(year, month).removeWhere((x) => x.id == h.id);
@@ -664,23 +635,11 @@ class AppState extends ChangeNotifier {
     _habitsChanged();
   }
 
-  /// Only rituals on their usual days are arranged by hand, above the rest (see
-  /// [sortRituals]).
   void reorderHabit(int year, int month, int from, int to) {
     final list = _savedList(year, month);
-    final usualCount = list.where((h) => h.usualDays).length;
-    if (from >= usualCount) return;
-    list.insert(to.clamp(0, usualCount - 1), list.removeAt(from));
+    list.insert(to, list.removeAt(from));
     store.reorderHabits(year, month, [for (final h in list) h.id]);
     _habitsChanged();
-  }
-
-  /// Puts the month's list back in order, saving the new positions.
-  void _resort(int year, int month) {
-    final list = _savedList(year, month);
-    final before = [for (final h in list) h.id];
-    final after = [for (final h in sortRituals(list)) h.id];
-    if (before.join(',') != after.join(',')) store.reorderHabits(year, month, after);
   }
 
   // Entries
@@ -726,9 +685,7 @@ class AppState extends ChangeNotifier {
     _entriesChanged(day);
   }
 
-  /// Done among the rituals that are on [day].
-  int doneOn(DateTime day, List<Habit> habits) =>
-      habits.where((h) => h.onDay(day) && statusOf(day, h) == HabitStatus.done).length;
+  int doneOn(DateTime day, List<Habit> habits) => habits.where((h) => statusOf(day, h) == HabitStatus.done).length;
 
   (int, int) scoreOf(int year, int month, Habit habit) =>
       _monthScores.putIfAbsent((year, month), () => store.monthScores(year, month))[habit.id] ?? (0, 0);
@@ -740,7 +697,7 @@ class AppState extends ChangeNotifier {
 
   int bestStreak(Habit h) => _streaksOf(h).$2;
 
-  (int, int) _streaksOf(Habit h) => _streaks[h.id] ??= store.streaks(h.id, today, restWeekends: restWeekends && _isSleep(h));
+  (int, int) _streaksOf(Habit h) => _streaks[h.id] ??= store.streaks(h.id, today, restWeekends: restWeekends);
 
   // To-dos
 

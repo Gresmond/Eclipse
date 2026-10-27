@@ -3,23 +3,7 @@ import 'dart:convert';
 enum HabitStatus { none, done, missed, other }
 
 class Habit {
-  Habit(this.id, this.name, {this.description, this.minutes, this.addedOn, this.days = const []});
-
-  /// Which weekdays it's on this month, as changes of weekday bits (see [weekdayBit]), each
-  /// from its day on (the first may be from the start of the month, null).
-  /// A change partway through the month leaves the days before it alone.
-  /// Empty when it's on every day.
-  List<(DateTime?, int)> days;
-
-  /// The weekdays it's on now.
-  int get weekdays => days.isEmpty ? everyDay : days.last.$2;
-
-  /// On every day or every weekday: shows no days, and is arranged by hand.
-  bool get usualDays => weekdays == everyDay || weekdays == weekdaysOnly;
-
-  /// Whether [day] is one of its days; other days are greyed out and can't
-  /// be marked, and don't count towards its scores or streaks.
-  bool onDay(DateTime day) => isOnDay(days, day);
+  Habit(this.id, this.name, {this.description, this.minutes, this.addedOn});
 
   /// The day it was added, when that was partway through its month.
   final DateTime? addedOn;
@@ -37,85 +21,6 @@ class Habit {
   /// A sleep item's time this month, in minutes after midnight; null when
   /// none is set. Rituals have none.
   int? minutes;
-}
-
-/// Weekdays as bits, Monday the lowest.
-int weekdayBit(int weekday) => 1 << (weekday - 1);
-const everyDay = 0x7f;
-
-bool isWeekend(DateTime day) => day.weekday >= DateTime.saturday;
-
-/// Monday to Friday: a new ritual's days while weekends are rest days.
-const weekdaysOnly = 0x1f;
-
-/// Whether [day] is on in a ritual's [Habit.days].
-bool isOnDay(List<(DateTime?, int)> days, DateTime day) {
-  var bits = everyDay;
-  for (final (from, b) in days) {
-    if (from == null || !dateOnly(day).isBefore(from)) bits = b;
-  }
-  return bits & weekdayBit(day.weekday) != 0;
-}
-
-/// [Habit.days] as saved: `[[null, 21], ["2026-10-27", 127]]`, or null
-/// when it's on every day.
-String? encodeDays(List<(DateTime?, int)> days) => days.isEmpty
-    ? null
-    : jsonEncode([
-        for (final (from, bits) in days) [from == null ? null : dateKey(from), bits],
-      ]);
-
-List<(DateTime?, int)> decodeDays(String? value) => value == null
-    ? []
-    : [
-        for (final change in jsonDecode(value) as List)
-          (change[0] == null ? null : DateTime.parse(change[0] as String), change[1] as int),
-      ];
-
-/// [days] with [bits] from [from] on (from the start of the month when
-/// null), replacing any change made the same day, and with no change that
-/// leaves the days as they were.
-List<(DateTime?, int)> changeDays(List<(DateTime?, int)> days, DateTime? from, int bits) {
-  final kept = [
-    if (from != null)
-      for (final c in days)
-        if (c.$1 == null || c.$1!.isBefore(from)) c,
-  ];
-  final before = kept.isEmpty ? everyDay : kept.last.$2;
-  if (bits != before) kept.add((from, bits));
-  return kept.every((c) => c.$2 == everyDay) ? [] : kept;
-}
-
-/// Rituals in their list order: every-day ones first, as arranged; then
-/// the rest, fewer days lower, and with as many days, the one whose days
-/// come earlier in the week first (Mon+Fri before Tue+Wed). Rituals on the
-/// same days keep their arranged order. Sorts [habits] in place.
-List<Habit> sortRituals(List<Habit> habits) {
-  int compare(Habit a, Habit b) {
-    if (a.usualDays || b.usualDays) return a.usualDays == b.usualDays ? 0 : (a.usualDays ? -1 : 1);
-    final (x, y) = (a.weekdays, b.weekdays);
-    if (x == y) return 0;
-    final count = _bitCount(y).compareTo(_bitCount(x));
-    if (count != 0) return count;
-    // The earliest weekday only one of them is on.
-    final first = (x ^ y) & -(x ^ y);
-    return x & first != 0 ? -1 : 1;
-  }
-
-  final indexed = habits.indexed.toList()
-    ..sort((a, b) {
-      final order = compare(a.$2, b.$2);
-      return order != 0 ? order : a.$1.compareTo(b.$1);
-    });
-  return habits..setAll(0, [for (final (_, h) in indexed) h]);
-}
-
-int _bitCount(int bits) {
-  var n = 0;
-  for (; bits != 0; bits &= bits - 1) {
-    n++;
-  }
-  return n;
 }
 
 /// The sleep schedule: the same four in every month, below the rituals.

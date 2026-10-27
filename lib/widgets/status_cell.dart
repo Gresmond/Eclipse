@@ -25,6 +25,7 @@ class StatusCell extends StatefulWidget {
     required this.habit,
     this.size = 34,
     this.enabled = true,
+    this.rest = false,
     this.paletteAnimation,
   });
 
@@ -32,6 +33,9 @@ class StatusCell extends StatefulWidget {
   final Habit habit;
   final double size;
   final bool enabled;
+
+  /// A rest day (a weekend, when that's turned on): greyed while blank.
+  final bool rest;
 
   /// Large grids repaint theme colors without rebuilding every cell.
   final ValueListenable<Palette>? paletteAnimation;
@@ -61,7 +65,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
   AnimationController? _progress, _hoverAnim;
   CurvedAnimation? _curved;
 
-  /// Lift and dip, and greying while disabled: still values until they first
+  /// Lift and dip, and greying while disabled or resting: still values until they first
   /// change, so a square that's never touched holds no controller.
   AnimationController? _scale, _opacity;
   double? _scaleTarget, _opacityTarget;
@@ -165,7 +169,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     final scaleTarget = _pressed ? 0.91 : (_hover && enabled ? 1.04 : 1.0);
     final scale = _ease(_scale, _scaleTarget, scaleTarget, Motion.hover, Motion.hoverCurve, (c) => _scale = c);
     _scaleTarget = scaleTarget;
-    final opacityTarget = enabled ? 1.0 : 0.35;
+    final opacityTarget = !enabled ? 0.35 : (widget.rest && status == HabitStatus.none ? 0.45 : 1.0);
     final opacity = _ease(
       _opacity,
       _opacityTarget,
@@ -257,7 +261,7 @@ class _SquarePainter extends CustomPainter {
   /// Lifted on hover, dipped while pressed, about the centre.
   final Animation<double> scale;
 
-  /// Below 1 while disabled.
+  /// Below 1 while disabled, or blank on a rest day.
   final Animation<double> opacity;
   final Palette basePalette;
   final ValueListenable<Palette>? paletteAnimation;

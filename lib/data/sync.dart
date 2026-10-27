@@ -99,7 +99,7 @@ class SyncEngine {
         final (month, uid) = _split(rowkey);
         final (y, m) = _month(month);
         fields = row(
-          'SELECT name, position, note, added_on, days FROM month_habits JOIN habits h ON h.id = habit_id '
+          'SELECT name, position, note, added_on FROM month_habits JOIN habits h ON h.id = habit_id '
           'WHERE year = ? AND month = ? AND h.uid = ?',
           [y, m, uid],
         );
@@ -166,10 +166,10 @@ class SyncEngine {
           _db.execute('DELETE FROM month_habits WHERE year = ? AND month = ? AND habit_id = ?', [y, m, id]);
         } else {
           _db.execute(
-            'INSERT INTO month_habits (year, month, habit_id, name, position, note, added_on, days) VALUES (?, ?, ?, ?, ?, ?, ?, ?) '
+            'INSERT INTO month_habits (year, month, habit_id, name, position, note, added_on) VALUES (?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT (year, month, habit_id) DO UPDATE SET name = excluded.name, position = excluded.position, '
-            'note = excluded.note, added_on = excluded.added_on, days = excluded.days',
-            [y, m, id, f['name'] ?? '', f['position'] ?? 0, f['note'], f['added_on'], f['days']],
+            'note = excluded.note, added_on = excluded.added_on',
+            [y, m, id, f['name'] ?? '', f['position'] ?? 0, f['note'], f['added_on']],
           );
         }
       case 'entry':

@@ -99,12 +99,7 @@ class _HabitColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => (s.shownDay, s.habitsRevision));
     final day = state.shownDay;
-    // Only the rituals that are on that day.
-    final all = state.habitsFor(day.year, day.month), sleep = state.sleepHabitsFor(day.year, day.month);
-    final rituals = [
-      for (final h in all)
-        if (h.onDay(day)) h,
-    ];
+    final rituals = state.habitsFor(day.year, day.month), sleep = state.sleepHabitsFor(day.year, day.month);
     return LayoutBuilder(
       builder: (context, constraints) {
         final rows = constraints.maxHeight - 2 * _HabitsCard.chrome - TodayView._gap;
@@ -117,12 +112,7 @@ class _HabitColumn extends StatelessWidget {
             Expanded(
               child: TourTarget(
                 spot: TourSpot.rituals,
-                child: _HabitsCard(
-                  title: 'Daily rituals',
-                  habits: rituals,
-                  allDone: 'Every ritual done. Beautiful.',
-                  noneOn: all.isNotEmpty && rituals.isEmpty,
-                ),
+                child: _HabitsCard(title: 'Daily rituals', habits: rituals, allDone: 'Every ritual done. Beautiful.'),
               ),
             ),
             const SizedBox(height: TodayView._gap),
@@ -146,16 +136,7 @@ class _HabitColumn extends StatelessWidget {
 }
 
 class _HabitsCard extends StatelessWidget {
-  const _HabitsCard({
-    required this.title,
-    required this.habits,
-    required this.allDone,
-    this.times = false,
-    this.noneOn = false,
-  });
-
-  /// None of the month's rituals is on this day: it reads as a rest day.
-  final bool noneOn;
+  const _HabitsCard({required this.title, required this.habits, required this.allDone, this.times = false});
 
   final String title;
   final List<Habit> habits;
@@ -240,7 +221,7 @@ class _HabitsCard extends StatelessWidget {
     final total = habits.length;
     final subtitle = done == total && total > 0
         ? allDone
-        : noneOn || state.isRestDay(day) && (times || habits.isEmpty)
+        : state.isRestDay(day)
         ? 'Rest day. Nothing you have to do.'
         : '';
 
@@ -290,8 +271,8 @@ class _HabitsCard extends StatelessWidget {
                     child: ListView.builder(
                       key: ValueKey([for (final h in habits) '${h.id} ${h.name}'].join('|')),
                       padding: EdgeInsets.zero,
-                      itemExtentBuilder: (i, _) => i < habits.length ? rows.heights[i] : null,
-                      itemCount: habits.length,
+                      itemExtentBuilder: (i, _) => i < total ? rows.heights[i] : null,
+                      itemCount: total,
                       itemBuilder: (context, i) => _HabitRow(
                         habit: habits[i],
                         day: day,
@@ -490,6 +471,7 @@ class _HabitRow extends StatelessWidget {
               habit: habit,
               size: cellSize,
               enabled: state.canEditDay(day) && habit.startedBy(day),
+              rest: state.isRestDay(day),
             ),
           ],
         ),
@@ -524,7 +506,7 @@ class _WeekTrail extends StatelessWidget {
   Widget _mark(Palette p, AppState state, DateTime past) {
     final status = state.statusOf(past, habit);
     return TweenAnimationBuilder<double>(
-      tween: Tween(end: state.restsFor(habit, past) || !habit.onDay(past) ? 1 : 0),
+      tween: Tween(end: state.isRestDay(past) ? 1 : 0),
       duration: Motion.morph,
       curve: Motion.morphCurve,
       builder: (context, r, _) => Container(
