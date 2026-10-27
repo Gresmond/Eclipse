@@ -13,6 +13,7 @@ class Appear extends StatefulWidget {
     this.onHidden,
     this.animateSize = true,
     this.fadeBeforeCollapse = false,
+    this.duration = Motion.morph,
     required this.child,
   });
 
@@ -21,13 +22,14 @@ class Appear extends StatefulWidget {
   final VoidCallback? onHidden;
   final Widget child;
   final bool animateSize, fadeBeforeCollapse;
+  final Duration duration;
 
   @override
   State<Appear> createState() => _AppearState();
 }
 
 class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
-  late final _controller = AnimationController(vsync: this, duration: Motion.morph, value: widget.animate ? 0 : 1)
+  late final _controller = AnimationController(vsync: this, duration: widget.duration, value: widget.animate ? 0 : 1)
     ..forward();
   late final _curved = CurvedAnimation(parent: _controller, curve: Motion.morphCurve);
 

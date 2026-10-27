@@ -302,6 +302,16 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   /// Rituals already on screen; any others fade in.
   Set<int> _known = {};
 
+  /// Each ritual's row as last built, and the rows of rituals the new
+  /// month lacks, kept at their old places while they fade and close up.
+  final _rows = <int, Widget>{};
+  final _leaving = <int, (int, Widget)>{};
+
+  /// The squares' size as drawn. A month with more or fewer rituals has
+  /// other squares, which ease to their new size with the columns' morph.
+  late final _morph = AnimationController(vsync: this, duration: Motion.page, value: 1);
+  late final _cellSize = _Lerp(CurvedAnimation(parent: _morph, curve: Motion.morphCurve));
+
   /// The month the weekend bands are fading from, and the fade into this
   /// month's bands.
   (int, int)? _bandsFrom;
@@ -328,7 +338,15 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   void didUpdateWidget(_Grid old) {
     super.didUpdateWidget(old);
     _known = {for (final h in old.habits) h.id};
+    final ids = {for (final h in widget.habits) h.id};
+    _leaving.removeWhere((id, _) => ids.contains(id));
+    for (final (i, h) in old.habits.indexed) {
+      final row = _rows[h.id];
+      if (!ids.contains(h.id) && row != null) _leaving[h.id] = (i, row);
+    }
     if ((old.year, old.month) == (widget.year, widget.month)) return;
+    _cellSize.from = _cellSize.value;
+    _morph.forward(from: 0);
     _previous = (old.year, old.month);
     _bandsFrom = (old.year, old.month);
     _bands.forward(from: 0);
@@ -345,6 +363,8 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
     _bandsCurved.dispose();
     _bands.dispose();
     _shown.dispose();
+    _cellSize.parent.dispose();
+    _morph.dispose();
     super.dispose();
   }
 
@@ -363,6 +383,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
     if (_palette.value != p) _palette.value = p;
     final ids = {for (final habit in widget.habits) habit.id};
     _cells.removeWhere((id, _) => !ids.contains(id));
+    _rows.removeWhere((id, _) => !ids.contains(id) && !_leaving.containsKey(id));
     final (year, month, habits, nameWidth) = (widget.year, widget.month, widget.habits, widget.nameWidth);
     final dayCount = daysInMonth(year, month);
 
@@ -370,8 +391,8 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
       builder: (context, constraints) {
         double gridWidth(double days) => (nameWidth + days * _minCol).clamp(constraints.maxWidth, double.infinity);
         // Columns spread across the card. Squares are sized for a 31-day
-        // month and as tall as the page allows, so they keep one size from
-        // month to month and only their places animate.
+        // month and as tall as the page allows. They change size only when
+        // a month has more or fewer rituals, easing as the columns move.
         double colFor(double days) => (gridWidth(days) - nameWidth) / days;
         final width = gridWidth(dayCount.toDouble());
         final cell = [
@@ -379,6 +400,8 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
           widget.maxCell,
           _maxCell,
         ].reduce((a, b) => a < b ? a : b).clamp(_minCol - 6, _maxCell);
+        if (_cellSize.to == 0) _cellSize.from = cell;
+        _cellSize.to = cell;
         final columns = [
           for (var d = 1; d <= 31; d++)
             if (_dayAt(d) case final day?) (number: d, day: day, leaving: d > dayCount),
@@ -389,6 +412,49 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
             c.number: _DayHeader(day: c.day, isToday: c.day == state.today, rest: state.isRestDay(c.day)),
         };
         final layout = _ColumnLayout(shown: _shown, colFor: colFor, days: [for (final c in columns) c.number]);
+
+        final rows = <Widget>[
+          for (final (i, h) in habits.indexed)
+            if (_staged && i >= (habits.length + 1) ~/ 2)
+              SizedBox(key: ValueKey(h.id), height: cell + 5)
+            else
+              Appear(
+                key: ValueKey(h.id),
+                animate: _known.isNotEmpty && !_known.contains(h.id),
+                duration: Motion.page,
+                child: IgnorePointer(
+                  ignoring: false,
+                  child: _rows[h.id] = _MonthHabitRow(
+                    habit: h,
+                    names: widget.times ? [for (final x in habits) x.name] : null,
+                    nameWidth: nameWidth,
+                    cellSize: _cellSize,
+                    laidOut: cell,
+                    layout: layout,
+                    clickableDays: columns.where((c) => !c.leaving && !c.day.isAfter(state.today)).length,
+                    cells: _cellsFor(h, cell, state, columns),
+                  ),
+                ),
+              ),
+        ];
+        // A ritual this month lacks fades out and closes up where it was.
+        for (final MapEntry(key: id, value: (i, row))
+            in _leaving.entries.toList()..sort((a, b) => a.value.$1 - b.value.$1)) {
+          rows.insert(
+            i.clamp(0, rows.length),
+            Appear(
+              key: ValueKey(id),
+              animate: false,
+              shown: false,
+              duration: Motion.page,
+              onHidden: () => setState(() {
+                _leaving.remove(id);
+                _rows.remove(id);
+              }),
+              child: IgnorePointer(child: row),
+            ),
+          );
+        }
 
         final days = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,23 +481,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
               },
             ),
             const SizedBox(height: 10),
-            for (final (i, h) in habits.indexed)
-              if (_staged && i >= (habits.length + 1) ~/ 2)
-                SizedBox(key: ValueKey(h.id), height: cell + 5)
-              else
-                Appear(
-                  key: ValueKey(h.id),
-                  animate: _known.isNotEmpty && !_known.contains(h.id),
-                  child: _MonthHabitRow(
-                    habit: h,
-                    names: widget.times ? [for (final x in habits) x.name] : null,
-                    nameWidth: nameWidth,
-                    cellSize: cell,
-                    layout: layout,
-                    clickableDays: columns.where((c) => !c.leaving && !c.day.isAfter(state.today)).length,
-                    cells: _cellsFor(h, cell, state, columns),
-                  ),
-                ),
+            ...rows,
           ],
         );
 
@@ -539,6 +589,18 @@ class _MonthScore extends StatelessWidget {
   }
 }
 
+/// Eases between two values as [parent] runs from 0 to 1.
+class _Lerp extends Animation<double> with AnimationWithParentMixin<double> {
+  _Lerp(this.parent);
+
+  @override
+  final CurvedAnimation parent;
+  double from = 0, to = 0;
+
+  @override
+  double get value => from + (to - from) * parent.value;
+}
+
 /// Where the day columns are at this moment of a morph.
 class _ColumnLayout {
   const _ColumnLayout({required this.shown, required this.colFor, required this.days});
@@ -588,10 +650,13 @@ class _Column extends StatelessWidget {
 /// Draws one row's squares in their columns. Laid out once; each frame of
 /// a morph only moves them, so nothing is rebuilt or measured again.
 class _ColumnsDelegate extends FlowDelegate {
-  _ColumnsDelegate(this.layout, this.height) : super(repaint: layout.shown);
+  _ColumnsDelegate(this.layout, this.height, this.scale) : super(repaint: layout.shown);
 
   final _ColumnLayout layout;
   final double height;
+
+  /// The squares as drawn over as laid out, while they ease to a new size.
+  final double scale;
 
   @override
   Size getSize(BoxConstraints constraints) => Size(constraints.maxWidth, height);
@@ -612,7 +677,9 @@ class _ColumnsDelegate extends FlowDelegate {
       final size = context.getChildSize(i)!;
       context.paintChild(
         i,
-        transform: Matrix4.translationValues((d - 1) * col + (col - size.width) / 2, (height - size.height) / 2, 0),
+        transform: Matrix4.translationValues((d - 1) * col + col / 2, height / 2, 0)
+          ..scaleByDouble(scale, scale, 1, 1)
+          ..translateByDouble(-size.width / 2, -size.height / 2, 0, 1),
         opacity: Curves.easeIn.transform(fraction),
       );
     }
@@ -723,6 +790,7 @@ class _MonthHabitRow extends StatefulWidget {
     required this.clickableDays,
     required this.nameWidth,
     required this.cellSize,
+    required this.laidOut,
     this.names,
   });
 
@@ -738,7 +806,11 @@ class _MonthHabitRow extends StatefulWidget {
   /// How many squares, from the first, can be clicked (days after today can't).
   final int clickableDays;
   final double nameWidth;
-  final double cellSize;
+
+  /// The squares' size as drawn, which eases between months, and the size
+  /// [cells] are laid out at.
+  final Animation<double> cellSize;
+  final double laidOut;
 
   @override
   State<_MonthHabitRow> createState() => _MonthHabitRowState();
@@ -755,11 +827,16 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
     if (hover != _hover) setState(() => _hover = hover);
   }
 
+  // Rebuilt each frame of a change of size: the row's height follows the
+  // squares, but the squares themselves are only drawn smaller or larger.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnimatedBuilder(animation: widget.cellSize, builder: _build);
+
+  Widget _build(BuildContext context, Widget? _) {
     final p = context.palette;
     const pad = _HighlightPainter.pad;
-    final height = widget.cellSize + 5;
+    final cellSize = widget.cellSize.value;
+    final height = cellSize + 5;
     final nameStyle = TextStyle(
       fontFamily: Fonts.body,
       fontSize: 13.5,
@@ -791,7 +868,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                           width: widget.nameWidth - 16,
                           child: RitualName(
                             habit: widget.habit,
-                            maxLines: height >= 2 * 13.5 * 1.15 + 2 ? 2 : 1,
+                            maxLines: widget.laidOut + 5 >= 2 * 13.5 * 1.15 + 2 ? 2 : 1,
                             style: nameStyle,
                           ),
                         ),
@@ -821,7 +898,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                           painter: _HighlightPainter(
                             layout: widget.layout,
                             clickableDays: widget.clickableDays,
-                            cellSize: widget.cellSize,
+                            cellSize: cellSize,
                             color: p.empty.withValues(alpha: 0.6),
                           ),
                         ),
@@ -830,7 +907,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                   ),
                   // Each square is its own repaint boundary already.
                   Flow.unwrapped(
-                    delegate: _ColumnsDelegate(widget.layout, height),
+                    delegate: _ColumnsDelegate(widget.layout, height, cellSize / widget.laidOut),
                     clipBehavior: Clip.none,
                     children: widget.cells,
                   ),
