@@ -528,12 +528,19 @@ class _EditableRowState extends State<_EditableRow> {
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
-                    contentPadding: const EdgeInsets.only(bottom: 8),
+                    contentPadding: const EdgeInsets.only(bottom: 6),
                     hintText: 'Add a note',
                     hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.5)),
                   ),
                   onSubmitted: (_) => widget.onDone(),
                   onChanged: (v) => state.draftHabitNote(widget.year, widget.month, widget.habit, v),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _DayToggles(
+                    bits: widget.habit.weekdays,
+                    onChanged: (bits) => state.setHabitDays(widget.year, widget.month, widget.habit, bits),
+                  ),
                 ),
               ],
             ),
@@ -547,6 +554,66 @@ class _EditableRowState extends State<_EditableRow> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The weekdays a ritual is on, Monday first: filled when on. The last one
+/// on can't be turned off.
+class _DayToggles extends StatelessWidget {
+  const _DayToggles({required this.bits, required this.onChanged});
+
+  final int bits;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Row(
+      children: [
+        for (var weekday = 1; weekday <= 7; weekday++)
+          Padding(
+            padding: const EdgeInsets.only(right: 5),
+            child: Builder(
+              builder: (context) {
+                final bit = weekdayBit(weekday);
+                final on = bits & bit != 0;
+                final last = on && bits == bit;
+                return Tooltip(
+                  message: last ? 'A ritual needs at least one day' : weekdayNames[weekday - 1],
+                  waitDuration: const Duration(milliseconds: 400),
+                  child: MouseRegion(
+                    cursor: last ? MouseCursor.defer : SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: last ? null : () => onChanged(bits ^ bit),
+                      child: AnimatedContainer(
+                        duration: Motion.click,
+                        curve: Motion.clickCurve,
+                        width: 22,
+                        height: 22,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: on ? p.done : Colors.transparent,
+                          border: Border.all(color: on ? p.done : p.inkMuted.withValues(alpha: 0.35)),
+                        ),
+                        child: Text(
+                          weekdayNames[weekday - 1][0],
+                          style: TextStyle(
+                            fontFamily: Fonts.ui,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: on ? p.onAccent : p.inkMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 }

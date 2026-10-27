@@ -265,7 +265,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
     AppState state,
     List<({int number, DateTime day, bool leaving})> columns,
   ) {
-    final key = (widget.year, widget.month, _previous, habit, size, state.today, state.restWeekends);
+    final key = (widget.year, widget.month, _previous, habit, habit.days, size, state.today, state.restWeekends);
     final cached = _cells[habit.id];
     if (cached?.$1 == key) return cached!.$2;
     final cells = [
@@ -276,7 +276,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
             day: c.day,
             habit: habit,
             size: size,
-            enabled: !c.leaving && !c.day.isAfter(state.today) && habit.startedBy(c.day),
+            enabled: !c.leaving && !c.day.isAfter(state.today) && habit.startedBy(c.day) && habit.onDay(c.day),
             rest: state.isRestDay(c.day),
             paletteAnimation: _palette,
           ),

@@ -61,7 +61,7 @@ void _undoSync(Database db) {
     db.execute('DROP TRIGGER ${r['name']}');
   }
   db.execute('''
-    ALTER TABLE month_habits DROP COLUMN added_on;
+    ALTER TABLE month_habits DROP COLUMN added_on; ALTER TABLE month_habits DROP COLUMN days;
     DROP TABLE habit_months; DROP TABLE todo_history;
     DROP INDEX entries_habit_day; DROP INDEX sleep_notes_item_month;
     DROP TABLE sync_reg; DROP TABLE sync_dirty; DROP TABLE sync_seen;

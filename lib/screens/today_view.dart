@@ -218,10 +218,10 @@ class _HabitsCard extends StatelessWidget {
     final day = state.shownDay;
     final readOnly = !state.canEditDay(day);
     final done = state.doneOn(day, habits);
-    final total = habits.length;
+    final total = habits.where((h) => h.onDay(day)).length;
     final subtitle = done == total && total > 0
         ? allDone
-        : state.isRestDay(day)
+        : state.isRestDay(day) || total == 0 && habits.isNotEmpty
         ? 'Rest day. Nothing you have to do.'
         : '';
 
@@ -386,6 +386,8 @@ class _HabitRow extends StatelessWidget {
     final past = state.viewDay != null;
     final streak = past ? 0 : state.currentStreak(habit);
     final best = state.bestStreak(habit);
+    // Not one of its days: greyed like a day still to come.
+    final ink = habit.onDay(day) ? p.ink : p.ink.withValues(alpha: 0.4);
 
     return _HoverHighlight(
       divider: divider,
@@ -410,7 +412,7 @@ class _HabitRow extends StatelessWidget {
                         child: RitualName(
                           habit: habit,
                           maxLines: nameLines,
-                          style: nameStyle.copyWith(color: p.ink),
+                          style: nameStyle.copyWith(color: ink),
                         ),
                       ),
                     ),
@@ -470,7 +472,7 @@ class _HabitRow extends StatelessWidget {
               day: day,
               habit: habit,
               size: cellSize,
-              enabled: state.canEditDay(day) && habit.startedBy(day),
+              enabled: state.canEditDay(day) && habit.startedBy(day) && habit.onDay(day),
               rest: state.isRestDay(day),
             ),
           ],
@@ -506,7 +508,7 @@ class _WeekTrail extends StatelessWidget {
   Widget _mark(Palette p, AppState state, DateTime past) {
     final status = state.statusOf(past, habit);
     return TweenAnimationBuilder<double>(
-      tween: Tween(end: state.isRestDay(past) ? 1 : 0),
+      tween: Tween(end: state.isRestDay(past) || !habit.onDay(past) ? 1 : 0),
       duration: Motion.morph,
       curve: Motion.morphCurve,
       builder: (context, r, _) => Container(
