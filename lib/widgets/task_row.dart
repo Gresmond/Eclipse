@@ -46,6 +46,10 @@ class _TodoRowState extends State<_TodoRow> {
   bool _hover = false;
   bool _pressed = false;
 
+  /// The hover buttons exist only while shown or fading out: a long list
+  /// would otherwise hold three hidden buttons per row.
+  bool _actions = false;
+
   bool get _expanded => _opened.contains((widget.scope, widget.item.id));
   set _expanded(bool open) =>
       open ? _opened.add((widget.scope, widget.item.id)) : _opened.remove((widget.scope, widget.item.id));
@@ -235,7 +239,7 @@ class _TodoRowState extends State<_TodoRow> {
         ignoring: widget.readOnly || widget.leaving || _nestingOut,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hover = true),
+          onEnter: (_) => setState(() => _hover = _actions = true),
           onExit: (_) => setState(() {
             _hover = false;
             _pressed = false;
@@ -342,31 +346,47 @@ class _TodoRowState extends State<_TodoRow> {
                               opacity: _hover ? 1 : 0,
                               duration: Motion.hover,
                               curve: Motion.hoverCurve,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _TaskAction(
-                                    tooltip: 'Add subtask',
-                                    icon: Icons.playlist_add_rounded,
-                                    onPressed: () => _editSubtask(state),
-                                  ),
-                                  _TaskAction(
-                                    tooltip: 'Edit task',
-                                    icon: Icons.edit_outlined,
-                                    onPressed: () async {
-                                      final result = await showAppDialog<({String text, DateTime? due})>(
-                                        context: context,
-                                        builder: (_) =>
-                                            _EditTaskDialog(item: item, scope: widget.scope, day: widget.day),
-                                      );
-                                      if (result != null && mounted) {
-                                        state.editTodo(widget.scope, item, result.text, result.due, day: widget.day);
-                                      }
-                                    },
-                                  ),
-                                  _TaskAction(tooltip: 'Remove', icon: Icons.close_rounded, onPressed: widget.onRemove),
-                                ],
-                              ),
+                              onEnd: () {
+                                if (mounted && !_hover) setState(() => _actions = false);
+                              },
+                              child: !_actions
+                                  // The three buttons' room, so the text never reflows.
+                                  ? const SizedBox(width: 3 * _TaskAction.size, height: _TaskAction.size)
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _TaskAction(
+                                          tooltip: 'Add subtask',
+                                          icon: Icons.playlist_add_rounded,
+                                          onPressed: () => _editSubtask(state),
+                                        ),
+                                        _TaskAction(
+                                          tooltip: 'Edit task',
+                                          icon: Icons.edit_outlined,
+                                          onPressed: () async {
+                                            final result = await showAppDialog<({String text, DateTime? due})>(
+                                              context: context,
+                                              builder: (_) =>
+                                                  _EditTaskDialog(item: item, scope: widget.scope, day: widget.day),
+                                            );
+                                            if (result != null && mounted) {
+                                              state.editTodo(
+                                                widget.scope,
+                                                item,
+                                                result.text,
+                                                result.due,
+                                                day: widget.day,
+                                              );
+                                            }
+                                          },
+                                        ),
+                                        _TaskAction(
+                                          tooltip: 'Remove',
+                                          icon: Icons.close_rounded,
+                                          onPressed: widget.onRemove,
+                                        ),
+                                      ],
+                                    ),
                             ),
                           ),
                         ),

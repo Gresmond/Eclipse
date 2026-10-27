@@ -4,6 +4,8 @@ The approved adjusted First Contact design: the original ivory moon is 5% smalle
 
 ## Assets
 
+Only `source/`, `build.py` and this README are kept in git. Everything else below is written by `build.py` (see Rebuild) and ignored; the app's own copies live in `linux/icons`, `macos/Runner/Assets.xcassets` and `windows/runner/resources`.
+
 - `source/eclipse.svg`: editable master, with transparent corners around its circular red tile.
 - `png/`: native vector renders at 16, 20, 22, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024 and 2048 pixels.
 - `linux/icons/hicolor/`: scalable SVG and eleven PNG sizes, named `dev.nicholas.productivity_app` to match this app's Linux application ID and desktop entry.

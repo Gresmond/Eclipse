@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/gestures.dart' show kPrimaryButton, kSecondaryButton, kTertiaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,13 +8,16 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import 'app_dialog.dart';
 import 'confirm_on_enter.dart';
-import 'lazy_motion.dart';
 import 'mark.dart';
 import 'note_input.dart';
 
 /// A habit-day square: left-click done, right-click not done, middle-click
 /// or Option/Alt-click other (trackpads have no middle button). Repeat the
 /// same click to clear its mark.
+///
+/// A month shows hundreds of these at once, so each is kept to a handful of
+/// widgets: one pointer listener rather than a gesture detector, and its
+/// lift, dip and greying drawn by its painter rather than wrapper widgets.
 class StatusCell extends StatefulWidget {
   const StatusCell({
     super.key,
@@ -38,7 +42,10 @@ class StatusCell extends StatefulWidget {
 
 class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
   bool _hover = false;
-  bool _pressed = false;
+
+  /// The buttons of the press in progress; null when not pressed.
+  int? _buttons;
+  bool get _pressed => _buttons != null;
 
   /// A click changes a square quickly; a new month eases it in step with
   /// the grid's morph, so a whole month of colours doesn't snap in at once.
@@ -54,6 +61,11 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
   AnimationController? _progress, _hoverAnim;
   CurvedAnimation? _curved;
 
+  /// Lift and dip, and greying while disabled: still values until they first
+  /// change, so a square that's never touched holds no controller.
+  AnimationController? _scale, _opacity;
+  double? _scaleTarget, _opacityTarget;
+
   @override
   void didUpdateWidget(StatusCell old) {
     super.didUpdateWidget(old);
@@ -65,11 +77,10 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     _curved?.dispose();
     _progress?.dispose();
     _hoverAnim?.dispose();
+    _scale?.dispose();
+    _opacity?.dispose();
     super.dispose();
   }
-
-  // Keeps the square's animations alive when a note's tooltip comes or goes.
-  final _squareKey = GlobalKey();
 
   void _setHover(bool hover) {
     _hover = hover;
@@ -79,6 +90,43 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     } else {
       animation.reverse();
     }
+  }
+
+  /// Eases [controller] to [target], making it on the first change.
+  Animation<double> _ease(
+    AnimationController? controller,
+    double? from,
+    double target,
+    Duration duration,
+    Curve curve,
+    void Function(AnimationController) keep,
+  ) {
+    if (from == null || from == target) return controller ?? AlwaysStoppedAnimation(target);
+    final c = controller ?? AnimationController.unbounded(vsync: this, value: from);
+    if (controller == null) keep(c);
+    c.animateTo(target, duration: duration, curve: curve);
+    return c;
+  }
+
+  void _down(PointerDownEvent event) {
+    if (!widget.enabled || _pressed) return;
+    if (event.buttons & (kPrimaryButton | kSecondaryButton | kTertiaryButton) == 0) return;
+    setState(() => _buttons = event.buttons);
+  }
+
+  void _up(PointerUpEvent event, AppState state) {
+    final buttons = _buttons;
+    if (buttons == null) return;
+    setState(() => _buttons = null);
+    // A press that slid off the square, as with a tap, does nothing.
+    final size = context.size;
+    if (!widget.enabled || size == null || !(Offset.zero & size).contains(event.localPosition)) return;
+    final status = buttons & kSecondaryButton != 0
+        ? HabitStatus.missed
+        : buttons & kTertiaryButton != 0 || HardwareKeyboard.instance.isAltPressed
+        ? HabitStatus.other
+        : HabitStatus.done;
+    _selectStatus(context, state, widget.day, widget.habit, status);
   }
 
   @override
@@ -114,23 +162,34 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
       }
     }
 
+    final scaleTarget = _pressed ? 0.91 : (_hover && enabled ? 1.04 : 1.0);
+    final scale = _ease(_scale, _scaleTarget, scaleTarget, Motion.hover, Motion.hoverCurve, (c) => _scale = c);
+    _scaleTarget = scaleTarget;
+    final opacityTarget = enabled ? 1.0 : 0.35;
+    final opacity = _ease(
+      _opacity,
+      _opacityTarget,
+      opacityTarget,
+      Motion.morph,
+      Motion.morphCurve,
+      (c) => _opacity = c,
+    );
+    _opacityTarget = opacityTarget;
+
+    // A note's tooltip coming or going rebuilds only this; the square's
+    // animations live in this state.
     Widget cell = RepaintBoundary(
-      key: _squareKey,
-      child: PressScale(
-        hover: _hover && enabled,
-        pressed: _pressed,
-        lift: 1.04,
-        dip: 0.91,
-        child: CustomPaint(
-          size: Size.square(widget.size),
-          painter: _SquarePainter(
-            from: _from!,
-            to: _to!,
-            progress: _curved ?? kAlwaysCompleteAnimation,
-            hover: enabled ? (_hoverAnim ?? kAlwaysDismissedAnimation) : kAlwaysDismissedAnimation,
-            basePalette: p,
-            paletteAnimation: widget.paletteAnimation,
-          ),
+      child: CustomPaint(
+        size: Size.square(widget.size),
+        painter: _SquarePainter(
+          from: _from!,
+          to: _to!,
+          progress: _curved ?? kAlwaysCompleteAnimation,
+          hover: enabled ? (_hoverAnim ?? kAlwaysDismissedAnimation) : kAlwaysDismissedAnimation,
+          scale: scale,
+          opacity: opacity,
+          basePalette: p,
+          paletteAnimation: widget.paletteAnimation,
         ),
       ),
     );
@@ -149,41 +208,13 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
       }),
       onExit: (_) => setState(() {
         _setHover(false);
-        _pressed = false;
+        _buttons = null;
       }),
-      child: GestureDetector(
-        onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
-        onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
-        onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-        onTap: enabled
-            ? () => _selectStatus(
-                context,
-                state,
-                widget.day,
-                widget.habit,
-                HardwareKeyboard.instance.isAltPressed ? HabitStatus.other : HabitStatus.done,
-              )
-            : null,
-        onSecondaryTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
-        onSecondaryTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
-        onSecondaryTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-        onSecondaryTap: enabled
-            ? () => _selectStatus(context, state, widget.day, widget.habit, HabitStatus.missed)
-            : null,
-        onTertiaryTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
-        onTertiaryTapUp: enabled
-            ? (_) {
-                setState(() => _pressed = false);
-                _selectStatus(context, state, widget.day, widget.habit, HabitStatus.other);
-              }
-            : null,
-        onTertiaryTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-        child: LazyOpacity(
-          opacity: enabled ? 1 : 0.35,
-          duration: Motion.morph,
-          curve: Motion.morphCurve,
-          child: cell,
-        ),
+      child: Listener(
+        onPointerDown: _down,
+        onPointerUp: (event) => _up(event, state),
+        onPointerCancel: (_) => setState(() => _buttons = null),
+        child: cell,
       ),
     );
   }
@@ -212,14 +243,22 @@ class _SquarePainter extends CustomPainter {
     required this.to,
     required this.progress,
     required this.hover,
+    required this.scale,
+    required this.opacity,
     required this.basePalette,
     this.paletteAnimation,
-  }) : super(repaint: Listenable.merge([progress, hover, ?paletteAnimation]));
+  }) : super(repaint: Listenable.merge([progress, hover, scale, opacity, ?paletteAnimation]));
 
   final _Look from;
   final _Look to;
   final Animation<double> progress;
   final Animation<double> hover;
+
+  /// Lifted on hover, dipped while pressed, about the centre.
+  final Animation<double> scale;
+
+  /// Below 1 while disabled.
+  final Animation<double> opacity;
   final Palette basePalette;
   final ValueListenable<Palette>? paletteAnimation;
   Palette get palette => paletteAnimation?.value ?? basePalette;
@@ -245,6 +284,18 @@ class _SquarePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final t = progress.value;
     final h = hover.value;
+    final fade = opacity.value.clamp(0.0, 1.0);
+    if (fade <= 0) return;
+    if (fade < 1) {
+      // The whole square fades as one, as an opacity layer would.
+      canvas.saveLayer((Offset.zero & size).inflate(size.width * 0.1), Paint()..color = Color.fromRGBO(0, 0, 0, fade));
+    }
+    final grow = scale.value;
+    if (grow != 1) {
+      canvas.translate(size.width / 2, size.height / 2);
+      canvas.scale(grow);
+      canvas.translate(-size.width / 2, -size.height / 2);
+    }
     canvas.scale(size.width / _s);
     const rect = Rect.fromLTWH(0, 0, _s, _s);
     final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(_s * 0.28));
@@ -286,6 +337,7 @@ class _SquarePainter extends CustomPainter {
     // A faint plus on a blank square under the pointer.
     final blank = (from.base == null ? 1 - t : 0) + (to.base == null ? t : 0);
     paintMark(canvas, centre, Icons.add_rounded, _s * 0.45, palette.inkMuted.withValues(alpha: 0.4), h * blank);
+    if (fade < 1) canvas.restore();
   }
 
   @override
@@ -295,7 +347,9 @@ class _SquarePainter extends CustomPainter {
       old.basePalette != basePalette ||
       old.paletteAnimation != paletteAnimation ||
       old.progress != progress ||
-      old.hover != hover;
+      old.hover != hover ||
+      old.scale != scale ||
+      old.opacity != opacity;
 }
 
 Future<void> _selectStatus(BuildContext context, AppState state, DateTime day, Habit habit, HabitStatus status) async {

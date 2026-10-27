@@ -427,6 +427,8 @@ class _TodoPanelState extends State<TodoPanel> {
 class _TaskAction extends StatelessWidget {
   const _TaskAction({required this.tooltip, required this.icon, required this.onPressed});
 
+  static const size = 24.0;
+
   final String tooltip;
   final IconData icon;
   final VoidCallback onPressed;
@@ -438,11 +440,11 @@ class _TaskAction extends StatelessWidget {
       tooltip: tooltip,
       icon: Icon(icon, size: 14),
       onPressed: onPressed,
-      constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+      constraints: const BoxConstraints.tightFor(width: size, height: size),
       padding: EdgeInsets.zero,
       style: ButtonStyle(
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: const WidgetStatePropertyAll(Size(24, 24)),
+        minimumSize: const WidgetStatePropertyAll(Size(size, size)),
         shape: const WidgetStatePropertyAll(CircleBorder()),
         foregroundColor: WidgetStatePropertyAll(p.inkMuted),
         backgroundColor: WidgetStateProperty.resolveWith(

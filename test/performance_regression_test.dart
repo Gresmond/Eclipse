@@ -12,6 +12,7 @@ import 'package:eclipse/util/lru_cache.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:eclipse/widgets/lazy_motion.dart';
 import 'package:eclipse/screens/month_view.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -133,6 +134,10 @@ void main() {
   testWidgets('removing then immediately switching planners cannot cancel deletion', (tester) async {
     state.addTodo(TodoScope.week, 'Remove this');
     await show(tester);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: tester.getCenter(find.text('Remove this')));
+    addTearDown(mouse.removePointer);
+    await tester.pump();
     final remove = tester.widget<IconButton>(find.byWidgetPredicate((w) => w is IconButton && w.tooltip == 'Remove'));
     remove.onPressed!();
     expect(store.todos(TodoScope.week, TodoScope.week.period(state.today)), isEmpty);

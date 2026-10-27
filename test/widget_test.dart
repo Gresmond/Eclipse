@@ -1697,18 +1697,17 @@ void main() {
         .style!
         .backgroundColor!
         .resolve({WidgetState.hovered})!;
-    expect(opacity(edits.at(0)), 0);
-    expect(opacity(edits.at(1)), 0);
+    expect(edits, findsNothing, reason: 'hover buttons are built only while shown');
     final original = tester.getRect(find.text('Hover first'));
     final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await pointer.addPointer(location: Offset.zero);
     addTearDown(pointer.removePointer);
     await pointer.moveTo(tester.getCenter(find.text('Hover first')));
     await tester.pumpAndSettle();
+    expect(edits, findsOneWidget);
     expect(opacity(edits.at(0)), 1);
     expect(opacity(removes.at(0)), 1);
-    expect(opacity(edits.at(1)), 0);
-    expect(tester.getRect(find.text('Hover first')), original);
+    expect(tester.getRect(find.text('Hover first')), original, reason: 'the buttons take the room kept for them');
     expect(background(edits.at(0)), background(removes.at(0)));
     final editButton = tester.widget<IconButton>(
       find.ancestor(of: edits.at(0), matching: find.byType(IconButton)).first,
@@ -1726,8 +1725,10 @@ void main() {
     await tester.pumpAndSettle();
     await pointer.moveTo(tester.getCenter(find.text('Hover second')));
     await tester.pumpAndSettle();
-    expect(opacity(edits.at(0)), 0);
-    expect(opacity(edits.at(1)), 1);
+    expect(edits, findsOneWidget, reason: "the first row's buttons go once faded");
+    expect(opacity(edits.at(0)), 1);
+    expect(tester.getRect(find.text('Hover first')), original);
+    expect(tester.getCenter(edits.at(0)).dy, greaterThan(original.bottom), reason: "now on the second row");
   });
 
   testWidgets('planner can assign and clear a due date before adding a task', (tester) async {

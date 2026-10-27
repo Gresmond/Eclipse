@@ -56,12 +56,12 @@ app.*.map.json
 # GOOGLE_CLIENT_SECRET secret.
 /lib/data/google_client.dart
 
-# The icon generator's output (tool/make_icons.sh). Only its source marks
+# The icon generator's output (tool/make_icons.sh). Only its source, script
 # and README are kept; the project's own copies of the icons are committed.
-/design/icon/eclipse-linux-circle/*
-!/design/icon/eclipse-linux-circle/README.md
-!/design/icon/eclipse-linux-circle/source/
-/design/icon/eclipse-linux-circle/source/build.py
+/design/icon/first-contact-icon-suite/*
+!/design/icon/first-contact-icon-suite/README.md
+!/design/icon/first-contact-icon-suite/build.py
+!/design/icon/first-contact-icon-suite/source/
 /design/icon/*.zip
 
 # Local agent instructions, sessions and working notes

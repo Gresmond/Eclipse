@@ -67,9 +67,14 @@ if [[ -d icons/hicolor ]]; then
   cp -R icons/hicolor/. "$prefix/icons/hicolor/"
 fi
 install -m644 "$stage/launcher.desktop" "$prefix/applications/$app_id.desktop"
+previous="$(readlink "$root/current" 2>/dev/null || true)"
 ln -s "$stage" "$link"
 mv -Tf "$link" "$root/current"
 committed=true
+# Keep the new copy and the one that may still be running; older ones go.
+for old in "$root/releases"/*; do
+  [[ $old == "$stage" || $old == "$previous" ]] || rm -rf -- "$old"
+done
 update-desktop-database -q "$prefix/applications" 2>/dev/null || true
 gtk-update-icon-cache -q -t "$prefix/icons/hicolor" 2>/dev/null || true
 echo "Installed Eclipse $version to $root/current"

@@ -86,34 +86,34 @@ void main() {
       },
     );
 
-    test(
-      'verified rebuild installs without elevation, preserves old files and restarts after staging cleanup',
-      () async {
-        final old = Directory('$root/releases/old')..createSync(recursive: true);
-        File('${old.path}/sentinel').writeAsStringSync('running copy');
-        Link('$root/current').createSync(old.path);
-        final u = updater();
-        await u.check();
-        expect(u.status, UpdateStatus.available);
-        await u.update();
-        expect(u.error, isNull);
-        expect(u.status, UpdateStatus.restarting);
-        expect(commands, ['tar', 'bash']);
-        expect(closed, isTrue);
-        expect(restarts, 1);
-        expect(File('$root/current/package-release').readAsStringSync().trim(), '36');
-        expect(File('$root/current/user-install-root').readAsStringSync().trim(), root);
-        expect(File('${old.path}/sentinel').readAsStringSync(), 'running copy');
-        expect(await run('$root/current/eclipse', []).then((r) => r.exitCode), 0);
-        final desktop = File('$home/.local/share/applications/dev.nicholas.productivity_app.desktop');
-        expect(desktop.readAsStringSync(), contains('Exec="'));
-        final validator = await Process.run('sh', ['-c', 'command -v desktop-file-validate']);
-        if (validator.exitCode == 0) {
-          final validation = await Process.run('desktop-file-validate', [desktop.path]);
-          expect(validation.exitCode, 0, reason: '${validation.stdout}${validation.stderr}');
-        }
-      },
-    );
+    test('verified rebuild installs without elevation, keeps the running copy, drops older ones and restarts after staging cleanup', () async {
+      final old = Directory('$root/releases/old')..createSync(recursive: true);
+      File('${old.path}/sentinel').writeAsStringSync('running copy');
+      final older = Directory('$root/releases/older')..createSync(recursive: true);
+      Link('$root/current').createSync(old.path);
+      final u = updater();
+      await u.check();
+      expect(u.status, UpdateStatus.available);
+      await u.update();
+      expect(u.error, isNull);
+      expect(u.status, UpdateStatus.restarting);
+      expect(commands, ['tar', 'bash']);
+      expect(closed, isTrue);
+      expect(restarts, 1);
+      expect(File('$root/current/package-release').readAsStringSync().trim(), '36');
+      expect(File('$root/current/user-install-root').readAsStringSync().trim(), root);
+      expect(File('${old.path}/sentinel').readAsStringSync(), 'running copy');
+      expect(older.existsSync(), isFalse, reason: 'releases before the running one are removed');
+      expect(Directory('$root/releases').listSync(), hasLength(2));
+      expect(await run('$root/current/eclipse', []).then((r) => r.exitCode), 0);
+      final desktop = File('$home/.local/share/applications/dev.nicholas.productivity_app.desktop');
+      expect(desktop.readAsStringSync(), contains('Exec="'));
+      final validator = await Process.run('sh', ['-c', 'command -v desktop-file-validate']);
+      if (validator.exitCode == 0) {
+        final validation = await Process.run('desktop-file-validate', [desktop.path]);
+        expect(validation.exitCode, 0, reason: '${validation.stdout}${validation.stderr}');
+      }
+    });
 
     test('installed, older, missing and unrelated downloads are not offered', () async {
       final u = updater(installedRelease: 36);

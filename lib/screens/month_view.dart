@@ -270,19 +270,17 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
     if (cached?.$1 == key) return cached!.$2;
     final cells = [
       for (final c in columns)
-        IgnorePointer(
-          ignoring: c.leaving,
-          child: StatusCell(
-            day: c.day,
-            habit: habit,
-            size: size,
-            enabled:
-                !c.leaving &&
-                !c.day.isAfter(state.today) &&
-                habit.startedBy(c.day) &&
-                (habit.onDay(c.day) || isWeekend(c.day)),
-            paletteAnimation: _palette,
-          ),
+        // A leaving column's square is disabled, so it ignores clicks too.
+        StatusCell(
+          day: c.day,
+          habit: habit,
+          size: size,
+          enabled:
+              !c.leaving &&
+              !c.day.isAfter(state.today) &&
+              habit.startedBy(c.day) &&
+              (habit.onDay(c.day) || isWeekend(c.day)),
+          paletteAnimation: _palette,
         ),
     ];
     _cells[habit.id] = (key, cells);
@@ -308,6 +306,22 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   (int, int)? _bandsFrom;
   late final _bands = AnimationController(vsync: this, duration: Motion.morph, value: 1);
   late final _bandsCurved = CurvedAnimation(parent: _bands, curve: Motion.morphCurve);
+
+  /// A grid new on screen builds its first half of rows in its first frame
+  /// and the rest, held open at their height, in the next. Its page is
+  /// still fading in from nothing then, so opening a month never costs one
+  /// long frame.
+  late bool _staged = widget.habits.length > 6;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_staged) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _staged = false);
+      });
+    }
+  }
 
   @override
   void didUpdateWidget(_Grid old) {
@@ -400,21 +414,24 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
               },
             ),
             const SizedBox(height: 10),
-            for (final h in habits)
-              Appear(
-                key: ValueKey(h.id),
-                animate: _known.isNotEmpty && !_known.contains(h.id),
-                child: _MonthHabitRow(
-                  habit: h,
-                  names: widget.times ? [for (final x in habits) x.name] : null,
-                  nameWidth: nameWidth,
-                  cellSize: cell,
-                  restWeekends: state.restWeekends,
-                  layout: layout,
-                  clickableDays: columns.where((c) => !c.leaving && !c.day.isAfter(state.today)).length,
-                  cells: _cellsFor(h, cell, state, columns),
+            for (final (i, h) in habits.indexed)
+              if (_staged && i >= (habits.length + 1) ~/ 2)
+                SizedBox(key: ValueKey(h.id), height: cell + 5)
+              else
+                Appear(
+                  key: ValueKey(h.id),
+                  animate: _known.isNotEmpty && !_known.contains(h.id),
+                  child: _MonthHabitRow(
+                    habit: h,
+                    names: widget.times ? [for (final x in habits) x.name] : null,
+                    nameWidth: nameWidth,
+                    cellSize: cell,
+                    restWeekends: state.restWeekends,
+                    layout: layout,
+                    clickableDays: columns.where((c) => !c.leaving && !c.day.isAfter(state.today)).length,
+                    cells: _cellsFor(h, cell, state, columns),
+                  ),
                 ),
-              ),
           ],
         );
 
@@ -823,32 +840,37 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
           child: MouseRegion(
             onHover: (e) => _setHover(e.localPosition.dx),
             onExit: (_) => _setHover(null),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  top: 2.5 - pad + 1,
-                  bottom: 2.5 - pad + 1,
-                  child: IgnorePointer(
-                    child: AnimatedOpacity(
-                      opacity: _hover ? 1 : 0,
-                      duration: Motion.hover,
-                      child: CustomPaint(
-                        painter: _HighlightPainter(
-                          layout: widget.layout,
-                          clickableDays: widget.clickableDays,
-                          cellSize: widget.cellSize,
-                          color: p.empty.withValues(alpha: 0.6),
+            // The squares have nothing for a screen reader, and walking a
+            // month of them for the accessibility tree costs a frame.
+            child: ExcludeSemantics(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    top: 2.5 - pad + 1,
+                    bottom: 2.5 - pad + 1,
+                    child: IgnorePointer(
+                      child: AnimatedOpacity(
+                        opacity: _hover ? 1 : 0,
+                        duration: Motion.hover,
+                        child: CustomPaint(
+                          painter: _HighlightPainter(
+                            layout: widget.layout,
+                            clickableDays: widget.clickableDays,
+                            cellSize: widget.cellSize,
+                            color: p.empty.withValues(alpha: 0.6),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                Flow(
-                  delegate: _ColumnsDelegate(widget.layout, height),
-                  clipBehavior: Clip.none,
-                  children: widget.cells,
-                ),
-              ],
+                  // Each square is its own repaint boundary already.
+                  Flow.unwrapped(
+                    delegate: _ColumnsDelegate(widget.layout, height),
+                    clipBehavior: Clip.none,
+                    children: widget.cells,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
