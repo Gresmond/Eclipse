@@ -99,7 +99,12 @@ class _HabitColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => (s.shownDay, s.habitsRevision));
     final day = state.shownDay;
-    final rituals = state.habitsFor(day.year, day.month), sleep = state.sleepHabitsFor(day.year, day.month);
+    // Only the rituals that are on that day.
+    final all = state.habitsFor(day.year, day.month), sleep = state.sleepHabitsFor(day.year, day.month);
+    final rituals = [
+      for (final h in all)
+        if (h.onDay(day)) h,
+    ];
     return LayoutBuilder(
       builder: (context, constraints) {
         final rows = constraints.maxHeight - 2 * _HabitsCard.chrome - TodayView._gap;
@@ -112,7 +117,12 @@ class _HabitColumn extends StatelessWidget {
             Expanded(
               child: TourTarget(
                 spot: TourSpot.rituals,
-                child: _HabitsCard(title: 'Daily rituals', habits: rituals, allDone: 'Every ritual done. Beautiful.'),
+                child: _HabitsCard(
+                  title: 'Daily rituals',
+                  habits: rituals,
+                  allDone: 'Every ritual done. Beautiful.',
+                  noneOn: all.isNotEmpty && rituals.isEmpty,
+                ),
               ),
             ),
             const SizedBox(height: TodayView._gap),
@@ -136,7 +146,16 @@ class _HabitColumn extends StatelessWidget {
 }
 
 class _HabitsCard extends StatelessWidget {
-  const _HabitsCard({required this.title, required this.habits, required this.allDone, this.times = false});
+  const _HabitsCard({
+    required this.title,
+    required this.habits,
+    required this.allDone,
+    this.times = false,
+    this.noneOn = false,
+  });
+
+  /// None of the month's rituals is on this day: it reads as a rest day.
+  final bool noneOn;
 
   final String title;
   final List<Habit> habits;
@@ -218,10 +237,10 @@ class _HabitsCard extends StatelessWidget {
     final day = state.shownDay;
     final readOnly = !state.canEditDay(day);
     final done = state.doneOn(day, habits);
-    final total = habits.where((h) => h.onDay(day)).length;
+    final total = habits.length;
     final subtitle = done == total && total > 0
         ? allDone
-        : state.isRestDay(day) || total == 0 && habits.isNotEmpty
+        : state.isRestDay(day) || noneOn
         ? 'Rest day. Nothing you have to do.'
         : '';
 
@@ -386,8 +405,6 @@ class _HabitRow extends StatelessWidget {
     final past = state.viewDay != null;
     final streak = past ? 0 : state.currentStreak(habit);
     final best = state.bestStreak(habit);
-    // Not one of its days: greyed like a day still to come.
-    final ink = habit.onDay(day) ? p.ink : p.ink.withValues(alpha: 0.4);
 
     return _HoverHighlight(
       divider: divider,
@@ -412,7 +429,7 @@ class _HabitRow extends StatelessWidget {
                         child: RitualName(
                           habit: habit,
                           maxLines: nameLines,
-                          style: nameStyle.copyWith(color: ink),
+                          style: nameStyle.copyWith(color: p.ink),
                         ),
                       ),
                     ),
@@ -472,7 +489,7 @@ class _HabitRow extends StatelessWidget {
               day: day,
               habit: habit,
               size: cellSize,
-              enabled: state.canEditDay(day) && habit.startedBy(day) && habit.onDay(day),
+              enabled: state.canEditDay(day) && habit.startedBy(day),
               rest: state.isRestDay(day),
             ),
           ],
