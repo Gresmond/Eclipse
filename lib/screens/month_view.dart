@@ -276,7 +276,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
             day: c.day,
             habit: habit,
             size: size,
-            enabled: !c.leaving && !c.day.isAfter(state.today) && habit.startedBy(c.day) && habit.onDay(c.day),
+            enabled: !c.leaving && !c.day.isAfter(state.today) && habit.startedBy(c.day) && (habit.onDay(c.day) || isWeekend(c.day)),
             rest: state.restsFor(habit, c.day),
             paletteAnimation: _palette,
           ),
@@ -406,6 +406,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
                   names: widget.times ? [for (final x in habits) x.name] : null,
                   nameWidth: nameWidth,
                   cellSize: cell,
+                  restWeekends: state.restWeekends,
                   layout: layout,
                   clickableDays: columns.where((c) => !c.leaving && !c.day.isAfter(state.today)).length,
                   cells: _cellsFor(h, cell, state, columns),
@@ -702,10 +703,15 @@ class _MonthHabitRow extends StatefulWidget {
     required this.clickableDays,
     required this.nameWidth,
     required this.cellSize,
+    required this.restWeekends,
     this.names,
   });
 
   final Habit habit;
+
+  /// Whether weekends are rest days, which makes every weekday a ritual's
+  /// usual days rather than every day.
+  final bool restWeekends;
 
   /// The sleep schedule's names, when this row shows a time (see [SleepName]).
   final List<String>? names;
@@ -739,6 +745,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
     final p = context.palette;
     const pad = _HighlightPainter.pad;
     final height = widget.cellSize + 5;
+    final days = widget.habit.weekdays, allWeekdays = days & weekdaysOnly == weekdaysOnly;
     final nameStyle = TextStyle(
       fontFamily: Fonts.body,
       fontSize: 13.5,
@@ -768,7 +775,8 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                         alignment: Alignment.centerLeft,
                         child: SizedBox(
                           width: widget.nameWidth - 16,
-                          // A ritual on only some days shows them after its name.
+                          // A ritual on other than its usual days shows them after its
+                          // name, every weekday as one M–F pill.
                           child: Row(
                             children: [
                               Flexible(
@@ -778,13 +786,19 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                                   style: nameStyle,
                                 ),
                               ),
-                              if (widget.habit.weekdays != everyDay)
-                                for (var weekday = 1; weekday <= 7; weekday++)
-                                  if (widget.habit.weekdays & weekdayBit(weekday) != 0)
+                              if (days != weekdaysOnly && (days != everyDay || widget.restWeekends)) ...[
+                                if (allWeekdays)
+                                  const Padding(
+                                    padding: EdgeInsets.only(left: 4),
+                                    child: _DayCircle(weekday: 1, on: true, size: 16, label: 'M–F'),
+                                  ),
+                                for (var weekday = allWeekdays ? DateTime.saturday : 1; weekday <= 7; weekday++)
+                                  if (days & weekdayBit(weekday) != 0)
                                     Padding(
                                       padding: const EdgeInsets.only(left: 4),
                                       child: _DayCircle(weekday: weekday, on: true, size: 16),
                                     ),
+                              ],
                             ],
                           ),
                         ),

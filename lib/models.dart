@@ -14,6 +14,9 @@ class Habit {
   /// The weekdays it's on now.
   int get weekdays => days.isEmpty ? everyDay : days.last.$2;
 
+  /// On every day or every weekday: shows no days, and is arranged by hand.
+  bool get usualDays => weekdays == everyDay || weekdays == weekdaysOnly;
+
   /// Whether [day] is one of its days; other days are greyed out and can't
   /// be marked, and don't count towards its scores or streaks.
   bool onDay(DateTime day) => isOnDay(days, day);
@@ -39,6 +42,8 @@ class Habit {
 /// Weekdays as bits, Monday the lowest.
 int weekdayBit(int weekday) => 1 << (weekday - 1);
 const everyDay = 0x7f;
+
+bool isWeekend(DateTime day) => day.weekday >= DateTime.saturday;
 
 /// Monday to Friday: a new ritual's days while weekends are rest days.
 const weekdaysOnly = 0x1f;
@@ -87,6 +92,7 @@ List<(DateTime?, int)> changeDays(List<(DateTime?, int)> days, DateTime? from, i
 /// same days keep their arranged order. Sorts [habits] in place.
 List<Habit> sortRituals(List<Habit> habits) {
   int compare(Habit a, Habit b) {
+    if (a.usualDays || b.usualDays) return a.usualDays == b.usualDays ? 0 : (a.usualDays ? -1 : 1);
     final (x, y) = (a.weekdays, b.weekdays);
     if (x == y) return 0;
     final count = _bitCount(y).compareTo(_bitCount(x));

@@ -1239,7 +1239,11 @@ void main() {
     final weights = tester.renderObject<RenderParagraph>(find.text('File notes'));
     expect(longLabel.didExceedMaxLines, isFalse);
     expect(longLabel.size.height, greaterThan(weights.size.height * 1.5));
-    expect(find.text('Rest day. Nothing you have to do.'), findsNWidgets(2), reason: 'the sleep schedule rests too');
+    expect(
+      find.text('Rest day. Nothing you have to do.'),
+      findsOneWidget,
+      reason: 'the sleep schedule rests; every-day rituals are on',
+    );
     await _shoot(tester, 'today_narrow_weekend');
   });
 

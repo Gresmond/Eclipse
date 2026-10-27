@@ -479,9 +479,9 @@ class _EditableRowState extends State<_EditableRow> {
       ),
       child: Row(
         children: [
-          // A ritual on only some days sorts itself (see sortRituals), so it
+          // A ritual on unusual days sorts itself (see sortRituals), so it
           // has no handle, just the space one takes.
-          if (widget.habit.weekdays == everyDay)
+          if (widget.habit.usualDays)
             ReorderableDragStartListener(
               index: widget.index,
               child: MouseRegion(
@@ -603,13 +603,14 @@ class _DayToggles extends StatelessWidget {
 }
 
 /// A weekday's letter in a circle, filled in the done colour when the
-/// ritual is on that day.
+/// ritual is on that day; with a [label], a pill holding that instead.
 class _DayCircle extends StatelessWidget {
-  const _DayCircle({required this.weekday, required this.on, required this.size});
+  const _DayCircle({required this.weekday, required this.on, required this.size, this.label});
 
   final int weekday;
   final bool on;
   final double size;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -617,16 +618,17 @@ class _DayCircle extends StatelessWidget {
     return AnimatedContainer(
       duration: Motion.click,
       curve: Motion.clickCurve,
-      width: size,
+      width: label == null ? size : null,
       height: size,
+      padding: label == null ? null : EdgeInsets.symmetric(horizontal: size * 0.3),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        borderRadius: BorderRadius.circular(size / 2),
         color: on ? p.done : Colors.transparent,
         border: Border.all(color: on ? p.done : p.inkMuted.withValues(alpha: 0.35)),
       ),
       child: Text(
-        weekdayNames[weekday - 1][0],
+        label ?? weekdayNames[weekday - 1][0],
         style: TextStyle(
           fontFamily: Fonts.ui,
           fontSize: size * 0.48,

@@ -751,8 +751,9 @@ class Store {
     ])) {
       final id = r['habit_id'] as int, day = DateTime.parse(r['day'] as String);
       // Days before a ritual was added that month, or that aren't one of its
-      // days, don't count towards it.
-      if (habits[id] case final h? when !h.startedBy(day) || !h.onDay(day)) continue;
+      // days, don't count towards it, except a weekend it was done on.
+      final bonus = isWeekend(day) && r['status'] == HabitStatus.done.index;
+      if (habits[id] case final h? when !h.startedBy(day) || !h.onDay(day) && !bonus) continue;
       final (done, logged) = scores[id] ?? (0, 0);
       scores[id] = (done + (r['status'] == HabitStatus.done.index ? 1 : 0), logged + 1);
     }
@@ -810,7 +811,9 @@ class Store {
     ])) {
       final day = DateTime.parse(r['day'] as String);
       final status = HabitStatus.values[r['status'] as int];
-      if (day == today && status == HabitStatus.none || off(day)) continue;
+      // An off day is passed over, unless it's a weekend it was done on.
+      if (day == today && status == HabitStatus.none) continue;
+      if (off(day) && !(isWeekend(day) && status == HabitStatus.done)) continue;
       if (previous != null && gapBreaks(previous, day)) run = 0;
       if (status == HabitStatus.done) {
         run++;

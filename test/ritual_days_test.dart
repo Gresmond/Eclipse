@@ -107,4 +107,30 @@ void main() {
     expect(find(2026, 10, gym.id).weekdays, mwf, reason: 'chosen days are kept');
     expect(store.raw.select('PRAGMA user_version').single.columnAt(0), Store.schemaVersion);
   });
+
+  test('every-weekday rituals are arranged by hand alongside every-day ones', () {
+    final weekend = weekdayBit(DateTime.saturday) | weekdayBit(DateTime.sunday);
+    final sorted = sortRituals([
+      Habit(1, 'Mon Wed Fri', days: [(null, mwf)]),
+      Habit(2, 'Weekdays', days: [(null, weekdaysOnly)]),
+      Habit(3, 'Weekend', days: [(null, weekend)]),
+      Habit(4, 'Daily'),
+    ]);
+    expect([for (final h in sorted) h.name], ['Weekdays', 'Daily', 'Mon Wed Fri', 'Weekend']);
+  });
+
+  test('a weekend done on a ritual that is off counts as a bonus, never a break', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final habit = store.addHabit(2026, 10, 'Gym');
+    store.setHabitDays(2026, 10, habit.id, [(null, weekdaysOnly)]);
+    // Thu 22, Fri 23, Sat 24 done; Sun 25 missed; Mon 26 done.
+    for (final day in ['2026-10-22', '2026-10-23', '2026-10-24', '2026-10-26']) {
+      store.setEntry(day, habit.id, HabitStatus.done);
+    }
+    store.setEntry('2026-10-25', habit.id, HabitStatus.missed);
+    expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: false), (4, 4));
+    expect(store.monthScores(2026, 10)[habit.id], (4, 4));
+  });
 }
+

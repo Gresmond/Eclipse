@@ -331,8 +331,10 @@ class AppState extends ChangeNotifier {
 
   bool isRestDay(DateTime day) => restWeekends && day.weekday >= DateTime.saturday;
 
-  /// Whether [day] is a rest day for [h]: a ritual on that day wins.
-  bool restsFor(Habit h, DateTime day) => isRestDay(day) && (_isSleep(h) || !h.onDay(day));
+  /// Whether [day] is a rest day for [h], greyed while blank: a weekend it
+  /// isn't on (still tickable, see [isWeekend]), or for the sleep schedule,
+  /// any weekend while they rest.
+  bool restsFor(Habit h, DateTime day) => isWeekend(day) && (_isSleep(h) ? restWeekends : !h.onDay(day));
 
   bool _isSleep(Habit h) => sleepHabits.any((x) => x.id == h.id);
 
@@ -662,13 +664,13 @@ class AppState extends ChangeNotifier {
     _habitsChanged();
   }
 
-  /// Only every-day rituals are arranged by hand, above the rest (see
+  /// Only rituals on their usual days are arranged by hand, above the rest (see
   /// [sortRituals]).
   void reorderHabit(int year, int month, int from, int to) {
     final list = _savedList(year, month);
-    final everyDayCount = list.where((h) => h.weekdays == everyDay).length;
-    if (from >= everyDayCount) return;
-    list.insert(to.clamp(0, everyDayCount - 1), list.removeAt(from));
+    final usualCount = list.where((h) => h.usualDays).length;
+    if (from >= usualCount) return;
+    list.insert(to.clamp(0, usualCount - 1), list.removeAt(from));
     store.reorderHabits(year, month, [for (final h in list) h.id]);
     _habitsChanged();
   }
