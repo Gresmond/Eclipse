@@ -35,7 +35,8 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "build=${full_version#*+}" >> "$GITHUB_OUTPUT"
-          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          # A pushed tag always publishes, so moving a tag re-releases that version.
+          if [[ $GITHUB_REF_TYPE != tag ]] && gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo 'new=false' >> "$GITHUB_OUTPUT"
           else
             echo 'new=true' >> "$GITHUB_OUTPUT"
