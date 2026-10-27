@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/models.dart';
@@ -82,5 +84,27 @@ void main() {
     final receiver = SyncEngine(other, 'b')..clearForJoining();
     receiver.mergeAll([(sender.changesSince(0).values.expand((v) => v).toList(), 'a')]);
     expect(other.monthHabits(2026, 10).single.days, store.monthHabits(2026, 10).single.days);
+  });
+
+  test('with weekends as rest days, every-day rituals move to weekdays only once', () {
+    final dir = Directory.systemTemp.createTempSync('eclipse-ritual-days');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final path = '${dir.path}/test.db';
+    var store = Store.open(path);
+    final daily = store.addHabit(2026, 9, 'Read');
+    store.copyMonth((2026, 9), (2026, 10));
+    final gym = store.addHabit(2026, 10, 'Gym');
+    store.setHabitDays(2026, 10, gym.id, [(null, mwf)]);
+    store.setSetting('restWeekends', '1');
+    store.raw.execute('PRAGMA user_version = 18');
+    store.close();
+
+    store = Store.open(path);
+    addTearDown(store.close);
+    Habit find(int year, int month, int id) => store.monthHabits(year, month).firstWhere((h) => h.id == id);
+    expect(find(2026, 9, daily.id).weekdays, weekdaysOnly, reason: 'past months too');
+    expect(find(2026, 10, daily.id).weekdays, weekdaysOnly);
+    expect(find(2026, 10, gym.id).weekdays, mwf, reason: 'chosen days are kept');
+    expect(store.raw.select('PRAGMA user_version').single.columnAt(0), Store.schemaVersion);
   });
 }

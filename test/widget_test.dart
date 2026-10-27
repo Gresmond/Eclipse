@@ -686,7 +686,7 @@ void main() {
       expect(state.bestStreak(h), 2);
     });
 
-    test('a blank weekend is excused only when weekends are rest days', () {
+    test('a ritual on a weekend wins over rest days', () {
       final store = _testStore();
       var state = AppState(store, clock: () => DateTime(2026, 10, 27)); // Tuesday
       final h = state.habits.first;
@@ -699,16 +699,26 @@ void main() {
       state.setRestWeekends(true);
       expect(state.isRestDay(DateTime(2026, 10, 24)), isTrue);
       expect(state.isRestDay(DateTime(2026, 10, 23)), isFalse);
-      expect(state.currentStreak(h), 4, reason: 'Saturday and Sunday neither break nor add');
-      expect(state.bestStreak(h), 4);
+      expect(state.restsFor(h, DateTime(2026, 10, 24)), isFalse, reason: 'on every day, so Saturday is a normal day');
+      expect(state.currentStreak(h), 2, reason: 'the blank weekend still breaks it');
+      final sleep = state.sleepHabits.first;
+      expect(state.restsFor(sleep, DateTime(2026, 10, 24)), isTrue, reason: 'the sleep schedule keeps resting');
 
-      state.selectStatus(DateTime(2026, 10, 25), h, HabitStatus.done);
-      expect(state.currentStreak(h), 5, reason: 'a ritual done on a rest day still counts');
-      state.selectStatus(DateTime(2026, 10, 25), h, HabitStatus.missed);
-      expect(state.currentStreak(h), 2, reason: 'marked not done, it breaks the streak');
-
+      // A new ritual starts on weekdays only, so its weekends rest.
+      state.addHabit(2026, 10, 'Stretch');
+      final added = state.habits.firstWhere((x) => x.name == 'Stretch');
+      expect(added.weekdays, weekdaysOnly);
+      expect(state.restsFor(added, DateTime(2026, 10, 24)), isTrue);
+      for (final d in [22, 23, 26, 27]) {
+        store.setEntry('2026-10-$d', added.id, HabitStatus.done);
+      }
       state = AppState(store, clock: () => DateTime(2026, 10, 27));
       expect(state.restWeekends, isTrue, reason: 'remembered');
+      expect(state.currentStreak(added), 4, reason: 'Saturday and Sunday neither break nor add');
+
+      state.setRestWeekends(false);
+      state.addHabit(2026, 10, 'Walk');
+      expect(state.habits.firstWhere((x) => x.name == 'Walk').weekdays, everyDay);
     });
   });
 

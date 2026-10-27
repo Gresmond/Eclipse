@@ -277,7 +277,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
             habit: habit,
             size: size,
             enabled: !c.leaving && !c.day.isAfter(state.today) && habit.startedBy(c.day) && habit.onDay(c.day),
-            rest: state.isRestDay(c.day),
+            rest: state.restsFor(habit, c.day),
             paletteAnimation: _palette,
           ),
         ),

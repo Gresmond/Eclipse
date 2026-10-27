@@ -316,8 +316,10 @@ class AppState extends ChangeNotifier {
     if (name != themeName) setTheme(name);
   }
 
-  /// Weekends shown greyed as rest days. A blank rest day doesn't break a
-  /// streak; a ritual done on one still counts.
+  /// Weekends shown greyed as rest days, and new rituals start on weekdays
+  /// only. A ritual that's on a weekend treats it as any other day; the
+  /// sleep schedule has no days of its own, so a blank weekend never breaks
+  /// its streaks.
   late bool restWeekends = store.setting('restWeekends') == '1';
 
   void setRestWeekends(bool rest) {
@@ -328,6 +330,11 @@ class AppState extends ChangeNotifier {
   }
 
   bool isRestDay(DateTime day) => restWeekends && day.weekday >= DateTime.saturday;
+
+  /// Whether [day] is a rest day for [h]: a ritual on that day wins.
+  bool restsFor(Habit h, DateTime day) => isRestDay(day) && (_isSleep(h) || !h.onDay(day));
+
+  bool _isSleep(Habit h) => sleepHabits.any((x) => x.id == h.id);
 
   int habitsRevision = 0, entriesRevision = 0, todosRevision = 0, journalRevision = 0;
   final _monthHabits = LruCache<(int, int), List<Habit>>(24);
@@ -602,14 +609,17 @@ class AppState extends ChangeNotifier {
 
   void addHabit(int year, int month, String name) {
     if (name.trim().isEmpty) return;
-    _savedList(year, month).add(
-      store.addHabit(
-        year,
-        month,
-        normaliseNote(name.trim()),
-        addedOn: year == today.year && month == today.month ? today : null,
-      ),
+    final h = store.addHabit(
+      year,
+      month,
+      normaliseNote(name.trim()),
+      addedOn: year == today.year && month == today.month ? today : null,
     );
+    if (restWeekends) {
+      h.days = [(null, weekdaysOnly)];
+      store.setHabitDays(year, month, h.id, h.days);
+    }
+    _savedList(year, month).add(h);
     _resort(year, month);
     _habitsChanged();
   }
@@ -728,7 +738,7 @@ class AppState extends ChangeNotifier {
 
   int bestStreak(Habit h) => _streaksOf(h).$2;
 
-  (int, int) _streaksOf(Habit h) => _streaks[h.id] ??= store.streaks(h.id, today, restWeekends: restWeekends);
+  (int, int) _streaksOf(Habit h) => _streaks[h.id] ??= store.streaks(h.id, today, restWeekends: restWeekends && _isSleep(h));
 
   // To-dos
 

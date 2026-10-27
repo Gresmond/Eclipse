@@ -40,6 +40,9 @@ class Habit {
 int weekdayBit(int weekday) => 1 << (weekday - 1);
 const everyDay = 0x7f;
 
+/// Monday to Friday: a new ritual's days while weekends are rest days.
+const weekdaysOnly = 0x1f;
+
 /// Whether [day] is on in a ritual's [Habit.days].
 bool isOnDay(List<(DateTime?, int)> days, DateTime day) {
   var bits = everyDay;

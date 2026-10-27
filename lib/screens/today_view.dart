@@ -240,7 +240,7 @@ class _HabitsCard extends StatelessWidget {
     final total = habits.length;
     final subtitle = done == total && total > 0
         ? allDone
-        : state.isRestDay(day) || noneOn
+        : noneOn || state.isRestDay(day) && (times || habits.isEmpty)
         ? 'Rest day. Nothing you have to do.'
         : '';
 
@@ -490,7 +490,7 @@ class _HabitRow extends StatelessWidget {
               habit: habit,
               size: cellSize,
               enabled: state.canEditDay(day) && habit.startedBy(day),
-              rest: state.isRestDay(day),
+              rest: state.restsFor(habit, day),
             ),
           ],
         ),
@@ -525,7 +525,7 @@ class _WeekTrail extends StatelessWidget {
   Widget _mark(Palette p, AppState state, DateTime past) {
     final status = state.statusOf(past, habit);
     return TweenAnimationBuilder<double>(
-      tween: Tween(end: state.isRestDay(past) || !habit.onDay(past) ? 1 : 0),
+      tween: Tween(end: state.restsFor(habit, past) || !habit.onDay(past) ? 1 : 0),
       duration: Motion.morph,
       curve: Motion.morphCurve,
       builder: (context, r, _) => Container(
