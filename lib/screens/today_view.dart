@@ -99,7 +99,12 @@ class _HabitColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => (s.shownDay, s.habitsRevision));
     final day = state.shownDay;
-    final rituals = state.habitsFor(day.year, day.month), sleep = state.sleepHabitsFor(day.year, day.month);
+    // Only the rituals that are on that day.
+    final all = state.habitsFor(day.year, day.month), sleep = state.sleepHabitsFor(day.year, day.month);
+    final rituals = [
+      for (final h in all)
+        if (h.onDay(day)) h,
+    ];
     return LayoutBuilder(
       builder: (context, constraints) {
         final rows = constraints.maxHeight - 2 * _HabitsCard.chrome - TodayView._gap;
@@ -112,7 +117,12 @@ class _HabitColumn extends StatelessWidget {
             Expanded(
               child: TourTarget(
                 spot: TourSpot.rituals,
-                child: _HabitsCard(title: 'Daily rituals', habits: rituals, allDone: 'Every ritual done. Beautiful.'),
+                child: _HabitsCard(
+                  title: 'Daily rituals',
+                  habits: rituals,
+                  allDone: 'Every ritual done. Beautiful.',
+                  noneOn: all.isNotEmpty && rituals.isEmpty,
+                ),
               ),
             ),
             const SizedBox(height: TodayView._gap),
@@ -136,7 +146,16 @@ class _HabitColumn extends StatelessWidget {
 }
 
 class _HabitsCard extends StatelessWidget {
-  const _HabitsCard({required this.title, required this.habits, required this.allDone, this.times = false});
+  const _HabitsCard({
+    required this.title,
+    required this.habits,
+    required this.allDone,
+    this.times = false,
+    this.noneOn = false,
+  });
+
+  /// None of the month's rituals is on this day: it reads as a rest day.
+  final bool noneOn;
 
   final String title;
   final List<Habit> habits;
@@ -221,7 +240,7 @@ class _HabitsCard extends StatelessWidget {
     final total = habits.length;
     final subtitle = done == total && total > 0
         ? allDone
-        : state.isRestDay(day)
+        : noneOn || state.isRestDay(day)
         ? 'Rest day. Nothing you have to do.'
         : '';
 
@@ -271,8 +290,8 @@ class _HabitsCard extends StatelessWidget {
                     child: ListView.builder(
                       key: ValueKey([for (final h in habits) '${h.id} ${h.name}'].join('|')),
                       padding: EdgeInsets.zero,
-                      itemExtentBuilder: (i, _) => i < total ? rows.heights[i] : null,
-                      itemCount: total,
+                      itemExtentBuilder: (i, _) => i < habits.length ? rows.heights[i] : null,
+                      itemCount: habits.length,
                       itemBuilder: (context, i) => _HabitRow(
                         habit: habits[i],
                         day: day,
@@ -502,9 +521,11 @@ class _WeekTrail extends StatelessWidget {
   }
 
   // A rest day's blank mark fades rather than snapping; the colour itself
-  // is read from the palette every frame, so it follows a theme change.
+  // is read from the palette every frame, so it follows a theme change. A
+  // day the ritual isn't on has no mark, as it has no square.
   Widget _mark(Palette p, AppState state, DateTime past) {
     final status = state.statusOf(past, habit);
+    final off = !habit.onDay(past);
     return TweenAnimationBuilder<double>(
       tween: Tween(end: state.isRestDay(past) ? 1 : 0),
       duration: Motion.morph,
@@ -516,6 +537,7 @@ class _WeekTrail extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(2.5),
           color: switch (status) {
+            _ when off => Colors.transparent,
             HabitStatus.none => p.empty.withValues(alpha: 1 - 0.55 * r),
             HabitStatus.done => p.done,
             HabitStatus.missed => p.missed.withValues(alpha: 0.75),

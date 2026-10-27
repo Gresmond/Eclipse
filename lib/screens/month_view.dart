@@ -265,20 +265,24 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
     AppState state,
     List<({int number, DateTime day, bool leaving})> columns,
   ) {
-    final key = (widget.year, widget.month, _previous, habit, size, state.today, state.restWeekends);
+    final key = (widget.year, widget.month, _previous, habit, habit.days, size, state.today, state.restWeekends);
     final cached = _cells[habit.id];
     if (cached?.$1 == key) return cached!.$2;
     final cells = [
       for (final c in columns)
-        // A leaving column's square is disabled, so it ignores clicks too.
-        StatusCell(
-          day: c.day,
-          habit: habit,
-          size: size,
-          enabled: !c.leaving && !c.day.isAfter(state.today) && habit.startedBy(c.day),
-          rest: state.isRestDay(c.day),
-          paletteAnimation: _palette,
-        ),
+        // A day the ritual isn't on has no square, just the space one takes.
+        if (!habit.onDay(c.day))
+          SizedBox.square(dimension: size)
+        else
+          // A leaving column's square is disabled, so it ignores clicks too.
+          StatusCell(
+            day: c.day,
+            habit: habit,
+            size: size,
+            enabled: !c.leaving && !c.day.isAfter(state.today) && habit.startedBy(c.day),
+            rest: state.isRestDay(c.day),
+            paletteAnimation: _palette,
+          ),
     ];
     _cells[habit.id] = (key, cells);
     return cells;

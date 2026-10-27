@@ -543,7 +543,8 @@ class AppState extends ChangeNotifier {
     final beforeFirst = source.$1 * 12 + source.$2 > year * 12 + month;
     if (source != (year, month) && (beforeFirst || isFutureMonth(year, month))) {
       return _previewHabits[(year, month)] = [
-        for (final h in store.monthHabits(source.$1, source.$2)) Habit(h.id, h.name, description: h.description),
+        for (final h in store.monthHabits(source.$1, source.$2))
+          Habit(h.id, h.name, description: h.description, days: [if (h.weekdays != everyDay) (null, h.weekdays)]),
       ];
     }
     return _savedList(year, month);
@@ -599,16 +600,20 @@ class AppState extends ChangeNotifier {
     saveJournalDraft();
   }
 
-  void addHabit(int year, int month, String name) {
+  /// A new ritual, on the weekdays in [days] (see [weekdayBit]).
+  void addHabit(int year, int month, String name, {int days = everyDay}) {
     if (name.trim().isEmpty) return;
-    _savedList(year, month).add(
-      store.addHabit(
-        year,
-        month,
-        normaliseNote(name.trim()),
-        addedOn: year == today.year && month == today.month ? today : null,
-      ),
+    final h = store.addHabit(
+      year,
+      month,
+      normaliseNote(name.trim()),
+      addedOn: year == today.year && month == today.month ? today : null,
     );
+    if (days & everyDay != 0 && days != everyDay) {
+      h.days = [(null, days)];
+      store.setHabitDays(year, month, h.id, h.days);
+    }
+    _savedList(year, month).add(h);
     _habitsChanged();
   }
 
@@ -625,6 +630,20 @@ class AppState extends ChangeNotifier {
     final saved = _savedList(year, month).firstWhere((x) => x.id == h.id);
     saved.description = note.trim().isEmpty ? null : normaliseNote(note.trim());
     store.setHabitNote(year, month, h.id, saved.description);
+    _habitsChanged();
+  }
+
+  /// The weekdays the ritual is on, as bits (see [weekdayBit]). In the current month
+  /// they change from today on, so earlier days keep the ones they had;
+  /// any other month changes as a whole.
+  void setHabitDays(int year, int month, Habit h, int bits) {
+    if (bits & everyDay == 0) return;
+    final saved = _savedList(year, month).firstWhere((x) => x.id == h.id);
+    final from = year == today.year && month == today.month && today.day > 1 ? today : null;
+    saved.days = changeDays(saved.days, from, bits);
+    store.setHabitDays(year, month, h.id, saved.days);
+    _monthScores.remove((year, month));
+    _streaks.remove(h.id);
     _habitsChanged();
   }
 
@@ -685,7 +704,9 @@ class AppState extends ChangeNotifier {
     _entriesChanged(day);
   }
 
-  int doneOn(DateTime day, List<Habit> habits) => habits.where((h) => statusOf(day, h) == HabitStatus.done).length;
+  /// Done among the rituals that are on [day].
+  int doneOn(DateTime day, List<Habit> habits) =>
+      habits.where((h) => h.onDay(day) && statusOf(day, h) == HabitStatus.done).length;
 
   (int, int) scoreOf(int year, int month, Habit habit) =>
       _monthScores.putIfAbsent((year, month), () => store.monthScores(year, month))[habit.id] ?? (0, 0);

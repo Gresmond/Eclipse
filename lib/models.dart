@@ -3,7 +3,20 @@ import 'dart:convert';
 enum HabitStatus { none, done, missed, other }
 
 class Habit {
-  Habit(this.id, this.name, {this.description, this.minutes, this.addedOn});
+  Habit(this.id, this.name, {this.description, this.minutes, this.addedOn, this.days = const []});
+
+  /// Which weekdays it's on this month, as changes of weekday bits (see [weekdayBit]), each
+  /// from its day on (the first may be from the start of the month, null).
+  /// A change partway through the month leaves the days before it alone.
+  /// Empty when it's on every day.
+  List<(DateTime?, int)> days;
+
+  /// The weekdays it's on now.
+  int get weekdays => days.isEmpty ? everyDay : days.last.$2;
+
+  /// Whether [day] is one of its days; other days are greyed out and can't
+  /// be marked, and don't count towards its scores or streaks.
+  bool onDay(DateTime day) => isOnDay(days, day);
 
   /// The day it was added, when that was partway through its month.
   final DateTime? addedOn;
@@ -21,6 +34,48 @@ class Habit {
   /// A sleep item's time this month, in minutes after midnight; null when
   /// none is set. Rituals have none.
   int? minutes;
+}
+
+/// Weekdays as bits, Monday the lowest.
+int weekdayBit(int weekday) => 1 << (weekday - 1);
+const everyDay = 0x7f;
+
+/// Whether [day] is on in a ritual's [Habit.days].
+bool isOnDay(List<(DateTime?, int)> days, DateTime day) {
+  var bits = everyDay;
+  for (final (from, b) in days) {
+    if (from == null || !dateOnly(day).isBefore(from)) bits = b;
+  }
+  return bits & weekdayBit(day.weekday) != 0;
+}
+
+/// [Habit.days] as saved: `[[null, 21], ["2026-10-27", 127]]`, or null
+/// when it's on every day.
+String? encodeDays(List<(DateTime?, int)> days) => days.isEmpty
+    ? null
+    : jsonEncode([
+        for (final (from, bits) in days) [from == null ? null : dateKey(from), bits],
+      ]);
+
+List<(DateTime?, int)> decodeDays(String? value) => value == null
+    ? []
+    : [
+        for (final change in jsonDecode(value) as List)
+          (change[0] == null ? null : DateTime.parse(change[0] as String), change[1] as int),
+      ];
+
+/// [days] with [bits] from [from] on (from the start of the month when
+/// null), replacing any change made the same day, and with no change that
+/// leaves the days as they were.
+List<(DateTime?, int)> changeDays(List<(DateTime?, int)> days, DateTime? from, int bits) {
+  final kept = [
+    if (from != null)
+      for (final c in days)
+        if (c.$1 == null || c.$1!.isBefore(from)) c,
+  ];
+  final before = kept.isEmpty ? everyDay : kept.last.$2;
+  if (bits != before) kept.add((from, bits));
+  return kept.every((c) => c.$2 == everyDay) ? [] : kept;
 }
 
 /// The sleep schedule: the same four in every month, below the rituals.
