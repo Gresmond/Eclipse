@@ -561,7 +561,9 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
             curve: Motion.morphCurve,
             right: pill.right,
             top: pill.top,
-            width: relabeling ? labelWidth + _Tab.padding * 2 : pill.size.width,
+            // Sized from the label while it sits on the past tab, so the frame
+            // a relabel ends never shows the old day's measured width.
+            width: widget.selected < 0 && _pillFor == -1 ? labelWidth + _Tab.padding * 2 : pill.size.width,
             height: pill.size.height,
             // A rounded rect, not a StadiumBorder: Impeller on Linux draws
             // shape paths without anti-aliasing, but rounded rects smoothly.
