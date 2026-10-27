@@ -80,4 +80,20 @@ void main() {
     addTearDown(store.close);
     expect(store.monthHabits(2026, 10).single.weekdays, mwf, reason: 'days chosen after the reset stay');
   });
+
+  test('a database whose days column was dropped opens with it back', () {
+    final dir = Directory.systemTemp.createTempSync('eclipse-ritual-days');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final path = '${dir.path}/test.db';
+    var store = Store.open(path);
+    store.addHabit(2026, 10, 'Gym');
+    store.raw.execute('ALTER TABLE month_habits DROP COLUMN days');
+    store.raw.execute('PRAGMA user_version = 20');
+    store.close();
+
+    store = Store.open(path);
+    addTearDown(store.close);
+    expect(store.monthHabits(2026, 10).single.weekdays, everyDay);
+    expect(store.raw.select('PRAGMA user_version').single.columnAt(0), Store.schemaVersion);
+  });
 }

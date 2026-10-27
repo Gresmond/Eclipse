@@ -10,7 +10,7 @@ part 'store_todos.dart';
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 20;
+  static const schemaVersion = 21;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -552,12 +552,18 @@ class Store {
       _db.execute('PRAGMA user_version = 18');
     }
     // Version 19 moved every ritual to weekdays only while weekends were
-    // rest days. Every ritual starts on every day again; days are only what
-    // you choose.
-    if (version < 20) {
+    // rest days, and a build that dropped ritual days entirely took version
+    // 20 for removing the column. Either way, every ritual starts on every
+    // day again, with the column back where it was dropped; days are only
+    // what you choose.
+    if (version < 21) {
       transaction(() {
-        _db.execute('UPDATE month_habits SET days = NULL WHERE days IS NOT NULL');
-        _db.execute('PRAGMA user_version = 20');
+        if (_db.select('PRAGMA table_info(month_habits)').any((r) => r['name'] == 'days')) {
+          _db.execute('UPDATE month_habits SET days = NULL WHERE days IS NOT NULL');
+        } else {
+          _db.execute('ALTER TABLE month_habits ADD COLUMN days TEXT');
+        }
+        _db.execute('PRAGMA user_version = 21');
       });
     }
   }
