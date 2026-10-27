@@ -11,6 +11,7 @@ import 'data/sync.dart';
 import 'data/sync_service.dart';
 import 'models.dart';
 import 'theme/app_theme.dart';
+import 'training_log.dart';
 import 'util/lru_cache.dart';
 
 part 'app_scope.dart';
@@ -139,6 +140,8 @@ class AppState extends ChangeNotifier {
           habitsRevision++;
         case 'todo' || 'todo_history':
           reloadTodos = true;
+        case 'exercise' || 'training_set':
+          training.reload();
         case 'setting':
           restWeekends = store.setting('restWeekends') == '1';
           dayStartHour = int.tryParse(store.setting('dayStartHour') ?? '') ?? 0;
@@ -464,6 +467,19 @@ class AppState extends ChangeNotifier {
   }
 
   // Navigation
+
+  /// Gym training, every exercise's progress; the page under the corner.
+  late final training = TrainingLog(store, notifyListeners);
+
+  /// The Training page is turned to, over whichever view was open.
+  bool showingTraining = false;
+
+  void toggleTraining() {
+    saveDrafts();
+    showingTraining = !showingTraining;
+    if (!showingTraining) training.day = null;
+    notifyListeners();
+  }
 
   void showToday() {
     saveHabitDrafts();

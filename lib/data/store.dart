@@ -5,13 +5,14 @@ import 'dart:math';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../models.dart';
+import '../training.dart';
 
 part 'store_todos.dart';
 
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 21;
+  static const schemaVersion = 22;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -144,6 +145,8 @@ class Store {
       'sleep_habits': 'item, habit_id',
       'sleep_notes': 'year, month, item, note',
       'settings': 'key, value',
+      'exercises': 'uid, name, muscle, bodyweight',
+      'training_sets': 'uid, day, exercise, position, weight, reps',
       'sync_reg': 'kind, rowkey, field, value, ts, origin, vv, journal_versions',
       'sync_dirty': 'kind, rowkey, at',
       'sync_seen': 'file, stamp',
@@ -159,12 +162,16 @@ class Store {
               "SELECT 1 FROM todos WHERE uid IS NULL OR scope NOT IN ('today', 'tomorrow', 'week', 'month') OR done NOT IN (0, 1) LIMIT 1",
             )
             .isNotEmpty ||
-        _db.select('SELECT 1 FROM sleep_habits').length != SleepItem.values.length) {
+        _db.select('SELECT 1 FROM sleep_habits').length != SleepItem.values.length ||
+        _db
+            .select('SELECT 1 FROM exercises WHERE muscle NOT IN (${MuscleGroup.values.map((g) => "'${g.name}'").join(', ')}) LIMIT 1')
+            .isNotEmpty ||
+        _db.select('SELECT 1 FROM training_sets WHERE reps < 0 OR weight < 0 LIMIT 1').isNotEmpty) {
       throw StateError('Backup contains invalid data');
     }
     for (final r in _db.select(
       'SELECT day FROM entries UNION SELECT day FROM journal UNION SELECT since AS day FROM todos '
-      'UNION SELECT due_date AS day FROM todos WHERE due_date IS NOT NULL',
+      'UNION SELECT due_date AS day FROM todos WHERE due_date IS NOT NULL UNION SELECT day FROM training_sets',
     )) {
       final day = r['day'];
       if (!_validDay(day)) throw StateError('Backup contains an invalid date');
@@ -567,6 +574,38 @@ class Store {
         _db.execute('PRAGMA user_version = 21');
       });
     }
+    if (version < 22) {
+      transaction(() {
+        _db.execute('''
+          -- Gym training: your exercises, and every set you log of them.
+          CREATE TABLE IF NOT EXISTS exercises (
+            uid TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            muscle TEXT NOT NULL,
+            bodyweight INTEGER NOT NULL DEFAULT 0
+          );
+          CREATE TABLE IF NOT EXISTS training_sets (
+            uid TEXT PRIMARY KEY,
+            day TEXT NOT NULL,
+            exercise TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            weight REAL,
+            reps INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS training_sets_day ON training_sets(day);
+        ''');
+        for (final (table, kind) in [('exercises', 'exercise'), ('training_sets', 'training_set')]) {
+          for (final (event, row) in [('INSERT', 'NEW'), ('UPDATE', 'NEW'), ('DELETE', 'OLD')]) {
+            _db.execute(
+              'CREATE TRIGGER IF NOT EXISTS ${table}_${event.toLowerCase()} AFTER $event ON $table BEGIN '
+              "INSERT INTO sync_dirty VALUES ('$kind', $row.uid, $_now) "
+              'ON CONFLICT (kind, rowkey) DO UPDATE SET at = excluded.at; END',
+            );
+          }
+        }
+        _db.execute('PRAGMA user_version = 22');
+      });
+    }
   }
 
   /// Settings that are the same on every computer. The theme isn't: each
@@ -584,6 +623,8 @@ class Store {
         UNION ALL SELECT 'todo', uid FROM todos
         UNION ALL SELECT 'journal', day FROM journal
         UNION ALL SELECT 'sleep_note', year || '-' || month || '/' || item FROM sleep_notes
+        UNION ALL SELECT 'exercise', uid FROM exercises
+        UNION ALL SELECT 'training_set', uid FROM training_sets
         UNION ALL SELECT 'setting', key FROM settings WHERE key IN (${syncedSettings.map((k) => "'$k'").join(', ')})
       )
     ''');
@@ -930,6 +971,60 @@ class Store {
       );
     }
   }
+
+  // Training
+
+  String _newUid() => _db.select('SELECT lower(hex(randomblob(8)))').first.columnAt(0) as String;
+
+  List<Exercise> exercises() => [
+    for (final r in _db.select('SELECT * FROM exercises ORDER BY name COLLATE NOCASE'))
+      Exercise(
+        uid: r['uid'] as String,
+        name: r['name'] as String,
+        group: MuscleGroup.named(r['muscle'] as String) ?? MuscleGroup.chest,
+        bodyweight: r['bodyweight'] == 1,
+      ),
+  ];
+
+  Exercise addExercise(String name, MuscleGroup group, {required bool bodyweight}) {
+    final e = Exercise(uid: _newUid(), name: name, group: group, bodyweight: bodyweight);
+    saveExercise(e);
+    return e;
+  }
+
+  void saveExercise(Exercise e) => _db.execute(
+    'INSERT INTO exercises (uid, name, muscle, bodyweight) VALUES (?, ?, ?, ?) '
+    'ON CONFLICT (uid) DO UPDATE SET name = excluded.name, muscle = excluded.muscle, bodyweight = excluded.bodyweight',
+    [e.uid, e.name, e.group.name, e.bodyweight ? 1 : 0],
+  );
+
+  /// Every set logged, oldest day first, in order within each day.
+  List<TrainingSet> trainingSets() => [
+    for (final r in _db.select('SELECT * FROM training_sets ORDER BY day, position'))
+      TrainingSet(
+        uid: r['uid'] as String,
+        day: r['day'] as String,
+        exercise: r['exercise'] as String,
+        position: r['position'] as int,
+        weight: (r['weight'] as num?)?.toDouble(),
+        reps: r['reps'] as int,
+      ),
+  ];
+
+  TrainingSet addTrainingSet(String day, String exercise, {required int position, double? weight, int reps = 0}) {
+    final s = TrainingSet(uid: _newUid(), day: day, exercise: exercise, position: position, weight: weight, reps: reps);
+    saveTrainingSet(s);
+    return s;
+  }
+
+  void saveTrainingSet(TrainingSet s) => _db.execute(
+    'INSERT INTO training_sets (uid, day, exercise, position, weight, reps) VALUES (?, ?, ?, ?, ?, ?) '
+    'ON CONFLICT (uid) DO UPDATE SET day = excluded.day, exercise = excluded.exercise, '
+    'position = excluded.position, weight = excluded.weight, reps = excluded.reps',
+    [s.uid, s.day, s.exercise, s.position, s.weight, s.reps],
+  );
+
+  void deleteTrainingSet(String uid) => _db.execute('DELETE FROM training_sets WHERE uid = ?', [uid]);
 
   /// Runs [body] atomically; nested calls are part of the outer one.
   T transaction<T>(T Function() body) {

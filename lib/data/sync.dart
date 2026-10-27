@@ -66,7 +66,7 @@ class SyncEngine {
   static const _present = '_';
 
   /// Kinds whose rows can be removed; the others always exist, blank.
-  static const _removable = {'month_habit', 'todo'};
+  static const _removable = {'month_habit', 'todo', 'exercise', 'training_set'};
 
   static (String, String) _split(String rowkey) {
     final i = rowkey.indexOf('/');
@@ -129,6 +129,10 @@ class SyncEngine {
         return {
           'value': row('SELECT value FROM settings WHERE key = ?', [rowkey])?['value'],
         };
+      case 'exercise':
+        fields = row('SELECT name, muscle, bodyweight FROM exercises WHERE uid = ?', [rowkey]);
+      case 'training_set':
+        fields = row('SELECT day, exercise, position, weight, reps FROM training_sets WHERE uid = ?', [rowkey]);
       default:
         throw ArgumentError(kind);
     }
@@ -234,6 +238,27 @@ class SyncEngine {
         } else {
           store.setSetting(rowkey, value);
         }
+      case 'exercise':
+        if (gone) {
+          _db.execute('DELETE FROM exercises WHERE uid = ?', [rowkey]);
+        } else {
+          _db.execute(
+            'INSERT INTO exercises (uid, name, muscle, bodyweight) VALUES (?, ?, ?, ?) '
+            'ON CONFLICT (uid) DO UPDATE SET name = excluded.name, muscle = excluded.muscle, bodyweight = excluded.bodyweight',
+            [rowkey, f['name'] ?? '', f['muscle'] ?? 'chest', f['bodyweight'] ?? 0],
+          );
+        }
+      case 'training_set':
+        if (gone) {
+          _db.execute('DELETE FROM training_sets WHERE uid = ?', [rowkey]);
+        } else {
+          _db.execute(
+            'INSERT INTO training_sets (uid, day, exercise, position, weight, reps) VALUES (?, ?, ?, ?, ?, ?) '
+            'ON CONFLICT (uid) DO UPDATE SET day = excluded.day, exercise = excluded.exercise, '
+            'position = excluded.position, weight = excluded.weight, reps = excluded.reps',
+            [rowkey, f['day'] ?? '', f['exercise'] ?? '', f['position'] ?? 0, f['weight'], f['reps'] ?? 0],
+          );
+        }
     }
   }
 
@@ -310,6 +335,8 @@ class SyncEngine {
       _db.execute('DELETE FROM todos');
       _db.execute('DELETE FROM journal');
       _db.execute('DELETE FROM sleep_notes');
+      _db.execute('DELETE FROM exercises');
+      _db.execute('DELETE FROM training_sets');
       _db.execute('DELETE FROM settings WHERE key IN (${Store.syncedSettings.map((k) => "'$k'").join(', ')})');
       _db.execute('DELETE FROM habits WHERE id NOT IN (SELECT habit_id FROM sleep_habits)');
       _db.execute('DELETE FROM sync_reg');
