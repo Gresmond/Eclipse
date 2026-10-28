@@ -15,16 +15,33 @@ typedef _Later = ({TodoScope? scope, TodoItem? item, Repeat? repeat});
 /// [WeekCard.span] after it), and [later] by date, only days with tasks.
 class _Planned {
   _Planned(AppState state, DateTime day, {required bool past}) {
-    List<TodoItem> list(TodoScope scope) => state.orderedTodos(scope, day: past ? day : null);
-    for (final item in list(TodoScope.today)) {
+    final lists = {
+      for (final scope in [TodoScope.today, TodoScope.tomorrow, TodoScope.week, TodoScope.month])
+        scope: state.orderedTodos(scope, day: past ? day : null),
+    };
+    for (final item in lists[TodoScope.today]!) {
       days[0].add((TodoScope.today, item));
     }
-    for (final item in list(TodoScope.tomorrow)) {
+    for (final item in lists[TodoScope.tomorrow]!) {
       days[1].add((TodoScope.tomorrow, item));
     }
+    // Further ahead has a repeat only at its next time not yet passed, and
+    // not at all while that's in the week; a later time made already waits.
+    final kept = {
+      for (final items in lists.values)
+        for (final item in items) ?item.uid,
+    };
+    final coming = {
+      if (!past)
+        for (final repeat in state.repeats) repeat.uid: ?state.comingOccurrence(repeat, day, kept: kept),
+    };
+    bool waits(TodoItem item) => switch (state.repeatOf(item)) {
+      final repeat? when !past => coming[repeat.uid] != item.repeatDay,
+      _ => false,
+    };
     final byDay = <String, List<_Later>>{};
     for (final scope in [TodoScope.week, TodoScope.month]) {
-      for (final item in list(scope)) {
+      for (final item in lists[scope]!) {
         final due = item.dueDate;
         if (due == null) {
           // Only a past day's lists still have tasks without a day.
@@ -34,18 +51,16 @@ class _Planned {
         final i = _daysBetween(day, due);
         if (i <= WeekCard.span) {
           days[i < 0 ? 0 : i].add((scope, item));
-        } else {
+        } else if (!waits(item)) {
           (byDay[dateKey(due)] ??= []).add((scope: scope, item: item, repeat: null));
         }
       }
     }
-    if (!past) {
-      final beyond = DateTime(day.year, day.month, day.day + WeekCard.span + 1);
-      for (final repeat in state.repeats) {
-        if (state.nextOccurrence(repeat, beyond) case final next?) {
-          (byDay[dateKey(next)] ??= []).add((scope: null, item: null, repeat: repeat));
-        }
-      }
+    for (final repeat in state.repeats) {
+      final next = coming[repeat.uid];
+      if (next == null || _daysBetween(day, next) <= WeekCard.span) continue;
+      if (kept.contains('${repeat.uid}@${dateKey(next)}')) continue;
+      (byDay[dateKey(next)] ??= []).add((scope: null, item: null, repeat: repeat));
     }
     later = [for (final key in byDay.keys.toList()..sort()) (DateTime.parse(key), _byTime(byDay[key]!, (l) => l.item))];
     for (var i = 0; i < days.length; i++) {
@@ -1237,18 +1252,16 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                     itemBuilder: (context, index) {
                       final tasks = shown[g.key]!;
                       if (index >= tasks.length) {
-                        return _RepeatPreview(repeat: g.repeats[index - tasks.length], day: g.date!);
+                        return _LaterRow(day: day, repeat: g.repeats[index - tasks.length], date: g.date);
                       }
                       final (:task, :arriving, :leaving) = tasks[index];
                       final (scope, item) = task;
-                      return TaskRow(
+                      return _LaterRow(
                         key: ValueKey((scope, item.id)),
-                        scope: scope,
-                        item: item,
                         day: day,
+                        task: task,
                         readOnly: readOnly,
                         fadeIn: widget.added.contains(item.id) || arriving,
-                        arriving: arriving,
                         leaving: leaving,
                         onRemove: () => _remove(g.key, task, () => state.removeTodo(scope, item, day: day)),
                       );
@@ -1264,113 +1277,163 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
   }
 }
 
-/// The next time a repeating task comes round, before it's made: its name
-/// and rule, to change or take away like a task.
-class _RepeatPreview extends StatefulWidget {
-  const _RepeatPreview({required this.repeat, required this.day});
+/// A row further ahead: a [task], or the next time a [repeat] comes round
+/// on [date] before it's made. Either is only looked at from here, to
+/// change or take away; it's ticked once it's in the week.
+class _LaterRow extends StatefulWidget {
+  const _LaterRow({
+    super.key,
+    required this.day,
+    this.task,
+    this.repeat,
+    this.date,
+    this.readOnly = false,
+    this.fadeIn = false,
+    this.leaving = false,
+    this.onRemove,
+  }) : assert(task != null || (repeat != null && date != null));
 
-  final Repeat repeat;
+  /// The day the list is for.
   final DateTime day;
+  final _Task? task;
+  final Repeat? repeat;
+  final DateTime? date;
+  final bool readOnly;
+
+  /// Fades in: just added.
+  final bool fadeIn;
+
+  /// Removed, closing up.
+  final bool leaving;
+  final VoidCallback? onRemove;
 
   @override
-  State<_RepeatPreview> createState() => _RepeatPreviewState();
+  State<_LaterRow> createState() => _LaterRowState();
 }
 
-class _RepeatPreviewState extends State<_RepeatPreview> {
+class _LaterRowState extends State<_LaterRow> {
   bool _hover = false;
 
-  /// The to-do it will be, not made until it's changed on its own.
-  TodoItem get _item => TodoItem(
-    -1,
-    widget.repeat.text,
-    since: widget.day,
-    dueDate: widget.day,
-    dueTime: widget.repeat.time,
-    category: widget.repeat.category,
-    uid: '${widget.repeat.uid}@${dateKey(widget.day)}',
-  );
+  /// The to-do, or the one the repeat will make, not made until it's
+  /// changed on its own.
+  TodoItem get _item =>
+      widget.task?.$2 ??
+      TodoItem(
+        -1,
+        widget.repeat!.text,
+        since: widget.date!,
+        dueDate: widget.date!,
+        dueTime: widget.repeat!.time,
+        category: widget.repeat!.category,
+        uid: '${widget.repeat!.uid}@${dateKey(widget.date!)}',
+      );
 
-  TodoItem _make() => AppScope.read(context).occurrence(widget.repeat, widget.day);
+  TodoItem _make() => AppScope.read(context).occurrence(widget.repeat!, widget.date!);
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.read(context);
-    return Padding(
-      padding: const EdgeInsets.only(left: 18, top: 2, bottom: 2),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: HoverFill(
-          hover: _hover,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 20,
-                  child: Icon(Icons.repeat_rounded, size: 16, color: p.inkMuted.withValues(alpha: 0.8)),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text.rich(
-                        TextSpan(
+    final item = _item;
+    final repeat = widget.repeat ?? state.repeatOf(item);
+    final scope = widget.task?.$1 ?? TodoScope.month;
+    final made = widget.task != null;
+    final caption = switch (repeat) {
+      final repeat? => repeat.rule.label,
+      null when item.subtasks.isNotEmpty =>
+        '${item.subtasks.where((child) => child.done).length}/${item.subtasks.length} complete',
+      null => null,
+    };
+    return Appear(
+      animate: widget.fadeIn,
+      shown: !widget.leaving,
+      child: IgnorePointer(
+        ignoring: widget.readOnly || widget.leaving,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 18, top: 2, bottom: 2),
+          child: MouseRegion(
+            onEnter: (_) => setState(() => _hover = true),
+            onExit: (_) => setState(() => _hover = false),
+            child: HoverFill(
+              hover: _hover,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      child: repeat == null
+                          ? null
+                          : Icon(Icons.repeat_rounded, size: 16, color: p.inkMuted.withValues(alpha: 0.8)),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text.rich(
+                            TextSpan(
+                              children: [
+                                if (item.dueTime case final time?)
+                                  TextSpan(
+                                    text: '${clockLabel(time)}  ',
+                                    style: _timeStyle(p).copyWith(fontSize: 12.5, height: 1.35),
+                                  ),
+                                TextSpan(text: item.text),
+                              ],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: Fonts.body,
+                              fontSize: 14,
+                              height: 1.35,
+                              color: item.done
+                                  ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
+                                  : p.ink,
+                              decoration: item.done ? TextDecoration.lineThrough : null,
+                            ),
+                          ),
+                          if (caption != null)
+                            Text(
+                              caption,
+                              style: TextStyle(fontFamily: Fonts.body, fontSize: 10.5, color: p.inkMuted),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (item.category case final category?) ...[const SizedBox(width: 8), CategoryLabel(category)],
+                    AnimatedOpacity(
+                      opacity: _hover ? 1 : 0,
+                      duration: Motion.hover,
+                      curve: Motion.hoverCurve,
+                      child: IgnorePointer(
+                        ignoring: !_hover,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (widget.repeat.time case final time?)
-                              TextSpan(
-                                text: '${clockLabel(time)}  ',
-                                style: _timeStyle(p).copyWith(fontSize: 12.5, height: 1.35),
+                            _TaskAction(
+                              tooltip: 'Edit task',
+                              icon: Icons.edit_outlined,
+                              onPressed: () => _editTask(context, scope, item, widget.day, make: made ? null : _make),
+                            ),
+                            _TaskAction(
+                              tooltip: 'Remove',
+                              icon: Icons.close_rounded,
+                              onPressed: () => _removeTask(
+                                context,
+                                item,
+                                widget.day,
+                                made ? widget.onRemove! : () => state.removeTodo(TodoScope.month, _make()),
                               ),
-                            TextSpan(text: widget.repeat.text),
+                            ),
                           ],
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.35, color: p.ink),
                       ),
-                      Text(
-                        widget.repeat.rule.label,
-                        style: TextStyle(fontFamily: Fonts.body, fontSize: 10.5, color: p.inkMuted),
-                      ),
-                    ],
-                  ),
-                ),
-                if (widget.repeat.category case final category?) ...[
-                  const SizedBox(width: 8),
-                  CategoryLabel(category),
-                ],
-                AnimatedOpacity(
-                  opacity: _hover ? 1 : 0,
-                  duration: Motion.hover,
-                  curve: Motion.hoverCurve,
-                  child: IgnorePointer(
-                    ignoring: !_hover,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _TaskAction(
-                          tooltip: 'Edit task',
-                          icon: Icons.edit_outlined,
-                          onPressed: () => _editTask(context, TodoScope.month, _item, state.today, make: _make),
-                        ),
-                        _TaskAction(
-                          tooltip: 'Remove',
-                          icon: Icons.close_rounded,
-                          onPressed: () => _removeTask(
-                            context,
-                            _item,
-                            state.today,
-                            () => state.removeTodo(TodoScope.month, _make()),
-                          ),
-                        ),
-                      ],
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

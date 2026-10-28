@@ -77,10 +77,8 @@ class _DueDateDialogState extends State<_DueDateDialog> {
   late int? _time = widget.time;
   late TaskCategory? _category = widget.category;
 
-  void _done() => Navigator.pop<_DayChoice>(
-    context,
-    (day: _selected, repeat: _repeat, time: _time, category: _category),
-  );
+  void _done() =>
+      Navigator.pop<_DayChoice>(context, (day: _selected, repeat: _repeat, time: _time, category: _category));
 
   @override
   void initState() {
@@ -176,11 +174,7 @@ class _DueDateDialogState extends State<_DueDateDialog> {
               if (widget.details) ...[
                 SizedBox(height: widget.calendar ? 8 : 4),
                 _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
-                _RepeatRow(
-                  repeat: _repeat,
-                  start: _selected,
-                  onChanged: (repeat) => setState(() => _repeat = repeat),
-                ),
+                _RepeatRow(repeat: _repeat, start: _selected, onChanged: (repeat) => setState(() => _repeat = repeat)),
                 const SizedBox(height: 4),
                 _CategoryRow(category: _category, onChanged: _pickCategory),
                 const SizedBox(height: 4),
@@ -445,10 +439,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
 
   void _save() {
     if (_text.text.trim().isEmpty) return;
-    Navigator.pop<_TaskEdit>(
-      context,
-      (text: _text.text, due: _due, repeat: _repeat, time: _time, category: _category),
-    );
+    Navigator.pop<_TaskEdit>(context, (text: _text.text, due: _due, repeat: _repeat, time: _time, category: _category));
   }
 
   @override

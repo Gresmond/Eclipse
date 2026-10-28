@@ -234,9 +234,8 @@ class _TimeWheelState extends State<TimeWheel> {
                     ).createShader(rect),
                     // Dragged with the mouse as well as scrolled.
                     child: ScrollConfiguration(
-                      behavior: ScrollConfiguration.of(
-                        context,
-                      ).copyWith(scrollbars: false, dragDevices: {...PointerDeviceKind.values}),
+                      behavior: ScrollConfiguration.of(context)
+                          .copyWith(scrollbars: false, dragDevices: {...PointerDeviceKind.values}),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [

@@ -940,15 +940,7 @@ class AppState extends ChangeNotifier {
       store.rollTomorrowToToday(dateKey(today));
       _reloadTodos();
     } else {
-      store.editPastTodo(
-        scope,
-        target,
-        item: item,
-        text: value,
-        dueDate: dueDate,
-        time: time,
-        category: category,
-      );
+      store.editPastTodo(scope, target, item: item, text: value, dueDate: dueDate, time: time, category: category);
     }
     _todosChanged();
   }
@@ -1014,7 +1006,13 @@ class AppState extends ChangeNotifier {
 
   void toggleLaterFilter(TaskCategory category) {
     laterFilter = laterFilter.contains(category) ? ({...laterFilter}..remove(category)) : {...laterFilter, category};
-    store.setSetting('laterFilter', [for (final c in TaskCategory.values) if (laterFilter.contains(c)) c.name].join(','));
+    store.setSetting(
+      'laterFilter',
+      [
+        for (final c in TaskCategory.values)
+          if (laterFilter.contains(c)) c.name,
+      ].join(','),
+    );
     notifyListeners();
   }
 
@@ -1029,12 +1027,14 @@ class AppState extends ChangeNotifier {
     return uid == null ? null : repeats.where((r) => r.uid == uid).firstOrNull;
   }
 
-  /// The first time [repeat] comes round on or after [from] that hasn't
-  /// been made yet: what's shown further ahead than its to-dos reach.
-  DateTime? nextOccurrence(Repeat repeat, DateTime from) {
+  /// The first time [repeat] comes round on or after [from] that wasn't
+  /// taken away, made or not and done or not: the one time of it shown.
+  /// [kept] has the uids of the to-dos still in a list.
+  DateTime? comingOccurrence(Repeat repeat, DateTime from, {Set<String> kept = const {}}) {
     final made = store.madeOccurrences(repeat.uid);
     for (var day = repeat.next(from); day != null; day = repeat.next(DateTime(day.year, day.month, day.day + 1))) {
-      if (!made.contains('${repeat.uid}@${dateKey(day)}')) return day;
+      final uid = '${repeat.uid}@${dateKey(day)}';
+      if (kept.contains(uid) || !made.contains(uid)) return day;
     }
     return null;
   }
@@ -1047,14 +1047,7 @@ class AppState extends ChangeNotifier {
     return item;
   }
 
-  void addRepeat(
-    String text,
-    RepeatRule rule,
-    DateTime start, {
-    DateTime? until,
-    int? time,
-    TaskCategory? category,
-  }) {
+  void addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until, int? time, TaskCategory? category}) {
     if (text.trim().isEmpty) return;
     store.addRepeat(normaliseNote(text.trim()), rule, start, until: until, time: time, category: category);
     _startDay();

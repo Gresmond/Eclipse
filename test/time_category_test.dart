@@ -5,6 +5,7 @@ import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/widgets/category_label.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 
 void main() {
@@ -78,6 +79,28 @@ void main() {
     expect(find.descendant(of: later, matching: find.text('Party')), findsNothing);
     expect(find.descendant(of: later, matching: find.text('Rego')), findsOneWidget);
     expect(state.laterFilter, {TaskCategory.bill});
+  });
+
+  testWidgets('Further ahead shows a repeat once, every row alike', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 28, 9));
+    // A week away: made already, but past the end of the week.
+    state.addRepeat('Papa', const RepeatRule.yearly(1), DateTime(2026, 11, 4), category: TaskCategory.birthday);
+    state.addTodo(TodoScope.month, 'Dentist', dueDate: DateTime(2026, 11, 20), category: TaskCategory.appointment);
+    expect(state.todos[TodoScope.month]!.where((t) => t.text == 'Papa'), hasLength(1));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    final later = find.byType(FurtherAheadCard);
+    expect(find.descendant(of: later, matching: find.text('Papa')), findsOneWidget);
+    expect(find.descendant(of: later, matching: find.textContaining('2027')), findsNothing);
+    final labels = find.descendant(of: later, matching: find.byType(CategoryLabel));
+    expect(labels, findsNWidgets(2));
+    expect(tester.getRect(labels.first).right, tester.getRect(labels.last).right);
   });
 
   testWidgets('the date dialog keeps its arrows still from month to month', (tester) async {

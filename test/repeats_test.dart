@@ -106,7 +106,7 @@ void main() {
       expect(friday.dueDate, DateTime(2026, 10, 30));
       // Beyond the week, only the next time shows, not made yet.
       final repeat = state.repeats.single;
-      expect(state.nextOccurrence(repeat, DateTime(2026, 11, 5)), DateTime(2026, 11, 6));
+      expect(state.comingOccurrence(repeat, DateTime(2026, 11, 5)), DateTime(2026, 11, 6));
       expect(state.repeatOf(friday), repeat);
     });
 
@@ -159,7 +159,7 @@ void main() {
       final last = all().singleWhere((t) => t.repeatDay == DateTime(2026, 11, 2));
       state.changeRepeat(state.repeatOf(last)!, DateTime(2026, 11, 2), 'Read a chapter', null);
       expect(days('Read a chapter').last, DateTime(2026, 11, 2));
-      expect(state.nextOccurrence(state.repeatOf(last)!, DateTime(2026, 11, 3)), isNull);
+      expect(state.comingOccurrence(state.repeatOf(last)!, DateTime(2026, 11, 3)), isNull);
     });
 
     test('a task made to repeat starts from its day', () {
@@ -167,16 +167,16 @@ void main() {
       final rent = state.todos[TodoScope.week]!.single; // due within the week
       state.makeRepeating(TodoScope.week, rent, 'Pay rent', const RepeatRule.monthly(1));
       expect(days('Pay rent'), [DateTime(2026, 11, 1)]);
-      expect(state.nextOccurrence(state.repeats.single, DateTime(2026, 11, 5)), DateTime(2026, 12, 1));
+      expect(state.comingOccurrence(state.repeats.single, DateTime(2026, 11, 5)), DateTime(2026, 12, 1));
     });
 
     test('a later time can be taken away or changed before it is made', () {
       state.addRepeat('Bins', RepeatRule.weekly({4}), DateTime(2026, 10, 28));
       final repeat = state.repeats.single;
-      final next = state.nextOccurrence(repeat, DateTime(2026, 11, 5))!;
+      final next = state.comingOccurrence(repeat, DateTime(2026, 11, 5))!;
       expect(next, DateTime(2026, 11, 5));
       state.removeTodo(TodoScope.month, state.occurrence(repeat, next));
-      expect(state.nextOccurrence(repeat, DateTime(2026, 11, 5)), DateTime(2026, 11, 12));
+      expect(state.comingOccurrence(repeat, DateTime(2026, 11, 5)), DateTime(2026, 11, 12));
     });
 
     test('tasks from before every task had a day go to Today', () {

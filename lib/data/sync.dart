@@ -148,15 +148,7 @@ class SyncEngine implements AutomaticWrites {
     'setting': {'value': 8},
     'exercise': {_present: 22, 'name': 22, 'muscle': 22, 'bodyweight': 22},
     'training_set': {_present: 22, 'day': 22, 'exercise': 22, 'position': 22, 'weight': 22, 'reps': 22},
-    'todo_repeat': {
-      _present: 28,
-      'text': 28,
-      'rule': 28,
-      'start': 28,
-      'until': 28,
-      'time': 29,
-      'category': 29,
-    },
+    'todo_repeat': {_present: 28, 'text': 28, 'rule': 28, 'start': 28, 'until': 28, 'time': 29, 'category': 29},
   };
 
   /// A to-do's fields that say where it is. A change of whether it's done,

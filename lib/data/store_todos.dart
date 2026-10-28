@@ -564,14 +564,7 @@ extension StoreTodos on Store {
         ),
   ];
 
-  Repeat addRepeat(
-    String text,
-    RepeatRule rule,
-    DateTime start, {
-    DateTime? until,
-    int? time,
-    TaskCategory? category,
-  }) {
+  Repeat addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until, int? time, TaskCategory? category}) {
     final repeat = Repeat(
       uid: _newUid(),
       text: text,
@@ -677,20 +670,19 @@ extension StoreTodos on Store {
     return _todo(_db.select('SELECT * FROM todos WHERE uid = ?', [uid]).single);
   });
 
-  void _makeOccurrence(Repeat repeat, DateTime day) =>
-      _db.execute(
-        'INSERT INTO todos (uid, scope, period, text, since, due_date, due_time, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          '${repeat.uid}@${dateKey(day)}',
-          TodoScope.month.name,
-          TodoScope.month.period(day),
-          repeat.text,
-          dateKey(day),
-          dateKey(day),
-          repeat.time == null ? null : clockKey(repeat.time!),
-          repeat.category?.name,
-        ],
-      );
+  void _makeOccurrence(Repeat repeat, DateTime day) => _db.execute(
+    'INSERT INTO todos (uid, scope, period, text, since, due_date, due_time, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      '${repeat.uid}@${dateKey(day)}',
+      TodoScope.month.name,
+      TodoScope.month.period(day),
+      repeat.text,
+      dateKey(day),
+      dateKey(day),
+      repeat.time == null ? null : clockKey(repeat.time!),
+      repeat.category?.name,
+    ],
+  );
 
   /// Tasks from before every task had a day: anything open in This week or
   /// This month without a due date goes to Today.
