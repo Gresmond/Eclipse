@@ -232,7 +232,7 @@ class AppState extends ChangeNotifier {
 
   /// The day the Today view shows.
   DateTime get shownDay => viewDay ?? today;
-  Object get navigation => (viewYear, viewMonth, viewingYear, viewDay, today, lateNight, dayStartHour);
+  Object get navigation => (viewYear, viewMonth, viewingYear, viewDay, today, lateNight, dayStartHour, firstMonth);
 
   /// Name of the chosen colour theme; null until one is picked.
   late String? themeName = _savedTheme();
@@ -519,14 +519,45 @@ class AppState extends ChangeNotifier {
 
   void shiftYear(int delta) {
     saveHabitDrafts();
-    viewYear += delta;
-    if (!viewingYear) viewMonth ??= today.month;
+    viewYear = (viewYear + delta).clamp(firstMonth.$1, today.year);
+    if (!viewingYear) {
+      final months = shownMonths(viewYear);
+      viewMonth = (viewMonth ?? today.month).clamp(months.first, months.last);
+    }
     notifyListeners();
   }
 
   // Ritual lists
 
   bool isFutureMonth(int year, int month) => year * 12 + month > today.year * 12 + today.month;
+
+  /// Worked out again after each change, as one can log an earlier day.
+  DateTime? _firstDay;
+
+  @override
+  void notifyListeners() {
+    _firstDay = null;
+    super.notifyListeners();
+  }
+
+  /// The month you started using the app, or this month before anything
+  /// is logged. No earlier month is shown.
+  (int, int) get firstMonth {
+    final day = _firstDay ??= store.firstActivity() ?? today;
+    return day.isAfter(today) ? (today.year, today.month) : (day.year, day.month);
+  }
+
+  /// Whether [month] is between the one you started in and this one.
+  bool isShownMonth(int year, int month) {
+    final (y, m) = firstMonth;
+    return year * 12 + month >= y * 12 + m && !isFutureMonth(year, month);
+  }
+
+  /// The months of [year] that are shown, in order.
+  List<int> shownMonths(int year) => [
+    for (var m = 1; m <= 12; m++)
+      if (isShownMonth(year, m)) m,
+  ];
 
   /// Today's month's rituals.
   List<Habit> get habits => habitsFor(today.year, today.month);

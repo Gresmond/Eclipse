@@ -108,6 +108,7 @@ class _Header extends StatelessWidget {
     final today = state.today;
     final month = state.viewMonth;
     final shown = state.shownDay;
+    final months = state.shownMonths(state.viewYear);
 
     final todayTitle = '${shown.day} ${monthNames[shown.month - 1]}';
     // After midnight but before the day starts, say so: the date shown is
@@ -220,8 +221,10 @@ class _Header extends StatelessWidget {
                         selected: state.viewDay != null
                             ? -1
                             : state.viewingYear
-                            ? 13
-                            : month ?? 0,
+                            ? months.length + 1
+                            : month == null
+                            ? 0
+                            : months.indexOf(month) + 1,
                         past: state.viewDay == null
                             ? null
                             : shown == DateTime(today.year, today.month, today.day - 1)
@@ -234,12 +237,11 @@ class _Header extends StatelessWidget {
                             selected: month == null && !state.viewingYear && state.viewDay == null,
                             onTap: state.showToday,
                           ),
-                          for (var m = 1; m <= 12; m++)
+                          for (final m in months)
                             _Tab(
                               label: monthNames[m - 1].substring(0, 3),
                               selected: month == m,
                               isCurrent: state.viewYear == today.year && m == today.month,
-                              future: DateTime(state.viewYear, m).isAfter(today),
                               onTap: () => state.showMonth(m),
                             ),
                           _Tab(label: 'Year', selected: state.viewingYear, onTap: state.showYear),
@@ -276,10 +278,21 @@ class _DateButton extends StatelessWidget {
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: enabled
-          ? () => showFadeMenu(context, alignLeft: true, width: 312, builder: (_) {
+          ? () => showFadeMenu(
+              context,
+              alignLeft: true,
+              width: 312,
+              builder: (_) {
                 final state = AppScope.read(context);
-                return DayPicker(today: state.today, selected: state.shownDay, onPick: state.showDay);
-              })
+                final (y, m) = state.firstMonth;
+                return DayPicker(
+                  today: state.today,
+                  first: DateTime(y, m),
+                  selected: state.shownDay,
+                  onPick: state.showDay,
+                );
+              },
+            )
           : null,
       child: child,
     ),
@@ -291,7 +304,7 @@ class _DateButton extends StatelessWidget {
 class _TabBar extends StatefulWidget {
   const _TabBar({required this.tabs, required this.selected, this.past});
 
-  /// Today first, then January to December, then the year.
+  /// Today first, then the months shown, then the year.
   final List<Widget> tabs;
 
   /// Index into [tabs], or -1 for the [past] day's tab.
@@ -307,7 +320,15 @@ class _TabBar extends StatefulWidget {
 class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
   final _stackKey = GlobalKey();
   final _pastKey = GlobalKey();
-  late final _keys = [for (final _ in widget.tabs) GlobalKey()];
+
+  /// By position; the months shown change with the year.
+  final _keys = <GlobalKey>[];
+  GlobalKey _key(int i) {
+    while (_keys.length <= i) {
+      _keys.add(GlobalKey());
+    }
+    return _keys[i];
+  }
 
   /// Unfolds the past day's tab; it folds only after the pill has left it.
   late final _pastOpen = AnimationController(vsync: this, duration: Motion.morph, value: widget.past == null ? 0 : 1);
@@ -364,7 +385,7 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
     // A changing label drives the pill itself, frame by frame.
     if (!mounted || _relabel.isAnimating) return;
     final stack = _stackKey.currentContext?.findRenderObject() as RenderBox?;
-    final key = widget.selected < 0 ? _pastKey : _keys[widget.selected];
+    final key = widget.selected < 0 ? _pastKey : _key(widget.selected);
     final tab = key.currentContext?.findRenderObject() as RenderBox?;
     if (stack == null || tab == null || !tab.hasSize || !stack.hasSize) return;
     // Measured from the right, so a tab still unfolding is placed where it
@@ -452,7 +473,7 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
             for (final (i, tab) in widget.tabs.indexed) ...[
               // The gap sits outside the measured tab, so the pill centres on
               // the label.
-              KeyedSubtree(key: _keys[i], child: tab),
+              KeyedSubtree(key: _key(i), child: tab),
               const SizedBox(width: 2),
               // Today and Year stand apart from the months.
               if (i == 0 || i == widget.tabs.length - 2) divider,
@@ -470,7 +491,6 @@ class _Tab extends StatefulWidget {
     required this.selected,
     required this.onTap,
     this.isCurrent = false,
-    this.future = false,
     this.labelWidth,
   });
 
@@ -500,7 +520,6 @@ class _Tab extends StatefulWidget {
   final String label;
   final bool selected;
   final bool isCurrent;
-  final bool future;
 
   /// Null for a tab that only shows where you are.
   final VoidCallback? onTap;
@@ -520,8 +539,6 @@ class _TabState extends State<_Tab> {
         ? p.onAccent
         : widget.isCurrent
         ? p.accent
-        : widget.future
-        ? p.inkMuted.withValues(alpha: 0.4)
         : p.ink;
     TextStyle style(FontWeight weight) => _Tab._style(weight, fg);
     final label = Stack(
@@ -593,12 +610,15 @@ class _YearSwitcher extends StatelessWidget {
       ),
       child: Row(
         children: [
-          IconButton(
-            iconSize: 18,
-            color: p.inkMuted,
-            onPressed: () => state.shiftYear(-1),
-            icon: const Icon(Icons.chevron_left_rounded),
-          ),
+          if (year > state.firstMonth.$1)
+            IconButton(
+              iconSize: 18,
+              color: p.inkMuted,
+              onPressed: () => state.shiftYear(-1),
+              icon: const Icon(Icons.chevron_left_rounded),
+            )
+          else
+            const SizedBox(width: 10),
           Text(
             '$year',
             style: TextStyle(
@@ -610,12 +630,15 @@ class _YearSwitcher extends StatelessWidget {
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
-          IconButton(
-            iconSize: 18,
-            color: p.inkMuted,
-            onPressed: () => state.shiftYear(1),
-            icon: const Icon(Icons.chevron_right_rounded),
-          ),
+          if (year < state.today.year)
+            IconButton(
+              iconSize: 18,
+              color: p.inkMuted,
+              onPressed: () => state.shiftYear(1),
+              icon: const Icon(Icons.chevron_right_rounded),
+            )
+          else
+            const SizedBox(width: 10),
         ],
       ),
     );

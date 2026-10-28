@@ -162,7 +162,7 @@ class TodoItem {
   DateTime? doneAt;
 
   /// The day it was added. An item still open from an earlier day, week or
-  /// month shows it as "From dd/mm".
+  /// month shows a history badge.
   final DateTime since;
 
   /// How many times this item has rolled over unfinished.

@@ -1304,13 +1304,13 @@ void main() {
     addTearDown(tester.view.reset);
 
     final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 25));
-    state.showMonth(5);
+    state.showMonth(10);
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
 
     Finder pillFor(String title) => find.ancestor(of: find.text(title), matching: find.byType(AnimatedSize)).first;
-    final originalState = tester.state(pillFor('May'));
-    final monthWidth = tester.getSize(pillFor('May')).width;
+    final originalState = tester.state(pillFor('October'));
+    final monthWidth = tester.getSize(pillFor('October')).width;
 
     await tester.tap(find.text('Today').hitTestable());
     await tester.pump();
@@ -1323,15 +1323,15 @@ void main() {
     expect(growingWidth, greaterThan(monthWidth));
     expect(growingWidth, lessThan(todayWidth));
 
-    await tester.tap(find.text('May').hitTestable());
+    await tester.tap(find.text('Oct').hitTestable());
     await tester.pump();
-    expect(tester.state(pillFor('May')), same(originalState));
+    expect(tester.state(pillFor('October')), same(originalState));
     await tester.pump(const Duration(milliseconds: 210));
-    final shrinkingWidth = tester.getSize(pillFor('May')).width;
+    final shrinkingWidth = tester.getSize(pillFor('October')).width;
     expect(shrinkingWidth, greaterThan(monthWidth));
     expect(shrinkingWidth, lessThan(todayWidth));
     await tester.pumpAndSettle();
-    expect(tester.getSize(pillFor('May')).width, closeTo(monthWidth, 0.01));
+    expect(tester.getSize(pillFor('October')).width, closeTo(monthWidth, 0.01));
   });
 
   testWidgets('switching views and months never shows two at once', (tester) async {
@@ -1340,7 +1340,8 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
+    // Logged since January, so every month up to October has a tab.
+    final state = AppState(_testStore()..setJournal('2026-01-02', 'New year.'), clock: () => DateTime(2026, 10, 23));
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
 
@@ -1420,7 +1421,7 @@ void main() {
 
     state.showToday();
     await expectFadeThrough(find.text('Edit rituals'), find.text('Daily rituals'), 'month_to_today');
-    for (var month = 1; month <= 12; month++) {
+    for (var month = 1; month <= 10; month++) {
       await tester.tap(find.text(monthNames[month - 1].substring(0, 3)).hitTestable());
       await expectFadeThrough(find.text('Daily rituals'), find.text('Edit rituals'), 'today_to_month_$month');
       await tester.tap(find.text('Today').hitTestable());
@@ -2083,7 +2084,7 @@ void main() {
 
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    expect(find.text('From 22/10'), findsWidgets);
+    expect(find.byIcon(Icons.history_rounded), findsWidgets);
 
     await tester.tap(find.text('24 October').last);
     await tester.pumpAndSettle();
@@ -2115,9 +2116,9 @@ void main() {
     expect(find.text('THURSDAY  ·  LOOKING BACK'), findsOneWidget);
     expect(find.text('A quiet Thursday.'), findsOneWidget);
     expect(find.text('Add a task').hitTestable(), findsNothing, reason: 'look only');
-    expect(find.text('From 22/10'), findsNothing, reason: 'it was new that day');
+    expect(find.byIcon(Icons.history_rounded), findsNothing, reason: 'it was new that day');
     expect(find.text('22 Oct'), findsWidgets, reason: 'the past day opens a tab left of Today');
-    expect(tester.getCenter(find.text('22 Oct').last).dx, lessThan(tester.getCenter(find.text('Today').last).dx));
+    expect(tester.getCenter(find.text('22 Oct').last).dx, lessThan(tester.getCenter(find.text('Today').first).dx));
     await _shoot(tester, 'past_day');
 
     double pastTab(String label) =>
@@ -2177,17 +2178,30 @@ void main() {
     expect(find.text('80%'), findsWidgets, reason: 'Sketch so far: 16 of 20');
     await _shoot(tester, 'year');
 
-    // A ritual added in October fades January to September like future months.
+    // Only the months since the first one logged, up to this one.
+    expect(find.text('JUL'), findsNothing);
+    expect(find.text('AUG'), findsWidgets);
+    expect(find.text('NOV'), findsNothing);
+    expect(find.byIcon(Icons.chevron_left_rounded), findsNothing, reason: 'no earlier year to go to');
+    expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
+
+    // A ritual added in October fades the months shown before it.
     int faded() => tester.widgetList<Text>(find.text('–')).where((text) => (text.style?.color?.a ?? 1) < 0.3).length;
     final before = faded();
     state.addHabit(2026, 10, 'New ritual');
     await tester.pumpAndSettle();
-    expect(faded() - before, 9 + 2, reason: 'nine months before it, plus November and December');
+    expect(faded() - before, 2, reason: 'August and September');
 
+    state.store.setJournal('2025-12-05', 'Started in December.');
+    state.showYear();
+    await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.chevron_left_rounded).first);
     await tester.pumpAndSettle();
     expect(state.viewingYear, isTrue, reason: 'the year switcher stays on the record');
     expect(find.text('2025'), findsWidgets);
+    expect(find.text('DEC'), findsWidgets);
+    expect(find.text('NOV'), findsNothing, reason: 'nothing before the first month');
+    expect(find.byIcon(Icons.chevron_left_rounded), findsNothing);
   });
 
   testWidgets('the welcome tour walks round, and opens again from the appearance menu', (tester) async {
@@ -2220,7 +2234,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Daily rituals'), findsWidgets);
     // The app underneath waits while the tour is up.
-    await tester.tap(find.text('Jan').first, warnIfMissed: false);
+    await tester.tap(find.text('Oct').first, warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(state.viewMonth, isNull);
     for (var i = 1; i < 13; i++) {

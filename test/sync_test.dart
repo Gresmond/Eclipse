@@ -314,6 +314,29 @@ void main() {
     expect(pc.dump()['todos'].toString(), contains('|1|'), reason: 'still done');
   });
 
+  test('a computer starting the next day before hearing of a tick never unticks it', () {
+    join();
+    final next = DateTime(2026, 10, 25);
+    _Computer.clock = 2000;
+    final onPc = pc.store.todos(TodoScope.today, TodoScope.today.period(day)).single;
+    pc.store.setTodoDone(onPc.id, true, day: day);
+    pc.stamp();
+    // The laptop wakes the next day without the tick, and moves the task on.
+    _Computer.clock = 3000;
+    final stale = laptop.store.startDay(next);
+    expect(stale[TodoScope.today]!.single.done, isFalse);
+    for (final (a, b) in [(pc, laptop), (laptop, pc), (pc, laptop)]) {
+      a.hearFrom(b);
+      a.store.startDay(next);
+    }
+    for (final c in [pc, laptop]) {
+      expect(c.store.todoListsOn(day)[TodoScope.today]!.single.done, isTrue, reason: '${c.name}: done that day');
+      expect(c.store.todoListsOn(next)[TodoScope.today], isEmpty, reason: '${c.name}: not carried to the next day');
+      expect(c.store.todos(TodoScope.today, TodoScope.today.period(day)).single.done, isTrue);
+    }
+    expect(pc.dump(), laptop.dump());
+  });
+
   test('rituals renamed and removed follow across', () {
     join();
     final run = laptop.store.monthHabits(2026, 10).last;

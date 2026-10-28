@@ -28,7 +28,7 @@ class YearView extends StatelessWidget {
     final rituals = <int, Habit>{};
     final inMonth = <int, Set<int>>{};
     for (var m = 12; m >= 1; m--) {
-      if (state.isFutureMonth(year, m) || state.isPreviewMonth(year, m)) continue;
+      if (!state.isShownMonth(year, m) || state.isPreviewMonth(year, m)) continue;
       final list = state.habitsFor(year, m);
       inMonth[m] = {for (final h in list) h.id};
       for (final h in list) {
@@ -119,9 +119,12 @@ class _Table extends StatelessWidget {
     final p = context.palette;
     final state = AppScope.watch(context, (s) => (s.habitsRevision, s.entriesRevision, s.today));
 
+    // Only the months since you started; the year's total keeps its place.
+    final shown = state.shownMonths(year);
+
     _Score score(Habit h, int m) {
       final s = _Score();
-      if (state.isFutureMonth(year, m) || !has(h, m)) return s;
+      if (!has(h, m)) return s;
       final (done, logged) = state.scoreOf(year, m, h);
       s.done = done;
       s.logged = logged;
@@ -129,10 +132,10 @@ class _Table extends StatelessWidget {
     }
 
     final scores = [
-      for (final h in habits) [for (var m = 1; m <= 12; m++) score(h, m)],
+      for (final h in habits) [for (final m in shown) score(h, m)],
     ];
     _Score sum(Iterable<_Score> all) => all.fold(_Score(), (a, b) => a..add(b));
-    final monthTotals = [for (var m = 0; m < 12; m++) sum(scores.map((row) => row[m]))];
+    final monthTotals = [for (var i = 0; i < shown.length; i++) sum(scores.map((row) => row[i]))];
 
     final label = TextStyle(
       fontFamily: Fonts.ui,
@@ -161,13 +164,11 @@ class _Table extends StatelessWidget {
                 ),
               ),
             ),
-            for (var m = 1; m <= 12; m++)
+            for (final (i, m) in shown.indexed)
               Expanded(
-                child: _Cell(
-                  ratio: months[m - 1].ratio,
-                  future: state.isFutureMonth(year, m) || (habit != null && (notYet?.call(habit, m) ?? false)),
-                ),
+                child: _Cell(ratio: months[i].ratio, future: habit != null && (notYet?.call(habit, m) ?? false)),
               ),
+            if (shown.length < 12) Spacer(flex: 12 - shown.length),
             const SizedBox(width: 10),
             Expanded(flex: 2, child: _Cell(ratio: sum(months).ratio, strong: true)),
           ],
@@ -180,17 +181,11 @@ class _Table extends StatelessWidget {
         Row(
           children: [
             const SizedBox(width: _nameWidth),
-            for (var m = 1; m <= 12; m++)
+            for (final m in shown)
               Expanded(
-                child: Center(
-                  child: Text(
-                    monthNames[m - 1].substring(0, 3).toUpperCase(),
-                    style: label.copyWith(
-                      color: state.isFutureMonth(year, m) ? p.inkMuted.withValues(alpha: 0.4) : p.inkMuted,
-                    ),
-                  ),
-                ),
+                child: Center(child: Text(monthNames[m - 1].substring(0, 3).toUpperCase(), style: label)),
               ),
+            if (shown.length < 12) Spacer(flex: 12 - shown.length),
             const SizedBox(width: 10),
             Expanded(
               flex: 2,

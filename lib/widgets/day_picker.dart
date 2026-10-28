@@ -4,11 +4,11 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 
 /// A month of days to pick from, opening on [selected]. Days after
-/// [today] can't be picked.
+/// [today] can't be picked, and months before [first] aren't shown.
 class DayPicker extends StatefulWidget {
-  const DayPicker({super.key, required this.today, required this.selected, required this.onPick});
+  const DayPicker({super.key, required this.today, required this.first, required this.selected, required this.onPick});
 
-  final DateTime today, selected;
+  final DateTime today, first, selected;
   final ValueChanged<DateTime> onPick;
 
   @override
@@ -25,6 +25,7 @@ class _DayPickerState extends State<DayPicker> {
     final p = context.palette;
     final today = widget.today, shown = widget.selected;
     final atToday = _month.year == today.year && _month.month == today.month;
+    final atFirst = !_month.isAfter(widget.first);
     final lead = _month.weekday - 1; // Monday first
     final days = daysInMonth(_month.year, _month.month);
 
@@ -51,7 +52,7 @@ class _DayPickerState extends State<DayPicker> {
                   style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
                 ),
               ),
-              arrow(Icons.chevron_left_rounded, () => _shift(-1)),
+              arrow(Icons.chevron_left_rounded, atFirst ? null : () => _shift(-1)),
               arrow(Icons.chevron_right_rounded, atToday ? null : () => _shift(1)),
             ],
           ),

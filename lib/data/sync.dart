@@ -412,12 +412,28 @@ class SyncEngine {
           }
         }
       }
+      Map<String, Object?> fields(String kind, String rowkey) => {
+        for (final r in _db.select('SELECT field, value FROM sync_reg WHERE kind = ? AND rowkey = ?', [kind, rowkey]))
+          r['field'] as String: jsonDecode(r['value'] as String),
+      };
       for (final (kind, rowkey) in touched) {
-        final fields = {
-          for (final r in _db.select('SELECT field, value FROM sync_reg WHERE kind = ? AND rowkey = ?', [kind, rowkey]))
-            r['field'] as String: jsonDecode(r['value'] as String),
-        };
-        _write(kind, rowkey, fields);
+        _write(kind, rowkey, fields(kind, rowkey));
+      }
+      // Day-start moves are never sent (see Store.startDay), so a task
+      // another computer changed goes back to how the edits left it, and
+      // the app moves it on again from there.
+      final tasks = {
+        for (final (kind, rowkey) in touched)
+          if (kind == 'todo') rowkey else if (kind == 'todo_history') _split(rowkey).$2,
+      };
+      for (final uid in tasks) {
+        _db.execute(
+          'DELETE FROM todo_history WHERE uid = ? AND NOT EXISTS (SELECT 1 FROM sync_reg '
+          "WHERE kind = 'todo_history' AND rowkey = todo_history.day || '/' || todo_history.uid)",
+          [uid],
+        );
+        final task = fields('todo', uid);
+        if (task.isNotEmpty) _write('todo', uid, task);
       }
       // Writing them marked them changed; they match their registers.
       _db.execute('DELETE FROM sync_dirty');

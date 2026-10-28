@@ -2,7 +2,12 @@ part of 'store.dart';
 
 /// Task persistence and historical routing share atomic write operations.
 extension StoreTodos on Store {
+  /// Moves tasks on for [day]. These moves aren't synced: each computer
+  /// makes them itself from the edits it has, so one that hasn't heard of
+  /// a tick yet can't overwrite it by carrying the task forward.
   Map<TodoScope, List<TodoItem>> startDay(DateTime day) => transaction(() {
+    String key(Row r) => '${r['kind']}/${r['rowkey']}';
+    final pending = {for (final r in _db.select('SELECT kind, rowkey FROM sync_dirty')) key(r)};
     captureTodoBaseline(day);
     promoteDueTodos(day);
     rollTomorrowToToday(dateKey(day));
@@ -10,6 +15,11 @@ extension StoreTodos on Store {
     for (final scope in TodoScope.values) {
       carryForward(scope, scope.period(day), day: day);
       lists[scope] = todos(scope, scope.period(day));
+    }
+    for (final r in _db.select('SELECT kind, rowkey FROM sync_dirty')) {
+      if (!pending.contains(key(r))) {
+        _db.execute('DELETE FROM sync_dirty WHERE kind = ? AND rowkey = ?', [r['kind'], r['rowkey']]);
+      }
     }
     return lists;
   });

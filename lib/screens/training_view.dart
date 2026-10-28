@@ -726,6 +726,7 @@ class _SessionTile extends StatelessWidget {
                         width: 312,
                         builder: (_) => DayPicker(
                           today: state.today,
+                          first: DateTime(state.firstMonth.$1, state.firstMonth.$2),
                           selected: day,
                           onPick: (d) => log.showDay(d == state.today ? null : d),
                         ),

@@ -666,6 +666,26 @@ class Store {
     ''');
   }
 
+  /// The earliest day anything was ticked, written or logged; null before
+  /// the first. Months only opened to look at don't count.
+  DateTime? firstActivity() {
+    final day =
+        _db
+                .select('''
+      SELECT MIN(day) FROM (
+        SELECT MIN(day) AS day FROM entries
+        UNION ALL SELECT MIN(day) FROM journal WHERE text != ''
+        UNION ALL SELECT MIN(since) FROM todos
+        UNION ALL SELECT MIN(day) FROM todo_history
+        UNION ALL SELECT MIN(day) FROM training_sets
+      )
+    ''')
+                .first
+                .columnAt(0)
+            as String?;
+    return day == null ? null : DateTime.parse(day);
+  }
+
   // Habits
 
   bool hasMonth(int year, int month) =>
