@@ -1528,36 +1528,123 @@ void main() {
     expect(journalRect.height, closeTo(sleepRect.height, 0.5));
     expect(weekRect.bottom, closeTo(journalRect.bottom, 0.5));
 
-    // Eight days, today first; anything later is further ahead, under its day.
+    // Seven days, today first, and only days with something due; anything
+    // later is further ahead, under its day.
     expect(find.descendant(of: week, matching: find.textContaining('Oct 23')), findsOneWidget);
-    expect(find.descendant(of: week, matching: find.textContaining('Oct 30')), findsOneWidget);
-    expect(find.descendant(of: week, matching: find.textContaining('Oct 31')), findsNothing);
+    expect(find.descendant(of: week, matching: find.text('Nothing due')), findsOneWidget);
+    expect(find.descendant(of: week, matching: find.textContaining('Tomorrow')), findsNothing);
+    expect(
+      find.descendant(of: week, matching: find.text('29')),
+      findsOneWidget,
+      reason: 'the strip ends at day 7',
+    );
+    expect(find.descendant(of: week, matching: find.text('30')), findsNothing);
     expect(find.descendant(of: later, matching: find.text('Book flights')), findsOneWidget);
     expect(find.descendant(of: later, matching: find.textContaining('Nov 20')), findsOneWidget);
 
-    // Adding under Tomorrow, then ticking it, which files it under today.
-    final tomorrow = find.ancestor(
-      of: find.descendant(of: week, matching: find.textContaining('Tomorrow')),
-      matching: find.byWidgetPredicate((w) => w.runtimeType.toString() == '_DaySection'),
-    );
-    await tester.tap(find.descendant(of: tomorrow, matching: find.text('Add task')));
-    await tester.pumpAndSettle();
+    // Adding for tomorrow from the box at the foot, its day picked first.
     await tester.enterText(find.descendant(of: week, matching: find.byType(TextField)), 'Prepare tomorrow breakfast');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(find.descendant(of: tomorrow, matching: find.text('Prepare tomorrow breakfast')), findsOneWidget);
+    expect(find.text("Doesn't repeat"), findsOneWidget, reason: 'Enter without a day asks for one');
+    await tester.tap(find.text('24').last);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    final tomorrow = find.descendant(of: week, matching: find.textContaining('Tomorrow'));
+    expect(tomorrow, findsOneWidget);
     expect(state.todos[TodoScope.tomorrow]!.map((t) => t.text), contains('Prepare tomorrow breakfast'));
+    double top(Finder finder) => tester.getTopLeft(finder).dy;
+    final task = find.text('Prepare tomorrow breakfast');
+    expect(top(task), greaterThan(top(tomorrow)));
 
-    await tester.tap(find.text('Prepare tomorrow breakfast'));
+    // Ticking it files it under today, arriving at the foot of today's list
+    // unticked before it settles; Tomorrow, empty again, goes.
+    state.addTodo(TodoScope.today, 'Already today');
     await tester.pumpAndSettle();
+    await tester.tap(task);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
     expect(state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Prepare tomorrow breakfast').done, isTrue);
-    final completed = find.text('Prepare tomorrow breakfast');
-    expect(find.descendant(of: tomorrow, matching: completed), findsNothing);
-    expect(DefaultTextStyle.of(tester.element(completed)).style.decoration, TextDecoration.lineThrough);
-    await tester.tap(completed);
+    expect(top(task), greaterThan(top(find.text('Already today'))));
+    expect(DefaultTextStyle.of(tester.element(task)).style.decoration, isNot(TextDecoration.lineThrough));
     await tester.pumpAndSettle();
-    expect(find.descendant(of: tomorrow, matching: completed), findsOneWidget);
+    expect(tomorrow, findsNothing);
+    expect(DefaultTextStyle.of(tester.element(task)).style.decoration, TextDecoration.lineThrough);
+    await tester.tap(task);
+    await tester.pumpAndSettle();
+    expect(tomorrow, findsOneWidget);
+    expect(top(task), greaterThan(top(tomorrow)));
     expect(state.todos[TodoScope.tomorrow]!.single.done, isFalse);
+  });
+
+  testWidgets('a removed task closes up rather than vanishing', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
+    state.addTodo(TodoScope.today, 'Goes away');
+    state.addTodo(TodoScope.today, 'Stays');
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    final week = find.byType(WeekCard);
+    final stays = find.descendant(of: week, matching: find.text('Stays'));
+    final before = tester.getTopLeft(stays).dy;
+    final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await pointer.addPointer(location: Offset.zero);
+    addTearDown(pointer.removePointer);
+    await pointer.moveTo(tester.getCenter(find.text('Goes away')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: week, matching: find.byTooltip('Remove')).first);
+    await tester.pump();
+    await tester.pump(Motion.morph ~/ 2);
+    expect(state.todos[TodoScope.today]!.map((t) => t.text), ['Stays']);
+    expect(find.text('Goes away'), findsOneWidget, reason: 'still closing up');
+    final midway = tester.getTopLeft(stays).dy;
+    await tester.pumpAndSettle();
+    final after = tester.getTopLeft(stays).dy;
+    expect(find.text('Goes away'), findsNothing);
+    expect(after, lessThan(before));
+    expect(midway, allOf(lessThanOrEqualTo(before), greaterThan(after)));
+  });
+
+  testWidgets('the add boxes pick a day and its repeat together, yearly included', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    final later = find.byType(FurtherAheadCard);
+    expect(find.descendant(of: later, matching: find.byTooltip('Repeat')), findsNothing);
+    await tester.tap(find.descendant(of: later, matching: find.byTooltip('Pick a day')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Doesn't repeat"));
+    await tester.pumpAndSettle();
+    for (final pill in ['Weekly', 'Monthly', 'Yearly', 'Custom']) {
+      final size = tester.getSize(find.text(pill));
+      final painter = TextPainter(
+        text: TextSpan(text: pill, style: tester.widget<Text>(find.text(pill)).style),
+        textDirection: TextDirection.ltr,
+        textScaler: MediaQuery.textScalerOf(tester.element(find.text(pill))),
+      )..layout();
+      expect(size.width, greaterThanOrEqualTo(painter.width - 0.5), reason: '$pill shows in full');
+    }
+    await tester.tap(find.text('Yearly'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('year on Oct 30'), findsOneWidget);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.text('Every year'), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.descendant(of: later, matching: find.byType(TextField)), 'Renew licence');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    final repeat = state.repeats.single;
+    expect(
+      (repeat.text, repeat.rule, repeat.start),
+      ('Renew licence', const RepeatRule.yearly(1), DateTime(2026, 10, 30)),
+    );
   });
 
   testWidgets('dragging a task onto another day moves it there', (tester) async {
@@ -1570,7 +1657,8 @@ void main() {
     await tester.pumpAndSettle();
     final week = find.byType(WeekCard);
     final from = tester.getCenter(find.text('Drag me'));
-    final to = tester.getCenter(find.descendant(of: week, matching: find.textContaining('Oct 25')));
+    // An empty day takes it in the strip of days.
+    final to = tester.getCenter(find.descendant(of: week, matching: find.text('25')));
     await tester.dragFrom(from, to - from);
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.today]!.map((t) => t.text), isNot(contains('Drag me')));
@@ -1711,7 +1799,7 @@ void main() {
     expect(state.canEditDay(state.shownDay), isTrue);
     await tester.tap(find.descendant(of: panel, matching: find.text('Add task')).first);
     await tester.pumpAndSettle();
-    await tester.enterText(find.descendant(of: panel, matching: find.byType(TextField)), 'Late task');
+    await tester.enterText(find.descendant(of: panel, matching: find.byType(TextField)).first, 'Late task');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(state.todosOn(TodoScope.today, state.shownDay).map((t) => t.text), contains('Late task'));

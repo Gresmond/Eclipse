@@ -4,6 +4,9 @@ part of 'todo_panel.dart';
 int _daysBetween(DateTime from, DateTime to) =>
     DateTime.utc(to.year, to.month, to.day).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
 
+/// A task in one of a day's lists.
+typedef _Task = (TodoScope, TodoItem);
+
 /// One thing further ahead than the week: a task, or the next time a
 /// repeating task comes round, not made yet.
 typedef _Later = ({TodoScope? scope, TodoItem? item, Repeat? repeat});
@@ -47,7 +50,7 @@ class _Planned {
     later = [for (final key in byDay.keys.toList()..sort()) (DateTime.parse(key), byDay[key]!)];
   }
 
-  final days = List.generate(WeekCard.span + 1, (_) => <(TodoScope, TodoItem)>[]);
+  final days = List.generate(WeekCard.span + 1, (_) => <_Task>[]);
   late final List<(DateTime, List<_Later>)> later;
   final undated = <_Later>[];
 }
@@ -67,17 +70,108 @@ mixin _NewTasks<T extends StatefulWidget> on State<T> {
   }
 }
 
+/// A task as a day's list draws it: [arriving] from another day, or
+/// [leaving] once removed.
+typedef _Shown = ({_Task task, bool arriving, bool leaving});
+
+/// The comings and goings of one day's lists, for a list state made per
+/// day: a task come from another day (ticked from Tomorrow, or moved
+/// here) shows unticked at the bottom of its day before it settles into
+/// place, and a removed one closes up where it was.
+mixin _DayMotion<T extends StatefulWidget> on State<T> {
+  /// Each day's tasks as last drawn, by its group.
+  final _drawn = <String, List<int>>{};
+  bool _started = false;
+  final _arriving = <int>{};
+  final _timers = <Timer>{};
+  final _departing = <int, ({String group, int index, _Task task})>{};
+
+  @override
+  void dispose() {
+    for (final timer in _timers) {
+      timer.cancel();
+    }
+    super.dispose();
+  }
+
+  void _after(VoidCallback done) {
+    late final Timer timer;
+    timer = Timer(Motion.morph, () {
+      _timers.remove(timer);
+      if (mounted) setState(done);
+    });
+    _timers.add(timer);
+  }
+
+  /// [tasks], [group]'s list in order, as it's drawn now. Call once per
+  /// group per build, after [_settle] for the build before.
+  List<_Shown> _shown(String group, List<_Task> tasks) {
+    final ids = [for (final (_, item) in tasks) item.id];
+    // Everything there when the list first shows is simply there.
+    final before = _drawn[group] ?? (_started ? const <int>[] : ids);
+    final added = ids.toSet().difference(before.toSet());
+    if (added.isNotEmpty) {
+      _arriving.addAll(added);
+      _after(() => _arriving.removeAll(added));
+    }
+    final shown = <_Shown>[
+      for (final task in tasks)
+        if (!_arriving.contains(task.$2.id)) (task: task, arriving: false, leaving: false),
+      for (final task in tasks)
+        if (_arriving.contains(task.$2.id)) (task: task, arriving: true, leaving: false),
+    ];
+    for (final departure in _departing.values.where((d) => d.group == group)) {
+      if (ids.contains(departure.task.$2.id)) continue;
+      shown.insert(departure.index.clamp(0, shown.length), (task: departure.task, arriving: false, leaving: true));
+    }
+    _drawn[group] = [for (final s in shown) s.task.$2.id];
+    return shown;
+  }
+
+  /// After a build: every group is now drawn, so later ones are new.
+  void _settle() => _started = true;
+
+  /// Removes [task] from [group], closing it up.
+  void _remove(String group, _Task task, VoidCallback remove) {
+    final id = task.$2.id;
+    if (_departing.containsKey(id)) return;
+    _departing[id] = (group: group, index: (_drawn[group] ?? const []).indexOf(id), task: task);
+    remove();
+    _after(() => _departing.remove(id));
+    setState(() {});
+  }
+
+  bool _hasDeparting(String group) => _departing.values.any((d) => d.group == group);
+}
+
 /// 'Oct 28', with the year when it isn't [today]'s.
 String _shortDate(DateTime day, DateTime today) =>
     '${monthNames[day.month - 1].substring(0, 3)} ${day.day}${day.year != today.year ? ' ${day.year}' : ''}';
 
-/// Today and the week after it, one day under another, every task in its
-/// day. The strip of days at the top jumps to one and follows the scroll.
+/// Adds [text] as a task due on [day], in the list it belongs to now.
+void _addDue(AppState state, String text, DateTime day) {
+  final today = state.today;
+  final days = _daysBetween(today, day);
+  if (days <= 0) {
+    state.addTodo(TodoScope.today, text);
+  } else if (days == 1) {
+    state.addTodo(TodoScope.tomorrow, text);
+  } else {
+    // Due later this week files under This week, anything after under
+    // This month; both move into Tomorrow and Today as the day nears.
+    final sunday = DateTime(today.year, today.month, today.day + 7 - today.weekday);
+    state.addTodo(day.isAfter(sunday) ? TodoScope.month : TodoScope.week, text, dueDate: day);
+  }
+}
+
+/// Today and the six days after it, one day under another: today always,
+/// the others only when something's due. The strip of days at the top
+/// jumps to one, follows the scroll, and takes a task dropped on it.
 class WeekCard extends StatefulWidget {
   const WeekCard({super.key});
 
   /// The days after today it reaches; anything later is further ahead.
-  static const span = 7;
+  static const span = 6;
 
   @override
   State<WeekCard> createState() => _WeekCardState();
@@ -88,10 +182,12 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay));
     final day = state.shownDay;
-    final planned = _Planned(state, day, past: state.viewDay != null);
+    final past = state.viewDay != null;
+    final planned = _Planned(state, day, past: past);
     final tasks = planned.days.expand((d) => d);
     final open = tasks.where((t) => !t.$2.done).length;
     final added = _added(day, [for (final (_, item) in tasks) item.id]);
+    final today = state.today;
 
     return Tile(
       padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
@@ -108,6 +204,16 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
             child: FadeThrough(
               layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
               child: _WeekList(key: ValueKey(dateKey(day)), planned: planned, added: added),
+            ),
+          ),
+          _FoldAway(
+            folded: past,
+            child: _DatedAdd(
+              first: today,
+              last: DateTime(today.year, today.month, today.day + WeekCard.span),
+              onAdd: (text, due, repeat) => repeat == null
+                  ? _addDue(state, text, due)
+                  : state.addRepeat(text, repeat.rule, due, until: repeat.until),
             ),
           ),
         ],
@@ -129,19 +235,34 @@ class _WeekList extends StatefulWidget {
   State<_WeekList> createState() => _WeekListState();
 }
 
-class _WeekListState extends State<_WeekList> {
+class _WeekListState extends State<_WeekList> with _DayMotion {
   final _keys = List.generate(WeekCard.span + 1, (_) => GlobalKey());
+
+  /// Whether a task is being dragged over each day, to light it.
+  final _over = List.generate(WeekCard.span + 1, (_) => ValueNotifier(false));
+  final _overBy = List.generate(WeekCard.span + 1, (_) => <Object>{});
+
+  /// The days showing, by index from the first: those with tasks.
+  List<int> _visible = const [0];
 
   /// The day at the top of the list, which the strip marks.
   int _top = 0;
+
+  @override
+  void dispose() {
+    for (final over in _over) {
+      over.dispose();
+    }
+    super.dispose();
+  }
 
   bool _scrolled(ScrollNotification notification) {
     final viewport = notification.context?.findRenderObject() as RenderBox?;
     if (viewport == null || !viewport.attached) return false;
     final edge = viewport.localToGlobal(Offset.zero).dy;
     // The last day whose heading has reached the top.
-    var top = 0;
-    for (var i = 0; i < _keys.length; i++) {
+    var top = _visible.first;
+    for (final i in _visible) {
       final box = _keys[i].currentContext?.findRenderObject() as RenderBox?;
       if (box == null || !box.attached || !box.hasSize) break;
       if (box.localToGlobal(Offset.zero).dy - edge > 24) break;
@@ -149,7 +270,7 @@ class _WeekListState extends State<_WeekList> {
     }
     // At the very bottom, the last day is the one being looked at.
     final metrics = notification.metrics;
-    if (metrics.extentAfter < 1 && metrics.extentBefore > 0) top = _keys.length - 1;
+    if (metrics.extentAfter < 1 && metrics.extentBefore > 0) top = _visible.last;
     if (top != _top) setState(() => _top = top);
     return false;
   }
@@ -160,36 +281,85 @@ class _WeekListState extends State<_WeekList> {
     Scrollable.ensureVisible(context, duration: Motion.page, curve: Motion.morphCurve);
   }
 
+  DateTime _date(int i) {
+    final day = AppScope.read(context).shownDay;
+    return DateTime(day.year, day.month, day.day + i);
+  }
+
+  /// An open task of today's lists, not already on day [i], moves there.
+  bool _accepts(_TaskDrag drag, int i) {
+    final state = AppScope.read(context);
+    return state.viewDay == null &&
+        drag.day == state.today &&
+        !drag.item.done &&
+        !widget.planned.days[i].any((t) => t.$2.id == drag.item.id);
+  }
+
+  void _drop(_TaskDrag drag, int i) => AppScope.read(context).moveTodoTo(drag.scope, drag.item, _date(i));
+
+  void _hover(int i, Object by, bool over) {
+    over ? _overBy[i].add(by) : _overBy[i].remove(by);
+    _over[i].value = _overBy[i].isNotEmpty;
+  }
+
+  /// [child], part of day [i], taking a task dropped on it for that day.
+  Widget _dropTarget(int i, Widget child) {
+    final by = Object();
+    return DragTarget<_TaskDrag>(
+      onWillAcceptWithDetails: (details) {
+        final ok = _accepts(details.data, i);
+        if (ok) _hover(i, by, true);
+        return ok;
+      },
+      onLeave: (_) => _hover(i, by, false),
+      onAcceptWithDetails: (details) {
+        _hover(i, by, false);
+        _drop(details.data, i);
+      },
+      builder: (context, candidates, rejected) => child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.read(context);
     final day = state.shownDay;
     final readOnly = !state.canEditDay(day);
+    final planned = widget.planned;
+    final shown = [for (var i = 0; i <= WeekCard.span; i++) _shown('$i', planned.days[i])];
+    _settle();
+    // Today always; another day while it has tasks, or one closing up.
+    _visible = [
+      for (var i = 0; i <= WeekCard.span; i++)
+        if (i == 0 || planned.days[i].isNotEmpty || _hasDeparting('$i')) i,
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.only(right: 8),
-          child: _WeekStrip(first: day, today: state.today, focus: _top, onDay: _goTo),
+          child: _WeekStrip(
+            first: day,
+            today: state.today,
+            focus: _top,
+            shown: {..._visible},
+            onDay: _goTo,
+            accepts: _accepts,
+            onDrop: _drop,
+          ),
         ),
         const SizedBox(height: 4),
         Expanded(
           child: NotificationListener<ScrollNotification>(
             onNotification: _scrolled,
             child: SmoothTaskScroll(
-              builder: (context, controller) => SingleChildScrollView(
+              builder: (context, controller) => CustomScrollView(
                 controller: controller,
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i <= WeekCard.span; i++)
-                      KeyedSubtree(
-                        key: _keys[i],
-                        child: _section(state, DateTime(day.year, day.month, day.day + i), i, readOnly),
-                      ),
-                  ],
-                ),
+                scrollCacheExtent: const ScrollCacheExtent.pixels(80),
+                slivers: [
+                  for (final i in _visible) _section(state, i, shown[i], readOnly),
+                  const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+                ],
               ),
             ),
           ),
@@ -198,9 +368,10 @@ class _WeekListState extends State<_WeekList> {
     );
   }
 
-  Widget _section(AppState state, DateTime date, int i, bool readOnly) {
-    final planned = widget.planned, added = widget.added;
+  Widget _section(AppState state, int i, List<_Shown> shown, bool readOnly) {
     final p = context.palette;
+    final date = _date(i);
+    final added = widget.added;
     final weekday = weekdayNames[date.weekday - 1];
     final name = switch (_daysBetween(state.today, date)) {
       0 => 'Today',
@@ -208,69 +379,118 @@ class _WeekListState extends State<_WeekList> {
       -1 => 'Yesterday',
       _ => null,
     };
-    final section = _DaySection(
-      heading: [(_shortDate(date, state.today), true), if (name != null) (name, i == 0), (weekday, false)],
-      strong: i == 0,
-      first: i == 0,
-      children: [
-        GlidingColumn(
-          children: [
-            for (final (scope, item) in planned.days[i])
+    final Widget? foot;
+    if (state.viewDay == null) {
+      foot = _AddTask(day: date, today: state.today);
+    } else if (!readOnly && i <= 1) {
+      // Yesterday, while it can still be edited, takes tasks into its own
+      // Today and Tomorrow.
+      foot = _AddTask(day: date, today: state.today, past: state.viewDay);
+    } else if (shown.isEmpty) {
+      foot = Padding(
+        padding: const EdgeInsets.fromLTRB(26, 6, 0, 4),
+        child: Text(
+          'Nothing planned',
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted.withValues(alpha: 0.7)),
+        ),
+      );
+    } else {
+      foot = null;
+    }
+    final group = SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: _dropTarget(
+            i,
+            KeyedSubtree(
+              key: _keys[i],
+              child: _DayHeading(
+                parts: [(_shortDate(date, state.today), true), if (name != null) (name, i == 0), (weekday, false)],
+                strong: i == 0,
+                first: i == _visible.first,
+              ),
+            ),
+          ),
+        ),
+        if (i == 0 && shown.isEmpty && state.viewDay == null)
+          SliverToBoxAdapter(
+            child: _dropTarget(
+              i,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(26, 6, 0, 2),
+                child: Text(
+                  'Nothing due',
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted.withValues(alpha: 0.7)),
+                ),
+              ),
+            ),
+          ),
+        LazyTaskSliver(
+          ids: [for (final s in shown) (s.task.$1, s.task.$2.id)],
+          itemBuilder: (context, index) {
+            final (:task, :arriving, :leaving) = shown[index];
+            final (scope, item) = task;
+            return _dropTarget(
+              i,
               TaskRow(
                 key: ValueKey((scope, item.id)),
                 scope: scope,
                 item: item,
                 day: state.shownDay,
                 readOnly: readOnly,
-                fadeIn: added.contains(item.id),
+                fadeIn: added.contains(item.id) || arriving,
+                arriving: arriving,
+                leaving: leaving,
+                onRemove: () => _remove('$i', task, () => state.removeTodo(scope, item, day: state.shownDay)),
               ),
-          ],
+            );
+          },
         ),
-        if (state.viewDay == null)
-          _AddTask(day: date, today: state.today)
-        // Yesterday, while it can still be edited, takes tasks into its own
-        // Today and Tomorrow.
-        else if (!readOnly && i <= 1)
-          _AddTask(day: date, today: state.today, past: state.viewDay)
-        else if (planned.days[i].isEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(26, 6, 0, 4),
-            child: Text(
-              'Nothing planned',
-              style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted.withValues(alpha: 0.7)),
-            ),
-          ),
+        if (foot != null) SliverToBoxAdapter(child: _dropTarget(i, foot)),
       ],
     );
-    final here = {for (final (_, item) in planned.days[i]) item.id};
-    // An open task dragged here moves to this day.
-    return DragTarget<_TaskDrag>(
-      onWillAcceptWithDetails: (details) =>
-          state.viewDay == null &&
-          details.data.day == state.today &&
-          !details.data.item.done &&
-          !here.contains(details.data.item.id),
-      onAcceptWithDetails: (details) => state.moveTodoTo(details.data.scope, details.data.item, date),
-      builder: (context, candidates, rejected) => AnimatedContainer(
+    // A day a task is dragged over lights up.
+    return ValueListenableBuilder(
+      valueListenable: _over[i],
+      builder: (context, over, sliver) => TweenAnimationBuilder<double>(
+        tween: Tween(end: over ? 0.08 : 0),
         duration: Motion.hover,
         curve: Motion.hoverCurve,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: candidates.isEmpty ? Colors.transparent : p.accent.withValues(alpha: 0.08),
+        builder: (context, alpha, sliver) => DecoratedSliver(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: p.accent.withValues(alpha: alpha),
+          ),
+          sliver: sliver!,
         ),
-        child: section,
+        child: sliver,
       ),
+      child: SliverPadding(padding: const EdgeInsets.only(right: 8), sliver: group),
     );
   }
 }
 
 /// The week card's days in a row, the one at the top of the list marked.
+/// Days with nothing due are dimmed, but still take a dropped task.
 class _WeekStrip extends StatelessWidget {
-  const _WeekStrip({required this.first, required this.today, required this.focus, required this.onDay});
+  const _WeekStrip({
+    required this.first,
+    required this.today,
+    required this.focus,
+    required this.shown,
+    required this.onDay,
+    required this.accepts,
+    required this.onDrop,
+  });
 
   final DateTime first, today;
   final int focus;
+
+  /// The days with a section in the list.
+  final Set<int> shown;
   final ValueChanged<int> onDay;
+  final bool Function(_TaskDrag drag, int day) accepts;
+  final void Function(_TaskDrag drag, int day) onDrop;
 
   @override
   Widget build(BuildContext context) {
@@ -282,11 +502,17 @@ class _WeekStrip extends StatelessWidget {
           children: [
             for (var i = 0; i <= WeekCard.span; i++)
               Expanded(
-                child: _StripDay(
-                  day: DateTime(first.year, first.month, first.day + i),
-                  today: today,
-                  focused: i == focus,
-                  onTap: () => onDay(i),
+                child: DragTarget<_TaskDrag>(
+                  onWillAcceptWithDetails: (details) => accepts(details.data, i),
+                  onAcceptWithDetails: (details) => onDrop(details.data, i),
+                  builder: (context, candidates, rejected) => _StripDay(
+                    day: DateTime(first.year, first.month, first.day + i),
+                    today: today,
+                    focused: i == focus,
+                    empty: !shown.contains(i),
+                    dropping: candidates.isNotEmpty,
+                    onTap: () => onDay(i),
+                  ),
                 ),
               ),
           ],
@@ -299,10 +525,23 @@ class _WeekStrip extends StatelessWidget {
 }
 
 class _StripDay extends StatefulWidget {
-  const _StripDay({required this.day, required this.today, required this.focused, required this.onTap});
+  const _StripDay({
+    required this.day,
+    required this.today,
+    required this.focused,
+    required this.empty,
+    required this.dropping,
+    required this.onTap,
+  });
 
   final DateTime day, today;
   final bool focused;
+
+  /// Nothing due: dimmed, and nothing to jump to.
+  final bool empty;
+
+  /// A task is dragged over it.
+  final bool dropping;
   final VoidCallback onTap;
 
   @override
@@ -317,18 +556,23 @@ class _StripDayState extends State<_StripDay> {
     final p = context.palette;
     final isToday = widget.day == widget.today;
     final focused = widget.focused;
+    final empty = widget.empty;
+    final dropping = widget.dropping;
+    final ink = empty && !dropping ? p.inkMuted.withValues(alpha: 0.4) : (focused ? p.ink : p.inkMuted);
     return Tooltip(
-      message: '${weekdayNames[widget.day.weekday - 1]} ${_shortDate(widget.day, widget.today)}',
+      message:
+          '${weekdayNames[widget.day.weekday - 1]} ${_shortDate(widget.day, widget.today)}'
+          '${empty ? ', nothing due' : ''}',
       waitDuration: const Duration(milliseconds: 600),
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
+        cursor: empty ? MouseCursor.defer : SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
+          onTap: empty ? null : widget.onTap,
           child: HoverFill(
-            hover: _hover,
+            hover: (_hover && !empty) || dropping,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
               child: Column(
@@ -340,7 +584,7 @@ class _StripDayState extends State<_StripDay> {
                       fontSize: 10,
                       letterSpacing: 1.2,
                       fontWeight: FontWeight.w700,
-                      color: focused ? p.ink : p.inkMuted.withValues(alpha: 0.8),
+                      color: empty && !dropping ? ink : (focused ? p.ink : p.inkMuted.withValues(alpha: 0.8)),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -351,7 +595,7 @@ class _StripDayState extends State<_StripDay> {
                     height: 28,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: isToday ? p.today : Colors.transparent,
+                      color: isToday ? p.today : (dropping ? p.accent.withValues(alpha: 0.18) : Colors.transparent),
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: focused && !isToday ? p.inkMuted.withValues(alpha: 0.6) : Colors.transparent,
@@ -363,7 +607,7 @@ class _StripDayState extends State<_StripDay> {
                         fontFamily: Fonts.ui,
                         fontSize: 13,
                         fontWeight: isToday || focused ? FontWeight.w700 : FontWeight.w500,
-                        color: isToday ? p.onToday : (focused ? p.ink : p.inkMuted),
+                        color: isToday ? p.onToday : ink,
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
@@ -378,13 +622,12 @@ class _StripDayState extends State<_StripDay> {
   }
 }
 
-/// A day's heading, its parts joined with dots, over a rule and its rows.
-class _DaySection extends StatelessWidget {
-  const _DaySection({required this.heading, required this.children, this.strong = false, this.first = false});
+/// A day's heading, its parts joined with dots, over a rule.
+class _DayHeading extends StatelessWidget {
+  const _DayHeading({required this.parts, this.strong = false, this.first = false});
 
   /// The heading's parts; strong ones are full ink.
-  final List<(String, bool)> heading;
-  final List<Widget> children;
+  final List<(String, bool)> parts;
 
   /// All in full ink: today's.
   final bool strong;
@@ -396,14 +639,14 @@ class _DaySection extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Padding(
-      padding: EdgeInsets.only(top: first ? 12 : 22, right: 8),
+      padding: EdgeInsets.only(top: first ? 12 : 22, bottom: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text.rich(
             TextSpan(
               children: [
-                for (final (i, (part, full)) in heading.indexed) ...[
+                for (final (i, (part, full)) in parts.indexed) ...[
                   if (i > 0)
                     TextSpan(
                       text: '  ·  ',
@@ -422,9 +665,137 @@ class _DaySection extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Container(height: 1, color: p.tileBorder.withValues(alpha: 0.6)),
-          const SizedBox(height: 4),
-          ...children,
         ],
+      ),
+    );
+  }
+}
+
+/// [child] at a card's foot, folded away (while looking back) so it eases
+/// out and back rather than snapping.
+class _FoldAway extends StatelessWidget {
+  const _FoldAway({required this.folded, required this.child});
+
+  final bool folded;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ClipRect(
+    child: AnimatedAlign(
+      duration: Motion.morph,
+      curve: Motion.morphCurve,
+      alignment: Alignment.topCenter,
+      heightFactor: folded ? 0 : 1,
+      child: AnimatedOpacity(
+        duration: Motion.morph,
+        curve: Motion.morphCurve,
+        opacity: folded ? 0 : 1,
+        child: IgnorePointer(
+          ignoring: folded,
+          child: ExcludeFocus(excluding: folded, child: child),
+        ),
+      ),
+    ),
+  );
+}
+
+/// The field at a card's foot for a new task on a day between [first] and
+/// [last]. The calendar button picks the day and how it repeats; Enter
+/// without a day asks for one.
+class _DatedAdd extends StatefulWidget {
+  const _DatedAdd({required this.first, this.last, required this.onAdd});
+
+  final DateTime first;
+  final DateTime? last;
+  final void Function(String text, DateTime due, _RepeatChoice? repeat) onAdd;
+
+  @override
+  State<_DatedAdd> createState() => _DatedAddState();
+}
+
+class _DatedAddState extends State<_DatedAdd> {
+  final _controller = TextEditingController();
+  final _focus = FocusNode();
+  DateTime? _due;
+  _RepeatChoice? _repeat;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<DateTime?> _pick() async {
+    final picked = await _pickDayAndRepeat(
+      context,
+      first: widget.first,
+      last: widget.last,
+      selected: _due,
+      repeat: _repeat,
+    );
+    if (picked == null || !mounted) return null;
+    setState(() {
+      _due = picked.day;
+      _repeat = picked.repeat;
+    });
+    _focus.requestFocus();
+    return picked.day;
+  }
+
+  Future<void> _submit() async {
+    if (_controller.text.trim().isEmpty) return;
+    // Every task has a day: without one yet, it's asked for.
+    final due = _due ?? await _pick();
+    if (due == null || !mounted) return;
+    widget.onAdd(_controller.text, due, _repeat);
+    setState(() {
+      _due = null;
+      _repeat = null;
+    });
+    _controller.clear();
+    _focus.requestFocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final today = AppScope.read(context).today;
+    final due = _due, repeat = _repeat;
+    final note = TextStyle(fontFamily: Fonts.body, fontSize: 11, color: p.inkMuted);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, right: 6),
+      child: _Field(
+        controller: _controller,
+        focus: _focus,
+        leading: _TaskAction(
+          tooltip: due == null ? 'Pick a day' : 'Due ${dayMonth(due)}/${due.year}, click to change',
+          icon: due == null ? Icons.calendar_today_outlined : Icons.event_available_outlined,
+          onPressed: _pick,
+        ),
+        trailing: Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (due != null) Text(_shortDate(due, today), style: note),
+              if (repeat != null) ...[
+                const SizedBox(width: 8),
+                Icon(Icons.repeat_rounded, size: 12, color: p.accent),
+                const SizedBox(width: 3),
+                Flexible(
+                  child: Text(
+                    repeat.rule.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: note.copyWith(color: p.accent),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        onSubmitted: _submit,
       ),
     );
   }
@@ -484,18 +855,7 @@ class _AddTaskState extends State<_AddTask> {
       state.addRepeat(text, repeat.rule, widget.day, until: repeat.until);
       setState(() => _repeat = null);
     } else {
-      final days = _daysBetween(widget.today, widget.day);
-      if (days <= 0) {
-        state.addTodo(TodoScope.today, text);
-      } else if (days == 1) {
-        state.addTodo(TodoScope.tomorrow, text);
-      } else {
-        // Due later this week files under This week, anything after under
-        // This month; both move into Tomorrow and Today as the day nears.
-        final sunday = DateTime(widget.today.year, widget.today.month, widget.today.day + 7 - widget.today.weekday);
-        final scope = widget.day.isAfter(sunday) ? TodoScope.month : TodoScope.week;
-        state.addTodo(scope, text, dueDate: widget.day);
-      }
+      _addDue(state, text, widget.day);
     }
     _controller.clear();
     _focus.requestFocus();
@@ -680,54 +1040,11 @@ class FurtherAheadCard extends StatefulWidget {
 }
 
 class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
-  final _controller = TextEditingController();
-  final _focus = FocusNode();
-  DateTime? _due;
-  _RepeatChoice? _repeat;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
-
-  DateTime get _first {
-    final today = AppScope.read(context).today;
-    return DateTime(today.year, today.month, today.day + WeekCard.span + 1);
-  }
-
-  Future<DateTime?> _pickDue() async {
-    final picked = await _pickDate(context, first: _first, selected: _due);
-    if (picked != null && mounted) setState(() => _due = picked);
-    return picked;
-  }
-
-  Future<void> _submit(AppState state) async {
-    if (_controller.text.trim().isEmpty) return;
-    // Every task has a day: without one yet, it's asked for.
-    final due = _due ?? await _pickDue();
-    if (due == null || !mounted) return;
-    if (_repeat case final repeat?) {
-      state.addRepeat(_controller.text, repeat.rule, due, until: repeat.until);
-    } else {
-      state.addTodo(TodoScope.month, _controller.text, dueDate: due);
-    }
-    setState(() {
-      _due = null;
-      _repeat = null;
-    });
-    _controller.clear();
-    _focus.requestFocus();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay));
     final day = state.shownDay;
     final past = state.viewDay != null;
-    final readOnly = !state.canEditDay(day);
     final planned = _Planned(state, day, past: past);
     final groups = [
       for (final (date, items) in planned.later) (date as DateTime?, items),
@@ -739,6 +1056,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
         for (final later in items)
           if (later.item case final item?) item.id,
     ]);
+    final today = state.today;
 
     return Tile(
       padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
@@ -753,117 +1071,125 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
           Expanded(
             child: FadeThrough(
               layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
-              child: KeyedSubtree(
-                key: ValueKey(dateKey(day)),
-                child: groups.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Nothing more than a week away',
-                          style: TextStyle(
-                            fontFamily: Fonts.body,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: p.inkMuted.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      )
-                    : SmoothTaskScroll(
-                        builder: (context, controller) => SingleChildScrollView(
-                          controller: controller,
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (final (i, (date, items)) in groups.indexed)
-                                _DaySection(
-                                  first: i == 0,
-                                  heading: date == null
-                                      ? const [('No date', true)]
-                                      : [
-                                          (_shortDate(date, state.today), true),
-                                          (weekdayNames[date.weekday - 1], false),
-                                        ],
-                                  children: [
-                                    GlidingColumn(
-                                      children: [
-                                        for (final later in items)
-                                          if (later.repeat case final repeat?)
-                                            _RepeatPreview(key: ValueKey(repeat.uid), repeat: repeat, day: date!)
-                                          else
-                                            TaskRow(
-                                              key: ValueKey((later.scope, later.item!.id)),
-                                              scope: later.scope!,
-                                              item: later.item!,
-                                              day: day,
-                                              readOnly: readOnly,
-                                              fadeIn: added.contains(later.item!.id),
-                                            ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-              ),
+              child: _LaterList(key: ValueKey(dateKey(day)), groups: groups, added: added),
             ),
           ),
-          // Kept while looking back, folded away, so it eases out and back
-          // rather than snapping.
-          ClipRect(
-            child: AnimatedAlign(
-              duration: Motion.morph,
-              curve: Motion.morphCurve,
-              alignment: Alignment.topCenter,
-              heightFactor: past ? 0 : 1,
-              child: AnimatedOpacity(
-                duration: Motion.morph,
-                curve: Motion.morphCurve,
-                opacity: past ? 0 : 1,
-                child: IgnorePointer(
-                  ignoring: past,
-                  child: ExcludeFocus(
-                    excluding: past,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 6, right: 6),
-                      child: _Field(
-                        controller: _controller,
-                        focus: _focus,
-                        leading: _TaskAction(
-                          tooltip: _due == null
-                              ? 'Pick a day'
-                              : 'Due ${dayMonth(_due!)}/${_due!.year}, click to change',
-                          icon: _due == null ? Icons.calendar_today_outlined : Icons.event_available_outlined,
-                          onPressed: _pickDue,
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_due != null)
-                              Text(
-                                _shortDate(_due!, state.today),
-                                style: TextStyle(fontFamily: Fonts.body, fontSize: 11, color: p.inkMuted),
-                              ),
-                            Flexible(
-                              child: _RepeatButton(
-                                repeat: _repeat,
-                                onPressed: () async {
-                                  final picked = await _pickRepeat(context, _due ?? _first, _repeat);
-                                  if (picked != null && mounted) setState(() => _repeat = picked.choice);
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        onSubmitted: () => _submit(state),
-                      ),
+          _FoldAway(
+            folded: past,
+            child: _DatedAdd(
+              first: DateTime(today.year, today.month, today.day + WeekCard.span + 1),
+              onAdd: (text, due, repeat) => repeat == null
+                  ? state.addTodo(TodoScope.month, text, dueDate: due)
+                  : state.addRepeat(text, repeat.rule, due, until: repeat.until),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One day's further-ahead list: each date's tasks, then the repeats due
+/// round on it; tasks without a day last.
+class _LaterList extends StatefulWidget {
+  const _LaterList({super.key, required this.groups, required this.added});
+
+  final List<(DateTime?, List<_Later>)> groups;
+
+  /// Tasks just added, which fade in.
+  final Set<int> added;
+
+  @override
+  State<_LaterList> createState() => _LaterListState();
+}
+
+class _LaterListState extends State<_LaterList> with _DayMotion {
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final state = AppScope.read(context);
+    final day = state.shownDay;
+    final readOnly = !state.canEditDay(day);
+    final groups = [
+      for (final (date, items) in widget.groups)
+        (
+          date: date,
+          key: date == null ? 'none' : dateKey(date),
+          tasks: [
+            for (final later in items)
+              if (later.item case final item?) (later.scope!, item),
+          ],
+          repeats: [for (final later in items) ?later.repeat],
+        ),
+    ];
+    // A day whose last task was just removed stays while it closes up.
+    for (final key in {for (final d in _departing.values) d.group}.difference({for (final g in groups) g.key})) {
+      groups.add((date: key == 'none' ? null : DateTime.parse(key), key: key, tasks: const [], repeats: const []));
+    }
+    groups.sort((a, b) => a.date == null ? 1 : (b.date == null ? -1 : a.date!.compareTo(b.date!)));
+    final shown = {for (final g in groups) g.key: _shown(g.key, g.tasks)};
+    _settle();
+    if (groups.isEmpty) {
+      return Center(
+        child: Text(
+          'Nothing more than a week away',
+          style: TextStyle(
+            fontFamily: Fonts.body,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: p.inkMuted.withValues(alpha: 0.7),
+          ),
+        ),
+      );
+    }
+    return SmoothTaskScroll(
+      builder: (context, controller) => CustomScrollView(
+        controller: controller,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(80),
+        slivers: [
+          for (final (i, g) in groups.indexed)
+            SliverPadding(
+              padding: const EdgeInsets.only(right: 8),
+              sliver: SliverMainAxisGroup(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _DayHeading(
+                      first: i == 0,
+                      parts: switch (g.date) {
+                        null => const [('No date', true)],
+                        final date => [(_shortDate(date, state.today), true), (weekdayNames[date.weekday - 1], false)],
+                      },
                     ),
                   ),
-                ),
+                  LazyTaskSliver(
+                    ids: [
+                      for (final s in shown[g.key]!) (s.task.$1, s.task.$2.id),
+                      for (final repeat in g.repeats) repeat.uid,
+                    ],
+                    itemBuilder: (context, index) {
+                      final tasks = shown[g.key]!;
+                      if (index >= tasks.length) {
+                        return _RepeatPreview(repeat: g.repeats[index - tasks.length], day: g.date!);
+                      }
+                      final (:task, :arriving, :leaving) = tasks[index];
+                      final (scope, item) = task;
+                      return TaskRow(
+                        key: ValueKey((scope, item.id)),
+                        scope: scope,
+                        item: item,
+                        day: day,
+                        readOnly: readOnly,
+                        fadeIn: widget.added.contains(item.id) || arriving,
+                        arriving: arriving,
+                        leaving: leaving,
+                        onRemove: () => _remove(g.key, task, () => state.removeTodo(scope, item, day: day)),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
-          ),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 8)),
         ],
       ),
     );
@@ -873,7 +1199,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
 /// The next time a repeating task comes round, before it's made: its name
 /// and rule, to change or take away like a task.
 class _RepeatPreview extends StatefulWidget {
-  const _RepeatPreview({super.key, required this.repeat, required this.day});
+  const _RepeatPreview({required this.repeat, required this.day});
 
   final Repeat repeat;
   final DateTime day;

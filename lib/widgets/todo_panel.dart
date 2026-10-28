@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 
 import '../app_state.dart';
@@ -79,6 +80,9 @@ class TaskRow extends StatelessWidget {
     required this.day,
     this.readOnly = false,
     this.fadeIn = false,
+    this.arriving = false,
+    this.leaving = false,
+    this.onRemove,
   });
 
   final TodoScope scope;
@@ -91,6 +95,16 @@ class TaskRow extends StatelessWidget {
   /// Fades in: just added.
   final bool fadeIn;
 
+  /// Just come from another day, shown unticked at the bottom until it
+  /// settles into place.
+  final bool arriving;
+
+  /// Removed, closing up.
+  final bool leaving;
+
+  /// Removes it; by default straight from its list.
+  final VoidCallback? onRemove;
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.read(context);
@@ -100,7 +114,9 @@ class TaskRow extends StatelessWidget {
       day: day,
       readOnly: readOnly,
       fadeIn: fadeIn,
-      onRemove: () => state.removeTodo(scope, item, day: day),
+      arriving: arriving,
+      leaving: leaving,
+      onRemove: onRemove ?? () => state.removeTodo(scope, item, day: day),
     );
   }
 }

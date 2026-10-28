@@ -6,7 +6,6 @@ import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
-import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:eclipse/widgets/settings_dialog.dart';
 
 void main() {
@@ -62,8 +61,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Tomorrow's heading in the week card.
-  Finder tomorrow() => find.descendant(of: find.byType(WeekCard), matching: find.textContaining('Tomorrow'));
+  /// Tomorrow in the week card's strip of days, which takes a dropped task
+  /// while Tomorrow has nothing due and so no heading.
+  Finder tomorrow() => find.byWidgetPredicate((w) => w.runtimeType.toString() == '_StripDay').at(1);
 
   testWidgets('drag moves an unfinished task into an empty section', (tester) async {
     state.addTodo(TodoScope.today, 'Drag me');

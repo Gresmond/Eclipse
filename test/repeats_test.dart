@@ -40,6 +40,34 @@ void main() {
     expect(const RepeatRule.monthly(22).label, 'Monthly on the 22nd');
   });
 
+  test('a yearly rule comes round on its date every so many years', () {
+    final start = DateTime(2026, 10, 28);
+    expect(const RepeatRule.yearly(1).on(DateTime(2027, 10, 28), start), isTrue);
+    expect(const RepeatRule.yearly(1).on(DateTime(2027, 10, 29), start), isFalse);
+    expect(const RepeatRule.yearly(2).on(DateTime(2027, 10, 28), start), isFalse);
+    expect(const RepeatRule.yearly(2).on(DateTime(2028, 10, 28), start), isTrue);
+    expect(RepeatRule.decode(const RepeatRule.yearly(3).encode()), const RepeatRule.yearly(3));
+    expect(RepeatRule.decode('yearly:0'), isNull);
+    expect(const RepeatRule.yearly(1).label, 'Every year');
+    expect(const RepeatRule.yearly(5).label, 'Every 5 years');
+    final every2 = Repeat(uid: 'a', text: 'Passport', rule: const RepeatRule.yearly(2), start: start);
+    expect(every2.next(DateTime(2026, 10, 29)), DateTime(2028, 10, 28));
+    expect(every2.next(DateTime(2040, 1, 1)), DateTime(2040, 10, 28));
+    final ended = Repeat(
+      uid: 'b',
+      text: 'x',
+      rule: const RepeatRule.yearly(1),
+      start: start,
+      until: DateTime(2027, 1, 1),
+    );
+    expect(ended.next(DateTime(2026, 11, 1)), isNull);
+    // 29 February comes round in leap years only.
+    final leap = Repeat(uid: 'c', text: 'Leap day', rule: const RepeatRule.yearly(1), start: DateTime(2028, 2, 29));
+    expect(leap.next(DateTime(2028, 3, 1)), DateTime(2032, 2, 29));
+    expect(leap.on(DateTime(2029, 2, 28)), isFalse);
+    expect(leap.on(DateTime(2029, 3, 1)), isFalse);
+  });
+
   group('repeating tasks', () {
     var now = DateTime(2026, 10, 28, 9); // Wednesday
     late Store store;

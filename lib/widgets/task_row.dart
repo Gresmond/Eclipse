@@ -11,6 +11,8 @@ class _TodoRow extends StatefulWidget {
     required this.day,
     this.readOnly = false,
     this.fadeIn = false,
+    this.arriving = false,
+    this.leaving = false,
     required this.onRemove,
   });
 
@@ -26,6 +28,12 @@ class _TodoRow extends StatefulWidget {
 
   /// Fades in when first shown: a newly added item.
   final bool fadeIn;
+
+  /// Show the incoming task before its completion tick lands.
+  final bool arriving;
+
+  /// Removed: closes up.
+  final bool leaving;
   final VoidCallback onRemove;
 
   @override
@@ -146,7 +154,7 @@ class _TodoRowState extends State<_TodoRow> {
     final p = context.palette;
     final item = widget.item;
     final child = item.subtasks[index];
-    final canDrag = !widget.readOnly && item.subtasks.length > 1 && (item.numbered || !child.done);
+    final canDrag = !widget.readOnly && !widget.leaving && item.subtasks.length > 1 && (item.numbered || !child.done);
     return DragTarget<_SubtaskDrag>(
       key: _subtaskKey(index),
       onWillAcceptWithDetails: (details) {
@@ -222,7 +230,7 @@ class _TodoRowState extends State<_TodoRow> {
     final p = context.palette;
     final state = AppScope.read(context);
     final item = widget.item;
-    final done = item.done;
+    final done = item.done && !widget.arriving;
     // Planned tasks are on their own day; only Today and Tomorrow carry.
     final carried =
         (widget.scope == TodoScope.today || widget.scope == TodoScope.tomorrow) &&
@@ -231,10 +239,10 @@ class _TodoRowState extends State<_TodoRow> {
 
     final parentRow = Appear(
       animate: widget.fadeIn,
-      shown: !_nestingOut,
+      shown: !widget.leaving && !_nestingOut,
       fadeBeforeCollapse: _nestingOut,
       child: IgnorePointer(
-        ignoring: widget.readOnly || _nestingOut,
+        ignoring: widget.readOnly || widget.leaving || _nestingOut,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hover = _actions = true),
@@ -351,9 +359,9 @@ class _TodoRowState extends State<_TodoRow> {
                       ],
                       if (!widget.readOnly)
                         IgnorePointer(
-                          ignoring: !_hover,
+                          ignoring: !_hover || widget.leaving,
                           child: ExcludeFocus(
-                            excluding: !_hover,
+                            excluding: !_hover || widget.leaving,
                             child: AnimatedOpacity(
                               opacity: _hover ? 1 : 0,
                               duration: Motion.hover,
@@ -507,7 +515,7 @@ class _TodoRowState extends State<_TodoRow> {
     );
     // Keep the row's subtree mounted when completion changes. Swapping the
     // Draggable for the row resets its tick and nested glide animations.
-    final canDrag = !item.done && !widget.readOnly && widget.day == state.today && !_nestingOut;
+    final canDrag = !item.done && !widget.readOnly && widget.day == state.today && !widget.leaving && !_nestingOut;
     final drag = _TaskDrag(widget.scope, item, widget.day)
       ..fadeForNesting = _fadeForNesting
       ..restoreAfterNesting = _restoreAfterNesting;

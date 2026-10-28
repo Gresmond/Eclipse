@@ -9,6 +9,7 @@ import 'package:eclipse/data/updates.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/util/lru_cache.dart';
+import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:eclipse/widgets/lazy_motion.dart';
 import 'package:eclipse/screens/month_view.dart';
 import 'package:flutter/material.dart';
@@ -57,6 +58,31 @@ void main() {
     state.setTheme('Lunar Eclipse');
     await tester.pumpAndSettle();
     expect(cells, 0, reason: 'theme frames repaint the grid without rebuilding its cells');
+  });
+
+  testWidgets('a long week builds only the rows on screen', (tester) async {
+    for (var i = 0; i < 200; i++) {
+      state.addTodo(TodoScope.today, 'Review task $i');
+    }
+    state.addTodo(TodoScope.week, 'Untouched planner', dueDate: DateTime(2026, 10, 29));
+    await show(tester);
+    final labels = find.byWidgetPredicate((w) => w is Text && (w.data?.startsWith('Review task ') ?? false));
+    expect(labels.evaluate().length, allOf(greaterThan(0), lessThan(40)));
+    var rows = 0;
+    debugOnRebuildDirtyWidget = (element, built) {
+      if (element.widget.runtimeType.toString() == '_TodoRow') rows++;
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+    state.toggleTodo(state.todos[TodoScope.today]!.first);
+    await tester.pump();
+    expect(rows, lessThan(40));
+    await tester.pumpAndSettle();
+    debugOnRebuildDirtyWidget = null;
+    final scroll = find.descendant(of: find.byType(WeekCard), matching: find.byType(Scrollable));
+    tester.state<ScrollableState>(scroll.first).position.jumpTo(700);
+    await tester.pumpAndSettle();
+    expect(labels.evaluate().length, lessThan(40));
+    expect(find.text('Review task 1'), findsNothing);
   });
 
   testWidgets('rapid navigation does not build an invisible month grid', (tester) async {

@@ -209,20 +209,24 @@ class ReorderMotion {
   }
 }
 
-/// Only viewport rows and a small buffer retain widgets and animation state.
-class LazyTaskList extends StatefulWidget {
-  const LazyTaskList({super.key, required this.controller, required this.ids, required this.itemBuilder});
-  final ScrollController controller;
-  final List<int> ids;
+/// A list's rows as a sliver: only those in or near the viewport are
+/// built, and each glides to a new place when they're reordered.
+class LazyTaskSliver extends StatefulWidget {
+  const LazyTaskSliver({super.key, required this.ids, required this.itemBuilder});
+
+  /// Each row's key, in order.
+  final List<Object> ids;
   final IndexedWidgetBuilder itemBuilder;
+
   @override
-  State<LazyTaskList> createState() => _LazyTaskListState();
+  State<LazyTaskSliver> createState() => _LazyTaskSliverState();
 }
 
-class _LazyTaskListState extends State<LazyTaskList> with SingleTickerProviderStateMixin {
+class _LazyTaskSliverState extends State<LazyTaskSliver> with SingleTickerProviderStateMixin {
   late final _motion = ReorderMotion(this);
+
   @override
-  void didUpdateWidget(LazyTaskList oldWidget) {
+  void didUpdateWidget(LazyTaskSliver oldWidget) {
     super.didUpdateWidget(oldWidget);
     _motion.update(oldWidget.ids, widget.ids);
   }
@@ -236,22 +240,19 @@ class _LazyTaskListState extends State<LazyTaskList> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     final indices = {for (final (i, id) in widget.ids.indexed) id: i};
-    return ListView.builder(
-      controller: widget.controller,
-      padding: EdgeInsets.zero,
-      scrollCacheExtent: const ScrollCacheExtent.pixels(80),
+    return SliverList.builder(
       addAutomaticKeepAlives: false,
       addRepaintBoundaries: false,
       addSemanticIndexes: false,
       itemCount: widget.ids.length,
-      findChildIndexCallback: (key) => key is ValueKey<int> ? indices[key.value] : null,
+      findChildIndexCallback: (key) => key is ValueKey ? indices[key.value] : null,
       itemBuilder: (context, i) => _GlideRow(
         key: ValueKey(widget.ids[i]),
         progress: _motion.progress,
         generation: _motion.generation,
         position: Scrollable.of(context).position,
         color: context.palette.tile,
-        child: widget.itemBuilder(context, i),
+        child: RepaintBoundary(child: widget.itemBuilder(context, i)),
       ),
     );
   }
