@@ -150,16 +150,13 @@ List<_Step> _steps(AppState state) => [
   const _Step(
     'This week and this month',
     'Switch tabs for longer plans. Add a due date when creating or editing a task. '
-        'Tasks here automatically move from ‘This month’ to ‘This week’ as the date approaches. '
-        'A task in ‘This week’ moves into ‘Tomorrow’ when it’s due tomorrow and finally '
-        '‘Today’ when it’s due. Ticking a planner task moves it into Today as done.',
+        'Tasks here automatically move from ‘This month’ to ‘This week’ as the date approaches. ',
     TourSpot.laterTodos,
   ),
   const _Step(
     'Journal',
     'Your journal saves as you type. The folder button opens the day’s '
-        'Markdown copy. Choose its folder in Settings or sync it to Google Drive. Edits made to those files '
-        'outside Eclipse are not read back into the app.',
+        'Markdown copy. Choose its folder in Settings or sync it to Google Drive.',
     TourSpot.journal,
   ),
   const _Step(
