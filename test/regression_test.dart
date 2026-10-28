@@ -81,13 +81,15 @@ void main() {
       state.addTodo(scope, scope.name);
       final task = state.todos[scope]!.single;
       state.editTodo(scope, task, 'Scheduled ${scope.name}', DateTime(2026, 10, 28));
-      expect(state.todos[scope]!.single.dueDate, DateTime(2026, 10, 28));
     }
+    // Due within a week, the monthly task joins the weekly one at once.
+    expect(state.todos[TodoScope.month], isEmpty);
+    expect(state.todos[TodoScope.week]!.map((t) => t.dueDate), [DateTime(2026, 10, 28), DateTime(2026, 10, 28)]);
     final sender = SyncEngine(store, 'a')..claimAll();
     final other = memory();
     final receiver = SyncEngine(other, 'b')..clearForJoining();
     receiver.mergeAll([(_sent(sender), 'a')]);
-    expect(other.todos(TodoScope.week, '2026-10-19').single.dueDate, DateTime(2026, 10, 28));
+    expect(other.todos(TodoScope.week, '2026-10-19').map((t) => t.dueDate), [DateTime(2026, 10, 28), DateTime(2026, 10, 28)]);
     now = DateTime(2026, 10, 27);
     state.checkDate();
     expect(state.todos[TodoScope.tomorrow], hasLength(2));
@@ -105,6 +107,28 @@ void main() {
     expect(reopened.todosOn(TodoScope.today, DateTime(2026, 10, 28)), hasLength(2));
     state.dispose();
     reopened.dispose();
+  });
+
+  test('a monthly task moves to This week 7 days before it is due, then back there after an untick', () {
+    final store = memory();
+    store.addHabit(2026, 10, 'Read');
+    var now = DateTime(2026, 10, 20);
+    final state = AppState(store, clock: () => now);
+    addTearDown(state.dispose);
+    state.addTodo(TodoScope.month, 'Book flights', dueDate: DateTime(2026, 11, 4));
+    now = DateTime(2026, 10, 27);
+    state.checkDate();
+    expect(state.todos[TodoScope.month]!.single.text, 'Book flights');
+    // Closed across the day it was ready, it still shows in that day's record.
+    now = DateTime(2026, 10, 29);
+    state.checkDate();
+    expect(state.todos[TodoScope.month], isEmpty);
+    expect(state.todos[TodoScope.week]!.single.text, 'Book flights');
+    expect(state.todosOn(TodoScope.week, DateTime(2026, 10, 28)).single.text, 'Book flights');
+    state.toggleTodo(state.todos[TodoScope.week]!.single, scope: TodoScope.week);
+    state.toggleTodo(state.todos[TodoScope.today]!.single);
+    expect(state.todos[TodoScope.week]!.single.done, isFalse);
+    expect(state.todos[TodoScope.month], isEmpty);
   });
 
   test('due today or overdue moves immediately; completed tasks remain on their completion day', () {

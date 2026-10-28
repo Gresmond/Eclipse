@@ -150,7 +150,8 @@ List<_Step> _steps(AppState state) => [
   const _Step(
     'This week and this month',
     'Switch tabs for longer plans. Add a due date when creating or editing a task. '
-        'Tasks here automatically move from ‘This month’ to ‘This week’ as the date approaches. ',
+        'Dated tasks move from ‘This month’ to ‘This week’ a week before they’re due, '
+        'then into Tomorrow and Today.',
     TourSpot.laterTodos,
   ),
   const _Step(

@@ -317,6 +317,26 @@ extension StoreTodos on Store {
   /// Promote scheduled tasks on calendar dates, including days spent closed.
   void promoteDueTodos(DateTime today, {DateTime? earliest}) {
     transaction(() {
+      // This month hands a task to This week once it's due within 7 days.
+      final weekAhead = DateTime(today.year, today.month, today.day + 7);
+      final monthRows = _db.select(
+        "SELECT * FROM todos WHERE scope = 'month' AND done = 0 AND due_date <= ? "
+        "AND (defer_promotion_day IS NULL OR defer_promotion_day != ?)",
+        [dateKey(weekAhead), dateKey(today)],
+      );
+      for (final r in monthRows) {
+        final due = DateTime.parse(r['due_date'] as String);
+        final enters = _promotionDay(r, DateTime(due.year, due.month, due.day - 7), earliest);
+        // A task already due tomorrow goes straight to Tomorrow below.
+        if (enters.isBefore(DateTime(due.year, due.month, due.day - 1))) {
+          _db.execute('UPDATE todos SET scope = ?, period = ? WHERE id = ?', [
+            TodoScope.week.name,
+            TodoScope.week.period(enters),
+            r['id'],
+          ]);
+          _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [r['id']]), enters);
+        }
+      }
       final tomorrow = DateTime(today.year, today.month, today.day + 1);
       final rows = _db.select(
         "SELECT * FROM todos WHERE scope IN ('week', 'month') AND done = 0 AND due_date <= ? "
@@ -325,15 +345,7 @@ extension StoreTodos on Store {
       );
       for (final r in rows) {
         final due = DateTime.parse(r['due_date'] as String);
-        final ready = DateTime(due.year, due.month, due.day - 1);
-        final since = DateTime.parse(r['since'] as String);
-        var enters = ready.isBefore(since) ? since : ready;
-        final deferred = DateTime.tryParse(r['defer_promotion_day'] as String? ?? '');
-        if (deferred != null) {
-          final resumes = DateTime(deferred.year, deferred.month, deferred.day + 1);
-          if (enters.isBefore(resumes)) enters = resumes;
-        }
-        if (earliest != null && enters.isBefore(earliest)) enters = earliest;
+        final enters = _promotionDay(r, DateTime(due.year, due.month, due.day - 1), earliest);
         if (enters.isBefore(due)) {
           _db.execute('UPDATE todos SET scope = ?, period = ? WHERE id = ?', [
             TodoScope.tomorrow.name,
@@ -355,6 +367,20 @@ extension StoreTodos on Store {
         }
       }
     });
+  }
+
+  /// The day a task reaches its next list: [ready], but never before it was
+  /// added, while it's held back after an untick, or before [earliest].
+  DateTime _promotionDay(Row r, DateTime ready, DateTime? earliest) {
+    final since = DateTime.parse(r['since'] as String);
+    var enters = ready.isBefore(since) ? since : ready;
+    final deferred = DateTime.tryParse(r['defer_promotion_day'] as String? ?? '');
+    if (deferred != null) {
+      final resumes = DateTime(deferred.year, deferred.month, deferred.day + 1);
+      if (enters.isBefore(resumes)) enters = resumes;
+    }
+    if (earliest != null && enters.isBefore(earliest)) enters = earliest;
+    return enters;
   }
 
   /// Correct a completion and keep the live task in the appropriate period.
