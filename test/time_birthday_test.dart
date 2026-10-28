@@ -48,6 +48,49 @@ void main() {
     expect({for (final t in todos) t.text: t.birthday}, {'Party': false, 'Mum': true});
   });
 
+  testWidgets('Further ahead ticks like the week, and a ticked task goes to Today; birthdays stay as they are', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 23, 9));
+    state.addTodo(TodoScope.month, 'Rego', dueDate: DateTime(2026, 11, 21));
+    state.addRepeat('Rates', const RepeatRule.yearly(1), DateTime(2026, 11, 25));
+    state.addRepeat('Papa', const RepeatRule.yearly(1), DateTime(2026, 11, 20), birthday: true);
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    final week = find.byType(WeekCard), later = find.byType(FurtherAheadCard);
+    Finder row(String text) => find.ancestor(of: find.text(text), matching: find.byType(TaskRow));
+    expect(find.descendant(of: later, matching: row('Rego')), findsOneWidget);
+    expect(find.descendant(of: later, matching: row('Rates')), findsOneWidget);
+    expect(find.descendant(of: later, matching: row('Papa')), findsNothing);
+
+    // A task ticks off into Today.
+    await tester.tap(find.descendant(of: later, matching: find.text('Rego')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: later, matching: find.text('Rego')), findsNothing);
+    expect(find.descendant(of: week, matching: find.text('Rego')), findsOneWidget);
+    expect(state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Rego').done, isTrue);
+
+    // A repeat's next time is made as it's ticked, and goes the same way.
+    await tester.tap(find.descendant(of: later, matching: find.text('Rates')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: later, matching: find.text('Rates')), findsNothing);
+    expect(find.descendant(of: week, matching: find.text('Rates')), findsOneWidget);
+    final rates = state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Rates');
+    expect((rates.done, rates.repeatDay), (true, DateTime(2026, 11, 25)));
+
+    // Unticked, it goes back to its day.
+    await tester.tap(find.descendant(of: week, matching: find.text('Rego')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: later, matching: row('Rego')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('timed tasks lead their day, and Further ahead hides birthdays', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;

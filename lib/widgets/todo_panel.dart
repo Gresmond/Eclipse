@@ -86,10 +86,15 @@ class TaskRow extends StatelessWidget {
     this.arriving = false,
     this.leaving = false,
     this.onRemove,
+    this.make,
   });
 
   final TodoScope scope;
   final TodoItem item;
+
+  /// Makes [item], a time of a repeat not made yet, the first time it's
+  /// ticked or changed.
+  final TodoItem Function()? make;
 
   /// The day whose lists it's from: today, or a past day looked back on.
   final DateTime day;
@@ -120,6 +125,7 @@ class TaskRow extends StatelessWidget {
       arriving: arriving,
       leaving: leaving,
       onRemove: onRemove ?? () => state.removeTodo(scope, item, day: day),
+      make: make,
     );
   }
 }

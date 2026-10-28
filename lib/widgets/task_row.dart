@@ -14,10 +14,15 @@ class _TodoRow extends StatefulWidget {
     this.arriving = false,
     this.leaving = false,
     required this.onRemove,
+    this.make,
   });
 
   final TodoScope scope;
   final TodoItem item;
+
+  /// Makes [item], a time of a repeat not made yet, the first time it's
+  /// ticked or changed.
+  final TodoItem Function()? make;
 
   /// The day the list is for; an item from before its day, week or month
   /// says when it's from.
@@ -206,6 +211,9 @@ class _TodoRowState extends State<_TodoRow> {
     super.dispose();
   }
 
+  /// The item to change: made first, if it's a repeat's time not yet made.
+  TodoItem _real() => widget.make?.call() ?? widget.item;
+
   Future<void> _editSubtask(AppState state, {int? index}) async {
     final children = widget.item.subtasks;
     final result = await showAppDialog<({String text, bool numbered})>(
@@ -222,7 +230,7 @@ class _TodoRowState extends State<_TodoRow> {
     } else {
       next[index] = next[index].copyWith(text: text);
     }
-    state.setTodoSubtasks(widget.scope, widget.item, next, day: widget.day);
+    state.setTodoSubtasks(widget.scope, _real(), next, day: widget.day);
   }
 
   @override
@@ -255,7 +263,7 @@ class _TodoRowState extends State<_TodoRow> {
             onTapDown: (_) => setState(() => _pressed = true),
             onTapUp: (_) => setState(() => _pressed = false),
             onTapCancel: () => setState(() => _pressed = false),
-            onTap: () => state.toggleTodo(item, day: widget.day, scope: widget.scope),
+            onTap: () => state.toggleTodo(_real(), day: widget.day, scope: widget.scope),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: HoverFill(
@@ -286,6 +294,7 @@ class _TodoRowState extends State<_TodoRow> {
                               DragTarget<_TaskDrag>(
                                 onWillAcceptWithDetails: (details) =>
                                     !widget.readOnly &&
+                                    widget.make == null &&
                                     !_acceptingNest &&
                                     !details.data.nesting &&
                                     widget.day == state.today &&
@@ -397,7 +406,8 @@ class _TodoRowState extends State<_TodoRow> {
                                         _TaskAction(
                                           tooltip: 'Edit task',
                                           icon: Icons.edit_outlined,
-                                          onPressed: () => _editTask(context, widget.scope, item, widget.day),
+                                          onPressed: () =>
+                                              _editTask(context, widget.scope, item, widget.day, make: widget.make),
                                         ),
                                         _TaskAction(
                                           tooltip: 'Remove',
@@ -533,7 +543,13 @@ class _TodoRowState extends State<_TodoRow> {
     );
     // Keep the row's subtree mounted when completion changes. Swapping the
     // Draggable for the row resets its tick and nested glide animations.
-    final canDrag = !item.done && !widget.readOnly && widget.day == state.today && !widget.leaving && !_nestingOut;
+    final canDrag =
+        !item.done &&
+        !widget.readOnly &&
+        widget.make == null &&
+        widget.day == state.today &&
+        !widget.leaving &&
+        !_nestingOut;
     final drag = _TaskDrag(widget.scope, item, widget.day)
       ..fadeForNesting = _fadeForNesting
       ..restoreAfterNesting = _restoreAfterNesting;

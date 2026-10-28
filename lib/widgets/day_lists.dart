@@ -1244,11 +1244,14 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
 
   static bool _birthday(_Later later) => later.item?.birthday ?? later.repeat!.birthday;
 
+  /// A row by its day and task or repeat, so one that moves day counts as
+  /// gone from where it was.
+  static String _place(String group, _Later later) => '$group/${later.item?.id ?? later.repeat!.uid}';
+
   @override
   void didUpdateWidget(_LaterList old) {
     super.didUpdateWidget(old);
-    if (old.birthdays == widget.birthdays) return;
-    if (widget.birthdays) {
+    if (widget.birthdays && !old.birthdays) {
       final before = {for (final (date, _) in old.groups) _key(date)};
       final showing = {
         for (final (date, items) in widget.groups) ...[
@@ -1261,12 +1264,18 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
       _after(() => _showing.removeAll(showing));
       return;
     }
+    // Whatever's gone (ticked into Today, moved, or a birthday hidden)
+    // closes up where it was.
+    final now = {
+      for (final (date, items) in widget.groups)
+        for (final later in items) _place(_key(date), later),
+    };
     for (final (date, items) in old.groups) {
       final group = _key(date);
       var repeats = 0;
       for (final later in items) {
         if (later.repeat != null) repeats++;
-        if (!_birthday(later)) continue;
+        if (now.contains(_place(group, later))) continue;
         if (later.item case final item?) {
           if (_departing.containsKey(item.id)) continue;
           _departing[item.id] = (
@@ -1368,24 +1377,53 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                       final tasks = shown[g.key]!;
                       if (index >= tasks.length) {
                         final repeat = g.repeats[index - tasks.length];
-                        return _LaterRow(
+                        final (fadeIn, leaving) = (_showing.contains(repeat.uid), hidden.contains(repeat.uid));
+                        if (repeat.birthday) {
+                          return _LaterRow(day: day, repeat: repeat, date: g.date, fadeIn: fadeIn, leaving: leaving);
+                        }
+                        // Ticked like any other task, it's made first, then
+                        // closes up here as it goes to Today: ticked.
+                        final date = g.date!;
+                        final made = leaving ? _made(state, '${repeat.uid}@${dateKey(date)}') : null;
+                        TodoItem make() => state.occurrence(repeat, date);
+                        return TaskRow(
+                          key: ValueKey(repeat.uid),
+                          scope: TodoScope.month,
+                          item: made ?? _unmade(repeat, date),
                           day: day,
-                          repeat: repeat,
-                          date: g.date,
-                          fadeIn: _showing.contains(repeat.uid),
-                          leaving: hidden.contains(repeat.uid),
+                          readOnly: readOnly,
+                          fadeIn: fadeIn,
+                          leaving: leaving,
+                          make: made == null ? make : null,
+                          onRemove: () => state.removeTodo(TodoScope.month, make()),
                         );
                       }
                       final (:task, :arriving, :leaving) = tasks[index];
                       final (scope, item) = task;
-                      return _LaterRow(
+                      final fadeIn = widget.added.contains(item.id) || arriving || _showing.contains(item.id);
+                      void remove() => _remove(g.key, task, () => state.removeTodo(scope, item, day: day));
+                      if (item.birthday) {
+                        return _LaterRow(
+                          key: ValueKey((scope, item.id)),
+                          day: day,
+                          task: task,
+                          readOnly: readOnly,
+                          fadeIn: fadeIn,
+                          leaving: leaving,
+                          onRemove: remove,
+                        );
+                      }
+                      // Leaving because it was ticked, it closes up ticked.
+                      final latest = leaving ? _latest(state, item) : null;
+                      return TaskRow(
                         key: ValueKey((scope, item.id)),
+                        scope: latest?.$1 ?? scope,
+                        item: latest?.$2 ?? item,
                         day: day,
-                        task: task,
                         readOnly: readOnly,
-                        fadeIn: widget.added.contains(item.id) || arriving || _showing.contains(item.id),
+                        fadeIn: fadeIn,
                         leaving: leaving,
-                        onRemove: () => _remove(g.key, task, () => state.removeTodo(scope, item, day: day)),
+                        onRemove: remove,
                       );
                     },
                   ),
@@ -1399,7 +1437,28 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
   }
 }
 
-/// A row further ahead: a [task], or the next time a [repeat] comes round
+/// [repeat]'s to-do for [date], before it's made.
+TodoItem _unmade(Repeat repeat, DateTime date) => TodoItem(
+  -1,
+  repeat.text,
+  since: date,
+  dueDate: date,
+  dueTime: repeat.time,
+  birthday: repeat.birthday,
+  uid: '${repeat.uid}@${dateKey(date)}',
+);
+
+/// The to-do made with [uid], wherever it is now.
+TodoItem? _made(AppState state, String uid) =>
+    [for (final items in state.todos.values) ...items].where((item) => item.uid == uid).firstOrNull;
+
+/// [item] as it is now, and the list it's in, if it's still in one.
+_Task? _latest(AppState state, TodoItem item) => [
+  for (final MapEntry(key: scope, value: items) in state.todos.entries)
+    for (final task in items) (scope, task),
+].where((t) => t.$2.id == item.id).firstOrNull;
+
+/// A birthday further ahead: a [task], or the next time a [repeat] comes round
 /// on [date] before it's made. Either is only looked at from here, to
 /// change or take away; it's ticked once it's in the week.
 class _LaterRow extends StatefulWidget {
@@ -1438,17 +1497,7 @@ class _LaterRowState extends State<_LaterRow> {
 
   /// The to-do, or the one the repeat will make, not made until it's
   /// changed on its own.
-  TodoItem get _item =>
-      widget.task?.$2 ??
-      TodoItem(
-        -1,
-        widget.repeat!.text,
-        since: widget.date!,
-        dueDate: widget.date!,
-        dueTime: widget.repeat!.time,
-        birthday: widget.repeat!.birthday,
-        uid: '${widget.repeat!.uid}@${dateKey(widget.date!)}',
-      );
+  TodoItem get _item => widget.task?.$2 ?? _unmade(widget.repeat!, widget.date!);
 
   TodoItem _make() => AppScope.read(context).occurrence(widget.repeat!, widget.date!);
 
