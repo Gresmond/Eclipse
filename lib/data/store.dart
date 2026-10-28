@@ -247,12 +247,8 @@ class Store {
     for (final r in _db.select('SELECT rule FROM todo_repeats')) {
       if (RepeatRule.decode(r['rule'] as String) == null) throw StateError('Backup contains an invalid repeat');
     }
-    for (final r in _db.select(
-      'SELECT due_time AS time, category FROM todos UNION SELECT time, category FROM todo_repeats',
-    )) {
-      if (!_validTime(r['time']) || (r['category'] != null && TaskCategory.decode(r['category']) == null)) {
-        throw StateError('Backup contains an invalid time or category');
-      }
+    for (final r in _db.select('SELECT due_time AS time FROM todos UNION SELECT time FROM todo_repeats')) {
+      if (!_validTime(r['time'])) throw StateError('Backup contains an invalid time');
     }
     for (final r in _db.select('SELECT subtasks FROM todos')) {
       if (!_validSubtasks(r['subtasks'])) throw StateError('Backup contains invalid subtasks');

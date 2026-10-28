@@ -185,13 +185,13 @@ String _shortDate(DateTime day, DateTime today) =>
     '${monthNames[day.month - 1].substring(0, 3)} ${day.day}${day.year != today.year ? ' ${day.year}' : ''}';
 
 /// Adds [text] as a task due on [day], in the list it belongs to now.
-void _addDue(AppState state, String text, DateTime day, {int? time, TaskCategory? category}) {
+void _addDue(AppState state, String text, DateTime day, {int? time, bool birthday = false}) {
   final today = state.today;
   final days = _daysBetween(today, day);
   if (days <= 0) {
-    state.addTodo(TodoScope.today, text, time: time, category: category);
+    state.addTodo(TodoScope.today, text, time: time, birthday: birthday);
   } else if (days == 1) {
-    state.addTodo(TodoScope.tomorrow, text, time: time, category: category);
+    state.addTodo(TodoScope.tomorrow, text, time: time, birthday: birthday);
   } else {
     // Due later this week files under This week, anything after under
     // This month; both move into Tomorrow and Today as the day nears.
@@ -201,18 +201,18 @@ void _addDue(AppState state, String text, DateTime day, {int? time, TaskCategory
       text,
       dueDate: day,
       time: time,
-      category: category,
+      birthday: birthday,
     );
   }
 }
 
 /// Adds [text] on [day] as [choice] says: a task, or a repeating one.
 void _addChosen(AppState state, String text, DateTime day, _DayChoice choice) {
-  final (time, category) = (choice.time, choice.category);
+  final (time, birthday) = (choice.time, choice.birthday);
   if (choice.repeat case final repeat?) {
-    state.addRepeat(text, repeat.rule, day, until: repeat.until, time: time, category: category);
+    state.addRepeat(text, repeat.rule, day, until: repeat.until, time: time, birthday: birthday);
   } else {
-    _addDue(state, text, day, time: time, category: category);
+    _addDue(state, text, day, time: time, birthday: birthday);
   }
 }
 
@@ -751,7 +751,7 @@ class _FoldAway extends StatelessWidget {
 
 /// The field at a card's foot for a new task on a day between [first] and
 /// [last]. The calendar button picks the day, its time, how it repeats and
-/// its category; Enter without a day asks for one.
+/// whether it's a birthday; Enter without a day asks for one.
 class _DatedAdd extends StatefulWidget {
   const _DatedAdd({required this.first, this.last, required this.onAdd});
 
@@ -784,7 +784,7 @@ class _DatedAddState extends State<_DatedAdd> {
       selected: choice?.day,
       repeat: choice?.repeat,
       time: choice?.time,
-      category: choice?.category,
+      birthday: choice?.birthday ?? false,
     );
     if (picked == null || !mounted) return null;
     setState(() => _choice = picked);
@@ -807,7 +807,7 @@ class _DatedAddState extends State<_DatedAdd> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final today = AppScope.read(context).today;
-    final due = _choice?.day, repeat = _choice?.repeat, time = _choice?.time, category = _choice?.category;
+    final due = _choice?.day, repeat = _choice?.repeat, time = _choice?.time, birthday = _choice?.birthday == true;
     final note = TextStyle(fontFamily: Fonts.body, fontSize: 11, color: p.inkMuted);
     return Padding(
       padding: const EdgeInsets.only(top: 6, right: 6),
@@ -829,14 +829,13 @@ class _DatedAddState extends State<_DatedAdd> {
                 const SizedBox(width: 6),
                 Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
               ],
-              if (category != null) ...[const SizedBox(width: 6), CategoryLabel(category)],
               if (repeat != null) ...[
                 const SizedBox(width: 8),
-                Icon(Icons.repeat_rounded, size: 12, color: p.accent),
+                Icon(birthday ? _birthdayIcon : Icons.repeat_rounded, size: 12, color: p.accent),
                 const SizedBox(width: 3),
                 Flexible(
                   child: Text(
-                    repeat.rule.label,
+                    birthday ? 'Birthday' : repeat.rule.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: note.copyWith(color: p.accent),
@@ -921,7 +920,7 @@ class _AddTaskState extends State<_AddTask> {
       selected: widget.day,
       repeat: choice?.repeat,
       time: choice?.time,
-      category: choice?.category,
+      birthday: choice?.birthday ?? false,
       calendar: false,
     );
     _picking = false;
@@ -994,7 +993,7 @@ class _AddTaskState extends State<_AddTask> {
 }
 
 /// The button of a field for a new task that sets its time, repeat and
-/// category, showing them once set.
+/// whether it's a birthday, showing them once set.
 class _DetailsButton extends StatelessWidget {
   const _DetailsButton({required this.choice, required this.onPressed});
 
@@ -1004,8 +1003,8 @@ class _DetailsButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final (time, repeat, category) = (choice?.time, choice?.repeat, choice?.category);
-    final set = time != null || repeat != null || category != null;
+    final (time, repeat, birthday) = (choice?.time, choice?.repeat, choice?.birthday == true);
+    final set = time != null || repeat != null;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1014,13 +1013,12 @@ class _DetailsButton extends StatelessWidget {
             padding: const EdgeInsets.only(left: 6),
             child: Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
           ),
-        if (category != null) Padding(padding: const EdgeInsets.only(left: 6), child: CategoryLabel(category)),
         if (repeat != null)
           Flexible(
             child: Padding(
               padding: const EdgeInsets.only(left: 6),
               child: Text(
-                repeat.rule.label,
+                birthday ? 'Birthday' : repeat.rule.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontFamily: Fonts.body, fontSize: 11, color: p.accent),
@@ -1028,7 +1026,7 @@ class _DetailsButton extends StatelessWidget {
             ),
           ),
         _TaskAction(
-          tooltip: set ? 'Change time, repeat or category' : 'Time, repeat and category',
+          tooltip: set ? 'Change time, repeat or birthday' : 'Time, repeat and birthday',
           icon: set ? Icons.event_available_outlined : Icons.more_time_rounded,
           onPressed: onPressed,
         ),
@@ -1101,6 +1099,46 @@ class _Field extends StatelessWidget {
   }
 }
 
+/// A birthday's mark, in place of the repeat arrows in Further ahead.
+const _birthdayIcon = Icons.celebration_rounded;
+
+/// Further ahead's button that shows or hides birthdays: lit while they
+/// show.
+class _BirthdaysToggle extends StatelessWidget {
+  const _BirthdaysToggle({required this.shown, required this.onPressed});
+
+  static const size = 28.0;
+
+  final bool shown;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return IconButton(
+      tooltip: shown ? 'Hide birthdays' : 'Show birthdays',
+      onPressed: onPressed,
+      constraints: const BoxConstraints.tightFor(width: size, height: size),
+      padding: EdgeInsets.zero,
+      style: ButtonStyle(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        minimumSize: const WidgetStatePropertyAll(Size(size, size)),
+        shape: const WidgetStatePropertyAll(CircleBorder()),
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+        ),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+      ),
+      icon: TweenAnimationBuilder<Color?>(
+        tween: ColorTween(end: shown ? p.accent : p.inkMuted.withValues(alpha: 0.45)),
+        duration: Motion.click,
+        curve: Motion.clickCurve,
+        builder: (context, colour, _) => Icon(_birthdayIcon, size: 16, color: colour),
+      ),
+    );
+  }
+}
+
 /// Tasks more than a week away, under their days (only days with any),
 /// and the next time each repeating task comes round after the week.
 class FurtherAheadCard extends StatefulWidget {
@@ -1113,12 +1151,12 @@ class FurtherAheadCard extends StatefulWidget {
 class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay, s.laterFilter));
+    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay, s.laterBirthdays));
     final day = state.shownDay;
     final past = state.viewDay != null;
     final planned = _Planned(state, day, past: past);
-    final filter = state.laterFilter;
-    bool shows(_Later later) => filter.isEmpty || filter.contains(later.item?.category ?? later.repeat?.category);
+    final birthdays = state.laterBirthdays;
+    bool shows(_Later later) => birthdays || !(later.item?.birthday ?? later.repeat!.birthday);
     final groups = [
       for (final (date, items) in [
         for (final (date, items) in planned.later) (date as DateTime?, items),
@@ -1140,17 +1178,13 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: TileHeader(title: 'Further ahead', caption: '$count planned'),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final c in TaskCategory.values)
-                CategoryChip(category: c, selected: filter.contains(c), onTap: () => state.toggleLaterFilter(c)),
-            ],
+            padding: const EdgeInsets.only(right: 4),
+            child: TileHeader(
+              title: 'Further ahead',
+              caption: '$count planned',
+              trailingAtEnd: true,
+              trailing: _BirthdaysToggle(shown: birthdays, onPressed: state.toggleLaterBirthdays),
+            ),
           ),
           const SizedBox(height: 4),
           Expanded(
@@ -1215,7 +1249,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
     if (groups.isEmpty) {
       return Center(
         child: Text(
-          AppScope.read(context).laterFilter.isEmpty ? 'Nothing more than a week away' : 'Nothing in these categories',
+          AppScope.read(context).laterBirthdays ? 'Nothing more than a week away' : 'Nothing but birthdays',
           style: TextStyle(
             fontFamily: Fonts.body,
             fontSize: 12,
@@ -1324,7 +1358,7 @@ class _LaterRowState extends State<_LaterRow> {
         since: widget.date!,
         dueDate: widget.date!,
         dueTime: widget.repeat!.time,
-        category: widget.repeat!.category,
+        birthday: widget.repeat!.birthday,
         uid: '${widget.repeat!.uid}@${dateKey(widget.date!)}',
       );
 
@@ -1339,6 +1373,8 @@ class _LaterRowState extends State<_LaterRow> {
     final scope = widget.task?.$1 ?? TodoScope.month;
     final made = widget.task != null;
     final caption = switch (repeat) {
+      // A birthday's icon says it comes round every year.
+      _? when item.birthday => null,
       final repeat? => repeat.rule.label,
       null when item.subtasks.isNotEmpty =>
         '${item.subtasks.where((child) => child.done).length}/${item.subtasks.length} complete',
@@ -1364,7 +1400,11 @@ class _LaterRowState extends State<_LaterRow> {
                       width: 20,
                       child: repeat == null
                           ? null
-                          : Icon(Icons.repeat_rounded, size: 16, color: p.inkMuted.withValues(alpha: 0.8)),
+                          : Icon(
+                              item.birthday ? _birthdayIcon : Icons.repeat_rounded,
+                              size: 16,
+                              color: p.inkMuted.withValues(alpha: 0.8),
+                            ),
                     ),
                     const SizedBox(width: 11),
                     Expanded(
@@ -1402,7 +1442,6 @@ class _LaterRowState extends State<_LaterRow> {
                         ],
                       ),
                     ),
-                    if (item.category case final category?) ...[const SizedBox(width: 8), CategoryLabel(category)],
                     AnimatedOpacity(
                       opacity: _hover ? 1 : 0,
                       duration: Motion.hover,

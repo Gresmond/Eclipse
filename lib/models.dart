@@ -148,7 +148,7 @@ class TodoItem {
     this.carried = 0,
     this.dueDate,
     this.dueTime,
-    this.category,
+    this.birthday = false,
     this.doneAt,
     this.uid,
     this.subtasks = const [],
@@ -164,7 +164,10 @@ class TodoItem {
 
   /// The time of day it's at, in minutes from midnight; null for all day.
   int? dueTime;
-  TaskCategory? category;
+
+  /// It's someone's birthday: it comes round every year, and Further ahead
+  /// can hide it.
+  bool birthday;
   String text;
   bool done;
 
@@ -187,7 +190,7 @@ class TodoItem {
   DateTime? get repeatDay => repeatUid == null ? null : DateTime.tryParse(uid!.substring(uid!.indexOf('@') + 1));
 
   bool sameContent(TodoItem other) {
-    if ((id, text, done, doneAt, carried, since, dueDate, dueTime, category, uid) !=
+    if ((id, text, done, doneAt, carried, since, dueDate, dueTime, birthday, uid) !=
             (
               other.id,
               other.text,
@@ -197,7 +200,7 @@ class TodoItem {
               other.since,
               other.dueDate,
               other.dueTime,
-              other.category,
+              other.birthday,
               other.uid,
             ) ||
         subtasks.length != other.subtasks.length) {
@@ -215,21 +218,12 @@ class TodoItem {
 
 enum RepeatKind { weekly, days, weeks, monthly, yearly }
 
-/// What kind of thing a task is, shown as a small label after it and
-/// filtered by in Further ahead.
-enum TaskCategory {
-  birthday('Birthday'),
-  appointment('Appointment'),
-  event('Event'),
-  bill('Bill'),
-  travel('Travel');
+/// Whether a task's stored kind, in its `category` column, makes it a
+/// birthday. Other kinds are from before birthdays replaced categories.
+bool isBirthday(Object? kind) => kind == 'birthday';
 
-  const TaskCategory(this.label);
-
-  final String label;
-
-  static TaskCategory? decode(Object? name) => name is String ? values.asNameMap()[name] : null;
-}
+/// A birthday's stored kind.
+String? birthdayKind(bool birthday) => birthday ? 'birthday' : null;
 
 /// When a repeating task comes round: on chosen weekdays, every so many
 /// days or weeks from its start, on a date each month, or on its start's
@@ -326,7 +320,7 @@ class Repeat {
     required this.start,
     this.until,
     this.time,
-    this.category,
+    this.birthday = false,
   });
 
   final String uid;
@@ -334,7 +328,9 @@ class Repeat {
 
   /// The time of day each one is at, as [TodoItem.dueTime].
   final int? time;
-  final TaskCategory? category;
+
+  /// It's someone's birthday, as [TodoItem.birthday]; it repeats yearly.
+  final bool birthday;
   final RepeatRule rule;
   final DateTime start;
   final DateTime? until;

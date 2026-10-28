@@ -874,21 +874,21 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void addTodo(TodoScope scope, String text, {DateTime? day, DateTime? dueDate, int? time, TaskCategory? category}) {
+  void addTodo(TodoScope scope, String text, {DateTime? day, DateTime? dueDate, int? time, bool birthday = false}) {
     final target = day ?? today;
     if (text.trim().isEmpty || !canEditDay(target)) return;
     final value = normaliseNote(text.trim());
     if (target == today) {
       final item = store.addTodo(scope, today, value);
       todos[scope] = [...todos[scope]!, item];
-      if (dueDate != null || time != null || category != null) {
-        store.editTodo(item.id, value, dueDate, today, time: time, category: category);
+      if (dueDate != null || time != null || birthday) {
+        store.editTodo(item.id, value, dueDate, today, time: time, birthday: birthday);
         store.promoteDueTodos(today, earliest: today);
         store.rollTomorrowToToday(dateKey(today));
         _reloadTodos();
       }
     } else {
-      store.editPastTodo(scope, target, text: value, dueDate: dueDate, time: time, category: category);
+      store.editPastTodo(scope, target, text: value, dueDate: dueDate, time: time, birthday: birthday);
     }
     _todosChanged();
   }
@@ -921,7 +921,7 @@ class AppState extends ChangeNotifier {
     _todosChanged();
   }
 
-  /// Without a [time] or [category], it has none.
+  /// Without a [time], it has none; not a [birthday] unless set.
   void editTodo(
     TodoScope scope,
     TodoItem item,
@@ -929,18 +929,18 @@ class AppState extends ChangeNotifier {
     DateTime? dueDate, {
     DateTime? day,
     int? time,
-    TaskCategory? category,
+    bool birthday = false,
   }) {
     final target = day ?? today;
     if (!canEditDay(target) || text.trim().isEmpty) return;
     final value = normaliseNote(text.trim());
     if (target == today) {
-      store.editTodo(item.id, value, dueDate, today, time: time, category: category);
+      store.editTodo(item.id, value, dueDate, today, time: time, birthday: birthday);
       store.promoteDueTodos(today, earliest: today);
       store.rollTomorrowToToday(dateKey(today));
       _reloadTodos();
     } else {
-      store.editPastTodo(scope, target, item: item, text: value, dueDate: dueDate, time: time, category: category);
+      store.editPastTodo(scope, target, item: item, text: value, dueDate: dueDate, time: time, birthday: birthday);
     }
     _todosChanged();
   }
@@ -999,20 +999,12 @@ class AppState extends ChangeNotifier {
     _todosChanged();
   }
 
-  /// The categories Further ahead shows; none picked shows everything.
-  late Set<TaskCategory> laterFilter = {
-    for (final name in (store.setting('laterFilter') ?? '').split(',')) ?TaskCategory.decode(name),
-  };
+  /// Whether Further ahead shows birthdays.
+  late bool laterBirthdays = store.setting('laterBirthdays') != 'hidden';
 
-  void toggleLaterFilter(TaskCategory category) {
-    laterFilter = laterFilter.contains(category) ? ({...laterFilter}..remove(category)) : {...laterFilter, category};
-    store.setSetting(
-      'laterFilter',
-      [
-        for (final c in TaskCategory.values)
-          if (laterFilter.contains(c)) c.name,
-      ].join(','),
-    );
+  void toggleLaterBirthdays() {
+    laterBirthdays = !laterBirthdays;
+    store.setSetting('laterBirthdays', laterBirthdays ? 'shown' : 'hidden');
     notifyListeners();
   }
 
@@ -1047,9 +1039,9 @@ class AppState extends ChangeNotifier {
     return item;
   }
 
-  void addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until, int? time, TaskCategory? category}) {
+  void addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until, int? time, bool birthday = false}) {
     if (text.trim().isEmpty) return;
-    store.addRepeat(normaliseNote(text.trim()), rule, start, until: until, time: time, category: category);
+    store.addRepeat(normaliseNote(text.trim()), rule, start, until: until, time: time, birthday: birthday);
     _startDay();
     _todosChanged();
   }
@@ -1062,12 +1054,12 @@ class AppState extends ChangeNotifier {
     RepeatRule rule, {
     DateTime? until,
     int? time,
-    TaskCategory? category,
+    bool birthday = false,
   }) {
     final due = item.dueDate;
     final start = due == null || due.isBefore(today) ? today : dateOnly(due);
     store.transaction(() {
-      store.addRepeat(normaliseNote(text.trim()), rule, start, until: until, time: time, category: category);
+      store.addRepeat(normaliseNote(text.trim()), rule, start, until: until, time: time, birthday: birthday);
       store.deleteTodo(item.id, day: today);
     });
     _reloadTodos();
@@ -1075,10 +1067,10 @@ class AppState extends ChangeNotifier {
     _todosChanged();
   }
 
-  /// Renames [repeat] from [from] on, and sets its time and category.
-  void renameRepeat(Repeat repeat, String text, DateTime from, {int? time, TaskCategory? category}) {
+  /// Renames [repeat] from [from] on, and sets its time and whether it's a birthday.
+  void renameRepeat(Repeat repeat, String text, DateTime from, {int? time, bool birthday = false}) {
     if (text.trim().isEmpty) return;
-    store.renameRepeat(repeat.uid, normaliseNote(text.trim()), from, today, time: time, category: category);
+    store.renameRepeat(repeat.uid, normaliseNote(text.trim()), from, today, time: time, birthday: birthday);
     _repeats = null;
     _reloadTodos();
     _todosChanged();
@@ -1101,19 +1093,19 @@ class AppState extends ChangeNotifier {
     RepeatRule? rule, {
     DateTime? until,
     int? time,
-    TaskCategory? category,
+    bool birthday = false,
   }) {
     if (text.trim().isEmpty) return;
     final value = normaliseNote(text.trim());
     store.transaction(() {
       if (rule == null) {
         store.endRepeat(repeat.uid, DateTime(from.year, from.month, from.day + 1), today);
-        if ((value, time, category) != (repeat.text, repeat.time, repeat.category)) {
-          store.renameRepeat(repeat.uid, value, from, today, time: time, category: category);
+        if ((value, time, birthday) != (repeat.text, repeat.time, repeat.birthday)) {
+          store.renameRepeat(repeat.uid, value, from, today, time: time, birthday: birthday);
         }
       } else {
         store.endRepeat(repeat.uid, from, today);
-        store.addRepeat(value, rule, from.isBefore(today) ? today : from, until: until, time: time, category: category);
+        store.addRepeat(value, rule, from.isBefore(today) ? today : from, until: until, time: time, birthday: birthday);
       }
     });
     _reloadTodos();

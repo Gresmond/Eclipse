@@ -321,7 +321,8 @@ class _TodoRowState extends State<_TodoRow> {
                                   '${item.subtasks.where((child) => child.done).length}/${item.subtasks.length} complete',
                                   style: TextStyle(fontSize: 10.5, color: p.inkMuted, decoration: TextDecoration.none),
                                 ),
-                              if (repeat != null)
+                              // A birthday looks like any other task here.
+                              if (repeat != null && !item.birthday)
                                 Row(
                                   children: [
                                     Icon(Icons.repeat_rounded, size: 11, color: p.inkMuted),
@@ -344,15 +345,6 @@ class _TodoRowState extends State<_TodoRow> {
                           ),
                         ),
                       ),
-                      if (item.category case final category?) ...[
-                        const SizedBox(width: 8),
-                        AnimatedOpacity(
-                          opacity: done ? 0.55 : 1,
-                          duration: Motion.click,
-                          curve: Motion.clickCurve,
-                          child: CategoryLabel(category),
-                        ),
-                      ],
                       if (carried) ...[
                         const SizedBox(width: 8),
                         Container(

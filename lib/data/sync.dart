@@ -948,7 +948,9 @@ class _Reg {
       ('todo_repeat', 'start') => v is String && _day(v),
       ('todo_repeat', 'until') => v == null || v is String && _day(v),
       ('todo', 'due_time') || ('todo_repeat', 'time') => v == null || v is String && _clock.hasMatch(v),
-      ('todo', 'category') || ('todo_repeat', 'category') => v == null || TaskCategory.decode(v) != null,
+      // Any kind, as computers from before birthdays replaced categories send
+      // others; only a birthday counts.
+      ('todo', 'category') || ('todo_repeat', 'category') => v == null || v is String,
       _ => v == null || v is num || v is String,
     };
   }

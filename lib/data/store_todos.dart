@@ -86,7 +86,7 @@ extension StoreTodos on Store {
           uid: r['uid'] as String,
           dueDate: DateTime.tryParse(s['due_date'] as String? ?? ''),
           dueTime: parseClock(s['due_time'] as String? ?? ''),
-          category: TaskCategory.decode(s['category']),
+          birthday: isBirthday(s['category']),
           doneAt: DateTime.tryParse(s['done_at'] as String? ?? ''),
           subtasks: TodoSubtask.decode(s['subtasks'] as String?),
         ),
@@ -159,7 +159,7 @@ extension StoreTodos on Store {
     uid: r['uid'] as String,
     dueDate: DateTime.tryParse(r['due_date'] as String? ?? ''),
     dueTime: parseClock(r['due_time'] as String? ?? ''),
-    category: TaskCategory.decode(r['category']),
+    birthday: isBirthday(r['category']),
     doneAt: DateTime.tryParse(r['done_at'] as String? ?? ''),
     subtasks: TodoSubtask.decode(r['subtasks'] as String?),
   );
@@ -310,11 +310,17 @@ extension StoreTodos on Store {
     });
   }
 
-  void editTodo(int id, String text, DateTime? dueDate, DateTime day, {int? time, TaskCategory? category}) {
+  void editTodo(int id, String text, DateTime? dueDate, DateTime day, {int? time, bool birthday = false}) {
     transaction(() {
       _db.execute(
         'UPDATE todos SET text = ?, due_date = ?, due_time = ?, category = ?, defer_promotion_day = NULL WHERE id = ?',
-        [text, dueDate == null ? null : dateKey(dueDate), time == null ? null : clockKey(time), category?.name, id],
+        [
+          text,
+          dueDate == null ? null : dateKey(dueDate),
+          time == null ? null : clockKey(time),
+          birthdayKind(birthday),
+          id,
+        ],
       );
       _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [id]), day);
     });
@@ -435,7 +441,7 @@ extension StoreTodos on Store {
     bool? done,
     DateTime? dueDate,
     int? time,
-    TaskCategory? category,
+    bool birthday = false,
     bool deleted = false,
   }) {
     transaction(
@@ -447,7 +453,7 @@ extension StoreTodos on Store {
         done: done,
         dueDate: dueDate,
         time: time,
-        category: category,
+        birthday: birthday,
         deleted: deleted,
       ),
     );
@@ -462,7 +468,7 @@ extension StoreTodos on Store {
     bool? done,
     DateTime? dueDate,
     int? time,
-    TaskCategory? category,
+    bool birthday = false,
     bool deleted = false,
   }) {
     final uid = item?.uid ?? _db.select('SELECT lower(hex(randomblob(8))) AS uid').single['uid'] as String;
@@ -495,7 +501,7 @@ extension StoreTodos on Store {
       snapshot['text'] = text;
       snapshot['due_date'] = dueDate == null ? null : dateKey(dueDate);
       snapshot['due_time'] = time == null ? null : clockKey(time);
-      snapshot['category'] = category?.name;
+      snapshot['category'] = birthdayKind(birthday);
     }
     if (subtasks != null) snapshot['subtasks'] = subtasks;
     if (done != null) {
@@ -560,11 +566,11 @@ extension StoreTodos on Store {
           start: DateTime.parse(r['start'] as String),
           until: DateTime.tryParse(r['until'] as String? ?? ''),
           time: parseClock(r['time'] as String? ?? ''),
-          category: TaskCategory.decode(r['category']),
+          birthday: isBirthday(r['category']),
         ),
   ];
 
-  Repeat addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until, int? time, TaskCategory? category}) {
+  Repeat addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until, int? time, bool birthday = false}) {
     final repeat = Repeat(
       uid: _newUid(),
       text: text,
@@ -572,7 +578,7 @@ extension StoreTodos on Store {
       start: dateOnly(start),
       until: until,
       time: time,
-      category: category,
+      birthday: birthday,
     );
     saveRepeat(repeat);
     return repeat;
@@ -589,7 +595,7 @@ extension StoreTodos on Store {
       dateKey(r.start),
       r.until == null ? null : dateKey(r.until!),
       r.time == null ? null : clockKey(r.time!),
-      r.category?.name,
+      birthdayKind(r.birthday),
     ],
   );
 
@@ -620,9 +626,9 @@ extension StoreTodos on Store {
   }
 
   /// Renames repeat [uid], and the open to-dos it has made for [from] on,
-  /// and gives them its [time] and [category].
-  void renameRepeat(String uid, String text, DateTime from, DateTime today, {int? time, TaskCategory? category}) {
-    final (clock, kind) = (time == null ? null : clockKey(time), category?.name);
+  /// and gives them its [time] and whether it's a [birthday].
+  void renameRepeat(String uid, String text, DateTime from, DateTime today, {int? time, bool birthday = false}) {
+    final (clock, kind) = (time == null ? null : clockKey(time), birthdayKind(birthday));
     transaction(() {
       _db.execute('UPDATE todo_repeats SET text = ?, time = ?, category = ? WHERE uid = ?', [text, clock, kind, uid]);
       for (final r in _openOccurrences(uid, from)) {
@@ -680,7 +686,7 @@ extension StoreTodos on Store {
       dateKey(day),
       dateKey(day),
       repeat.time == null ? null : clockKey(repeat.time!),
-      repeat.category?.name,
+      birthdayKind(repeat.birthday),
     ],
   );
 

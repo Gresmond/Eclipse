@@ -9,10 +9,11 @@ Future<DateTime?> _pickDate(BuildContext context, {required DateTime first, Date
   return picked?.day;
 }
 
-/// A day, how a task first due on it repeats, its time and its category.
-typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, TaskCategory? category});
+/// A day, how a task first due on it repeats, its time and whether it's a
+/// birthday.
+typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, bool birthday});
 
-/// A new task's day, as [_pickDate], with its time, repeat and category
+/// A new task's day, as [_pickDate], with its time, repeat and birthday
 /// set under the calendar. Without [calendar], [selected] is the day and
 /// only those are asked.
 Future<_DayChoice?> _pickDayAndRepeat(
@@ -22,7 +23,7 @@ Future<_DayChoice?> _pickDayAndRepeat(
   DateTime? selected,
   _RepeatChoice? repeat,
   int? time,
-  TaskCategory? category,
+  bool birthday = false,
   bool calendar = true,
 }) => showAppDialog<_DayChoice>(
   context: context,
@@ -33,13 +34,13 @@ Future<_DayChoice?> _pickDayAndRepeat(
     details: true,
     repeat: repeat,
     time: time,
-    category: category,
+    birthday: birthday,
     calendar: calendar,
   ),
 );
 
 /// A calendar between two days, with no redundant date header, and with
-/// [details] the time, repeat and category under it.
+/// [details] the time, repeat and birthday under it.
 class _DueDateDialog extends StatefulWidget {
   const _DueDateDialog({
     required this.first,
@@ -48,7 +49,7 @@ class _DueDateDialog extends StatefulWidget {
     this.details = false,
     this.repeat,
     this.time,
-    this.category,
+    this.birthday = false,
     this.calendar = true,
   });
 
@@ -58,7 +59,7 @@ class _DueDateDialog extends StatefulWidget {
   final bool details, calendar;
   final _RepeatChoice? repeat;
   final int? time;
-  final TaskCategory? category;
+  final bool birthday;
 
   @override
   State<_DueDateDialog> createState() => _DueDateDialogState();
@@ -78,10 +79,14 @@ class _DueDateDialogState extends State<_DueDateDialog> {
   late DateTime _month;
   late _RepeatChoice? _repeat = widget.repeat;
   late int? _time = widget.time;
-  late TaskCategory? _category = widget.category;
+  late bool _birthday = widget.birthday;
 
-  void _done() =>
-      Navigator.pop<_DayChoice>(context, (day: _selected, repeat: _repeat, time: _time, category: _category));
+  void _done() => Navigator.pop<_DayChoice>(context, (
+    day: _selected,
+    repeat: _birthdayRepeat(_birthday, _repeat),
+    time: _time,
+    birthday: _birthday,
+  ));
 
   @override
   void initState() {
@@ -101,14 +106,6 @@ class _DueDateDialogState extends State<_DueDateDialog> {
   void _moveMonth(int offset) {
     setState(() => _month = DateTime(_month.year, _month.month + offset));
   }
-
-  /// A birthday comes round every year, unless another repeat was set.
-  void _pickCategory(TaskCategory? category) => setState(() {
-    _category = category;
-    if (category == TaskCategory.birthday && _repeat == null) {
-      _repeat = (rule: const RepeatRule.yearly(1), until: null);
-    }
-  });
 
   @override
   Widget build(BuildContext context) {
@@ -197,8 +194,15 @@ class _DueDateDialogState extends State<_DueDateDialog> {
               if (widget.details) ...[
                 SizedBox(height: widget.calendar ? 8 : 4),
                 _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
-                _CategoryRow(category: _category, onChanged: _pickCategory),
-                _RepeatRow(repeat: _repeat, start: _selected, onChanged: (repeat) => setState(() => _repeat = repeat)),
+                _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
+                _FoldAway(
+                  folded: _birthday,
+                  child: _RepeatRow(
+                    repeat: _repeat,
+                    start: _selected,
+                    onChanged: (repeat) => setState(() => _repeat = repeat),
+                  ),
+                ),
                 const SizedBox(height: 4),
               ],
             ],
@@ -244,7 +248,7 @@ class _DueDateDialogState extends State<_DueDateDialog> {
 typedef _RepeatChoice = ({RepeatRule rule, DateTime? until});
 
 /// What the editor saved; [repeat] null when it doesn't repeat.
-typedef _TaskEdit = ({String text, DateTime? due, _RepeatChoice? repeat, int? time, TaskCategory? category});
+typedef _TaskEdit = ({String text, DateTime? due, _RepeatChoice? repeat, int? time, bool birthday});
 
 /// Edits [item], asking whether a change to a repeating task's name is
 /// for that time only or every time from it on. A new rule always is.
@@ -264,27 +268,27 @@ Future<void> _editTask(
   );
   if (result == null || !context.mounted) return;
   final choice = result.repeat;
-  final (time, category) = (result.time, result.category);
+  final (time, birthday) = (result.time, result.birthday);
   if (repeat == null) {
     if (choice == null) {
-      state.editTodo(scope, item, result.text, result.due, day: day, time: time, category: category);
+      state.editTodo(scope, item, result.text, result.due, day: day, time: time, birthday: birthday);
     } else {
-      state.makeRepeating(scope, item, result.text, choice.rule, until: choice.until, time: time, category: category);
+      state.makeRepeating(scope, item, result.text, choice.rule, until: choice.until, time: time, birthday: birthday);
     }
     return;
   }
   final from = item.repeatDay ?? day;
   if (choice?.rule != repeat.rule || choice?.until != repeat.until) {
-    state.changeRepeat(repeat, from, result.text, choice?.rule, until: choice?.until, time: time, category: category);
+    state.changeRepeat(repeat, from, result.text, choice?.rule, until: choice?.until, time: time, birthday: birthday);
     return;
   }
-  final renamed = result.text.trim() != item.text || (time, category) != (item.dueTime, item.category);
+  final renamed = result.text.trim() != item.text || (time, birthday) != (item.dueTime, item.birthday);
   if (!renamed && result.due == item.dueDate) return;
   final future = renamed ? await _askWhich(context, removing: false) : false;
   if (future == null || !context.mounted) return;
-  if (future) state.renameRepeat(repeat, result.text, from, time: time, category: category);
+  if (future) state.renameRepeat(repeat, result.text, from, time: time, birthday: birthday);
   if (!future || result.due != item.dueDate) {
-    state.editTodo(scope, make?.call() ?? item, result.text, result.due, day: day, time: time, category: category);
+    state.editTodo(scope, make?.call() ?? item, result.text, result.due, day: day, time: time, birthday: birthday);
   }
 }
 
@@ -406,124 +410,49 @@ class _RepeatRow extends StatelessWidget {
   }
 }
 
-/// A task's category: "Add a category", or its label, opening a menu of
-/// them; a cross clears it.
-class _CategoryRow extends StatelessWidget {
-  const _CategoryRow({required this.category, required this.onChanged});
+/// [repeat], or every year for a [birthday] that doesn't already.
+_RepeatChoice? _birthdayRepeat(bool birthday, _RepeatChoice? repeat) =>
+    !birthday || repeat?.rule == const RepeatRule.yearly(1) ? repeat : (rule: const RepeatRule.yearly(1), until: null);
 
-  final TaskCategory? category;
-  final ValueChanged<TaskCategory?> onChanged;
+/// Whether a task is someone's birthday, which comes round every year in
+/// place of a repeat.
+class _BirthdayRow extends StatelessWidget {
+  const _BirthdayRow({required this.birthday, required this.onChanged});
+
+  final bool birthday;
+  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
-      child: Row(
-        children: [
-          Icon(Icons.sell_outlined, size: 18, color: p.inkMuted),
-          const SizedBox(width: 10),
-          _CategoryPill(category: category, onChanged: onChanged),
-          if (category != null)
-            IconButton(
-              tooltip: 'No category',
-              iconSize: 18,
-              icon: const Icon(Icons.close_rounded),
-              onPressed: () => onChanged(null),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The category row's pill, styled as the time's.
-class _CategoryPill extends StatefulWidget {
-  const _CategoryPill({required this.category, required this.onChanged});
-
-  final TaskCategory? category;
-  final ValueChanged<TaskCategory?> onChanged;
-
-  @override
-  State<_CategoryPill> createState() => _CategoryPillState();
-}
-
-class _CategoryPillState extends State<_CategoryPill> {
-  bool _hover = false;
-
-  void _open() => showFadeMenu(
-    context,
-    width: 200,
-    above: true,
-    alignLeft: true,
-    builder: (menu) {
-      final p = menu.palette;
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final c in TaskCategory.values)
-            FadeMenuRow(
-              height: 40,
-              onTap: () {
-                widget.onChanged(c);
-                Navigator.pop(menu);
-              },
-              child: Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(color: categoryColour(p, c), shape: BoxShape.circle),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onChanged(!birthday),
+          child: SizedBox(
+            height: 32,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox.square(
+                  dimension: 18,
+                  child: Checkbox(
+                    value: birthday,
+                    onChanged: (value) => onChanged(value ?? false),
+                    mouseCursor: SystemMouseCursors.click,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    c.label,
-                    style: TextStyle(
-                      fontFamily: Fonts.ui,
-                      fontSize: 13,
-                      fontWeight: c == widget.category ? FontWeight.w600 : FontWeight.w500,
-                      color: p.ink,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      );
-    },
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final category = widget.category;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: _open,
-        child: AnimatedContainer(
-          duration: Motion.hover,
-          curve: Motion.hoverCurve,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          decoration: BoxDecoration(
-            color: _hover ? p.empty : p.tile.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: p.tileBorder.withValues(alpha: 0.8)),
-          ),
-          child: FadeThrough(
-            duration: Motion.click,
-            child: Text(
-              category?.label ?? 'Add a category',
-              key: ValueKey(category),
-              style: TextStyle(
-                fontFamily: Fonts.body,
-                fontSize: 13,
-                color: category == null ? p.inkMuted : categoryColour(p, category),
-                fontWeight: category == null ? null : FontWeight.w600,
-              ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Birthday',
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: birthday ? p.ink : p.inkMuted),
+                ),
+              ],
             ),
           ),
         ),
@@ -553,7 +482,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
     null => null,
   };
   late int? _time = widget.item.dueTime;
-  late TaskCategory? _category = widget.item.category;
+  late bool _birthday = widget.item.birthday;
 
   @override
   void dispose() {
@@ -563,7 +492,13 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
 
   void _save() {
     if (_text.text.trim().isEmpty) return;
-    Navigator.pop<_TaskEdit>(context, (text: _text.text, due: _due, repeat: _repeat, time: _time, category: _category));
+    Navigator.pop<_TaskEdit>(context, (
+      text: _text.text,
+      due: _due,
+      repeat: _birthdayRepeat(_birthday, _repeat),
+      time: _time,
+      birthday: _birthday,
+    ));
   }
 
   @override
@@ -606,11 +541,14 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
               ],
               const SizedBox(height: 4),
               _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
-              _CategoryRow(category: _category, onChanged: (category) => setState(() => _category = category)),
-              _RepeatRow(
-                repeat: _repeat,
-                start: start.isBefore(today) ? today : start,
-                onChanged: (repeat) => setState(() => _repeat = repeat),
+              _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
+              _FoldAway(
+                folded: _birthday,
+                child: _RepeatRow(
+                  repeat: _repeat,
+                  start: start.isBefore(today) ? today : start,
+                  onChanged: (repeat) => setState(() => _repeat = repeat),
+                ),
               ),
             ],
           ),

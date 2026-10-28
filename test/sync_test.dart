@@ -745,7 +745,7 @@ void main() {
     store.raw.execute(
       "UPDATE todos SET done = 1, done_at = 'x', carried = 1, due_date = '2026-10-30', return_to_tomorrow = 1, "
       "return_scope = 'tomorrow', defer_promotion_day = '2026-10-24', subtasks = '[]', due_time = '15:30', "
-      "category = 'event'",
+      "category = 'birthday'",
     );
     final squat = store.addExercise('Squat', MuscleGroup.quads, bodyweight: true);
     store.addTrainingSet('2026-10-24', squat.uid, position: 1, weight: 20, reps: 5);
@@ -755,7 +755,7 @@ void main() {
       DateTime(2026, 10, 24),
       until: DateTime(2026, 12, 1),
       time: 6 * 60,
-      category: TaskCategory.appointment,
+      birthday: true,
     );
     pc.engine.claimAll();
     final sent = {
