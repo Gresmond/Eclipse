@@ -131,12 +131,12 @@ List<_Step> _steps(AppState state) => [
   ),
   const _Step(
     'Sleep schedule',
-    'Track Rise Early, Unwind, Screen Curfew and Sleep Early with their own ring. '
-        'Their target times appear beside each name; edit the schedule from a month view.',
+    'Track your sleep schedule independently from your daily rituals. '
+        'Each item’s target time appears beside its name, and you can edit the schedule from a month view.',
     TourSpot.sleep,
   ),
   const _Step(
-    "Today's to-dos",
+    'Today’s to-dos',
     'Type a task and press Enter to add it, then tick it off when done. Use the pencil '
         'to edit its text. Unfinished tasks carry forward with the day they came from.',
     TourSpot.todayTodos,
@@ -149,22 +149,23 @@ List<_Step> _steps(AppState state) => [
   ),
   const _Step(
     'This week and this month',
-    'Switch tabs for longer plans. Add a due date when creating or editing a task: '
-        'it moves to Tomorrow the day before, then Today when due. Ticking a planner '
-        'task moves it into Today as done; unticking it returns it to its planner.',
+    'Switch tabs for longer plans. Add a due date when creating or editing a task. '
+        'Tasks here automatically move from ‘This month’ to ‘This week’ as the date approaches. '
+        'A task in ‘This week’ moves into ‘Tomorrow’ when it’s due tomorrow and finally '
+        '‘Today’ when it’s due. Ticking a planner task moves it into Today as done.',
     TourSpot.laterTodos,
   ),
   const _Step(
     'Journal',
-    'Write a few lines; they save as you type. The folder button opens the day’s '
-        'Markdown copy. Choose its folder in Settings. Edits made to those files '
+    'Your journal saves as you type. The folder button opens the day’s '
+        'Markdown copy. Choose its folder in Settings or sync it to Google Drive. Edits made to those files '
         'outside Eclipse are not read back into the app.',
     TourSpot.journal,
   ),
   const _Step(
     'Looking back',
     'Click the date to open a past day. Yesterday stays editable until your next day '
-        'starts; older days are read only. Correct yesterday’s task text without '
+        'starts. Older days are read only. Correct yesterday’s task text without '
         'changing today’s text. Completing a carried task also clears its unfinished carryover.',
     TourSpot.date,
   ),
@@ -178,21 +179,21 @@ List<_Step> _steps(AppState state) => [
   const _Step(
     'Settings',
     'Choose your day-start hour and journal folder. With weekends as rest days, '
-        'blank weekends do not break streaks; done rituals still count. Reopen this '
+        'blank weekends do not break streaks. Done rituals still count. Reopen this '
         'tour here whenever you want.',
     TourSpot.settingsPreview,
     0,
   ),
   const _Step(
     'Data and backups',
-    'Settings → Data shows your data folder and the last 30 daily backups. Restore '
+    'Data shows your data folder and the last 30 daily backups. Restore '
         'a copy there if you need to go back; Eclipse saves a safety copy before restoring.',
     TourSpot.settingsPreview,
     1,
   ),
   const _Step(
     'Google sync',
-    'Connect Google in Settings → Data to sync through Eclipse’s hidden Drive folder. '
+    'Connect Google in Data to sync through Eclipse’s hidden Drive folder. '
         'Use the same account on your computers. Each keeps its own theme and journal '
         'folder; changing accounts asks how to handle the existing data.',
     TourSpot.googleSync,
@@ -200,8 +201,15 @@ List<_Step> _steps(AppState state) => [
   ),
   _Step(
     'Appearance',
-    'Pick a theme; each one comes in a light and dark pair.'
-        '${state.nightLightAvailable ? (Platform.isMacOS ? ' Follow Dark mode switches partners with macOS appearance.' : ' Follow the sun switches to the dark partner while night light is on.') : ''}',
+    'Pick a theme. Each one comes in a light and dark pair.'
+        '${state.nightLightAvailable ? switch (Platform.operatingSystem) {
+                'macos' => ' With ‘Follow Dark mode’ enabled, Eclipse follows macOS Light and Dark modes. '
+                    'For automatic switching, choose ‘Auto’ in System Settings → Appearance.',
+                'windows' => ' With ‘Follow the sun’ enabled, Eclipse switches to your theme’s dark partner '
+                    'while Windows Night light is on, and back to its light partner when Night light turns off.',
+                _ => ' With ‘Follow the sun’ enabled, Eclipse switches to your theme’s dark partner '
+                    'while night light is on, and back to its light partner when night light turns off.',
+              } : ''}',
     TourSpot.appearancePreview,
   ),
 ];

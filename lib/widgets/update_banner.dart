@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/updates.dart';
+import '../models.dart';
 import '../theme/app_theme.dart';
 import 'fade_through.dart';
 
@@ -84,7 +85,7 @@ class _Card extends StatelessWidget {
         if (detail != null && detail.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(
-            detail,
+            curlyQuotes(detail),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontFamily: Fonts.body, fontSize: 12.5, height: 1.4, color: p.inkMuted),

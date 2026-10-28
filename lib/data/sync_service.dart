@@ -266,7 +266,7 @@ class SyncService extends ChangeNotifier {
   Future<void> turnOn(GoogleAccount account, {required bool join, bool transfer = false}) async {
     final switching = needsAccountChoice(account);
     if (switching && !join && !transfer) {
-      throw const DriveError('Choose whether to use this account\'s data or transfer your local data first.');
+      throw const DriveError('Choose whether to use this account’s data or transfer your local data first.');
     }
     beforeMerge?.call();
     if (join) {
@@ -309,9 +309,7 @@ class SyncService extends ChangeNotifier {
     if (!isOn) return;
     if (!isReturning(account)) throw DriveError('Sign in with ${email ?? 'the account you sync with'}.');
     if (!account.journalAccess) {
-      throw const DriveError(
-        'Google wasn\'t asked to let Eclipse make the journal\'s folder. Tick it when signing in.',
-      );
+      throw const DriveError('Google wasn’t asked to let Eclipse make the journal’s folder. Tick it when signing in.');
     }
     _config
       ..['refresh'] = account.refreshToken

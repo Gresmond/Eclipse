@@ -347,7 +347,7 @@ void main() {
 
       await state.setJournal(day, 'Still kept');
       expect(state.journalOf(day), 'Still kept');
-      expect(state.journalFileProblem, contains("couldn't be saved"));
+      expect(state.journalFileProblem, contains('couldn’t be saved'));
 
       blocked.deleteSync();
       await state.setJournal(day, 'Kept, and saved');
@@ -2213,6 +2213,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     final state = AppState(Store.memory(), clock: () => DateTime(2026, 10, 23));
+    state.nightLightAvailable = true;
     expect(state.firstRun, isTrue);
     expect(state.habits.first.name, 'Drink water on waking', reason: 'a new install starts with examples');
     expect(state.todos[TodoScope.today]!.first.text, 'Tick this off to try it');

@@ -129,7 +129,11 @@ class TodoSubtask {
       ? []
       : [
           for (final entry in jsonDecode(value) as List)
-            TodoSubtask(entry['text'] as String, done: entry['done'] == true, numbered: entry['numbered'] == true),
+            TodoSubtask(
+              curlyQuotes(entry['text'] as String),
+              done: entry['done'] == true,
+              numbered: entry['numbered'] == true,
+            ),
         ];
   static String encode(List<TodoSubtask> items) => jsonEncode([for (final item in items) item.toJson()]);
 }
@@ -210,12 +214,13 @@ bool _opensAfter(String char) => char.trim().isEmpty || '([{<—–“‘'.conta
 /// returned as it is.
 String curlyQuotes(String text) {
   if (!text.contains(_straightQuotes)) return text;
+  // Pasted primes can surround quoted speech too; infer their direction
+  // from context just as for keyboard quotes.
+  text = text.replaceAll('′', "'").replaceAll('″', '"');
   final result = StringBuffer();
   for (var i = 0; i < text.length; i++) {
     final char = text[i];
-    if (char == '′' || char == '″') {
-      result.write(char == '′' ? '’' : '”');
-    } else if (char == "'" || char == '"') {
+    if (char == "'" || char == '"') {
       final afterOpeningDouble = char == "'" && i > 0 && text[i - 1] == '"' && (i == 1 || _opensAfter(text[i - 2]));
       final opens = i == 0 || _opensAfter(text[i - 1]) || afterOpeningDouble;
       final elision = char == "'" && _elision.matchAsPrefix(text, i + 1) != null;

@@ -128,7 +128,7 @@ class _Card extends StatelessWidget {
   /// installs of the same setup), when it can't tell them apart.
   static String _from(Set<String> names) {
     final others = names.where((n) => n != Platform.localHostname).toList();
-    return others.length == 1 && names.length == 1 ? others.first : 'your other computer';
+    return others.length == 1 && names.length == 1 ? curlyQuotes(others.first) : 'your other computer';
   }
 
   static String _day(String key) {
@@ -235,7 +235,8 @@ class _AskCard extends StatelessWidget {
             child: Text(
               signingIn
                   ? 'Finish signing in in your browser, then come back here.'
-                  : error ?? 'Sign in again to keep your journal in an Eclipse Journals folder in your Drive.',
+                  : (error == null ? null : curlyQuotes(error!)) ??
+                        'Sign in again to keep your journal in an Eclipse Journals folder in your Drive.',
               style: TextStyle(
                 fontFamily: Fonts.body,
                 fontSize: 12.5,

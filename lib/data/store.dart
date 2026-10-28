@@ -807,7 +807,7 @@ class Store {
       'ORDER BY year * 12 + month DESC LIMIT 1',
       [item.name, year * 12 + month],
     );
-    return r.isEmpty ? null : r.first['note'] as String;
+    return r.isEmpty ? null : curlyQuotes(r.first['note'] as String);
   }
 
   void setSleepNote(int year, int month, SleepItem item, String note) {
@@ -818,6 +818,8 @@ class Store {
     );
   }
 
+  // Format prose on read as well as during input: imports and older sync
+  // clients can introduce straight quotes after the one-time migration.
   List<Habit> monthHabits(int year, int month) => [
     // Rituals reordered on two computers at once can share a place: they
     // sort the same on both.
@@ -828,8 +830,8 @@ class Store {
     ))
       Habit(
         r['habit_id'] as int,
-        r['name'] as String,
-        description: r['note'] as String?,
+        curlyQuotes(r['name'] as String),
+        description: r['note'] == null ? null : curlyQuotes(r['note'] as String),
         addedOn: DateTime.tryParse(r['added_on'] as String? ?? ''),
         days: decodeDays(r['days'] as String?),
       ),
@@ -967,7 +969,7 @@ class Store {
           day: r['day'] as String,
           habitId: r['habit_id'] as int,
           status: HabitStatus.values[r['status'] as int],
-          note: r['note'] as String?,
+          note: r['note'] == null ? null : curlyQuotes(r['note'] as String),
         ),
       );
 
@@ -1107,11 +1109,11 @@ class Store {
 
   Iterable<({String day, String text})> journalEntries({String? after, int? limit}) => _db
       .select('SELECT day, text FROM journal WHERE day > ? ORDER BY day LIMIT ?', [after ?? '', limit ?? -1])
-      .map((r) => (day: r['day'] as String, text: r['text'] as String));
+      .map((r) => (day: r['day'] as String, text: curlyQuotes(r['text'] as String)));
 
   String journal(String day) {
     final r = _db.select('SELECT text FROM journal WHERE day = ?', [day]);
-    return r.isEmpty ? '' : r.first['text'] as String;
+    return r.isEmpty ? '' : curlyQuotes(r.first['text'] as String);
   }
 
   void setJournal(String day, String text) {
@@ -1134,14 +1136,14 @@ class Store {
     for (final r in _db.select('SELECT * FROM exercises ORDER BY name COLLATE NOCASE, uid'))
       Exercise(
         uid: r['uid'] as String,
-        name: r['name'] as String,
+        name: curlyQuotes(r['name'] as String),
         group: MuscleGroup.named(r['muscle'] as String) ?? MuscleGroup.chest,
         bodyweight: r['bodyweight'] == 1,
       ),
   ];
 
   Exercise addExercise(String name, MuscleGroup group, {required bool bodyweight}) {
-    final e = Exercise(uid: _newUid(), name: name, group: group, bodyweight: bodyweight);
+    final e = Exercise(uid: _newUid(), name: curlyQuotes(name), group: group, bodyweight: bodyweight);
     saveExercise(e);
     return e;
   }

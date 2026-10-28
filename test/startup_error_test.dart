@@ -49,7 +49,7 @@ void main() {
 
   testWidgets('other failures show the error', (tester) async {
     await tester.pumpWidget(StartupErrorApp(error: const FileSystemException('Disk is full')));
-    expect(find.text('Eclipse couldn\'t open your data'), findsOneWidget);
+    expect(find.text('Eclipse couldn’t open your data'), findsOneWidget);
     expect(find.textContaining('Disk is full'), findsOneWidget);
     expect(find.text('Quit'), findsOneWidget);
   });

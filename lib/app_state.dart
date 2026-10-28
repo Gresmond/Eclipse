@@ -1046,10 +1046,11 @@ class AppState extends ChangeNotifier {
       debugPrint('Saving journal file failed: $e');
       // EPERM: macOS's privacy settings keep Eclipse out of Documents.
       problem = Platform.isMacOS && e.osError?.errorCode == 1
-          ? "Eclipse isn't allowed in your Documents folder, so the journal's files aren't being saved. "
+          ? "Eclipse isn’t allowed in your Documents folder, so the journal’s files aren’t being saved. "
                 'Allow it in System Settings, Privacy & Security, Files and Folders.'
-          : "The journal's files couldn't be saved (${e.osError?.message ?? e.message}).";
+          : "The journal’s files couldn’t be saved (${e.osError?.message ?? e.message}).";
     }
+    problem = problem == null ? null : curlyQuotes(problem);
     if (_disposed || problem == journalFileProblem) return;
     journalFileProblem = problem;
     notifyListeners();

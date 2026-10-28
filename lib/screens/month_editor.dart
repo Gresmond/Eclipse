@@ -126,7 +126,7 @@ class _SleepEditor extends StatelessWidget {
           const SizedBox(height: 18),
           Text(
             'Times show beside each item. Changes apply to ${monthNames[month - 1]} only; '
-            'each new month starts with the one before\'s.',
+            'each new month starts with the one before’s.',
             style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted),
           ),
         ],

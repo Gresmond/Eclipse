@@ -79,7 +79,7 @@ extension StoreTodos on Store {
       lists[scope]!.add(
         TodoItem(
           r['id'] as int? ?? -(r['history_id'] as int),
-          s['text'] as String,
+          curlyQuotes(s['text'] as String),
           since: DateTime.parse(s['since'] as String),
           done: s['done'] == 1,
           carried: s['carried'] as int,
@@ -148,7 +148,7 @@ extension StoreTodos on Store {
 
   static TodoItem _todo(Row r) => TodoItem(
     r['id'] as int,
-    r['text'] as String,
+    curlyQuotes(r['text'] as String),
     since: DateTime.parse(r['since'] as String),
     done: r['done'] == 1,
     carried: r['carried'] as int,

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../data/updates.dart';
+import '../models.dart';
 import '../theme/app_theme.dart';
 
 /// Shown in place of the app when its data can't be opened, so the window
@@ -36,7 +37,7 @@ class StartupErrorApp extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _tooNew ? 'This copy of Eclipse is older than your data' : 'Eclipse couldn\'t open your data',
+                        _tooNew ? 'This copy of Eclipse is older than your data' : 'Eclipse couldn’t open your data',
                         style: theme.textTheme.titleLarge,
                       ),
                       const SizedBox(height: 12),
@@ -44,7 +45,7 @@ class StartupErrorApp extends StatelessWidget {
                         _tooNew
                             ? 'A newer build has already updated your data. Update this copy to open it. '
                                   'Nothing has been changed or lost.'
-                            : '$error',
+                            : curlyQuotes('$error'),
                         style: theme.textTheme.bodyMedium,
                       ),
                       const SizedBox(height: 24),
@@ -81,7 +82,7 @@ class _UpdateRow extends StatelessWidget {
         if (busy)
           Text(updater.progressDetail, style: theme.textTheme.bodyMedium)
         else if (updater.error case final error?)
-          Text(error, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error)),
+          Text(curlyQuotes(error), style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.error)),
         const SizedBox(height: 12),
         Row(
           children: [

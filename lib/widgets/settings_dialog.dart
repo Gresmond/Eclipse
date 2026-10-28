@@ -188,7 +188,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       setState(() {
         _newJournal = null;
         _error =
-            'Some entries couldn\'t be moved, so they\'re still in the old folder '
+            'Some entries couldn’t be moved, so they’re still in the old folder '
             '(${e.osError?.message ?? e.message}). New entries are saved in ${_shortPath(folder.path)}.';
       });
     } finally {
@@ -334,7 +334,7 @@ extension on _SettingsDialogState {
                 const SizedBox(height: 4),
                 SettingSwitchRow(
                   title: 'Weekends as rest days',
-                  subtitle: "Greyed out. A blank one won't break a streak.",
+                  subtitle: "Greyed out. A blank one won’t break a streak.",
                   on: state.restWeekends,
                   onTap: () => state.setRestWeekends(!state.restWeekends),
                 ),
@@ -400,7 +400,7 @@ extension on _SettingsDialogState {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
                 child: Text(
-                  'New entries aren\'t saved as files here. Files already in ${_shortPath(current.path)} are left as '
+                  'New entries aren’t saved as files here. Files already in ${_shortPath(current.path)} are left as '
                   'they were, and brought up to date if you turn this back on.',
                   style: small,
                 ),
@@ -443,7 +443,7 @@ extension on _SettingsDialogState {
         ),
         const SizedBox(height: 4),
         Text(
-          "Each day's entry is saved here as a file you can open without Eclipse. "
+          "Each day’s entry is saved here as a file you can open without Eclipse. "
           'This computer only: your other computers keep their own folder.',
           style: small,
         ),
@@ -476,7 +476,7 @@ extension on _SettingsDialogState {
         ],
         if (_error != null && _ribbon == 0) ...[
           const SizedBox(height: 8),
-          Text(_error!, style: small.copyWith(color: p.missed)),
+          Text(curlyQuotes(_error!), style: small.copyWith(color: p.missed)),
         ],
       ],
     );
@@ -566,7 +566,7 @@ extension on _SettingsDialogState {
         if (_error != null) ...[
           const SizedBox(height: 12),
           Text(
-            _error!,
+            curlyQuotes(_error!),
             style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.missed),
           ),
         ],
@@ -615,8 +615,8 @@ extension on _SettingsDialogState {
             const SizedBox(height: 12),
             Text(
               DataFolder.hasData(folder)
-                  ? '${_shortPath(folder.path)} already has Eclipse data. Use it instead of what\'s here? '
-                        'What\'s here stays where it is. Eclipse reopens.'
+                  ? '${_shortPath(folder.path)} already has Eclipse data. Use it instead of what’s here? '
+                        'What’s here stays where it is. Eclipse reopens.'
                   : 'Copy everything to ${_shortPath(folder.path)} and keep it there from now on? '
                         'The copy here stays as a spare. Eclipse reopens. In a synced folder, have Eclipse '
                         'open on one computer at a time.',
@@ -673,7 +673,7 @@ extension on _SettingsDialogState {
       final status = sync.busy
           ? 'Syncing…'
           : sync.error != null
-          ? 'Couldn\'t sync: ${sync.error}'
+          ? 'Couldn’t sync: ${sync.error}'
           : last == null
           ? 'Waiting to sync.'
           : 'Last synced ${_ago(last)}.';
@@ -698,7 +698,7 @@ extension on _SettingsDialogState {
             ],
             Expanded(
               child: Text(
-                status,
+                curlyQuotes(status),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: sync.error != null && !sync.busy ? small.copyWith(color: p.missed) : small,
@@ -739,9 +739,9 @@ extension on _SettingsDialogState {
       body = [
         Text(
           _remoteExists
-              ? 'The Drive of ${account.email} already has Eclipse data. Use it instead of this computer\'s data? '
+              ? 'The Drive of ${account.email} already has Eclipse data. Use it instead of this computer’s data? '
                     'A backup of this computer is saved first. Your previous Google account is left unchanged.'
-              : 'Upload this computer\'s Eclipse history, including its journal, to ${account.email}? '
+              : 'Upload this computer’s Eclipse history, including its journal, to ${account.email}? '
                     'This connects a different account. Your previous Google account is left unchanged.',
           style: small.copyWith(color: p.ink),
         ),
@@ -767,12 +767,12 @@ extension on _SettingsDialogState {
               ? 'Finish signing in in your browser, then come back here.'
               : 'Keep everything the same on your other computers: sign in with the same Google account on each. '
                     'Eclipse keeps its data in a hidden folder in your Google Drive, with a copy of your journal in '
-                    'an Eclipse Journals folder, and can\'t see anything else there.',
+                    'an Eclipse Journals folder, and can’t see anything else there.',
           style: small,
         ),
         if (why != null && !_signingIn) ...[
           const SizedBox(height: 4),
-          Text(why, style: small.copyWith(color: p.missed)),
+          Text(curlyQuotes(why), style: small.copyWith(color: p.missed)),
         ],
         const SizedBox(height: 8),
         Row(

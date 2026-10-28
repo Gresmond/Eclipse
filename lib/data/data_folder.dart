@@ -136,7 +136,7 @@ class DataFolder {
   /// Asks for a folder with the desktop's own picker; null if cancelled or
   /// there's no picker to ask with. Windows and Mac ask the app's window
   /// (Explorer's picker, Finder's panel as a sheet), so it opens in front.
-  static Future<Directory?> pick({String? start, String title = 'Keep Eclipse\'s data in'}) async {
+  static Future<Directory?> pick({String? start, String title = 'Keep Eclipse’s data in'}) async {
     final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '/';
     if (Platform.isWindows || Platform.isMacOS) {
       try {

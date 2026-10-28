@@ -14,6 +14,7 @@ import '../training_log.dart';
 import '../widgets/day_picker.dart';
 import '../widgets/fade_menu.dart';
 import '../widgets/tile.dart';
+import '../widgets/note_input.dart';
 
 /// The page under the corner: every exercise's estimated 1RM over time,
 /// and the sessions that make it.
@@ -714,7 +715,7 @@ class _SessionTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TileHeader(
-            title: isToday ? "Today's session" : '${weekdayNames[day.weekday - 1]}  ·  ${_shortDate(day)}',
+            title: isToday ? "Today’s session" : '${weekdayNames[day.weekday - 1]}  ·  ${_shortDate(day)}',
             trailingAtEnd: true,
             trailing: Builder(
               builder: (anchor) => _TextButton(
@@ -1060,6 +1061,7 @@ class _InlineNameState extends State<_InlineName> {
     if (_editing) {
       return IntrinsicWidth(
         child: TextField(
+          inputFormatters: const [NoteInputFormatter()],
           controller: _text,
           focusNode: _focus,
           autofocus: true,
@@ -1203,6 +1205,7 @@ class _AddExerciseState extends State<_AddExercise> {
               const SizedBox(width: 8),
               Expanded(
                 child: TextField(
+                  inputFormatters: const [NoteInputFormatter()],
                   controller: _text,
                   focusNode: _focus,
                   style: _label(p, size: 13.5),

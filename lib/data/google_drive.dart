@@ -109,7 +109,7 @@ Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
       'code_verifier': verifier,
     });
     final refresh = tokens['refresh_token'] as String?;
-    if (refresh == null) throw const DriveError('Google didn\'t give a lasting sign-in. Try again.');
+    if (refresh == null) throw const DriveError('Google didn’t give a lasting sign-in. Try again.');
     final claims = _claims(tokens['id_token'] as String?);
     final email = claims['email'] as String?;
     if (email == null) throw const DriveError('Google did not identify the account. Try signing in again.');
@@ -183,9 +183,9 @@ Future<(int, Uint8List)> _send(String method, Uri uri, {List<int>? body, String?
   try {
     return await sendHttpRequest(method, uri, body: body, type: type, bearer: bearer);
   } on SocketException {
-    throw const DriveError('Can\'t reach Google. Are you online?');
+    throw const DriveError('Can’t reach Google. Are you online?');
   } on HandshakeException {
-    throw const DriveError('Can\'t reach Google. Are you online?');
+    throw const DriveError('Can’t reach Google. Are you online?');
   } on TimeoutException {
     throw const DriveError('Google took too long to answer.');
   }

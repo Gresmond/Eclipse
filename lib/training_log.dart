@@ -99,14 +99,14 @@ class TrainingLog {
   // Editing
 
   Exercise createExercise(String name, MuscleGroup group, {required bool bodyweight}) {
-    final e = store.addExercise(name.trim(), group, bodyweight: bodyweight);
+    final e = store.addExercise(normaliseNote(name.trim()), group, bodyweight: bodyweight);
     reload();
     _changed();
     return e;
   }
 
   void updateExercise(Exercise e, {String? name, MuscleGroup? group}) {
-    final trimmed = name?.trim();
+    final trimmed = name == null ? null : normaliseNote(name.trim());
     store.saveExercise(
       Exercise(
         uid: e.uid,
