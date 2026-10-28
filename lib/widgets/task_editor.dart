@@ -74,12 +74,12 @@ class _DueDateDialogState extends State<_DueDateDialog> {
                   IconButton(
                     tooltip: localizations.previousMonthTooltip,
                     onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
-                    icon: const BackButtonIcon(),
+                    icon: const Icon(Icons.chevron_left_rounded),
                   ),
                   IconButton(
                     tooltip: localizations.nextMonthTooltip,
                     onPressed: _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
-                    icon: const Icon(Icons.navigate_next),
+                    icon: const Icon(Icons.chevron_right_rounded),
                   ),
                 ],
               ),
