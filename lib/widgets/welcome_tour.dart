@@ -115,17 +115,17 @@ class _Step {
 List<_Step> _steps(AppState state) => [
   const _Step(
     'Welcome to Eclipse!',
-    'A calm home for your daily rituals, your to-dos and a few lines of journal. '
-        'Here is a quick look round the basics.',
+    'A home for your daily rituals, to-dos, and journal. '
+        'Here is a quick tour of the basics.',
   ),
   _Step(
     'Daily rituals',
     Platform.isMacOS
-        ? 'Click a square for done, right-click for not done, or Option-click for other, '
-              'which asks for an optional note. Repeat the same click to clear the mark. '
+        ? 'Click a square for done, right-click for not done, or Option-click for other. '
+              'Repeat the same click to clear the mark. '
               'Done days build each streak and fill the ring.'
-        : 'Left-click a square for done, right-click for not done, or middle-click for other, '
-              'which asks for an optional note. Repeat the same mouse button to clear the mark. '
+        : 'Click a square for done, right-click for not done, or middle-click for other. '
+              'Repeat the same mouse button to clear the mark. '
               'Done days build each streak and fill the ring.',
     TourSpot.rituals,
   ),
