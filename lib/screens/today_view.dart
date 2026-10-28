@@ -686,9 +686,11 @@ class _OpenFolderButton extends StatelessWidget {
     if (Platform.isMacOS) {
       await Process.run('open', exists ? ['-R', file.path] : [folder.path]);
     } else if (Platform.isWindows) {
+      // Separate arguments: a path with a space gets quoted, and Explorer
+      // only reads /select, before the quotes, not inside them.
       await Process.start(
         'explorer.exe',
-        exists ? ['/select,${file.path}'] : [folder.path],
+        exists ? ['/select,', file.path] : [folder.path],
         mode: ProcessStartMode.detached,
       );
     } else {
