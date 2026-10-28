@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'fade_through.dart';
+import 'rolling_number.dart';
 
 /// The base card surface every panel sits on.
 class Tile extends StatelessWidget {
@@ -72,22 +73,11 @@ class TileHeader extends StatelessWidget {
           ),
           child: SizedBox(
             width: 70,
-            // A swapped word: the old one fades out before the new one fades
-            // in, so the two never overlap.
+            // A new count rolls just its digits; a new word fades the old
+            // one out before the new one fades in, so the two never overlap.
             child: FadeThrough(
-              duration: Motion.click,
-              child: Text(
-                caption!.toUpperCase(),
-                key: ValueKey(caption),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: Fonts.ui,
-                  fontSize: 10.5,
-                  letterSpacing: 1.2,
-                  fontWeight: FontWeight.w600,
-                  color: p.inkMuted,
-                ),
-              ),
+              duration: Motion.morph,
+              child: _Caption(key: ValueKey(_CaptionParts(caption!).word), caption: caption!),
             ),
           ),
         ),
@@ -98,6 +88,54 @@ class TileHeader extends StatelessWidget {
         if (trailingAtEnd) Expanded(child: Row(children: lead)) else ...lead,
         ?trailing,
       ],
+    );
+  }
+}
+
+/// A caption split into its leading count, if any, and the word after it.
+class _CaptionParts {
+  factory _CaptionParts(String caption) {
+    final match = RegExp(r'^(\d+) (.+)$').firstMatch(caption);
+    return match == null
+        ? _CaptionParts._(null, caption.toUpperCase())
+        : _CaptionParts._(int.parse(match[1]!), match[2]!.toUpperCase());
+  }
+  const _CaptionParts._(this.count, this.word);
+
+  final int? count;
+  final String word;
+}
+
+class _Caption extends StatelessWidget {
+  const _Caption({super.key, required this.caption});
+
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = _CaptionParts(caption);
+    final style = TextStyle(
+      fontFamily: Fonts.ui,
+      fontSize: 10.5,
+      letterSpacing: 1.2,
+      fontWeight: FontWeight.w600,
+      color: context.palette.inkMuted,
+    );
+    final count = parts.count;
+    if (count == null) return Text(parts.word, textAlign: TextAlign.center, style: style);
+    return Semantics(
+      label: caption.toUpperCase(),
+      excludeSemantics: true,
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RollingNumber(value: count, style: style),
+            // Past the badge's width, the word runs on rather than wrapping.
+            Flexible(child: Text(' ${parts.word}', softWrap: false, overflow: TextOverflow.visible, style: style)),
+          ],
+        ),
+      ),
     );
   }
 }

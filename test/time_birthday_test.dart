@@ -75,13 +75,13 @@ void main() {
     expect(find.descendant(of: later, matching: find.text('Papa')), findsOneWidget);
     expect(find.descendant(of: later, matching: find.text('Every year')), findsNothing);
     expect(find.descendant(of: later, matching: find.byIcon(Icons.celebration_rounded)), findsNWidgets(2));
-    expect(find.descendant(of: later, matching: find.text('2 PLANNED')), findsOneWidget);
+    expect(find.descendant(of: later, matching: find.bySemanticsLabel('2 PLANNED')), findsOneWidget);
 
     await tester.tap(find.byTooltip('Hide birthdays'));
     await tester.pumpAndSettle();
     expect(find.descendant(of: later, matching: find.text('Papa')), findsNothing);
     expect(find.descendant(of: later, matching: find.text('Rego')), findsOneWidget);
-    expect(find.descendant(of: later, matching: find.text('1 PLANNED')), findsOneWidget);
+    expect(find.descendant(of: later, matching: find.bySemanticsLabel('1 PLANNED')), findsOneWidget);
     expect(state.laterBirthdays, isFalse);
     expect(AppState(store, clock: () => DateTime(2026, 10, 23, 9)).laterBirthdays, isFalse);
   });
