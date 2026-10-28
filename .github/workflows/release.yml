@@ -70,7 +70,8 @@ jobs:
         run: |
           test -n "$SECRET" || { echo '::error::Missing GOOGLE_CLIENT_SECRET'; exit 1; }
           printf "const googleClientId = '972544414239-80se3hktkrmo65umjut0fvpj12nvsa9k.apps.googleusercontent.com';\nconst googleClientSecret = '%s';\n" "$SECRET" > lib/data/google_client.dart
-      - name: Analyze, test and build on Arch as an ordinary user
+      # Tests run on every push (checks.yml), so a release only builds.
+      - name: Build on Arch as an ordinary user
         shell: bash
         run: |
           useradd --create-home tester
@@ -80,8 +81,6 @@ jobs:
           chown -R tester:tester "$GITHUB_WORKSPACE" "$FLUTTER_ROOT" "$PUB_CACHE"
           runuser -u tester -- env PATH="$PATH" PUB_CACHE="$PUB_CACHE" bash -c '
             flutter pub get &&
-            flutter analyze &&
-            dart run tool/ci_test.dart &&
             flutter build linux --release
           '
       - name: Package the per-user Linux download
@@ -136,11 +135,8 @@ jobs:
         run: |
           test -n "$SECRET" || { echo '::error::Missing GOOGLE_CLIENT_SECRET'; exit 1; }
           printf "const googleClientId = '972544414239-80se3hktkrmo65umjut0fvpj12nvsa9k.apps.googleusercontent.com';\nconst googleClientSecret = '%s';\n" "$SECRET" > lib/data/google_client.dart
-      - name: Analyze and test
-        run: |
-          flutter pub get
-          flutter analyze
-          dart run tool/ci_test.dart
+      - name: Fetch packages
+        run: flutter pub get
       - name: Build macOS disk image
         if: runner.os == 'macOS'
         run: |
