@@ -292,15 +292,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('open counts roll their digits while the word stays put', (tester) async {
-    // A short word, so the test font's wide glyphs still fit the badge.
+  testWidgets('open counts roll their digits, the badge keeping its padding', (tester) async {
+    // A short word, so the test font's wide glyphs stay readable.
     final count = ValueNotifier('9 due');
     addTearDown(count.dispose);
     await tester.pumpWidget(
       MaterialApp(
         theme: themeNamed(null),
         home: Scaffold(
-          body: Center(
+          body: Align(
+            alignment: Alignment.topLeft,
             child: ValueListenableBuilder<String>(
               valueListenable: count,
               builder: (_, value, _) => TileHeader(title: 'Today', caption: value),
@@ -309,36 +310,40 @@ void main() {
         ),
       ),
     );
-    final badge = tester.getRect(find.byType(FadeThrough));
+    final badge = find.ancestor(of: find.byType(FadeThrough), matching: find.byType(Container)).first;
     final word = find.text(' DUE');
-    final wordTop = tester.getTopLeft(word).dy;
+    // The gap from the word to the badge's right edge, which never changes.
+    double gap() => tester.getRect(badge).right - tester.getRect(word).right;
+    final padding = gap();
     final wordLeft = tester.getTopLeft(word).dx;
+    final wordTop = tester.getTopLeft(word).dy;
     count.value = '10 due';
     await tester.pump();
     // The word is the same widget throughout: no fade, no blink.
     final wordElement = tester.element(word);
-    double opacity(Finder f) => tester
-        .widget<FadeTransition>(find.ancestor(of: f, matching: find.byType(FadeTransition)).first)
-        .opacity
-        .value;
+    double opacity(Finder f) =>
+        tester.widget<FadeTransition>(find.ancestor(of: f, matching: find.byType(FadeTransition)).first).opacity.value;
     expect(opacity(word), 1);
-    // Halfway, the new leading 1 is rolling in from below and the word is
-    // gliding left to stay centred, part way there.
+    // Halfway, the new leading 1 is rolling in and the word moving right,
+    // the badge widening with it.
     await tester.pump(const Duration(milliseconds: 120));
     expect(tester.element(word), same(wordElement));
     expect(tester.getTopLeft(word).dy, wordTop);
     final halfway = tester.getTopLeft(word).dx;
+    expect(gap(), moreOrLessEquals(padding, epsilon: 0.01));
     await tester.pumpAndSettle();
     final settled = tester.getTopLeft(word).dx;
-    expect(settled, greaterThan(wordLeft));
     expect(halfway, allOf(greaterThan(wordLeft), lessThan(settled)));
+    expect(gap(), moreOrLessEquals(padding, epsilon: 0.01));
     expect(tester.element(word), same(wordElement));
     expect(find.bySemanticsLabel('10 DUE'), findsOneWidget);
-    expect(tester.getRect(find.byType(FadeThrough)), badge);
-    // A new word fades through instead.
+    // A new word fades through, the badge easing to fit it.
     count.value = 'All clear';
     await tester.pumpAndSettle();
     expect(find.text(' DUE'), findsNothing);
-    expect(tester.getCenter(find.text('ALL CLEAR')).dx, moreOrLessEquals(badge.center.dx));
+    expect(
+      tester.getRect(badge).right - tester.getRect(find.text('ALL CLEAR')).right,
+      moreOrLessEquals(padding, epsilon: 0.01),
+    );
   });
 }
