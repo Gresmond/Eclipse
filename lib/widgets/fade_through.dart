@@ -59,6 +59,9 @@ class FadeThrough extends StatelessWidget {
         clipBehavior: outgoing ? Clip.hardEdge : Clip.none,
         child: OverflowBox(
           alignment: Alignment.topLeft,
+          // Loose, so a narrower child keeps its width rather than being
+          // stretched across the card as it fades out.
+          minWidth: outgoing ? 0 : null,
           minHeight: outgoing ? 0 : null,
           maxHeight: outgoing ? double.infinity : null,
           fit: OverflowBoxFit.deferToChild,
