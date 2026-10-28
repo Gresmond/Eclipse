@@ -137,7 +137,7 @@ class _MonthViewState extends State<MonthView> {
                       child: _editingSleep
                           ? ConfirmOnEnter(
                               onConfirm: () => setState(() => _editingSleep = false),
-                              child: _SleepEditor(year: year, month: month),
+                              child: _SleepEditor(year: year, month: month, nameWidth: _nameWidth, maxCell: maxCell),
                             )
                           : _Grid(
                               year: year,
@@ -324,6 +324,13 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   /// long frame.
   late bool _staged = widget.habits.length > 6;
 
+  /// The squares' size in a grid [width] wide: as big as a 31-day month
+  /// across the card allows, and no taller than [maxCell].
+  static double cellFor(double width, double nameWidth, double maxCell) {
+    final col = ((nameWidth + 31 * _minCol).clamp(width, double.infinity) - nameWidth) / 31;
+    return [col - 6, maxCell, _maxCell].reduce((a, b) => a < b ? a : b).clamp(_minCol - 6, _maxCell);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -395,11 +402,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
         // a month has more or fewer rituals, easing as the columns move.
         double colFor(double days) => (gridWidth(days) - nameWidth) / days;
         final width = gridWidth(dayCount.toDouble());
-        final cell = [
-          colFor(31) - 6,
-          widget.maxCell,
-          _maxCell,
-        ].reduce((a, b) => a < b ? a : b).clamp(_minCol - 6, _maxCell);
+        final cell = cellFor(constraints.maxWidth, nameWidth, widget.maxCell);
         if (_cellSize.to == 0) _cellSize.from = cell;
         _cellSize.to = cell;
         final columns = [

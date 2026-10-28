@@ -106,37 +106,62 @@ class _RitualEditorState extends State<_RitualEditor> {
 
 /// The sleep schedule's times for one month. The four items themselves
 /// stay put.
+/// Laid out on the sleep grid's lines: the day headers' height, then each
+/// item where its row of squares is, then the score's height left empty.
+/// So the card keeps its height, and each name its place, when switching.
 class _SleepEditor extends StatelessWidget {
-  const _SleepEditor({required this.year, required this.month});
+  const _SleepEditor({required this.year, required this.month, required this.nameWidth, required this.maxCell});
 
   final int year;
   final int month;
+  final double nameWidth;
+  final double maxCell;
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final state = AppScope.of(context);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 580),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final h in state.sleepHabitsFor(year, month))
-            _SleepNoteRow(key: ValueKey(h.id), year: year, month: month, habit: h),
-          const SizedBox(height: 18),
-          Text(
-            'Times show beside each item. Changes apply to ${monthNames[month - 1]} only; '
-            'each new month starts with the one before’s.',
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted),
-          ),
-        ],
+    // Stand-ins, never seen, that take the grid's header and score heights.
+    Widget spacer(Widget child) => IgnorePointer(
+      child: ExcludeSemantics(
+        child: Visibility(visible: false, maintainSize: true, maintainAnimation: true, maintainState: true, child: child),
       ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final row = _GridState.cellFor(constraints.maxWidth, nameWidth, maxCell) + 5;
+        return ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 580),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              spacer(
+                SizedBox(
+                  width: 40,
+                  child: _DayHeader(day: DateTime(year, month), isToday: false, rest: false),
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final h in state.sleepHabitsFor(year, month))
+                ConstrainedBox(
+                  key: ValueKey(h.id),
+                  constraints: BoxConstraints(minHeight: row),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _SleepNoteRow(year: year, month: month, habit: h),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              spacer(_MonthScore(year: year, month: month, habits: const [], label: '')),
+            ],
+          ),
+        );
+      },
     );
   }
 }
 
 class _SleepNoteRow extends StatelessWidget {
-  const _SleepNoteRow({super.key, required this.year, required this.month, required this.habit});
+  const _SleepNoteRow({required this.year, required this.month, required this.habit});
 
   final int year;
   final int month;

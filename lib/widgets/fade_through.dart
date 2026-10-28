@@ -26,50 +26,35 @@ class FadeThrough extends StatelessWidget {
   final AnimatedSwitcherLayoutBuilder layoutBuilder;
   final bool deferBuild;
 
-  static double _visibility(Widget widget) {
-    if (widget is KeyedSubtree) return _visibility(widget.child);
-    if (widget is ScaleTransition) return _visibility(widget.child!);
-    return widget is FadeTransition ? widget.opacity.value : 0;
+  static Animation<double>? _opacity(Widget widget) {
+    if (widget is KeyedSubtree) return _opacity(widget.child);
+    if (widget is ScaleTransition) return _opacity(widget.child!);
+    return widget is FadeTransition ? widget.opacity : null;
   }
+
+  static double _visibility(Widget widget) => _opacity(widget)?.value ?? 0;
 
   // The outgoing child runs the same animation in reverse, so the two
   // halves follow [Motion.incoming] and [Motion.outgoing].
   static final _curve = CurveTween(curve: Motion.incoming);
 
-  /// Lays the outgoing child over the incoming one without letting it change
-  /// the height, clipped to the incoming child's box. Takes the full width.
+  /// Lays the outgoing child over the incoming one. The box is as tall as
+  /// either while the outgoing one still shows, so it's never cut off as it
+  /// fades; once it's gone, the box takes the incoming child's height (an
+  /// [AnimatedSize] above eases the change). Takes the full width.
   ///
   /// Every child sits in the same widgets, keyed by its own key, whether
   /// incoming or outgoing, so a child that starts fading out keeps its state
   /// rather than being built afresh for its last frames.
   static Widget sizeToCurrent(Widget? current, List<Widget> previous) => SizedBox(
     width: double.infinity,
-    child: Stack(children: [for (final p in previous) _slot(p, outgoing: true), if (current != null) _slot(current)]),
+    child: Stack(
+      children: [
+        for (final p in previous) _SizeSlot(key: p.key, fade: _opacity(p), child: p),
+        if (current != null) _SizeSlot(key: current.key, child: current),
+      ],
+    ),
   );
-
-  static Widget _slot(Widget child, {bool outgoing = false}) {
-    final fill = outgoing ? 0.0 : null;
-    return Positioned(
-      key: child.key,
-      left: fill,
-      top: fill,
-      right: fill,
-      bottom: fill,
-      child: ClipRect(
-        clipBehavior: outgoing ? Clip.hardEdge : Clip.none,
-        child: OverflowBox(
-          alignment: Alignment.topLeft,
-          // Loose, so a narrower child keeps its width rather than being
-          // stretched across the card as it fades out.
-          minWidth: outgoing ? 0 : null,
-          minHeight: outgoing ? 0 : null,
-          maxHeight: outgoing ? double.infinity : null,
-          fit: OverflowBoxFit.deferToChild,
-          child: child,
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,4 +122,74 @@ class _DeferredPageState extends State<_DeferredPage> {
 
   @override
   Widget build(BuildContext context) => _ready ? widget.child : const SizedBox.expand();
+}
+
+/// One child of [FadeThrough.sizeToCurrent]. The incoming child, and an
+/// outgoing one while it still shows, set the box's size; an outgoing one
+/// that has faded out fills the box without sizing it. Only the placement
+/// changes, never the widgets, so the child keeps its state throughout.
+class _SizeSlot extends StatefulWidget {
+  const _SizeSlot({super.key, this.fade, required this.child});
+
+  /// The outgoing child's opacity; null for the incoming child.
+  final Animation<double>? fade;
+  final Widget child;
+
+  @override
+  State<_SizeSlot> createState() => _SizeSlotState();
+}
+
+class _SizeSlotState extends State<_SizeSlot> {
+  bool get _gone => (widget.fade?.value ?? 1) <= 0;
+  late bool _wasGone = _gone;
+
+  void _check() {
+    if (_gone != _wasGone) setState(() => _wasGone = _gone);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.fade?.addListener(_check);
+  }
+
+  @override
+  void didUpdateWidget(_SizeSlot old) {
+    super.didUpdateWidget(old);
+    if (old.fade != widget.fade) {
+      old.fade?.removeListener(_check);
+      widget.fade?.addListener(_check);
+    }
+    _wasGone = _gone;
+  }
+
+  @override
+  void dispose() {
+    widget.fade?.removeListener(_check);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = _wasGone ? 0.0 : null;
+    return Positioned(
+      left: fill,
+      top: fill,
+      right: fill,
+      bottom: fill,
+      child: ClipRect(
+        clipBehavior: _wasGone ? Clip.hardEdge : Clip.none,
+        child: OverflowBox(
+          alignment: Alignment.topLeft,
+          // Loose, so a narrower outgoing child keeps its width rather than
+          // being stretched across the card as it fades out.
+          minWidth: widget.fade == null ? null : 0,
+          minHeight: _wasGone ? 0 : null,
+          maxHeight: _wasGone ? double.infinity : null,
+          fit: OverflowBoxFit.deferToChild,
+          child: widget.child,
+        ),
+      ),
+    );
+  }
 }
