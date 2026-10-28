@@ -147,6 +147,8 @@ class TodoItem {
     this.done = false,
     this.carried = 0,
     this.dueDate,
+    this.dueTime,
+    this.category,
     this.doneAt,
     this.uid,
     this.subtasks = const [],
@@ -159,6 +161,10 @@ class TodoItem {
   /// Its subtasks show 1, 2, 3 and stay in order when ticked.
   bool get numbered => subtasks.isNotEmpty && subtasks.first.numbered;
   DateTime? dueDate;
+
+  /// The time of day it's at, in minutes from midnight; null for all day.
+  int? dueTime;
+  TaskCategory? category;
   String text;
   bool done;
 
@@ -181,8 +187,19 @@ class TodoItem {
   DateTime? get repeatDay => repeatUid == null ? null : DateTime.tryParse(uid!.substring(uid!.indexOf('@') + 1));
 
   bool sameContent(TodoItem other) {
-    if ((id, text, done, doneAt, carried, since, dueDate, uid) !=
-            (other.id, other.text, other.done, other.doneAt, other.carried, other.since, other.dueDate, other.uid) ||
+    if ((id, text, done, doneAt, carried, since, dueDate, dueTime, category, uid) !=
+            (
+              other.id,
+              other.text,
+              other.done,
+              other.doneAt,
+              other.carried,
+              other.since,
+              other.dueDate,
+              other.dueTime,
+              other.category,
+              other.uid,
+            ) ||
         subtasks.length != other.subtasks.length) {
       return false;
     }
@@ -197,6 +214,22 @@ class TodoItem {
 }
 
 enum RepeatKind { weekly, days, weeks, monthly, yearly }
+
+/// What kind of thing a task is, shown as a small label after it and
+/// filtered by in Further ahead.
+enum TaskCategory {
+  birthday('Birthday'),
+  appointment('Appointment'),
+  event('Event'),
+  bill('Bill'),
+  travel('Travel');
+
+  const TaskCategory(this.label);
+
+  final String label;
+
+  static TaskCategory? decode(Object? name) => name is String ? values.asNameMap()[name] : null;
+}
 
 /// When a repeating task comes round: on chosen weekdays, every so many
 /// days or weeks from its start, on a date each month, or on its start's
@@ -286,10 +319,22 @@ String ordinal(int n) {
 /// A task that comes round by its [rule], from [start] until [until] (if
 /// set). Each time is an ordinary to-do, made a week ahead.
 class Repeat {
-  const Repeat({required this.uid, required this.text, required this.rule, required this.start, this.until});
+  const Repeat({
+    required this.uid,
+    required this.text,
+    required this.rule,
+    required this.start,
+    this.until,
+    this.time,
+    this.category,
+  });
 
   final String uid;
   final String text;
+
+  /// The time of day each one is at, as [TodoItem.dueTime].
+  final int? time;
+  final TaskCategory? category;
   final RepeatRule rule;
   final DateTime start;
   final DateTime? until;

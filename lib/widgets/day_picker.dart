@@ -77,7 +77,8 @@ class _DayPickerState extends State<DayPicker> {
             ],
           ),
           const SizedBox(height: 4),
-          for (var week = 0; week * 7 < lead + days; week++)
+          // Always six weeks' rows, so the arrows stay put month to month.
+          for (var week = 0; week < 6; week++)
             Row(
               children: [
                 for (var col = 0; col < 7; col++)

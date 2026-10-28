@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart' show listEquals;
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
@@ -9,13 +8,13 @@ import '../theme/app_theme.dart';
 import '../widgets/appear.dart';
 import '../widgets/confirm_on_enter.dart';
 import '../widgets/day_toggles.dart';
-import '../widgets/fade_menu.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/note_input.dart';
 import '../widgets/ritual_name.dart';
 import '../widgets/sleep_time.dart';
 import '../widgets/status_cell.dart';
 import '../widgets/tile.dart';
+import '../widgets/time_wheel.dart';
 
 part 'month_editor.dart';
 

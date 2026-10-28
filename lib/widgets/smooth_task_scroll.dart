@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/motion.dart';
 
-/// Eases discrete wheel ticks while leaving touchpad and scrollbar input native.
+/// Eases discrete wheel ticks while leaving touchpad input native. Shows no
+/// scrollbar.
 class SmoothTaskScroll extends StatefulWidget {
   const SmoothTaskScroll({super.key, required this.builder});
   final Widget Function(BuildContext, ScrollController) builder;
@@ -94,7 +95,11 @@ class _SmoothTaskScrollState extends State<SmoothTaskScroll> {
   }
 
   @override
-  Widget build(BuildContext context) => widget.builder(context, _controller);
+  Widget build(BuildContext context) => ScrollConfiguration(
+    // Task lists scroll without a bar beside them.
+    behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+    child: widget.builder(context, _controller),
+  );
 }
 
 class _WheelController extends ScrollController {

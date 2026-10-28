@@ -744,11 +744,19 @@ void main() {
     store.raw.execute("UPDATE month_habits SET added_on = '2026-10-01'");
     store.raw.execute(
       "UPDATE todos SET done = 1, done_at = 'x', carried = 1, due_date = '2026-10-30', return_to_tomorrow = 1, "
-      "return_scope = 'tomorrow', defer_promotion_day = '2026-10-24', subtasks = '[]'",
+      "return_scope = 'tomorrow', defer_promotion_day = '2026-10-24', subtasks = '[]', due_time = '15:30', "
+      "category = 'event'",
     );
     final squat = store.addExercise('Squat', MuscleGroup.quads, bodyweight: true);
     store.addTrainingSet('2026-10-24', squat.uid, position: 1, weight: 20, reps: 5);
-    store.addRepeat('Gym', RepeatRule.weekly({1}), DateTime(2026, 10, 24), until: DateTime(2026, 12, 1));
+    store.addRepeat(
+      'Gym',
+      RepeatRule.weekly({1}),
+      DateTime(2026, 10, 24),
+      until: DateTime(2026, 12, 1),
+      time: 6 * 60,
+      category: TaskCategory.appointment,
+    );
     pc.engine.claimAll();
     final sent = {
       for (final r in store.raw.select('SELECT DISTINCT kind, field FROM sync_reg'))

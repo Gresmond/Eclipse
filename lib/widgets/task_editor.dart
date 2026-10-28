@@ -9,45 +9,78 @@ Future<DateTime?> _pickDate(BuildContext context, {required DateTime first, Date
   return picked?.day;
 }
 
-/// A day, and how a task first due on it repeats.
-typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat});
+/// A day, how a task first due on it repeats, its time and its category.
+typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, TaskCategory? category});
 
-/// A new task's day, as [_pickDate], with its repeat set under the
-/// calendar, starting from [repeat].
+/// A new task's day, as [_pickDate], with its time, repeat and category
+/// set under the calendar. Without [calendar], [selected] is the day and
+/// only those are asked.
 Future<_DayChoice?> _pickDayAndRepeat(
   BuildContext context, {
   required DateTime first,
   DateTime? last,
   DateTime? selected,
   _RepeatChoice? repeat,
+  int? time,
+  TaskCategory? category,
+  bool calendar = true,
 }) => showAppDialog<_DayChoice>(
   context: context,
-  builder: (_) => _DueDateDialog(first: first, last: last, due: selected, repeats: true, repeat: repeat),
+  builder: (_) => _DueDateDialog(
+    first: first,
+    last: last,
+    due: selected,
+    details: true,
+    repeat: repeat,
+    time: time,
+    category: category,
+    calendar: calendar,
+  ),
 );
 
 /// A calendar between two days, with no redundant date header, and with
-/// [repeats] a repeat button under it.
+/// [details] the time, repeat and category under it.
 class _DueDateDialog extends StatefulWidget {
-  const _DueDateDialog({required this.first, this.last, this.due, this.repeats = false, this.repeat});
+  const _DueDateDialog({
+    required this.first,
+    this.last,
+    this.due,
+    this.details = false,
+    this.repeat,
+    this.time,
+    this.category,
+    this.calendar = true,
+  });
 
   final DateTime first;
   final DateTime? last;
   final DateTime? due;
-  final bool repeats;
+  final bool details, calendar;
   final _RepeatChoice? repeat;
+  final int? time;
+  final TaskCategory? category;
 
   @override
   State<_DueDateDialog> createState() => _DueDateDialogState();
 }
 
 class _DueDateDialogState extends State<_DueDateDialog> {
+  /// Every month shows six weeks' rows, so the dialog (and its arrows)
+  /// stays put as the months go by.
+  static const _weeks = 6;
+
   late final DateTime _first;
   late final DateTime? _last;
   late DateTime _selected;
   late DateTime _month;
   late _RepeatChoice? _repeat = widget.repeat;
+  late int? _time = widget.time;
+  late TaskCategory? _category = widget.category;
 
-  void _done() => Navigator.pop<_DayChoice>(context, (day: _selected, repeat: _repeat));
+  void _done() => Navigator.pop<_DayChoice>(
+    context,
+    (day: _selected, repeat: _repeat, time: _time, category: _category),
+  );
 
   @override
   void initState() {
@@ -63,6 +96,14 @@ class _DueDateDialogState extends State<_DueDateDialog> {
     setState(() => _month = DateTime(_month.year, _month.month + offset));
   }
 
+  /// A birthday comes round every year, unless another repeat was set.
+  void _pickCategory(TaskCategory? category) => setState(() {
+    _category = category;
+    if (category == TaskCategory.birthday && _repeat == null) {
+      _repeat = (rule: const RepeatRule.yearly(1), until: null);
+    }
+  });
+
   @override
   Widget build(BuildContext context) {
     final localizations = MaterialLocalizations.of(context);
@@ -70,9 +111,9 @@ class _DueDateDialogState extends State<_DueDateDialog> {
     final firstMonth = DateTime(_first.year, _first.month);
     final last = _last;
     final lastMonth = last == null ? null : DateTime(last.year, last.month);
-    final leading = DateUtils.firstDayOffset(_month.year, _month.month, localizations);
+    // Weeks start on Monday, as everywhere else in the app.
+    final leading = DateTime(_month.year, _month.month).weekday - 1;
     final days = DateUtils.getDaysInMonth(_month.year, _month.month);
-    final cells = ((leading + days) / 7).ceil() * 7;
 
     return ConfirmOnEnter(
       onConfirm: _done,
@@ -80,78 +121,69 @@ class _DueDateDialogState extends State<_DueDateDialog> {
       child: AlertDialog(
         contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
         content: SizedBox(
-          width: 308,
+          width: 336,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Text(localizations.formatMonthYear(_month), style: Theme.of(context).textTheme.titleSmall),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: localizations.previousMonthTooltip,
-                    onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
-                    icon: const Icon(Icons.chevron_left_rounded),
-                  ),
-                  IconButton(
-                    tooltip: localizations.nextMonthTooltip,
-                    onPressed: lastMonth == null || _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
-                    icon: const Icon(Icons.chevron_right_rounded),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  for (var i = 0; i < 7; i++)
+              if (widget.calendar) ...[
+                Row(
+                  children: [
                     Expanded(
-                      child: SizedBox(
-                        height: 36,
-                        child: Center(
-                          child: Text(
-                            localizations.narrowWeekdays[(localizations.firstDayOfWeekIndex + i) % 7],
-                            style: Theme.of(context).textTheme.bodySmall,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          localizations.formatMonthYear(_month),
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: localizations.previousMonthTooltip,
+                      onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
+                      icon: const Icon(Icons.chevron_left_rounded),
+                    ),
+                    IconButton(
+                      tooltip: localizations.nextMonthTooltip,
+                      onPressed: lastMonth == null || _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
+                      icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    for (var i = 0; i < 7; i++)
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: Center(
+                            child: Text(
+                              localizations.narrowWeekdays[(1 + i) % 7],
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              for (var row = 0; row < cells ~/ 7; row++)
-                Row(
-                  children: [
-                    for (var column = 0; column < 7; column++)
-                      Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
                   ],
                 ),
-              if (widget.repeats) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.repeat_rounded, size: 18),
-                          label: Text(_repeat == null ? "Doesn't repeat" : _repeatLabel(_repeat!)),
-                          onPressed: () async {
-                            final picked = await _pickRepeat(context, _selected, _repeat);
-                            if (picked != null && mounted) setState(() => _repeat = picked.choice);
-                          },
-                        ),
-                      ),
-                    ),
-                    if (_repeat != null)
-                      IconButton(
-                        tooltip: 'Stop repeating',
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () => setState(() => _repeat = null),
-                      ),
-                  ],
+                for (var row = 0; row < _weeks; row++)
+                  Row(
+                    children: [
+                      for (var column = 0; column < 7; column++)
+                        Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
+                    ],
+                  ),
+              ],
+              if (widget.details) ...[
+                SizedBox(height: widget.calendar ? 8 : 4),
+                _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
+                _RepeatRow(
+                  repeat: _repeat,
+                  start: _selected,
+                  onChanged: (repeat) => setState(() => _repeat = repeat),
                 ),
+                const SizedBox(height: 4),
+                _CategoryRow(category: _category, onChanged: _pickCategory),
+                const SizedBox(height: 4),
               ],
             ],
           ),
@@ -196,7 +228,7 @@ class _DueDateDialogState extends State<_DueDateDialog> {
 typedef _RepeatChoice = ({RepeatRule rule, DateTime? until});
 
 /// What the editor saved; [repeat] null when it doesn't repeat.
-typedef _TaskEdit = ({String text, DateTime? due, _RepeatChoice? repeat});
+typedef _TaskEdit = ({String text, DateTime? due, _RepeatChoice? repeat, int? time, TaskCategory? category});
 
 /// Edits [item], asking whether a change to a repeating task's name is
 /// for that time only or every time from it on. A new rule always is.
@@ -216,26 +248,27 @@ Future<void> _editTask(
   );
   if (result == null || !context.mounted) return;
   final choice = result.repeat;
+  final (time, category) = (result.time, result.category);
   if (repeat == null) {
     if (choice == null) {
-      state.editTodo(scope, item, result.text, result.due, day: day);
+      state.editTodo(scope, item, result.text, result.due, day: day, time: time, category: category);
     } else {
-      state.makeRepeating(scope, item, result.text, choice.rule, until: choice.until);
+      state.makeRepeating(scope, item, result.text, choice.rule, until: choice.until, time: time, category: category);
     }
     return;
   }
   final from = item.repeatDay ?? day;
   if (choice?.rule != repeat.rule || choice?.until != repeat.until) {
-    state.changeRepeat(repeat, from, result.text, choice?.rule, until: choice?.until);
+    state.changeRepeat(repeat, from, result.text, choice?.rule, until: choice?.until, time: time, category: category);
     return;
   }
-  final renamed = result.text.trim() != item.text;
+  final renamed = result.text.trim() != item.text || (time, category) != (item.dueTime, item.category);
   if (!renamed && result.due == item.dueDate) return;
   final future = renamed ? await _askWhich(context, removing: false) : false;
   if (future == null || !context.mounted) return;
-  if (future) state.renameRepeat(repeat, result.text, from);
+  if (future) state.renameRepeat(repeat, result.text, from, time: time, category: category);
   if (!future || result.due != item.dueDate) {
-    state.editTodo(scope, make?.call() ?? item, result.text, result.due, day: day);
+    state.editTodo(scope, make?.call() ?? item, result.text, result.due, day: day, time: time, category: category);
   }
 }
 
@@ -260,11 +293,11 @@ Future<bool?> _askWhich(BuildContext context, {required bool removing}) => showA
   context: context,
   builder: (context) => AlertDialog(
     backgroundColor: context.palette.tile,
-    title: Text(removing ? 'Remove repeating task' : 'Rename repeating task'),
+    title: Text(removing ? 'Remove repeating task' : 'Change repeating task'),
     content: Text(
       removing
           ? 'Remove only this one, or this one and every one after it?'
-          : 'Rename only this one, or this one and every one after it?',
+          : 'Change only this one, or this one and every one after it?',
     ),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
@@ -289,6 +322,98 @@ String _repeatLabel(_RepeatChoice choice) {
   return until == null ? choice.rule.label : '${choice.rule.label} until ${dayMonth(until)}/${until.year}';
 }
 
+/// A task's time: "Add a time", or its time, opening the wheel.
+class _TimeRow extends StatelessWidget {
+  const _TimeRow({required this.time, required this.onChanged});
+
+  final int? time;
+  final ValueChanged<int?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
+      child: Row(
+        children: [
+          Icon(Icons.schedule_rounded, size: 18, color: p.inkMuted),
+          const SizedBox(width: 10),
+          TimePill(minutes: time, start: 9 * 60, placeholder: 'Add a time', alignLeft: true, onChanged: onChanged),
+          if (time != null)
+            IconButton(
+              tooltip: 'All day',
+              iconSize: 18,
+              icon: const Icon(Icons.close_rounded),
+              onPressed: () => onChanged(null),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// How a task repeats, opening the repeat dialog for one first due on
+/// [start]; a cross stops it.
+class _RepeatRow extends StatelessWidget {
+  const _RepeatRow({required this.repeat, required this.start, required this.onChanged});
+
+  final _RepeatChoice? repeat;
+  final DateTime start;
+  final ValueChanged<_RepeatChoice?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final repeat = this.repeat;
+    return Row(
+      children: [
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.repeat_rounded, size: 18),
+              label: Text(repeat == null ? "Doesn't repeat" : _repeatLabel(repeat)),
+              onPressed: () async {
+                final picked = await _pickRepeat(context, start, repeat);
+                if (picked != null && context.mounted) onChanged(picked.choice);
+              },
+            ),
+          ),
+        ),
+        if (repeat != null)
+          IconButton(
+            tooltip: 'Stop repeating',
+            icon: const Icon(Icons.close_rounded),
+            onPressed: () => onChanged(null),
+          ),
+      ],
+    );
+  }
+}
+
+/// A task's category, one pill each: clicking the lit one clears it.
+class _CategoryRow extends StatelessWidget {
+  const _CategoryRow({required this.category, required this.onChanged});
+
+  final TaskCategory? category;
+  final ValueChanged<TaskCategory?> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(left: 8),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 6,
+        children: [
+          for (final c in TaskCategory.values)
+            CategoryChip(category: c, selected: c == category, onTap: () => onChanged(c == category ? null : c)),
+        ],
+      ),
+    ),
+  );
+}
+
 class _EditTaskDialog extends StatefulWidget {
   const _EditTaskDialog({required this.item, required this.scope, required this.day, this.repeat});
   final TodoItem item;
@@ -309,6 +434,8 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
     final r? => (rule: r.rule, until: r.until),
     null => null,
   };
+  late int? _time = widget.item.dueTime;
+  late TaskCategory? _category = widget.item.category;
 
   @override
   void dispose() {
@@ -318,7 +445,10 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
 
   void _save() {
     if (_text.text.trim().isEmpty) return;
-    Navigator.pop<_TaskEdit>(context, (text: _text.text, due: _due, repeat: _repeat));
+    Navigator.pop<_TaskEdit>(
+      context,
+      (text: _text.text, due: _due, repeat: _repeat, time: _time, category: _category),
+    );
   }
 
   @override
@@ -326,6 +456,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
     final p = context.palette;
     final today = AppScope.read(context).today;
     final dated = widget.scope == TodoScope.week || widget.scope == TodoScope.month;
+    final start = widget.item.repeatDay ?? _due ?? today;
     return ConfirmOnEnter(
       onConfirm: _save,
       child: AlertDialog(
@@ -359,30 +490,14 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
                 ),
               ],
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        icon: const Icon(Icons.repeat_rounded, size: 18),
-                        label: Text(_repeat == null ? "Doesn't repeat" : _repeatLabel(_repeat!)),
-                        onPressed: () async {
-                          final start = widget.item.repeatDay ?? _due ?? today;
-                          final picked = await _pickRepeat(context, start.isBefore(today) ? today : start, _repeat);
-                          if (picked != null && mounted) setState(() => _repeat = picked.choice);
-                        },
-                      ),
-                    ),
-                  ),
-                  if (_repeat != null)
-                    IconButton(
-                      tooltip: 'Stop repeating',
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => setState(() => _repeat = null),
-                    ),
-                ],
+              _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
+              _RepeatRow(
+                repeat: _repeat,
+                start: start.isBefore(today) ? today : start,
+                onChanged: (repeat) => setState(() => _repeat = repeat),
               ),
+              const SizedBox(height: 4),
+              _CategoryRow(category: _category, onChanged: (category) => setState(() => _category = category)),
             ],
           ),
         ),

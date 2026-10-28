@@ -874,21 +874,21 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void addTodo(TodoScope scope, String text, {DateTime? day, DateTime? dueDate}) {
+  void addTodo(TodoScope scope, String text, {DateTime? day, DateTime? dueDate, int? time, TaskCategory? category}) {
     final target = day ?? today;
     if (text.trim().isEmpty || !canEditDay(target)) return;
     final value = normaliseNote(text.trim());
     if (target == today) {
       final item = store.addTodo(scope, today, value);
       todos[scope] = [...todos[scope]!, item];
-      if (dueDate != null) {
-        store.editTodo(item.id, value, dueDate, today);
+      if (dueDate != null || time != null || category != null) {
+        store.editTodo(item.id, value, dueDate, today, time: time, category: category);
         store.promoteDueTodos(today, earliest: today);
         store.rollTomorrowToToday(dateKey(today));
         _reloadTodos();
       }
     } else {
-      store.editPastTodo(scope, target, text: value, dueDate: dueDate);
+      store.editPastTodo(scope, target, text: value, dueDate: dueDate, time: time, category: category);
     }
     _todosChanged();
   }
@@ -921,17 +921,34 @@ class AppState extends ChangeNotifier {
     _todosChanged();
   }
 
-  void editTodo(TodoScope scope, TodoItem item, String text, DateTime? dueDate, {DateTime? day}) {
+  /// Without a [time] or [category], it has none.
+  void editTodo(
+    TodoScope scope,
+    TodoItem item,
+    String text,
+    DateTime? dueDate, {
+    DateTime? day,
+    int? time,
+    TaskCategory? category,
+  }) {
     final target = day ?? today;
     if (!canEditDay(target) || text.trim().isEmpty) return;
     final value = normaliseNote(text.trim());
     if (target == today) {
-      store.editTodo(item.id, value, dueDate, today);
+      store.editTodo(item.id, value, dueDate, today, time: time, category: category);
       store.promoteDueTodos(today, earliest: today);
       store.rollTomorrowToToday(dateKey(today));
       _reloadTodos();
     } else {
-      store.editPastTodo(scope, target, item: item, text: value, dueDate: dueDate);
+      store.editPastTodo(
+        scope,
+        target,
+        item: item,
+        text: value,
+        dueDate: dueDate,
+        time: time,
+        category: category,
+      );
     }
     _todosChanged();
   }
@@ -990,6 +1007,17 @@ class AppState extends ChangeNotifier {
     _todosChanged();
   }
 
+  /// The categories Further ahead shows; none picked shows everything.
+  late Set<TaskCategory> laterFilter = {
+    for (final name in (store.setting('laterFilter') ?? '').split(',')) ?TaskCategory.decode(name),
+  };
+
+  void toggleLaterFilter(TaskCategory category) {
+    laterFilter = laterFilter.contains(category) ? ({...laterFilter}..remove(category)) : {...laterFilter, category};
+    store.setSetting('laterFilter', [for (final c in TaskCategory.values) if (laterFilter.contains(c)) c.name].join(','));
+    notifyListeners();
+  }
+
   // Repeating tasks
 
   List<Repeat>? _repeats;
@@ -1019,19 +1047,34 @@ class AppState extends ChangeNotifier {
     return item;
   }
 
-  void addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until}) {
+  void addRepeat(
+    String text,
+    RepeatRule rule,
+    DateTime start, {
+    DateTime? until,
+    int? time,
+    TaskCategory? category,
+  }) {
     if (text.trim().isEmpty) return;
-    store.addRepeat(normaliseNote(text.trim()), rule, start, until: until);
+    store.addRepeat(normaliseNote(text.trim()), rule, start, until: until, time: time, category: category);
     _startDay();
     _todosChanged();
   }
 
   /// Makes [item] repeat from its day (or today) on, in place of it.
-  void makeRepeating(TodoScope scope, TodoItem item, String text, RepeatRule rule, {DateTime? until}) {
+  void makeRepeating(
+    TodoScope scope,
+    TodoItem item,
+    String text,
+    RepeatRule rule, {
+    DateTime? until,
+    int? time,
+    TaskCategory? category,
+  }) {
     final due = item.dueDate;
     final start = due == null || due.isBefore(today) ? today : dateOnly(due);
     store.transaction(() {
-      store.addRepeat(normaliseNote(text.trim()), rule, start, until: until);
+      store.addRepeat(normaliseNote(text.trim()), rule, start, until: until, time: time, category: category);
       store.deleteTodo(item.id, day: today);
     });
     _reloadTodos();
@@ -1039,10 +1082,11 @@ class AppState extends ChangeNotifier {
     _todosChanged();
   }
 
-  /// Renames [repeat] from [from] on.
-  void renameRepeat(Repeat repeat, String text, DateTime from) {
+  /// Renames [repeat] from [from] on, and sets its time and category.
+  void renameRepeat(Repeat repeat, String text, DateTime from, {int? time, TaskCategory? category}) {
     if (text.trim().isEmpty) return;
-    store.renameRepeat(repeat.uid, normaliseNote(text.trim()), from, today);
+    store.renameRepeat(repeat.uid, normaliseNote(text.trim()), from, today, time: time, category: category);
+    _repeats = null;
     _reloadTodos();
     _todosChanged();
   }
@@ -1057,16 +1101,26 @@ class AppState extends ChangeNotifier {
 
   /// [repeat] from [from] on, as a new repeat by [rule]; or, without one,
   /// no more after [from], whose to-do stays.
-  void changeRepeat(Repeat repeat, DateTime from, String text, RepeatRule? rule, {DateTime? until}) {
+  void changeRepeat(
+    Repeat repeat,
+    DateTime from,
+    String text,
+    RepeatRule? rule, {
+    DateTime? until,
+    int? time,
+    TaskCategory? category,
+  }) {
     if (text.trim().isEmpty) return;
     final value = normaliseNote(text.trim());
     store.transaction(() {
       if (rule == null) {
         store.endRepeat(repeat.uid, DateTime(from.year, from.month, from.day + 1), today);
-        if (value != repeat.text) store.renameRepeat(repeat.uid, value, from, today);
+        if ((value, time, category) != (repeat.text, repeat.time, repeat.category)) {
+          store.renameRepeat(repeat.uid, value, from, today, time: time, category: category);
+        }
       } else {
         store.endRepeat(repeat.uid, from, today);
-        store.addRepeat(value, rule, from.isBefore(today) ? today : from, until: until);
+        store.addRepeat(value, rule, from.isBefore(today) ? today : from, until: until, time: time, category: category);
       }
     });
     _reloadTodos();

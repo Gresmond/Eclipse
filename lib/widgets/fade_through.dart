@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
 import '../theme/app_theme.dart';
 
@@ -37,20 +38,35 @@ class FadeThrough extends StatelessWidget {
 
   /// Lays the outgoing child over the incoming one without letting it change
   /// the height, clipped to the incoming child's box. Takes the full width.
+  ///
+  /// Every child sits in the same widgets, keyed by its own key, whether
+  /// incoming or outgoing, so a child that starts fading out keeps its state
+  /// rather than being built afresh for its last frames.
   static Widget sizeToCurrent(Widget? current, List<Widget> previous) => SizedBox(
     width: double.infinity,
-    child: Stack(
-      children: [
-        for (final p in previous)
-          Positioned.fill(
-            child: ClipRect(
-              child: OverflowBox(alignment: Alignment.topLeft, minHeight: 0, maxHeight: double.infinity, child: p),
-            ),
-          ),
-        ?current,
-      ],
-    ),
+    child: Stack(children: [for (final p in previous) _slot(p, outgoing: true), if (current != null) _slot(current)]),
   );
+
+  static Widget _slot(Widget child, {bool outgoing = false}) {
+    final fill = outgoing ? 0.0 : null;
+    return Positioned(
+      key: child.key,
+      left: fill,
+      top: fill,
+      right: fill,
+      bottom: fill,
+      child: ClipRect(
+        clipBehavior: outgoing ? Clip.hardEdge : Clip.none,
+        child: OverflowBox(
+          alignment: Alignment.topLeft,
+          minHeight: outgoing ? 0 : null,
+          maxHeight: outgoing ? double.infinity : null,
+          fit: OverflowBoxFit.deferToChild,
+          child: child,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

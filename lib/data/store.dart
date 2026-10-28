@@ -21,7 +21,7 @@ abstract interface class AutomaticWrites {
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 28;
+  static const schemaVersion = 29;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -202,7 +202,7 @@ class Store {
       'habit_months': 'year, month',
       'month_habits': 'year, month, habit_id, name, position, note, added_on, days',
       'entries': 'day, habit_id, status, note',
-      'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at',
+      'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category',
       'todo_history': 'uid, day, snapshot',
       'journal': 'day, text',
       'sleep_habits': 'item, habit_id',
@@ -210,7 +210,7 @@ class Store {
       'settings': 'key, value',
       'exercises': 'uid, name, muscle, bodyweight',
       'training_sets': 'uid, day, exercise, position, weight, reps',
-      'todo_repeats': 'uid, text, rule, start, until',
+      'todo_repeats': 'uid, text, rule, start, until, time, category',
       'sync_reg': 'kind, rowkey, field, value, ts, origin, vv, journal_versions, seq',
       'sync_dirty': 'kind, rowkey, at',
       'sync_seen': 'file, stamp',
@@ -246,6 +246,13 @@ class Store {
     }
     for (final r in _db.select('SELECT rule FROM todo_repeats')) {
       if (RepeatRule.decode(r['rule'] as String) == null) throw StateError('Backup contains an invalid repeat');
+    }
+    for (final r in _db.select(
+      'SELECT due_time AS time, category FROM todos UNION SELECT time, category FROM todo_repeats',
+    )) {
+      if (!_validTime(r['time']) || (r['category'] != null && TaskCategory.decode(r['category']) == null)) {
+        throw StateError('Backup contains an invalid time or category');
+      }
     }
     for (final r in _db.select('SELECT subtasks FROM todos')) {
       if (!_validSubtasks(r['subtasks'])) throw StateError('Backup contains invalid subtasks');
@@ -286,6 +293,9 @@ class Store {
       return false;
     }
   }
+
+  static bool _validTime(Object? value) =>
+      value == null || value is String && RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(value);
 
   static bool _validDay(Object? value) {
     if (value is! String) return false;
@@ -749,6 +759,23 @@ class Store {
           );
         }
         _db.execute('PRAGMA user_version = 28');
+      });
+    }
+    if (version < 29) {
+      transaction(() {
+        // A task's time of day ('15:30') and category; a repeat gives its
+        // times both.
+        for (final (table, column) in [
+          ('todos', 'due_time'),
+          ('todos', 'category'),
+          ('todo_repeats', 'time'),
+          ('todo_repeats', 'category'),
+        ]) {
+          if (!_db.select('PRAGMA table_info($table)').any((r) => r['name'] == column)) {
+            _db.execute('ALTER TABLE $table ADD COLUMN $column TEXT');
+          }
+        }
+        _db.execute('PRAGMA user_version = 29');
       });
     }
 

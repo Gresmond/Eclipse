@@ -300,7 +300,20 @@ class _TodoRowState extends State<_TodoRow> {
                                     color: candidates.isEmpty ? Colors.transparent : p.accent.withValues(alpha: 0.18),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
-                                  child: Text(item.text, maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  child: Text.rich(
+                                    TextSpan(
+                                      children: [
+                                        if (item.dueTime case final time?)
+                                          TextSpan(
+                                            text: '${clockLabel(time)}  ',
+                                            style: _timeStyle(p).copyWith(fontSize: 12.5, height: 1.35),
+                                          ),
+                                        TextSpan(text: item.text),
+                                      ],
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ),
                               if (item.subtasks.isNotEmpty)
@@ -331,6 +344,15 @@ class _TodoRowState extends State<_TodoRow> {
                           ),
                         ),
                       ),
+                      if (item.category case final category?) ...[
+                        const SizedBox(width: 8),
+                        AnimatedOpacity(
+                          opacity: done ? 0.55 : 1,
+                          duration: Motion.click,
+                          curve: Motion.clickCurve,
+                          child: CategoryLabel(category),
+                        ),
+                      ],
                       if (carried) ...[
                         const SizedBox(width: 8),
                         Container(

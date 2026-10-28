@@ -85,6 +85,8 @@ extension StoreTodos on Store {
           carried: s['carried'] as int,
           uid: r['uid'] as String,
           dueDate: DateTime.tryParse(s['due_date'] as String? ?? ''),
+          dueTime: parseClock(s['due_time'] as String? ?? ''),
+          category: TaskCategory.decode(s['category']),
           doneAt: DateTime.tryParse(s['done_at'] as String? ?? ''),
           subtasks: TodoSubtask.decode(s['subtasks'] as String?),
         ),
@@ -124,6 +126,8 @@ extension StoreTodos on Store {
             'defer_promotion_day',
             'subtasks',
             'done_at',
+            'due_time',
+            'category',
           ])
             key: r[key],
           'deleted': deleted,
@@ -154,6 +158,8 @@ extension StoreTodos on Store {
     carried: r['carried'] as int,
     uid: r['uid'] as String,
     dueDate: DateTime.tryParse(r['due_date'] as String? ?? ''),
+    dueTime: parseClock(r['due_time'] as String? ?? ''),
+    category: TaskCategory.decode(r['category']),
     doneAt: DateTime.tryParse(r['done_at'] as String? ?? ''),
     subtasks: TodoSubtask.decode(r['subtasks'] as String?),
   );
@@ -304,13 +310,12 @@ extension StoreTodos on Store {
     });
   }
 
-  void editTodo(int id, String text, DateTime? dueDate, DateTime day) {
+  void editTodo(int id, String text, DateTime? dueDate, DateTime day, {int? time, TaskCategory? category}) {
     transaction(() {
-      _db.execute('UPDATE todos SET text = ?, due_date = ?, defer_promotion_day = NULL WHERE id = ?', [
-        text,
-        dueDate == null ? null : dateKey(dueDate),
-        id,
-      ]);
+      _db.execute(
+        'UPDATE todos SET text = ?, due_date = ?, due_time = ?, category = ?, defer_promotion_day = NULL WHERE id = ?',
+        [text, dueDate == null ? null : dateKey(dueDate), time == null ? null : clockKey(time), category?.name, id],
+      );
       _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [id]), day);
     });
   }
@@ -429,10 +434,22 @@ extension StoreTodos on Store {
     String? text,
     bool? done,
     DateTime? dueDate,
+    int? time,
+    TaskCategory? category,
     bool deleted = false,
   }) {
     transaction(
-      () => _editPastTodo(scope, day, item: item, text: text, done: done, dueDate: dueDate, deleted: deleted),
+      () => _editPastTodo(
+        scope,
+        day,
+        item: item,
+        text: text,
+        done: done,
+        dueDate: dueDate,
+        time: time,
+        category: category,
+        deleted: deleted,
+      ),
     );
   }
 
@@ -444,6 +461,8 @@ extension StoreTodos on Store {
     String? subtasks,
     bool? done,
     DateTime? dueDate,
+    int? time,
+    TaskCategory? category,
     bool deleted = false,
   }) {
     final uid = item?.uid ?? _db.select('SELECT lower(hex(randomblob(8))) AS uid').single['uid'] as String;
@@ -475,6 +494,8 @@ extension StoreTodos on Store {
     if (text != null) {
       snapshot['text'] = text;
       snapshot['due_date'] = dueDate == null ? null : dateKey(dueDate);
+      snapshot['due_time'] = time == null ? null : clockKey(time);
+      snapshot['category'] = category?.name;
     }
     if (subtasks != null) snapshot['subtasks'] = subtasks;
     if (done != null) {
@@ -538,19 +559,45 @@ extension StoreTodos on Store {
           rule: rule,
           start: DateTime.parse(r['start'] as String),
           until: DateTime.tryParse(r['until'] as String? ?? ''),
+          time: parseClock(r['time'] as String? ?? ''),
+          category: TaskCategory.decode(r['category']),
         ),
   ];
 
-  Repeat addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until}) {
-    final repeat = Repeat(uid: _newUid(), text: text, rule: rule, start: dateOnly(start), until: until);
+  Repeat addRepeat(
+    String text,
+    RepeatRule rule,
+    DateTime start, {
+    DateTime? until,
+    int? time,
+    TaskCategory? category,
+  }) {
+    final repeat = Repeat(
+      uid: _newUid(),
+      text: text,
+      rule: rule,
+      start: dateOnly(start),
+      until: until,
+      time: time,
+      category: category,
+    );
     saveRepeat(repeat);
     return repeat;
   }
 
   void saveRepeat(Repeat r) => _db.execute(
-    'INSERT INTO todo_repeats (uid, text, rule, start, until) VALUES (?, ?, ?, ?, ?) '
-    'ON CONFLICT (uid) DO UPDATE SET text = excluded.text, rule = excluded.rule, start = excluded.start, until = excluded.until',
-    [r.uid, r.text, r.rule.encode(), dateKey(r.start), r.until == null ? null : dateKey(r.until!)],
+    'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category) VALUES (?, ?, ?, ?, ?, ?, ?) '
+    'ON CONFLICT (uid) DO UPDATE SET text = excluded.text, rule = excluded.rule, start = excluded.start, '
+    'until = excluded.until, time = excluded.time, category = excluded.category',
+    [
+      r.uid,
+      r.text,
+      r.rule.encode(),
+      dateKey(r.start),
+      r.until == null ? null : dateKey(r.until!),
+      r.time == null ? null : clockKey(r.time!),
+      r.category?.name,
+    ],
   );
 
   /// The open to-dos of repeat [uid] for [from] on.
@@ -579,12 +626,14 @@ extension StoreTodos on Store {
     });
   }
 
-  /// Renames repeat [uid], and the open to-dos it has made for [from] on.
-  void renameRepeat(String uid, String text, DateTime from, DateTime today) {
+  /// Renames repeat [uid], and the open to-dos it has made for [from] on,
+  /// and gives them its [time] and [category].
+  void renameRepeat(String uid, String text, DateTime from, DateTime today, {int? time, TaskCategory? category}) {
+    final (clock, kind) = (time == null ? null : clockKey(time), category?.name);
     transaction(() {
-      _db.execute('UPDATE todo_repeats SET text = ? WHERE uid = ?', [text, uid]);
+      _db.execute('UPDATE todo_repeats SET text = ?, time = ?, category = ? WHERE uid = ?', [text, clock, kind, uid]);
       for (final r in _openOccurrences(uid, from)) {
-        _db.execute('UPDATE todos SET text = ? WHERE id = ?', [text, r['id']]);
+        _db.execute('UPDATE todos SET text = ?, due_time = ?, category = ? WHERE id = ?', [text, clock, kind, r['id']]);
         _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [r['id']]), today);
       }
     });
@@ -629,14 +678,19 @@ extension StoreTodos on Store {
   });
 
   void _makeOccurrence(Repeat repeat, DateTime day) =>
-      _db.execute('INSERT INTO todos (uid, scope, period, text, since, due_date) VALUES (?, ?, ?, ?, ?, ?)', [
-        '${repeat.uid}@${dateKey(day)}',
-        TodoScope.month.name,
-        TodoScope.month.period(day),
-        repeat.text,
-        dateKey(day),
-        dateKey(day),
-      ]);
+      _db.execute(
+        'INSERT INTO todos (uid, scope, period, text, since, due_date, due_time, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          '${repeat.uid}@${dateKey(day)}',
+          TodoScope.month.name,
+          TodoScope.month.period(day),
+          repeat.text,
+          dateKey(day),
+          dateKey(day),
+          repeat.time == null ? null : clockKey(repeat.time!),
+          repeat.category?.name,
+        ],
+      );
 
   /// Tasks from before every task had a day: anything open in This week or
   /// This month without a due date goes to Today.

@@ -140,13 +140,23 @@ class SyncEngine implements AutomaticWrites {
       'defer_promotion_day': 12,
       'subtasks': 13,
       'done_at': 17,
+      'due_time': 29,
+      'category': 29,
     },
     'journal': {'text': 8},
     'sleep_note': {'note': 8},
     'setting': {'value': 8},
     'exercise': {_present: 22, 'name': 22, 'muscle': 22, 'bodyweight': 22},
     'training_set': {_present: 22, 'day': 22, 'exercise': 22, 'position': 22, 'weight': 22, 'reps': 22},
-    'todo_repeat': {_present: 28, 'text': 28, 'rule': 28, 'start': 28, 'until': 28},
+    'todo_repeat': {
+      _present: 28,
+      'text': 28,
+      'rule': 28,
+      'start': 28,
+      'until': 28,
+      'time': 29,
+      'category': 29,
+    },
   };
 
   /// A to-do's fields that say where it is. A change of whether it's done,
@@ -209,7 +219,7 @@ class SyncEngine implements AutomaticWrites {
             {'status': 0, 'note': null};
       case 'todo':
         fields = row(
-          'SELECT scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at FROM todos WHERE uid = ?',
+          'SELECT scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category FROM todos WHERE uid = ?',
           [rowkey],
         );
       case 'journal':
@@ -231,7 +241,7 @@ class SyncEngine implements AutomaticWrites {
       case 'training_set':
         fields = row('SELECT day, exercise, position, weight, reps FROM training_sets WHERE uid = ?', [rowkey]);
       case 'todo_repeat':
-        fields = row('SELECT text, rule, start, until FROM todo_repeats WHERE uid = ?', [rowkey]);
+        fields = row('SELECT text, rule, start, until, time, category FROM todo_repeats WHERE uid = ?', [rowkey]);
       default:
         // From a newer version: kept as registers until this one is updated.
         return const {};
@@ -304,11 +314,12 @@ class SyncEngine implements AutomaticWrites {
           _db.execute('DELETE FROM todos WHERE uid = ?', [rowkey]);
         } else {
           _db.execute(
-            'INSERT INTO todos (uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'INSERT INTO todos (uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT (uid) DO UPDATE SET scope = excluded.scope, period = excluded.period, text = excluded.text, '
             'done = excluded.done, carried = excluded.carried, since = excluded.since, due_date = excluded.due_date, '
             'return_to_tomorrow = excluded.return_to_tomorrow, return_scope = excluded.return_scope, '
-            'defer_promotion_day = excluded.defer_promotion_day, subtasks = excluded.subtasks, done_at = excluded.done_at',
+            'defer_promotion_day = excluded.defer_promotion_day, subtasks = excluded.subtasks, done_at = excluded.done_at, '
+            'due_time = excluded.due_time, category = excluded.category',
             [
               rowkey,
               f['scope'] ?? 'today',
@@ -323,6 +334,8 @@ class SyncEngine implements AutomaticWrites {
               f['defer_promotion_day'],
               f['subtasks'] ?? '[]',
               f['done_at'],
+              f['due_time'],
+              f['category'],
             ],
           );
         }
@@ -374,10 +387,10 @@ class SyncEngine implements AutomaticWrites {
           _db.execute('DELETE FROM todo_repeats WHERE uid = ?', [rowkey]);
         } else {
           _db.execute(
-            'INSERT INTO todo_repeats (uid, text, rule, start, until) VALUES (?, ?, ?, ?, ?) '
+            'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category) VALUES (?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT (uid) DO UPDATE SET text = excluded.text, rule = excluded.rule, '
-            'start = excluded.start, until = excluded.until',
-            [rowkey, f['text'] ?? '', f['rule'], f['start'], f['until']],
+            'start = excluded.start, until = excluded.until, time = excluded.time, category = excluded.category',
+            [rowkey, f['text'] ?? '', f['rule'], f['start'], f['until'], f['time'], f['category']],
           );
         }
     }
@@ -916,6 +929,7 @@ class _Reg {
 
   static final _monthKey = RegExp(r'^\d{4}-\d{1,2}$');
   static bool _day(String s) => DateTime.tryParse(s) != null;
+  static final _clock = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
 
   /// Whether this version can write it into its row: a key of the kind's
   /// shape, and a value it can take. What this version doesn't keep is only
@@ -941,6 +955,8 @@ class _Reg {
       ('todo_repeat', 'rule') => v is String && RepeatRule.decode(v) != null,
       ('todo_repeat', 'start') => v is String && _day(v),
       ('todo_repeat', 'until') => v == null || v is String && _day(v),
+      ('todo', 'due_time') || ('todo_repeat', 'time') => v == null || v is String && _clock.hasMatch(v),
+      ('todo', 'category') || ('todo_repeat', 'category') => v == null || TaskCategory.decode(v) != null,
       _ => v == null || v is num || v is String,
     };
   }

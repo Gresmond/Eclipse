@@ -47,7 +47,28 @@ class _Planned {
         }
       }
     }
-    later = [for (final key in byDay.keys.toList()..sort()) (DateTime.parse(key), byDay[key]!)];
+    later = [for (final key in byDay.keys.toList()..sort()) (DateTime.parse(key), _byTime(byDay[key]!, (l) => l.item))];
+    for (var i = 0; i < days.length; i++) {
+      days[i] = _byTime(days[i], (t) => t.$2);
+    }
+  }
+
+  /// [tasks] with the open ones at a time first, earliest first; the rest
+  /// keep their order.
+  static List<T> _byTime<T>(List<T> tasks, TodoItem? Function(T) item) {
+    int? time(T t) => switch (item(t)) {
+      final i? when !i.done => i.dueTime,
+      _ => null,
+    };
+    if (!tasks.any((t) => time(t) != null)) return tasks;
+    final indexed = tasks.indexed.toList()
+      ..sort((a, b) {
+        final (x, y) = (time(a.$2), time(b.$2));
+        if (x != null && y != null && x != y) return x.compareTo(y);
+        if ((x == null) != (y == null)) return x == null ? 1 : -1;
+        return a.$1.compareTo(b.$1);
+      });
+    return [for (final (_, t) in indexed) t];
   }
 
   final days = List.generate(WeekCard.span + 1, (_) => <_Task>[]);
@@ -149,18 +170,34 @@ String _shortDate(DateTime day, DateTime today) =>
     '${monthNames[day.month - 1].substring(0, 3)} ${day.day}${day.year != today.year ? ' ${day.year}' : ''}';
 
 /// Adds [text] as a task due on [day], in the list it belongs to now.
-void _addDue(AppState state, String text, DateTime day) {
+void _addDue(AppState state, String text, DateTime day, {int? time, TaskCategory? category}) {
   final today = state.today;
   final days = _daysBetween(today, day);
   if (days <= 0) {
-    state.addTodo(TodoScope.today, text);
+    state.addTodo(TodoScope.today, text, time: time, category: category);
   } else if (days == 1) {
-    state.addTodo(TodoScope.tomorrow, text);
+    state.addTodo(TodoScope.tomorrow, text, time: time, category: category);
   } else {
     // Due later this week files under This week, anything after under
     // This month; both move into Tomorrow and Today as the day nears.
     final sunday = DateTime(today.year, today.month, today.day + 7 - today.weekday);
-    state.addTodo(day.isAfter(sunday) ? TodoScope.month : TodoScope.week, text, dueDate: day);
+    state.addTodo(
+      day.isAfter(sunday) ? TodoScope.month : TodoScope.week,
+      text,
+      dueDate: day,
+      time: time,
+      category: category,
+    );
+  }
+}
+
+/// Adds [text] on [day] as [choice] says: a task, or a repeating one.
+void _addChosen(AppState state, String text, DateTime day, _DayChoice choice) {
+  final (time, category) = (choice.time, choice.category);
+  if (choice.repeat case final repeat?) {
+    state.addRepeat(text, repeat.rule, day, until: repeat.until, time: time, category: category);
+  } else {
+    _addDue(state, text, day, time: time, category: category);
   }
 }
 
@@ -211,9 +248,7 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
             child: _DatedAdd(
               first: today,
               last: DateTime(today.year, today.month, today.day + WeekCard.span),
-              onAdd: (text, due, repeat) => repeat == null
-                  ? _addDue(state, text, due)
-                  : state.addRepeat(text, repeat.rule, due, until: repeat.until),
+              onAdd: (text, choice) => _addChosen(state, text, choice.day, choice),
             ),
           ),
         ],
@@ -700,14 +735,14 @@ class _FoldAway extends StatelessWidget {
 }
 
 /// The field at a card's foot for a new task on a day between [first] and
-/// [last]. The calendar button picks the day and how it repeats; Enter
-/// without a day asks for one.
+/// [last]. The calendar button picks the day, its time, how it repeats and
+/// its category; Enter without a day asks for one.
 class _DatedAdd extends StatefulWidget {
   const _DatedAdd({required this.first, this.last, required this.onAdd});
 
   final DateTime first;
   final DateTime? last;
-  final void Function(String text, DateTime due, _RepeatChoice? repeat) onAdd;
+  final void Function(String text, _DayChoice choice) onAdd;
 
   @override
   State<_DatedAdd> createState() => _DatedAddState();
@@ -716,8 +751,7 @@ class _DatedAdd extends StatefulWidget {
 class _DatedAddState extends State<_DatedAdd> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
-  DateTime? _due;
-  _RepeatChoice? _repeat;
+  _DayChoice? _choice;
 
   @override
   void dispose() {
@@ -726,33 +760,30 @@ class _DatedAddState extends State<_DatedAdd> {
     super.dispose();
   }
 
-  Future<DateTime?> _pick() async {
+  Future<_DayChoice?> _pick() async {
+    final choice = _choice;
     final picked = await _pickDayAndRepeat(
       context,
       first: widget.first,
       last: widget.last,
-      selected: _due,
-      repeat: _repeat,
+      selected: choice?.day,
+      repeat: choice?.repeat,
+      time: choice?.time,
+      category: choice?.category,
     );
     if (picked == null || !mounted) return null;
-    setState(() {
-      _due = picked.day;
-      _repeat = picked.repeat;
-    });
+    setState(() => _choice = picked);
     _focus.requestFocus();
-    return picked.day;
+    return picked;
   }
 
   Future<void> _submit() async {
     if (_controller.text.trim().isEmpty) return;
     // Every task has a day: without one yet, it's asked for.
-    final due = _due ?? await _pick();
-    if (due == null || !mounted) return;
-    widget.onAdd(_controller.text, due, _repeat);
-    setState(() {
-      _due = null;
-      _repeat = null;
-    });
+    final choice = _choice ?? await _pick();
+    if (choice == null || !mounted) return;
+    widget.onAdd(_controller.text, choice);
+    setState(() => _choice = null);
     _controller.clear();
     _focus.requestFocus();
   }
@@ -761,7 +792,7 @@ class _DatedAddState extends State<_DatedAdd> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final today = AppScope.read(context).today;
-    final due = _due, repeat = _repeat;
+    final due = _choice?.day, repeat = _choice?.repeat, time = _choice?.time, category = _choice?.category;
     final note = TextStyle(fontFamily: Fonts.body, fontSize: 11, color: p.inkMuted);
     return Padding(
       padding: const EdgeInsets.only(top: 6, right: 6),
@@ -779,6 +810,11 @@ class _DatedAddState extends State<_DatedAdd> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (due != null) Text(_shortDate(due, today), style: note),
+              if (time != null) ...[
+                const SizedBox(width: 6),
+                Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
+              ],
+              if (category != null) ...[const SizedBox(width: 6), CategoryLabel(category)],
               if (repeat != null) ...[
                 const SizedBox(width: 8),
                 Icon(Icons.repeat_rounded, size: 12, color: p.accent),
@@ -821,9 +857,9 @@ class _AddTaskState extends State<_AddTask> {
   final _focus = FocusNode();
   bool _open = false;
   bool _hover = false;
-  _RepeatChoice? _repeat;
+  _DayChoice? _choice;
 
-  /// While the repeat dialog is open, the field stays open behind it.
+  /// While the dialog is open, the field stays open behind it.
   bool _picking = false;
 
   @override
@@ -833,7 +869,7 @@ class _AddTaskState extends State<_AddTask> {
       if (!_focus.hasFocus && !_picking && _controller.text.trim().isEmpty) {
         setState(() {
           _open = false;
-          _repeat = null;
+          _choice = null;
         });
       }
     });
@@ -851,9 +887,9 @@ class _AddTaskState extends State<_AddTask> {
     if (text.trim().isEmpty) return;
     if (widget.past case final past?) {
       state.addTodo(widget.day == past ? TodoScope.today : TodoScope.tomorrow, text, day: past);
-    } else if (_repeat case final repeat?) {
-      state.addRepeat(text, repeat.rule, widget.day, until: repeat.until);
-      setState(() => _repeat = null);
+    } else if (_choice case final choice?) {
+      _addChosen(state, text, widget.day, choice);
+      setState(() => _choice = null);
     } else {
       _addDue(state, text, widget.day);
     }
@@ -863,10 +899,19 @@ class _AddTaskState extends State<_AddTask> {
 
   Future<void> _pick() async {
     _picking = true;
-    final picked = await _pickRepeat(context, widget.day, _repeat);
+    final choice = _choice;
+    final picked = await _pickDayAndRepeat(
+      context,
+      first: widget.day,
+      selected: widget.day,
+      repeat: choice?.repeat,
+      time: choice?.time,
+      category: choice?.category,
+      calendar: false,
+    );
     _picking = false;
     if (!mounted) return;
-    if (picked != null) setState(() => _repeat = picked.choice);
+    if (picked != null) setState(() => _choice = picked);
     _focus.requestFocus();
   }
 
@@ -889,7 +934,7 @@ class _AddTaskState extends State<_AddTask> {
             focus: _focus,
             autofocus: true,
             leading: Icon(Icons.add_rounded, size: 18, color: p.accent),
-            trailing: widget.past == null ? _RepeatButton(repeat: _repeat, onPressed: _pick) : const SizedBox.shrink(),
+            trailing: widget.past == null ? _DetailsButton(choice: _choice, onPressed: _pick) : const SizedBox.shrink(),
             onSubmitted: () => _submit(state),
           ),
         ),
@@ -933,20 +978,28 @@ class _AddTaskState extends State<_AddTask> {
   }
 }
 
-/// The repeat button of a field for a new task: lit with its rule once set.
-class _RepeatButton extends StatelessWidget {
-  const _RepeatButton({required this.repeat, required this.onPressed});
+/// The button of a field for a new task that sets its time, repeat and
+/// category, showing them once set.
+class _DetailsButton extends StatelessWidget {
+  const _DetailsButton({required this.choice, required this.onPressed});
 
-  final _RepeatChoice? repeat;
+  final _DayChoice? choice;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final repeat = this.repeat;
+    final (time, repeat, category) = (choice?.time, choice?.repeat, choice?.category);
+    final set = time != null || repeat != null || category != null;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (time != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
+          ),
+        if (category != null) Padding(padding: const EdgeInsets.only(left: 6), child: CategoryLabel(category)),
         if (repeat != null)
           Flexible(
             child: Padding(
@@ -960,14 +1013,17 @@ class _RepeatButton extends StatelessWidget {
             ),
           ),
         _TaskAction(
-          tooltip: repeat == null ? 'Repeat' : 'Change repeat',
-          icon: repeat == null ? Icons.repeat_rounded : Icons.repeat_on_rounded,
+          tooltip: set ? 'Change time, repeat or category' : 'Time, repeat and category',
+          icon: set ? Icons.event_available_outlined : Icons.more_time_rounded,
           onPressed: onPressed,
         ),
       ],
     );
   }
 }
+
+/// A task's time, in the sleep schedule's semi-mono.
+TextStyle _timeStyle(Palette p) => SleepName.timeStyle(p);
 
 /// A rounded field for a new task's name, as at the foot of a to-do card.
 class _Field extends StatelessWidget {
@@ -1042,13 +1098,18 @@ class FurtherAheadCard extends StatefulWidget {
 class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay));
+    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay, s.laterFilter));
     final day = state.shownDay;
     final past = state.viewDay != null;
     final planned = _Planned(state, day, past: past);
+    final filter = state.laterFilter;
+    bool shows(_Later later) => filter.isEmpty || filter.contains(later.item?.category ?? later.repeat?.category);
     final groups = [
-      for (final (date, items) in planned.later) (date as DateTime?, items),
-      if (planned.undated.isNotEmpty) (null, planned.undated),
+      for (final (date, items) in [
+        for (final (date, items) in planned.later) (date as DateTime?, items),
+        if (planned.undated.isNotEmpty) (null, planned.undated),
+      ])
+        if (items.where(shows).toList() case final shown when shown.isNotEmpty) (date, shown),
     ];
     final count = groups.fold(0, (n, g) => n + g.$2.length);
     final added = _added(day, [
@@ -1067,6 +1128,15 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
             padding: const EdgeInsets.only(right: 8),
             child: TileHeader(title: 'Further ahead', caption: '$count planned'),
           ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final c in TaskCategory.values)
+                CategoryChip(category: c, selected: filter.contains(c), onTap: () => state.toggleLaterFilter(c)),
+            ],
+          ),
           const SizedBox(height: 4),
           Expanded(
             child: FadeThrough(
@@ -1078,9 +1148,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
             folded: past,
             child: _DatedAdd(
               first: DateTime(today.year, today.month, today.day + WeekCard.span + 1),
-              onAdd: (text, due, repeat) => repeat == null
-                  ? state.addTodo(TodoScope.month, text, dueDate: due)
-                  : state.addRepeat(text, repeat.rule, due, until: repeat.until),
+              onAdd: (text, choice) => _addChosen(state, text, choice.day, choice),
             ),
           ),
         ],
@@ -1132,7 +1200,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
     if (groups.isEmpty) {
       return Center(
         child: Text(
-          'Nothing more than a week away',
+          AppScope.read(context).laterFilter.isEmpty ? 'Nothing more than a week away' : 'Nothing in these categories',
           style: TextStyle(
             fontFamily: Fonts.body,
             fontSize: 12,
@@ -1217,6 +1285,8 @@ class _RepeatPreviewState extends State<_RepeatPreview> {
     widget.repeat.text,
     since: widget.day,
     dueDate: widget.day,
+    dueTime: widget.repeat.time,
+    category: widget.repeat.category,
     uid: '${widget.repeat.uid}@${dateKey(widget.day)}',
   );
 
@@ -1246,8 +1316,17 @@ class _RepeatPreviewState extends State<_RepeatPreview> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        widget.repeat.text,
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            if (widget.repeat.time case final time?)
+                              TextSpan(
+                                text: '${clockLabel(time)}  ',
+                                style: _timeStyle(p).copyWith(fontSize: 12.5, height: 1.35),
+                              ),
+                            TextSpan(text: widget.repeat.text),
+                          ],
+                        ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.35, color: p.ink),
@@ -1259,6 +1338,10 @@ class _RepeatPreviewState extends State<_RepeatPreview> {
                     ],
                   ),
                 ),
+                if (widget.repeat.category case final category?) ...[
+                  const SizedBox(width: 8),
+                  CategoryLabel(category),
+                ],
                 AnimatedOpacity(
                   opacity: _hover ? 1 : 0,
                   duration: Motion.hover,
