@@ -3,16 +3,19 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import 'google_drive.dart';
+import 'journal_files.dart';
 import 'store.dart';
 import 'sync.dart';
 
 /// Runs sync: copies this computer's change files up to Eclipse's hidden
 /// folder in the Google Drive signed in to, everyone else's down, and
-/// merges them in.
+/// merges them in. Also keeps a copy of the journal in a folder there you
+/// can see, Eclipse Journals.
 ///
 /// Set up once per computer: it lives in the app's own folder, as
 /// sync.json, so a restored backup or a moved data folder doesn't change it.
@@ -70,6 +73,17 @@ class SyncService extends ChangeNotifier {
   }
 
   bool needsAccountChoice(GoogleAccount account) => hasSynced && !isReturning(account);
+
+  /// Signed in from before the journal went to Drive too: signing in again
+  /// lets it.
+  bool get needsJournalSignIn => isOn && _config['journalDrive'] != true;
+
+  /// The journal's folder in Drive, to open in the browser; null until it's
+  /// made.
+  String? get journalFolderLink {
+    final id = _config['journalFolder'] as String?;
+    return isOn && id != null ? 'https://drive.google.com/drive/folders/$id' : null;
+  }
 
   SyncDrive? _drive;
   SyncDrive get _signedIn => _drive ??= _connect(_config['refresh'] as String);
@@ -132,7 +146,9 @@ class SyncService extends ChangeNotifier {
     _timer?.cancel();
     if (!isOn || _stopped) return;
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (_changed || DateTime.now().difference(_lastFull) > const Duration(minutes: 3)) unawaited(run());
+      if (_changed || _journalBehind || DateTime.now().difference(_lastFull) > const Duration(minutes: 3)) {
+        unawaited(run());
+      }
     });
   }
 
@@ -224,16 +240,39 @@ class SyncService extends ChangeNotifier {
       if (switching) engine.forgetSync();
       engine.claimAll();
     }
+    _forgetJournalFolder();
     _config
       ..['email'] = account.email
       ..['accountEmail'] = account.email
       ..['accountId'] = account.identity
       ..['refresh'] = account.refreshToken
+      ..['journalDrive'] = account.journalAccess
       ..['pushed'] = 0;
     error = null;
     await _save();
     notifyListeners();
     start();
+    await run();
+  }
+
+  /// Signs in again with the same account, for a sign-in that lets the
+  /// journal go to Drive too. Sync carries on as it was.
+  Future<void> signInForJournal({Future<void>? cancel}) async {
+    final account = await _signIn(cancel: cancel);
+    if (!isOn) return;
+    if (!isReturning(account)) throw DriveError('Sign in with ${email ?? 'the account you sync with'}.');
+    if (!account.journalAccess) {
+      throw const DriveError(
+        'Google wasn\'t asked to let Eclipse make the journal\'s folder. Tick it when signing in.',
+      );
+    }
+    _config
+      ..['refresh'] = account.refreshToken
+      ..['journalDrive'] = true;
+    _drive = null;
+    error = null;
+    await _save();
+    notifyListeners();
     await run();
   }
 
@@ -246,9 +285,11 @@ class SyncService extends ChangeNotifier {
   Future<void> turnOff({String? error}) async {
     _timer?.cancel();
     _drive = null;
+    _forgetJournalFolder();
     _config
       ..remove('refresh')
-      ..remove('email');
+      ..remove('email')
+      ..remove('journalDrive');
     await _save();
     this.error = error;
     notifyListeners();
@@ -330,6 +371,10 @@ class SyncService extends ChangeNotifier {
       _config['pushed'] = latest;
       await _save();
       if (_stopped) return;
+      if (drive is JournalDrive && _config['journalDrive'] == true) {
+        await _copyJournal(drive as JournalDrive);
+        if (_stopped) return;
+      }
       store.flushToDisk();
       lastSynced = DateTime.now();
       error = null;
@@ -349,6 +394,111 @@ class SyncService extends ChangeNotifier {
       busy = false;
       if (!_stopped) notifyListeners();
     }
+  }
+
+  // The journal's folder
+
+  static const journalFolderName = 'Eclipse Journals';
+
+  /// Files written to the journal's folder in one round at most, so a
+  /// round stays short; the rest go in the next, half a minute on.
+  static const journalBatch = 25;
+  bool _journalBehind = false;
+
+  /// What this computer knows of the journal's folder in Drive: its id,
+  /// its year folders' and each day's file, with its checksum.
+  Map<String, dynamic> get _journalYears => _seen('journalYears');
+  Map<String, dynamic> get _journalUp => _seen('journalUp');
+
+  void _forgetJournalFolder() {
+    _journalBehind = false;
+    for (final key in ['journalFolder', 'journalYears', 'journalUp', 'journalFill']) {
+      _config.remove(key);
+    }
+  }
+
+  /// Brings the journal's folder up to date with the days this computer
+  /// wrote last; the other computers see to theirs. Whoever makes the
+  /// folder (the first time, or after it was deleted) fills it with every
+  /// day.
+  Future<void> _copyJournal(JournalDrive drive) async {
+    var folder = _config['journalFolder'] as String?;
+    if (folder == null || !await drive.exists(folder)) {
+      _forgetJournalFolder();
+      final found = await drive.findFolder(journalFolderName);
+      if (found != null && found != folder) {
+        // Made by another computer, or by this one before signing out.
+        final (files, years) = await drive.listJournal(found);
+        _journalYears.addAll(years);
+        for (final MapEntry(key: path, value: (id, md5)) in files.entries) {
+          final name = p.basenameWithoutExtension(path);
+          if (path == '${name.substring(0, 4)}/$name.md') _journalUp[name] = [id, md5];
+        }
+        folder = found;
+      } else {
+        folder = await drive.makeFolder(journalFolderName);
+        _config['journalFill'] = true;
+      }
+      _config['journalFolder'] = folder;
+      await _save();
+    }
+    if (_stopped) return;
+
+    final fill = _config['journalFill'] == true;
+    final writers = engine.journalWriters();
+    final texts = {for (final e in store.journalEntries()) e.day: e.text};
+    // A day's file and its checksum, or two blanks once it's known there's
+    // none, for a day emptied.
+    final up = _journalUp, years = _journalYears;
+    const none = ['', ''];
+    var written = 0;
+    _journalBehind = false;
+    for (final day in {...texts.keys, ...up.keys, ...writers.keys}.toList()..sort()) {
+      if (_stopped) return;
+      if (!fill && (writers[day] ?? machine) != machine) continue;
+      final contents = JournalFiles.contents(DateTime.parse(day), texts[day] ?? '');
+      final bytes = contents == null ? null : utf8.encode(contents);
+      final had = (up[day] as List?)?.cast<String>();
+      final same = bytes == null
+          ? (had != null && had[0] == '') || (fill && had == null)
+          : (had != null && had[1] == md5.convert(bytes).toString());
+      if (same) {
+        if (had == null) up[day] = none;
+        continue;
+      }
+      if (written == journalBatch) {
+        _journalBehind = true;
+        break;
+      }
+      written++;
+      final year = day.substring(0, 4);
+      try {
+        if (bytes == null) {
+          // Another computer may have written the day's file last.
+          final yearFolder = years[year] as String? ?? await drive.findFolder(year, parent: folder);
+          final id = had?[0] ?? (yearFolder == null ? null : (await drive.findFile('$day.md', yearFolder))?.$1);
+          if (id != null) await drive.bin(id);
+          up[day] = none;
+          continue;
+        }
+        final yearFolder =
+            years[year] as String? ??
+            await drive.findFolder(year, parent: folder) ??
+            await drive.makeFolder(year, parent: folder);
+        years[year] = yearFolder;
+        final id = had?[0] ?? (await drive.findFile('$day.md', yearFolder))?.$1;
+        final (newId, sum) = await drive.writeFile('$day.md', yearFolder, bytes, id: id == '' ? null : id);
+        up[day] = [newId, sum];
+      } on DriveError catch (e) {
+        if (!e.notFound) rethrow;
+        // Deleted in Drive: looked for again next round.
+        up.remove(day);
+        years.remove(year);
+        _journalBehind = true;
+      }
+    }
+    if (!_journalBehind) _config.remove('journalFill');
+    await _save();
   }
 
   void _deliver(Incoming incoming) {

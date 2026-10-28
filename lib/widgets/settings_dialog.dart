@@ -12,6 +12,7 @@ import '../app_state.dart';
 import '../data/backups.dart';
 import '../data/data_folder.dart';
 import '../data/google_drive.dart';
+import '../data/platform_files.dart';
 import '../data/sync_service.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
@@ -76,6 +77,21 @@ class _SettingsDialogState extends State<SettingsDialog> {
         return;
       }
       await sync.turnOn(account, join: false);
+    } catch (e) {
+      if (mounted && !cancel.isCompleted) setState(() => _error = '$e');
+    }
+    if (mounted) setState(() => _signingIn = false);
+  }
+
+  /// Signs in again so the journal can go to Drive too.
+  Future<void> _signInForJournal(SyncService sync) async {
+    final cancel = _cancelSignIn = Completer<void>();
+    setState(() {
+      _signingIn = true;
+      _error = null;
+    });
+    try {
+      await sync.signInForJournal(cancel: cancel.future);
     } catch (e) {
       if (mounted && !cancel.isCompleted) setState(() => _error = '$e');
     }
@@ -147,7 +163,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     if (picked == null || !mounted) return;
     final folder = ['Eclipse Journal', 'Eclipse Journals'].contains(pth.basename(picked.path))
         ? picked
-        : Directory(pth.join(picked.path, 'Eclipse Journal'));
+        : Directory(pth.join(picked.path, DataFolder.journalName));
     setState(() {
       _newJournal = folder.path == current.path ? null : folder;
       _error = null;
@@ -649,7 +665,28 @@ extension on _SettingsDialogState {
             ),
           ],
         ),
-        Align(alignment: Alignment.centerRight, child: button('Turn off', sync.busy ? null : sync.turnOff)),
+        const SizedBox(height: 4),
+        if (sync.needsJournalSignIn) ...[
+          Text(
+            _signingIn
+                ? 'Finish signing in in your browser, then come back here.'
+                : 'Sign in again to keep your journal in an Eclipse Journals folder in your Drive.',
+            style: small.copyWith(color: p.ink),
+          ),
+        ],
+        Row(
+          children: [
+            if (sync.journalFolderLink case final link? when !sync.needsJournalSignIn)
+              button('Open Eclipse Journals in Drive', () => openExternal(link)),
+            const Spacer(),
+            if (sync.needsJournalSignIn)
+              _signingIn
+                  ? button('Cancel', _stopSigningIn)
+                  : button('Sign in again', () => _signInForJournal(sync), filled: true),
+            const SizedBox(width: 4),
+            button('Turn off', sync.busy ? null : sync.turnOff),
+          ],
+        ),
       ];
     } else if (_joining case final account?) {
       body = [
@@ -682,8 +719,8 @@ extension on _SettingsDialogState {
           _signingIn
               ? 'Finish signing in in your browser, then come back here.'
               : 'Keep everything the same on your other computers: sign in with the same Google account on each. '
-                    'Eclipse keeps its data in a hidden folder in your Google Drive, and can\'t see anything else '
-                    'there.',
+                    'Eclipse keeps its data in a hidden folder in your Google Drive, with a copy of your journal in '
+                    'an Eclipse Journals folder, and can\'t see anything else there.',
           style: small,
         ),
         if (why != null && !_signingIn) ...[

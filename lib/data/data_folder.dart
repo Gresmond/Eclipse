@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
@@ -35,15 +36,36 @@ class DataFolder {
     return path.isEmpty ? null : Directory(path);
   }
 
-  static DataFolder load(Directory home, Directory documents) =>
-      DataFolder._(home, _read(_pointer(home)), documents, _read(_journalPointer(home)));
+  static DataFolder load(Directory home, Directory documents) {
+    final data = DataFolder._(home, _read(_pointer(home)), documents, _read(_journalPointer(home)));
+    data._renameJournal();
+    return data;
+  }
+
+  /// The journal's folder, when Eclipse picks it.
+  static const journalName = 'Eclipse Journals';
+
+  /// Eclipse's own journal folder was 'Eclipse Journal' in Documents, and
+  /// 'Journal' inside a chosen data folder, at first: renamed once, with
+  /// what's in it. Left where it is if the new name is taken.
+  void _renameJournal() {
+    if (journalChosen != null) return;
+    final old = Directory(
+      p.join(chosen == null ? documents.path : root.path, chosen == null ? 'Eclipse Journal' : 'Journal'),
+    );
+    try {
+      if (old.existsSync() && FileSystemEntity.typeSync(journal.path) == FileSystemEntityType.notFound) {
+        old.renameSync(journal.path);
+      }
+    } on FileSystemException catch (e) {
+      debugPrint('Renaming the journal folder failed: $e');
+    }
+  }
 
   Directory get root => chosen ?? home;
   String get database => p.join(root.path, 'productivity.db');
   Directory get backups => Directory(p.join(root.path, 'backups'));
-  Directory get journal =>
-      journalChosen ??
-      (chosen == null ? Directory(p.join(documents.path, 'Eclipse Journal')) : Directory(p.join(root.path, 'Journal')));
+  Directory get journal => journalChosen ?? Directory(p.join(chosen == null ? documents.path : root.path, journalName));
 
   /// Keeps the journal's files in [folder] from now on. Moving the files
   /// already there is up to the caller, which can write them from the

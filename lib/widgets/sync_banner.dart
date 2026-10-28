@@ -9,7 +9,9 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 
 /// A card that floats up over the bottom-right corner for a few seconds
-/// when changes come in from another computer, saying where from.
+/// when changes come in from another computer, saying where from. While
+/// the sign-in is from before the journal went to Drive, a card asking to
+/// sign in again stays there instead, until done or closed.
 class SyncBanner extends StatefulWidget {
   const SyncBanner({super.key, required this.sync});
 
@@ -38,8 +40,40 @@ class _SyncBannerState extends State<SyncBanner> {
     super.dispose();
   }
 
+  /// The sign-in card: closed for now, waiting on the browser, or why
+  /// signing in didn't work.
+  bool _askClosed = false, _signingIn = false;
+  String? _askError;
+  Completer<void>? _cancel;
+
+  Future<void> _signIn() async {
+    final cancel = _cancel = Completer<void>();
+    setState(() {
+      _signingIn = true;
+      _askError = null;
+    });
+    try {
+      await widget.sync.signInForJournal(cancel: cancel.future);
+    } catch (e) {
+      if (mounted && !cancel.isCompleted) setState(() => _askError = '$e');
+    }
+    if (mounted) setState(() => _signingIn = false);
+  }
+
+  /// Stops waiting on the browser, or closes the card for now.
+  void _close() {
+    if (!(_cancel?.isCompleted ?? true)) _cancel!.complete();
+    setState(() {
+      _askClosed = !_signingIn;
+      _signingIn = false;
+    });
+  }
+
   void _changed() {
-    if (widget.sync.incomingCount == _seen) return;
+    if (widget.sync.incomingCount == _seen) {
+      setState(() {}); // the sign-in card may come or go
+      return;
+    }
     _seen = widget.sync.incomingCount;
     final incoming = widget.sync.lastIncoming!;
     setState(() {
@@ -56,7 +90,10 @@ class _SyncBannerState extends State<SyncBanner> {
   @override
   Widget build(BuildContext context) {
     final shown = _shown;
-    if (!_visible) return const SizedBox.shrink();
+    if (!_visible) {
+      if (_askClosed || !widget.sync.needsJournalSignIn) return const SizedBox.shrink();
+      return _AskCard(signingIn: _signingIn, error: _askError, onSignIn: _signIn, onClose: _close);
+    }
     return IgnorePointer(
       ignoring: !_visible,
       child: AnimatedSlide(
@@ -147,6 +184,81 @@ class _Card extends StatelessWidget {
                   detail,
                   style: TextStyle(fontFamily: Fonts.body, fontSize: 12.5, height: 1.4, color: p.inkMuted),
                 ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Asks to sign in again, so the journal can go to Drive too.
+class _AskCard extends StatelessWidget {
+  const _AskCard({required this.signingIn, required this.error, required this.onSignIn, required this.onClose});
+
+  final bool signingIn;
+  final String? error;
+  final VoidCallback onSignIn, onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Container(
+      width: 340,
+      padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
+      decoration: BoxDecoration(
+        color: p.tile,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: p.tileBorder.withValues(alpha: 0.9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(
+              'Keep your journal in Drive',
+              style: TextStyle(
+                fontFamily: Fonts.display,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.2,
+                color: p.ink,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(
+              signingIn
+                  ? 'Finish signing in in your browser, then come back here.'
+                  : error ?? 'Sign in again to keep your journal in an Eclipse Journals folder in your Drive.',
+              style: TextStyle(
+                fontFamily: Fonts.body,
+                fontSize: 12.5,
+                height: 1.4,
+                color: error != null && !signingIn ? p.missed : p.inkMuted,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: onClose,
+                  child: Text(signingIn ? 'Cancel' : 'Not now', style: TextStyle(color: p.inkMuted)),
+                ),
+                if (!signingIn)
+                  TextButton(
+                    onPressed: onSignIn,
+                    child: Text('Sign in again', style: TextStyle(color: p.accent)),
+                  ),
               ],
             ),
           ),

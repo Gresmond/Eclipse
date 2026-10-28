@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/backups.dart';
@@ -50,8 +52,9 @@ class _Computer {
   }
 }
 
-/// One Google account's hidden Eclipse folder, in memory.
-class _FakeDrive implements SyncDrive {
+/// One Google account's hidden Eclipse folder, and the folders and files
+/// Eclipse made in the rest of Drive, in memory.
+class _FakeDrive implements SyncDrive, JournalDrive {
   final files = <String, (String, List<int>, int)>{}; // id: name, bytes, version
   var _next = 0;
   var signedOut = false;
@@ -75,6 +78,89 @@ class _FakeDrive implements SyncDrive {
   Future<void> upload(String name, List<int> bytes, {String? id}) async {
     _check();
     files[id ?? 'f${_next++}'] = (name, bytes, _next++);
+  }
+
+  /// id: name, parent ('root' at the top), contents (null for a folder),
+  /// whether it's in the bin.
+  final visible = <String, ({String name, String parent, List<int>? bytes, bool binned})>{};
+  var writes = 0;
+
+  /// Each day's file, by 'folder/year/name', that isn't in the bin.
+  Map<String, String> get journal {
+    String path(String id) => id == 'root' ? '' : '${path(visible[id]!.parent)}/${visible[id]!.name}';
+    bool live(String id) => id == 'root' || (!visible[id]!.binned && live(visible[id]!.parent));
+    return {
+      for (final MapEntry(:key, :value) in visible.entries)
+        if (value.bytes != null && live(key)) path(key).substring(1): utf8.decode(value.bytes!),
+    };
+  }
+
+  static String _sum(List<int> bytes) => md5.convert(bytes).toString();
+
+  Iterable<String> _find(String name, String parent, {required bool folder}) => visible.entries
+      .where((e) => e.value.name == name && e.value.parent == parent && !e.value.binned)
+      .where((e) => (e.value.bytes == null) == folder)
+      .map((e) => e.key);
+
+  @override
+  Future<bool> exists(String id) async => visible[id] != null && !visible[id]!.binned;
+
+  @override
+  Future<String?> findFolder(String name, {String? parent}) async =>
+      _find(name, parent ?? 'root', folder: true).firstOrNull;
+
+  @override
+  Future<String> makeFolder(String name, {String? parent}) async {
+    final id = 'd${_next++}';
+    visible[id] = (name: name, parent: parent ?? 'root', bytes: null, binned: false);
+    return id;
+  }
+
+  @override
+  Future<(String, String)?> findFile(String name, String folder) async {
+    final id = _find(name, folder, folder: false).firstOrNull;
+    return id == null ? null : (id, _sum(visible[id]!.bytes!));
+  }
+
+  @override
+  Future<(Map<String, (String, String)>, Map<String, String>)> listJournal(String folder) async {
+    final years = {
+      for (final e in visible.entries.where(
+        (e) => e.value.parent == folder && e.value.bytes == null && !e.value.binned,
+      ))
+        e.value.name: e.key,
+    };
+    return (
+      {
+        for (final MapEntry(key: year, value: yearId) in years.entries)
+          for (final e in visible.entries.where(
+            (e) => e.value.parent == yearId && e.value.bytes != null && !e.value.binned,
+          ))
+            '$year/${e.value.name}': (e.key, _sum(e.value.bytes!)),
+      },
+      years,
+    );
+  }
+
+  @override
+  Future<(String, String)> writeFile(String name, String folder, List<int> bytes, {String? id}) async {
+    writes++;
+    if (id != null && visible[id] == null) throw const DriveError('Not found', notFound: true);
+    id ??= 'j${_next++}';
+    visible[id] = (name: name, parent: folder, bytes: bytes, binned: false);
+    return (id, _sum(bytes));
+  }
+
+  @override
+  Future<void> bin(String id) async {
+    final f = visible[id]!;
+    visible[id] = (name: f.name, parent: f.parent, bytes: f.bytes, binned: true);
+  }
+
+  void binFolder(String name) {
+    final id = _find(name, 'root', folder: true).single;
+    final f = visible[id]!;
+    visible[id] = (name: f.name, parent: f.parent, bytes: f.bytes, binned: true);
   }
 }
 
@@ -348,6 +434,109 @@ void main() {
       saved.close();
       onPc.dispose();
       onLaptop.dispose();
+    });
+
+    group('the journal\'s folder', () {
+      const withJournal = GoogleAccount(email: 'me@example.com', refreshToken: 'lasting', journalAccess: true);
+
+      SyncService signedIn(_Computer c) {
+        final home = Directory('${dir.path}/${c.name}')..createSync();
+        return SyncService.load(home, c.store, connect: (_) => drive, signIn: ({cancel}) async => withJournal);
+      }
+
+      test('is filled by the computer that makes it, then each uploads the days it wrote', () async {
+        pc.store.setJournal('2026-10-20', 'Before sync');
+        final onPc = signedIn(pc), onLaptop = signedIn(laptop);
+        await onPc.look(withJournal);
+        await onPc.turnOn(withJournal, join: false);
+        expect(drive.journal, {
+          'Eclipse Journals/2025/2025-06-01.md': '# Sunday 1 June 2025\n\nA long time ago\n',
+          'Eclipse Journals/2026/2026-10-20.md': '# Tuesday 20 October 2026\n\nBefore sync\n',
+        });
+        expect(onPc.journalFolderLink, startsWith('https://drive.google.com/drive/folders/'));
+
+        await onLaptop.look(withJournal);
+        await onLaptop.turnOn(withJournal, join: true);
+        expect(drive.writes, 2, reason: 'the laptop found them there already');
+        expect(onLaptop.journalFolderLink, onPc.journalFolderLink);
+
+        laptop.store.setJournal('2026-10-24', 'Written on the laptop');
+        await onLaptop.run();
+        await onPc.run();
+        expect(drive.journal['Eclipse Journals/2026/2026-10-24.md'], contains('Written on the laptop'));
+        expect(drive.writes, 3, reason: 'only the laptop wrote it, so only it uploads it');
+
+        // Written on both at once: the later one uploads the joined entry.
+        pc.store.setJournal('2026-10-25', 'From the PC');
+        await onPc.run();
+        await onLaptop.run();
+        pc.store.setJournal('2026-10-26', 'PC first');
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        laptop.store.setJournal('2026-10-26', 'Laptop later');
+        await onPc.run();
+        await onLaptop.run();
+        await onPc.run();
+        await onLaptop.run();
+        expect(pc.store.journal('2026-10-26'), laptop.store.journal('2026-10-26'));
+        final joined = drive.journal['Eclipse Journals/2026/2026-10-26.md']!;
+        expect(joined, allOf(contains('PC first'), contains('Laptop later')));
+        expect(drive.journal.keys.where((k) => k.endsWith('2026-10-26.md')), hasLength(1));
+
+        // Emptied on the laptop, though the PC uploaded it: to the bin.
+        laptop.store.setJournal('2026-10-25', '');
+        await onLaptop.run();
+        await onPc.run();
+        expect(drive.journal.keys, isNot(contains('Eclipse Journals/2026/2026-10-25.md')));
+
+        // Deleted in Drive: made again, with everything, by whoever's next.
+        drive.binFolder('Eclipse Journals');
+        await onPc.run();
+        expect(drive.journal.keys.toSet(), {
+          'Eclipse Journals/2025/2025-06-01.md',
+          'Eclipse Journals/2026/2026-10-20.md',
+          'Eclipse Journals/2026/2026-10-24.md',
+          'Eclipse Journals/2026/2026-10-26.md',
+        });
+        final writes = drive.writes;
+        await onLaptop.run();
+        expect(drive.writes, writes);
+        onPc.dispose();
+        onLaptop.dispose();
+      });
+
+      test('a sign-in from before asks to sign in again, and sync carries on', () async {
+        final onPc = service(pc);
+        await onPc.look(account);
+        await onPc.turnOn(account, join: false);
+        expect(onPc.needsJournalSignIn, isTrue);
+        expect(drive.journal, isEmpty);
+        expect(onPc.journalFolderLink, isNull);
+
+        final again = SyncService.load(
+          Directory('${dir.path}/pc'),
+          pc.store,
+          connect: (_) => drive,
+          signIn: ({cancel}) async => withJournal,
+        );
+        await again.signInForJournal();
+        expect(again.needsJournalSignIn, isFalse);
+        expect(drive.journal, contains('Eclipse Journals/2025/2025-06-01.md'));
+        onPc.dispose();
+        again.dispose();
+      });
+
+      test('uploads a few at a time, so a round stays short', () async {
+        for (var d = 1; d <= SyncService.journalBatch + 5; d++) {
+          pc.store.setJournal('2026-09-${'$d'.padLeft(2, '0')}', 'Day $d');
+        }
+        final onPc = signedIn(pc);
+        await onPc.look(withJournal);
+        await onPc.turnOn(withJournal, join: false);
+        expect(drive.journal, hasLength(SyncService.journalBatch));
+        await onPc.run();
+        expect(drive.journal, hasLength(SyncService.journalBatch + 6));
+        onPc.dispose();
+      });
     });
 
     test('a sign-in Google takes back turns sync off, saying so', () async {

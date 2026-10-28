@@ -10,27 +10,36 @@ import 'google_client.dart';
 import 'http_request.dart';
 import 'platform_files.dart';
 
-/// Only Eclipse's own hidden folder in Drive, never anything else there,
-/// and the address, to show whose Drive it is.
-const _scopes = 'openid email https://www.googleapis.com/auth/drive.appdata';
+/// Eclipse's own hidden folder in Drive, and the files it makes there
+/// itself (the journal's folder), never anything else; and the address, to
+/// show whose Drive it is.
+const _fileScope = 'https://www.googleapis.com/auth/drive.file';
+const _scopes = 'openid email https://www.googleapis.com/auth/drive.appdata $_fileScope';
 
 final _token = Uri.parse('https://oauth2.googleapis.com/token');
 
 /// A Google account Eclipse may use, by its lasting sign-in.
 class GoogleAccount {
-  const GoogleAccount({required this.email, required this.refreshToken, this.id});
+  const GoogleAccount({required this.email, required this.refreshToken, this.id, this.journalAccess = false});
 
   final String email;
   final String refreshToken;
   final String? id;
+
+  /// Whether the sign-in lets Eclipse keep the journal in a folder in
+  /// Drive: sign-ins from before it could don't.
+  final bool journalAccess;
   String get identity => id ?? email.toLowerCase();
 }
 
 /// Something went wrong talking to Google, in words to show.
 class DriveError implements Exception {
-  const DriveError(this.message, {this.signedOut = false});
+  const DriveError(this.message, {this.signedOut = false, this.notFound = false});
 
   final String message;
+
+  /// What it was about isn't in Drive any more.
+  final bool notFound;
 
   /// The sign-in no longer works (taken back, or expired): sign in again.
   final bool signedOut;
@@ -104,7 +113,12 @@ Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
     final claims = _claims(tokens['id_token'] as String?);
     final email = claims['email'] as String?;
     if (email == null) throw const DriveError('Google did not identify the account. Try signing in again.');
-    return GoogleAccount(email: email, id: claims['sub'] as String?, refreshToken: refresh);
+    return GoogleAccount(
+      email: email,
+      id: claims['sub'] as String?,
+      refreshToken: refresh,
+      journalAccess: (tokens['scope'] as String? ?? '').split(' ').contains(_fileScope),
+    );
   } finally {
     await server.close(force: true);
   }
@@ -198,8 +212,36 @@ abstract class SyncDrive {
   Future<void> upload(String name, List<int> bytes, {String? id});
 }
 
-/// Eclipse's hidden app folder in the Drive of the account signed in.
-class AppDataFolder implements SyncDrive {
+/// The journal's folder in Drive, which you can see: a folder of year
+/// folders of Markdown files. Eclipse sees only the ones it made. In Drive
+/// it's [AppDataFolder]; tests use one in memory.
+abstract class JournalDrive {
+  /// Whether the file or folder [id] is still there, not in the bin.
+  Future<bool> exists(String id);
+
+  /// The oldest folder called [name] that Eclipse made, in [parent] or at
+  /// the top of My Drive, and not in the bin.
+  Future<String?> findFolder(String name, {String? parent});
+  Future<String> makeFolder(String name, {String? parent});
+
+  /// The file called [name] in [folder]: its id and checksum.
+  Future<(String, String)?> findFile(String name, String folder);
+
+  /// Every file in [folder]'s year folders, by 'year/name': its id and
+  /// checksum; and the year folders, by year.
+  Future<(Map<String, (String, String)>, Map<String, String>)> listJournal(String folder);
+
+  /// Writes [name] in [folder], over the file [id] when it's already there,
+  /// and returns its id and checksum.
+  Future<(String, String)> writeFile(String name, String folder, List<int> bytes, {String? id});
+
+  /// Moves the file to Drive's bin.
+  Future<void> bin(String id);
+}
+
+/// Eclipse's hidden app folder in the Drive of the account signed in, and
+/// the journal's folder there.
+class AppDataFolder implements SyncDrive, JournalDrive {
   AppDataFolder(this.refreshToken);
 
   final String refreshToken;
@@ -229,7 +271,7 @@ class AppDataFolder implements SyncDrive {
       if (status >= 200 && status < 300) return bytes;
       final error = _decode(bytes)['error'];
       final message = error is Map ? error['message'] : null;
-      throw DriveError('Google Drive said: ${message ?? 'error $status'}');
+      throw DriveError('Google Drive said: ${message ?? 'error $status'}', notFound: status == 404);
     }
   }
 
@@ -292,5 +334,162 @@ class AppDataFolder implements SyncDrive {
       body: body.takeBytes(),
       type: 'multipart/related; boundary=$boundary',
     );
+  }
+
+  // The journal's folder
+
+  static const _folderType = 'application/vnd.google-apps.folder';
+  static final _files = Uri.https('www.googleapis.com', '/drive/v3/files');
+
+  /// Every file matching [query], with [fields] of each.
+  Future<List<Map<String, dynamic>>> _search(String query, String fields) async {
+    final files = <Map<String, dynamic>>[];
+    String? page;
+    do {
+      final json = _decode(
+        await _call(
+          'GET',
+          _files.replace(
+            queryParameters: {
+              'q': query,
+              'fields': 'nextPageToken,files($fields)',
+              'orderBy': 'createdTime',
+              'pageSize': '1000',
+              'pageToken': ?page,
+            },
+          ),
+        ),
+      );
+      files.addAll((json['files'] as List? ?? []).cast<Map<String, dynamic>>());
+      page = json['nextPageToken'] as String?;
+    } while (page != null);
+    return files;
+  }
+
+  static String _quote(String s) => "'${s.replaceAll(r'\', r'\\').replaceAll("'", r"\'")}'";
+
+  @override
+  Future<bool> exists(String id) async {
+    try {
+      final json = _decode(
+        await _call('GET', _files.replace(path: '${_files.path}/$id', queryParameters: {'fields': 'trashed'})),
+      );
+      return json['trashed'] != true;
+    } on DriveError catch (e) {
+      if (e.notFound) return false;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<String?> findFolder(String name, {String? parent}) async {
+    final found = await _search(
+      "name = ${_quote(name)} and mimeType = '$_folderType' and ${_quote(parent ?? 'root')} in parents and trashed = false",
+      'id',
+    );
+    return found.isEmpty ? null : found.first['id'] as String;
+  }
+
+  @override
+  Future<String> makeFolder(String name, {String? parent}) async {
+    final json = _decode(
+      await _call(
+        'POST',
+        _files.replace(queryParameters: {'fields': 'id'}),
+        body: utf8.encode(
+          jsonEncode({
+            'name': name,
+            'mimeType': _folderType,
+            'parents': [?parent],
+          }),
+        ),
+        type: 'application/json; charset=UTF-8',
+      ),
+    );
+    return json['id'] as String;
+  }
+
+  @override
+  Future<(String, String)?> findFile(String name, String folder) async {
+    final found = await _search(
+      'name = ${_quote(name)} and ${_quote(folder)} in parents and trashed = false',
+      'id,md5Checksum',
+    );
+    return found.isEmpty ? null : (found.first['id'] as String, found.first['md5Checksum'] as String? ?? '');
+  }
+
+  @override
+  Future<(Map<String, (String, String)>, Map<String, String>)> listJournal(String folder) async {
+    final years = {
+      for (final f in await _search(
+        "${_quote(folder)} in parents and mimeType = '$_folderType' and trashed = false",
+        'id,name',
+      ))
+        f['name'] as String: f['id'] as String,
+    };
+    final files = <String, (String, String)>{};
+    for (final MapEntry(key: year, value: id) in years.entries) {
+      for (final f in await _search('${_quote(id)} in parents and trashed = false', 'id,name,md5Checksum')) {
+        files['$year/${f['name']}'] = (f['id'] as String, f['md5Checksum'] as String? ?? '');
+      }
+    }
+    return (files, years);
+  }
+
+  @override
+  Future<(String, String)> writeFile(String name, String folder, List<int> bytes, {String? id}) async {
+    const type = 'text/markdown; charset=UTF-8';
+    final Uint8List reply;
+    if (id != null) {
+      reply = await _call(
+        'PATCH',
+        Uri.https('www.googleapis.com', '/upload/drive/v3/files/$id', {
+          'uploadType': 'media',
+          'fields': 'id,md5Checksum',
+        }),
+        body: bytes,
+        type: type,
+      );
+    } else {
+      const boundary = 'eclipse-journal-boundary';
+      final body = BytesBuilder()
+        ..add(
+          utf8.encode(
+            '--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'
+            '${jsonEncode({
+              'name': name,
+              'parents': [folder],
+            })}\r\n'
+            '--$boundary\r\nContent-Type: $type\r\n\r\n',
+          ),
+        )
+        ..add(bytes)
+        ..add(utf8.encode('\r\n--$boundary--'));
+      reply = await _call(
+        'POST',
+        Uri.https('www.googleapis.com', '/upload/drive/v3/files', {
+          'uploadType': 'multipart',
+          'fields': 'id,md5Checksum',
+        }),
+        body: body.takeBytes(),
+        type: 'multipart/related; boundary=$boundary',
+      );
+    }
+    final json = _decode(reply);
+    return (json['id'] as String, json['md5Checksum'] as String? ?? '');
+  }
+
+  @override
+  Future<void> bin(String id) async {
+    try {
+      await _call(
+        'PATCH',
+        _files.replace(path: '${_files.path}/$id'),
+        body: utf8.encode(jsonEncode({'trashed': true})),
+        type: 'application/json; charset=UTF-8',
+      );
+    } on DriveError catch (e) {
+      if (!e.notFound) rethrow;
+    }
   }
 }

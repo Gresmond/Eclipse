@@ -7,7 +7,7 @@ import '../models.dart';
 
 /// Journal entries as plain Markdown files, one per day, in a folder you can
 /// open, read, copy or back up without the app:
-/// ~/Documents/Eclipse Journal/2026/2026-10-23.md
+/// ~/Documents/Eclipse Journals/2026/2026-10-23.md
 ///
 /// The database holds the journal; these are a copy of it, kept up to date
 /// as entries are written, synced or restored. Edits made to the files
@@ -55,9 +55,12 @@ class JournalFiles {
   Future<void> _pending = Future.value();
   Future<void> get pending => _pending.catchError((Object _) {});
 
+  /// What the day's file holds; null when the entry is empty, for no file.
+  static String? contents(DateTime day, String text) => text.trim().isEmpty ? null : '${_heading(day)}\n\n$text\n';
+
   Future<void> write(DateTime day, String text) {
     final file = fileFor(day);
-    final content = text.trim().isEmpty ? null : '${_heading(day)}\n\n$text\n';
+    final content = contents(day, text);
     // One writer owns the .part name. Later saves always win, including
     // while an earlier write is waiting for disk or recovering from failure.
     return _pending = pending.then((_) async {

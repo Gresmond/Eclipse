@@ -449,6 +449,28 @@ void main() {
     });
   }, skip: Platform.isWindows);
 
+  test('the journal folders Eclipse named are renamed Eclipse Journals, with what was in them', () {
+    final tmp = Directory.systemTemp.createTempSync('productivity_rename');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final home = Directory('${tmp.path}/home')..createSync();
+    final docs = Directory('${tmp.path}/docs')..createSync();
+    File('${docs.path}/Eclipse Journal/2026/2026-10-24.md').createSync(recursive: true);
+    expect(DataFolder.load(home, docs).journal.path, path.join(docs.path, 'Eclipse Journals'));
+    expect(File('${docs.path}/Eclipse Journals/2026/2026-10-24.md').existsSync(), isTrue);
+    expect(Directory('${docs.path}/Eclipse Journal').existsSync(), isFalse);
+
+    final chosen = Directory('${tmp.path}/Synced')..createSync();
+    File('${home.path}/data-folder').writeAsStringSync(chosen.path);
+    File('${chosen.path}/Journal/2026/2026-10-24.md').createSync(recursive: true);
+    expect(DataFolder.load(home, docs).journal.path, path.join(chosen.path, 'Eclipse Journals'));
+    expect(File('${chosen.path}/Eclipse Journals/2026/2026-10-24.md').existsSync(), isTrue);
+
+    // A folder you picked yourself stays as it is.
+    final picked = Directory('${tmp.path}/Mine/Eclipse Journal')..createSync(recursive: true);
+    File('${home.path}/journal-folder').writeAsStringSync(picked.path);
+    expect(DataFolder.load(home, docs).journal.path, picked.path);
+  });
+
   test('moving to a data folder copies everything there and uses it next time', () async {
     final tmp = Directory.systemTemp.createTempSync('productivity_folder');
     addTearDown(() => tmp.deleteSync(recursive: true));
@@ -457,7 +479,7 @@ void main() {
 
     var data = DataFolder.load(home, docs);
     expect(data.chosen, isNull);
-    expect(data.journal.path, path.join(docs.path, 'Eclipse Journal'));
+    expect(data.journal.path, path.join(docs.path, 'Eclipse Journals'));
     final store = Store.open(data.database);
     final state = AppState(
       store,

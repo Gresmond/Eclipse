@@ -369,6 +369,25 @@ class SyncEngine {
     };
   }
 
+  /// For each journal day, the computer that made its latest edit: when
+  /// both wrote at once, whichever wrote later. The same on every computer
+  /// once they've synced.
+  Map<String, String> journalWriters() => {
+    for (final r in _db.select(
+      "SELECT rowkey, origin, ts, journal_versions FROM sync_reg WHERE kind = 'journal' AND field = 'text'",
+    ))
+      r['rowkey'] as String: r['journal_versions'] == null
+          ? r['origin'] as String
+          : ((jsonDecode(r['journal_versions'] as String) as List)
+                    .map((v) => _JournalVersion.fromJson(v as List))
+                    .fold<_JournalVersion?>(
+                      null,
+                      (a, b) => a == null || (b.ts, b.origin).compareTo(a.ts, a.origin) > 0 ? b : a,
+                    )
+                    ?.origin ??
+                r['origin'] as String),
+  };
+
   int get latest => _db.select('SELECT MAX(ts) FROM sync_reg WHERE origin = ?', [me]).first.columnAt(0) as int? ?? 0;
 
   /// Merges other computers' registers in, and brings the rows they touch

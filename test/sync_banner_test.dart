@@ -67,4 +67,27 @@ void main() {
     expect(find.byType(Container), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('a sign-in from before the journal went to Drive asks to sign in again, until put off', (tester) async {
+    final home = Directory.systemTemp.createTempSync('eclipse-sync-ask');
+    File('${home.path}/sync.json').writeAsStringSync('{"refresh": "old", "email": "me@example.com"}');
+    final store = Store.memory();
+    final sync = SyncService.load(home, store);
+    addTearDown(() {
+      sync.dispose();
+      store.close();
+      home.deleteSync(recursive: true);
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: themeNamed(null),
+        home: Scaffold(body: SyncBanner(sync: sync)),
+      ),
+    );
+    expect(find.text('Keep your journal in Drive'), findsOneWidget);
+    expect(find.text('Sign in again'), findsOneWidget);
+    await tester.tap(find.text('Not now'));
+    await tester.pump();
+    expect(find.text('Keep your journal in Drive'), findsNothing);
+  });
 }
