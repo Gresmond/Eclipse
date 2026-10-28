@@ -31,6 +31,7 @@ class AppState extends ChangeNotifier {
     sync?.onIncoming = _takeIncoming;
     sync?.beforeMerge = saveDrafts;
     sync?.beforeJoin = () => backups?.beforeJoining(store);
+    sync?.addListener(_checkJournalFiles);
     sync?.onClear = (days) {
       for (final day in days) {
         _writeJournalFile(DateTime.parse(day), '');
@@ -43,7 +44,8 @@ class AppState extends ChangeNotifier {
     firstRun = store.isEmpty;
     if (firstRun) _seed();
     _backUp();
-    _initialExport = _exportJournal();
+    _savesFiles = savesJournalFiles;
+    _initialExport = _exportJournal().then((_) => _savesFiles ? _rewriteStaleJournal() : null);
     _load();
   }
 
@@ -82,6 +84,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    sync?.removeListener(_checkJournalFiles);
     _draftTimer?.cancel();
     _habitTimer?.cancel();
     themeNotifier.dispose();
@@ -164,6 +167,67 @@ class AppState extends ChangeNotifier {
 
   /// Reopens the app; null in tests.
   final Future<void> Function()? restart;
+
+  /// Drive's Eclipse Journals folder is made and kept up to date, so the
+  /// files on this computer can be turned off.
+  bool get journalInDrive => sync != null && sync!.journalFolderLink != null && !sync!.needsJournalSignIn;
+
+  /// Turned off on this computer only. Back on by itself whenever Drive
+  /// doesn't have the journal, so there's always a copy you can read.
+  late bool keepsJournalFiles = store.setting('journalFiles') != '0';
+
+  bool get savesJournalFiles => journalFiles != null && (keepsJournalFiles || !journalInDrive);
+  late bool _savesFiles;
+
+  void setKeepsJournalFiles(bool keep) {
+    saveJournalDraft();
+    keepsJournalFiles = keep;
+    store.setSetting('journalFiles', keep ? '1' : '0');
+    if (!keep) journalFileProblem = null;
+    notifyListeners();
+    _checkJournalFiles();
+  }
+
+  /// Files left behind while they were off are brought up to date once
+  /// they're back on.
+  void _checkJournalFiles() {
+    final saves = savesJournalFiles;
+    if (saves == _savesFiles) return;
+    _savesFiles = saves;
+    if (saves) {
+      unawaited(_rewriteStaleJournal());
+    } else {
+      store.setSetting('journalFilesStale', '1');
+    }
+    notifyListeners();
+  }
+
+  /// Writes every entry out again, and removes the files of days that were
+  /// emptied meanwhile.
+  Future<void> _rewriteStaleJournal() async {
+    final files = journalFiles;
+    if (files == null || store.setting('journalFilesStale') != '1') return;
+    try {
+      final days = <String>{};
+      String? after;
+      while (true) {
+        if (closing || _disposed || !_savesFiles) return;
+        final batch = store.journalEntries(after: after, limit: 64).toList();
+        if (batch.isEmpty) break;
+        for (final e in batch) {
+          days.add(e.day);
+          await _writeJournalFile(DateTime.parse(e.day), e.text);
+        }
+        after = batch.last.day;
+      }
+      for (final day in await files.days()) {
+        if (!days.contains(dateKey(day))) await _writeJournalFile(day, '');
+      }
+      if (_savesFiles) store.setSetting('journalFilesStale', '0');
+    } catch (e) {
+      debugPrint('Rewriting journal files failed: $e');
+    }
+  }
 
   /// Keeps the journal's files in [folder] from now on, on this computer,
   /// and moves the ones already saved there. Throws if some couldn't be
@@ -940,6 +1004,10 @@ class AppState extends ChangeNotifier {
   Future<void> _writeJournalFile(DateTime day, String text) async {
     final files = journalFiles;
     if (files == null) return;
+    if (!savesJournalFiles) {
+      store.setSetting('journalFilesStale', '1');
+      return;
+    }
     String? problem;
     try {
       await files.write(day, text);
@@ -961,7 +1029,7 @@ class AppState extends ChangeNotifier {
   /// file in the folder doesn't bring it back.
   Future<void> _exportJournal() async {
     final files = journalFiles;
-    if (files == null || store.setting('journalExported') != null) return;
+    if (files == null || !savesJournalFiles || store.setting('journalExported') != null) return;
     try {
       String? after;
       while (true) {

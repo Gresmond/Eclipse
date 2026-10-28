@@ -375,69 +375,110 @@ extension on _SettingsDialogState {
 
   /// Where each day's entry is saved as a file, and a way to move them.
   Widget _journalFolder(Palette p, Directory current) {
+    final state = AppScope.of(context);
     final folder = _newJournal;
     final small = TextStyle(fontFamily: Fonts.body, fontSize: 13, height: 1.45, color: p.inkMuted);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
-      decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Journal folder',
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
-                ),
+    final inDrive = state.journalInDrive;
+    final off = inDrive && !state.keepsJournalFiles;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: ColoredBox(
+        color: p.empty.withValues(alpha: 0.45),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (inDrive) ...[
+              const SizedBox(height: 4),
+              SettingSwitchRow(
+                title: 'Save the journal on this computer',
+                subtitle: 'Your entries are in Eclipse Journals in your Drive either way.',
+                on: !off,
+                onTap: () => state.setKeepsJournalFiles(off),
               ),
-              if (folder == null)
-                TextButton(
-                  onPressed: _pickJournal,
-                  child: Text('Change…', style: TextStyle(color: p.accent)),
+            ],
+            if (off)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
+                child: Text(
+                  'New entries aren\'t saved as files here. Files already in ${_shortPath(current.path)} are left as '
+                  'they were, and brought up to date if you turn this back on.',
+                  style: small,
                 ),
+              )
+            else
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, inDrive ? 2 : 14, 12, 12),
+                child: _journalFolderBody(p, current, folder, small),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _journalFolderBody(Palette p, Directory current, Directory? folder, TextStyle small) {
+    final stopped = !AppScope.of(context).keepsJournalFiles;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Journal folder',
+                style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
+              ),
+            ),
+            if (folder == null)
+              TextButton(
+                onPressed: _pickJournal,
+                child: Text('Change…', style: TextStyle(color: p.accent)),
+              ),
+          ],
+        ),
+        SelectableText(
+          _shortPath(current.path),
+          maxLines: 1,
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.ink),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          "Each day's entry is saved here as a file you can open without Eclipse. "
+          'This computer only: your other computers keep their own folder.',
+          style: small,
+        ),
+        if (stopped) ...[
+          const SizedBox(height: 4),
+          Text('Saved here again until your journal is back in your Drive.', style: small.copyWith(color: p.ink)),
+        ],
+        if (folder != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Move your entries to ${_shortPath(folder.path)} and save new ones there?',
+            style: small.copyWith(color: p.ink),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: _cancelJournalMove,
+                child: Text('Cancel', style: TextStyle(color: p.inkMuted)),
+              ),
+              const SizedBox(width: 4),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: p.done, foregroundColor: p.onAccent),
+                onPressed: _moveJournal,
+                child: const Text('Move'),
+              ),
             ],
           ),
-          SelectableText(
-            _shortPath(current.path),
-            maxLines: 1,
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.ink),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            "Each day's entry is saved here as a file you can open without Eclipse. "
-            'This computer only: your other computers keep their own folder.',
-            style: small,
-          ),
-          if (folder != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Move your entries to ${_shortPath(folder.path)} and save new ones there?',
-              style: small.copyWith(color: p.ink),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: _cancelJournalMove,
-                  child: Text('Cancel', style: TextStyle(color: p.inkMuted)),
-                ),
-                const SizedBox(width: 4),
-                FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: p.done, foregroundColor: p.onAccent),
-                  onPressed: _moveJournal,
-                  child: const Text('Move'),
-                ),
-              ],
-            ),
-          ],
-          if (_error != null && _ribbon == 0) ...[
-            const SizedBox(height: 8),
-            Text(_error!, style: small.copyWith(color: p.missed)),
-          ],
         ],
-      ),
+        if (_error != null && _ribbon == 0) ...[
+          const SizedBox(height: 8),
+          Text(_error!, style: small.copyWith(color: p.missed)),
+        ],
+      ],
     );
   }
 

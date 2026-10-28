@@ -50,6 +50,18 @@ class JournalFiles {
     if (dir.listSync().isEmpty) dir.deleteSync();
   }
 
+  /// The days that have a file here.
+  Future<List<DateTime>> days() async {
+    final found = <DateTime>[];
+    if (!await dir.exists()) return found;
+    final entry = RegExp(r'^\d{4}-\d{2}-\d{2}\.md$');
+    await for (final file in dir.list(recursive: true)) {
+      final name = p.basename(file.path);
+      if (file is File && entry.hasMatch(name)) found.add(DateTime.parse(p.basenameWithoutExtension(name)));
+    }
+    return found;
+  }
+
   /// Saves the day's entry; an empty entry removes its file. Written beside
   /// the file first and renamed, so a crash never leaves half an entry.
   Future<void> _pending = Future.value();

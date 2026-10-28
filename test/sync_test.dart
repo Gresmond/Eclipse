@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/backups.dart';
 import 'package:eclipse/data/google_drive.dart';
+import 'package:eclipse/data/journal_files.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/data/sync_service.dart';
@@ -525,6 +526,40 @@ void main() {
         expect(drive.writes, writes);
         onPc.dispose();
         onLaptop.dispose();
+      });
+
+      test('can stop saving files on this computer, and they come back up to date with Drive gone', () async {
+        final files = JournalFiles(Directory('${dir.path}/files'));
+        final onPc = signedIn(pc);
+        final state = AppState(pc.store, journalFiles: files, sync: onPc, clock: () => DateTime(2026, 10, 28));
+        await state.setJournal(DateTime(2026, 10, 20), 'Kept');
+        await state.setJournal(DateTime(2026, 10, 21), 'Emptied later');
+        await state.flushFiles();
+        expect(state.journalInDrive, isFalse);
+        state.setKeepsJournalFiles(false);
+        expect(state.savesJournalFiles, isTrue, reason: 'no journal in Drive yet');
+
+        await onPc.look(withJournal);
+        await onPc.turnOn(withJournal, join: false);
+        expect(state.journalInDrive, isTrue);
+        expect(state.savesJournalFiles, isFalse);
+        await state.setJournal(DateTime(2026, 10, 20), 'Changed while off');
+        await state.setJournal(DateTime(2026, 10, 21), '');
+        await state.setJournal(DateTime(2026, 10, 22), 'New while off');
+        await state.flushFiles();
+        expect(files.fileFor(DateTime(2026, 10, 20)).readAsStringSync(), contains('Kept'));
+        expect(files.fileFor(DateTime(2026, 10, 21)).existsSync(), isTrue, reason: 'left as they were');
+        expect(files.fileFor(DateTime(2026, 10, 22)).existsSync(), isFalse);
+
+        await onPc.turnOff();
+        expect(state.savesJournalFiles, isTrue);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await state.flushFiles();
+        expect(files.fileFor(DateTime(2026, 10, 20)).readAsStringSync(), contains('Changed while off'));
+        expect(files.fileFor(DateTime(2026, 10, 21)).existsSync(), isFalse);
+        expect(files.fileFor(DateTime(2026, 10, 22)).readAsStringSync(), contains('New while off'));
+        state.dispose();
+        onPc.dispose();
       });
 
       test('a sign-in from before asks to sign in again, and sync carries on', () async {

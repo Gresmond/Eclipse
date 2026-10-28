@@ -613,13 +613,15 @@ class _YearSwitcher extends StatelessWidget {
           if (year > state.firstMonth.$1)
             IconButton(
               iconSize: 18,
+              // 40 tall, so the pill matches the tabs and the round buttons.
+              visualDensity: VisualDensity.compact,
               color: p.inkMuted,
               onPressed: () => state.shiftYear(-1),
               icon: const Icon(Icons.chevron_left_rounded),
             )
           else
             // Holds the arrow's height, so the pill keeps its size.
-            const SizedBox(width: 14, height: 48),
+            const SizedBox(width: 14, height: 40),
           Text(
             '$year',
             style: TextStyle(
@@ -634,13 +636,15 @@ class _YearSwitcher extends StatelessWidget {
           if (year < state.today.year)
             IconButton(
               iconSize: 18,
+              // 40 tall, so the pill matches the tabs and the round buttons.
+              visualDensity: VisualDensity.compact,
               color: p.inkMuted,
               onPressed: () => state.shiftYear(1),
               icon: const Icon(Icons.chevron_right_rounded),
             )
           else
             // Holds the arrow's height, so the pill keeps its size.
-            const SizedBox(width: 14, height: 48),
+            const SizedBox(width: 14, height: 40),
         ],
       ),
     );
