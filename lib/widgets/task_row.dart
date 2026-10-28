@@ -314,12 +314,27 @@ class _TodoRowState extends State<_TodoRow> {
                       if (carried) ...[
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                           decoration: BoxDecoration(
                             color: p.missed.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Icon(Icons.history_rounded, size: 11, color: p.missed),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.history_rounded, size: 11, color: p.missed),
+                              const SizedBox(width: 3),
+                              Text(
+                                dayMonth(item.since),
+                                style: TextStyle(
+                                  fontFamily: Fonts.ui,
+                                  fontSize: 10.5,
+                                  color: p.missed,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                       if (!widget.readOnly)

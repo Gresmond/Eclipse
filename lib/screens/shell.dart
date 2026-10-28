@@ -618,7 +618,8 @@ class _YearSwitcher extends StatelessWidget {
               icon: const Icon(Icons.chevron_left_rounded),
             )
           else
-            const SizedBox(width: 10),
+            // Holds the arrow's height, so the pill keeps its size.
+            const SizedBox(width: 14, height: 48),
           Text(
             '$year',
             style: TextStyle(
@@ -638,7 +639,8 @@ class _YearSwitcher extends StatelessWidget {
               icon: const Icon(Icons.chevron_right_rounded),
             )
           else
-            const SizedBox(width: 10),
+            // Holds the arrow's height, so the pill keeps its size.
+            const SizedBox(width: 14, height: 48),
         ],
       ),
     );

@@ -425,7 +425,7 @@ extension on _SettingsDialogState {
                 ),
                 const SizedBox(width: 4),
                 FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: p.accent, foregroundColor: p.onAccent),
+                  style: FilledButton.styleFrom(backgroundColor: p.done, foregroundColor: p.onAccent),
                   onPressed: _moveJournal,
                   child: const Text('Move'),
                 ),

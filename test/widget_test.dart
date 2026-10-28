@@ -2084,7 +2084,7 @@ void main() {
 
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.history_rounded), findsWidgets);
+    expect(find.text('22/10'), findsWidgets);
 
     await tester.tap(find.text('24 October').last);
     await tester.pumpAndSettle();
@@ -2116,7 +2116,7 @@ void main() {
     expect(find.text('THURSDAY  ·  LOOKING BACK'), findsOneWidget);
     expect(find.text('A quiet Thursday.'), findsOneWidget);
     expect(find.text('Add a task').hitTestable(), findsNothing, reason: 'look only');
-    expect(find.byIcon(Icons.history_rounded), findsNothing, reason: 'it was new that day');
+    expect(find.text('22/10'), findsNothing, reason: 'it was new that day');
     expect(find.text('22 Oct'), findsWidgets, reason: 'the past day opens a tab left of Today');
     expect(tester.getCenter(find.text('22 Oct').last).dx, lessThan(tester.getCenter(find.text('Today').first).dx));
     await _shoot(tester, 'past_day');
