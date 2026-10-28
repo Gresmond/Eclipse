@@ -21,7 +21,7 @@ abstract interface class AutomaticWrites {
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 26;
+  static const schemaVersion = 27;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -168,7 +168,10 @@ class Store {
       db.execute('DELETE FROM sync_seen');
       // The copy's own day starts are sent as it has them: it's restored exactly.
       db.execute('DELETE FROM sync_local');
-      final reg = db.prepare('INSERT INTO sync_reg VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      final reg = db.prepare(
+        'INSERT INTO sync_reg (kind, rowkey, field, value, ts, origin, vv, journal_versions, seq) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      );
       for (final r in known) {
         reg.execute([
           r['kind'],
@@ -179,6 +182,7 @@ class Store {
           r['origin'],
           r['vv'],
           r['journal_versions'],
+          r['seq'],
         ]);
       }
       reg.close();
@@ -206,7 +210,7 @@ class Store {
       'settings': 'key, value',
       'exercises': 'uid, name, muscle, bodyweight',
       'training_sets': 'uid, day, exercise, position, weight, reps',
-      'sync_reg': 'kind, rowkey, field, value, ts, origin, vv, journal_versions',
+      'sync_reg': 'kind, rowkey, field, value, ts, origin, vv, journal_versions, seq',
       'sync_dirty': 'kind, rowkey, at',
       'sync_seen': 'file, stamp',
       'sync_local': 'kind, rowkey, field, value',
@@ -705,6 +709,19 @@ class Store {
         ) WITHOUT ROWID;
         PRAGMA user_version = 26;
       ''');
+    }
+    if (version < 27) {
+      transaction(() {
+        // Each of this computer's edits gets a number, always higher than
+        // the last, whatever the clock does: what's been sent counts in them.
+        // Until now an edit's time was its number.
+        if (!_db.select('PRAGMA table_info(sync_reg)').any((c) => c['name'] == 'seq')) {
+          _db.execute('ALTER TABLE sync_reg ADD COLUMN seq INTEGER NOT NULL DEFAULT 0');
+          _db.execute('UPDATE sync_reg SET seq = ts');
+        }
+        _db.execute('CREATE INDEX IF NOT EXISTS sync_reg_seq ON sync_reg (origin, seq)');
+        _db.execute('PRAGMA user_version = 27');
+      });
     }
 
     if (version >= 1 && version < schemaVersion) upgradedFrom = version;

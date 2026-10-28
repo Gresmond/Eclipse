@@ -10,7 +10,7 @@ import 'store.dart';
 
 /// What one round of merging brought in from other computers.
 class Incoming {
-  Incoming(this.rows, this.from, [this.keptBoth = const {}]);
+  Incoming(this.rows, this.from, [this.keptBoth = const {}, this.failed = const {}]);
 
   /// The (kind, rowkey) of each row that changed here.
   final Set<(String, String)> rows;
@@ -21,6 +21,10 @@ class Incoming {
   /// Days whose journal entry was written on two computers at once, so
   /// both texts were kept.
   final Set<String> keptBoth;
+
+  /// The batches, by place in the list merged, that couldn't be taken in:
+  /// left as they were, to try again.
+  final Set<int> failed;
 
   int get changes => rows.length;
 
@@ -72,29 +76,37 @@ class SyncEngine implements AutomaticWrites {
 
   int _now() => (_clock?.call() ?? DateTime.now().millisecondsSinceEpoch) + offset;
 
-  /// How far past now another computer's times count here, so one with a
-  /// badly wrong clock can't push every later edit's time out with it.
-  static const _ahead = Duration.millisecondsPerDay;
+  int? _lastTs, _lastSeq;
 
-  int? _last;
+  /// The latest time of any edit here, this computer's or another's.
+  int get _seenTs => _lastTs ??= _db.select('SELECT MAX(ts) FROM sync_reg').first.columnAt(0) as int? ?? 0;
 
-  /// What this computer's next edit must come after: its own latest, so
-  /// they always go up, and the others' latest, up to a day ahead.
-  int get _seen => _last ??= () {
+  /// The last number this computer gave one of its edits, or another
+  /// computer has seen of it (lost here since).
+  int get _seenSeq => _lastSeq ??= () {
     final r = _db.select(
-      'SELECT MAX(CASE WHEN origin = ?1 THEN ts END), MAX(CASE WHEN origin != ?1 THEN ts END) FROM sync_reg',
+      "SELECT MAX(CASE WHEN origin = ?1 THEN seq END), MAX(json_extract(vv, '\$.\"' || ?1 || '\"')) FROM sync_reg",
       [me],
     ).first;
-    return max(r.columnAt(0) as int? ?? 0, min(r.columnAt(1) as int? ?? 0, _now() + _ahead));
+    return max(r.columnAt(0) as int? ?? 0, r.columnAt(1) as int? ?? 0);
   }();
 
-  /// [at] (when the row was written, by this computer's clock), or later
-  /// if a register is newer, so each edit sorts after everything this
-  /// computer had seen when it was made.
+  /// When an edit was made: [at] (when the row was written, by this
+  /// computer's clock), or later if a register is newer, so each edit sorts
+  /// after everything this computer had seen when it was made; but never
+  /// past now, so one wrong clock's times (this computer's own, before
+  /// they were put right) don't carry on into later edits.
   int _tick([int? at]) {
     final now = _now();
-    return _last = max(at == null ? now : min(at + offset, now), _seen + 1);
+    final ts = min(max(at == null ? now : min(at + offset, now), _seenTs + 1), now);
+    _lastTs = max(_seenTs, ts);
+    return ts;
   }
+
+  /// This computer's number for its next edit: always higher than the
+  /// last, which says which of its edits came after which (in the version
+  /// per computer) and what's been sent, whatever the clock does.
+  int _nextSeq() => _lastSeq = max(_seenSeq + 1, _now());
 
   // Rows as registers
 
@@ -359,7 +371,11 @@ class SyncEngine implements AutomaticWrites {
     return r.isEmpty ? null : _Reg.fromRow(r.first);
   }
 
-  void _put(_Reg r) => _db.execute('INSERT OR REPLACE INTO sync_reg VALUES (?, ?, ?, ?, ?, ?, ?, ?)', r.row);
+  void _put(_Reg r) => _db.execute(
+    'INSERT OR REPLACE INTO sync_reg (kind, rowkey, field, value, ts, origin, vv, journal_versions, seq) '
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    r.row,
+  );
 
   /// What a day start left in the row's fields, as [_markLocal] marked it.
   Map<String, String> _marks(String kind, String rowkey) => {
@@ -404,10 +420,10 @@ class SyncEngine implements AutomaticWrites {
         // An edit says the row is there, so one made after it was deleted
         // elsewhere brings it back; the later of the two wins.
         if (_removable.contains(kind) && now[_present] == true) changed[_present] = true;
-        final ts = _tick(d['at'] as int);
+        final ts = _tick(d['at'] as int), seq = _nextSeq();
         for (final MapEntry(key: field, value: v) in changed.entries) {
           final old = _reg(kind, rowkey, field);
-          final vv = weak ? {...?old?.vv} : {...?old?.vv, me: ts};
+          final vv = weak ? {...?old?.vv} : {...?old?.vv, me: seq};
           _put(
             _Reg(
               kind,
@@ -418,6 +434,7 @@ class SyncEngine implements AutomaticWrites {
               me,
               vv,
               kind == 'journal' && field == 'text' && !weak ? [_JournalVersion(me, ts, v as String, vv)] : null,
+              seq,
             ),
           );
           if (local.containsKey(field)) {
@@ -528,7 +545,7 @@ class SyncEngine implements AutomaticWrites {
       }
       _db.execute('DELETE FROM sync_dirty');
       // Version 25 kept day starts apart without marking them.
-      if (from >= 25) {
+      if (from == 25) {
         _db.execute(
           "INSERT OR IGNORE INTO sync_dirty SELECT 'todo', uid, 0 FROM todos "
           "UNION ALL SELECT 'todo_history', day || '/' || uid, 0 FROM todo_history",
@@ -560,7 +577,7 @@ class SyncEngine implements AutomaticWrites {
       _db.execute('DELETE FROM sync_dirty');
       _db.execute('DELETE FROM sync_local');
     });
-    _last = null;
+    _lastTs = _lastSeq = null;
   }
 
   /// Takes as this computer's own the edits under another id newer than
@@ -570,9 +587,14 @@ class SyncEngine implements AutomaticWrites {
     store.transaction(() {
       for (final r in _db.select('SELECT DISTINCT origin FROM sync_reg WHERE origin != ?', [me])) {
         final origin = r['origin'] as String;
-        _db.execute('UPDATE sync_reg SET origin = ? WHERE origin = ? AND ts > ?', [me, origin, sent[origin] ?? 0]);
+        _db.execute('UPDATE sync_reg SET origin = ?, seq = MAX(seq, ts) WHERE origin = ? AND ts > ?', [
+          me,
+          origin,
+          sent[origin] ?? 0,
+        ]);
       }
     });
+    _lastSeq = null;
   }
 
   /// The computers with edits of things this version doesn't keep: they
@@ -606,16 +628,16 @@ class SyncEngine implements AutomaticWrites {
       _db.execute('DELETE FROM sync_dirty');
       _db.execute('DELETE FROM sync_local');
     });
-    _last = null;
+    _lastTs = _lastSeq = null;
     return days;
   }
 
   /// This computer's edits, grouped by the day (UTC) they were made, for
-  /// every day with an edit after [since].
+  /// every day with an edit after [since] (one of [latest]'s numbers).
   Map<String, List<List<Object?>>> changesSince(int since) {
     final days = [
       for (final r in _db.select(
-        "SELECT DISTINCT date(ts / 1000, 'unixepoch') AS d FROM sync_reg WHERE origin = ? AND ts > ?",
+        "SELECT DISTINCT date(ts / 1000, 'unixepoch') AS d FROM sync_reg WHERE origin = ? AND seq > ?",
         [me, since],
       ))
         r['d'] as String,
@@ -651,7 +673,8 @@ class SyncEngine implements AutomaticWrites {
                 r['origin'] as String),
   };
 
-  int get latest => _db.select('SELECT MAX(ts) FROM sync_reg WHERE origin = ?', [me]).first.columnAt(0) as int? ?? 0;
+  /// The number of this computer's latest edit, to send what came after.
+  int get latest => _db.select('SELECT MAX(seq) FROM sync_reg WHERE origin = ?', [me]).first.columnAt(0) as int? ?? 0;
 
   /// Merges other computers' registers in, and brings the rows they touch
   /// up to date.
@@ -659,26 +682,41 @@ class SyncEngine implements AutomaticWrites {
     flush(); // so edits made here count in the comparison
     final touched = <(String, String)>{};
     final names = <String>{};
+    final failed = <int>{};
     _keptBoth.clear();
     store.transaction(() {
-      for (final (regs, from) in batches) {
-        for (final json in regs) {
-          final theirs = _Reg.fromJson(json);
-          _last = max(_seen, min(theirs.ts, _now() + _ahead));
-          final ours = _reg(theirs.kind, theirs.rowkey, theirs.field);
-          final merged = ours == null ? theirs : _resolve(ours, theirs);
-          if (merged == null) continue;
-          _put(merged);
-          if (ours?.value != merged.value) {
-            touched.add((theirs.kind, theirs.rowkey));
-            // This computer's own, read back after its database lost them.
-            if (from != me) names.add(from);
-          }
+      for (final (i, (regs, from)) in batches.indexed) {
+        final kept = {..._keptBoth};
+        try {
+          // A file at a time, so one this version can't take in is left as
+          // it was, without holding up the rest.
+          store.transaction(() {
+            final rows = <(String, String)>{};
+            for (final json in regs) {
+              final theirs = _Reg.fromJson(json);
+              _lastTs = max(_seenTs, theirs.ts);
+              _lastSeq = max(_seenSeq, theirs.vv[me] ?? 0);
+              final ours = _reg(theirs.kind, theirs.rowkey, theirs.field);
+              final merged = ours == null ? theirs : _resolve(ours, theirs);
+              if (merged == null) continue;
+              _put(merged);
+              if (ours?.value != merged.value) rows.add((theirs.kind, theirs.rowkey));
+            }
+            for (final (kind, rowkey) in rows) {
+              _write(kind, rowkey, _fields(kind, rowkey));
+              _db.execute('DELETE FROM sync_local WHERE kind = ? AND rowkey = ?', [kind, rowkey]);
+            }
+            touched.addAll(rows);
+            // Unless it's this computer's own, read back after its database
+            // lost them.
+            if (rows.isNotEmpty && from != me) names.add(from);
+          });
+        } on Object {
+          failed.add(i);
+          _keptBoth
+            ..clear()
+            ..addAll(kept);
         }
-      }
-      for (final (kind, rowkey) in touched) {
-        _write(kind, rowkey, _fields(kind, rowkey));
-        _db.execute('DELETE FROM sync_local WHERE kind = ? AND rowkey = ?', [kind, rowkey]);
       }
       // Day-start moves are never sent (see Store.startDay), so a task
       // another computer changed goes back to how the edits left it, and
@@ -707,7 +745,7 @@ class SyncEngine implements AutomaticWrites {
       // Writing them marked them changed; they match their registers.
       _db.execute('DELETE FROM sync_dirty');
     });
-    return Incoming(touched, names, {..._keptBoth});
+    return Incoming(touched, names, {..._keptBoth}, failed);
   }
 
   final _keptBoth = <String>{};
@@ -726,7 +764,7 @@ class SyncEngine implements AutomaticWrites {
     // The same value: it stays, with the later one's time.
     final value = ours.value == theirs.value ? ours.value : win.value;
     if (value == ours.value && win == ours && _compare(ours.vv, vv) == 0) return null;
-    return _Reg(ours.kind, ours.rowkey, ours.field, value, win.ts, win.origin, vv);
+    return _Reg(ours.kind, ours.rowkey, ours.field, value, win.ts, win.origin, vv, null, win == ours ? ours.seq : 0);
   }
 
   _Reg? _resolveJournal(_Reg ours, _Reg theirs) {
@@ -756,7 +794,7 @@ class SyncEngine implements AutomaticWrites {
         jsonEncode(versions(ours).map((v) => v.toJson()).toList()) == jsonEncode(kept.map((v) => v.toJson()).toList());
     if (ours.value == value && _compare(ours.vv, vv) == 0 && sameVersions) return null;
     if (order == 2 && texts.length > 1 && ours.value != value) _keptBoth.add(ours.rowkey);
-    return _Reg(ours.kind, ours.rowkey, ours.field, value, _tick(), me, vv, kept);
+    return _Reg(ours.kind, ours.rowkey, ours.field, value, _tick(), me, vv, kept, _nextSeq());
   }
 
   /// 0 when equal, 1 when [a] has seen all of [b], -1 when [b] has seen all
@@ -787,7 +825,17 @@ extension on (int, String) {
 }
 
 class _Reg {
-  _Reg(this.kind, this.rowkey, this.field, this.value, this.ts, this.origin, this.vv, [this.journalVersions]);
+  _Reg(
+    this.kind,
+    this.rowkey,
+    this.field,
+    this.value,
+    this.ts,
+    this.origin,
+    this.vv, [
+    this.journalVersions,
+    this.seq = 0,
+  ]);
 
   factory _Reg.fromRow(Row r) => _Reg(
     r['kind'] as String,
@@ -802,6 +850,7 @@ class _Reg {
         : (jsonDecode(r['journal_versions'] as String) as List)
               .map((v) => _JournalVersion.fromJson(v as List))
               .toList(),
+    r['seq'] as int,
   );
 
   factory _Reg.fromJson(List<Object?> j) => _Reg(
@@ -820,6 +869,10 @@ class _Reg {
   final Map<String, int> vv;
   final List<_JournalVersion>? journalVersions;
 
+  /// This computer's own number for it, never sent: what [SyncEngine.latest]
+  /// counts in; 0 for another computer's.
+  final int seq;
+
   /// Whether [j], from a file, can be read as one.
   static bool valid(List<Object?> j) {
     if (j.length < 7 || j[0] is! String || j[1] is! String || j[2] is! String || j[4] is! int || j[5] is! String) {
@@ -831,13 +884,40 @@ class _Reg {
     }
     if (j[3] case final String value) {
       try {
-        jsonDecode(value);
-        return true;
+        return _sensible(j[0] as String, j[1] as String, j[2] as String, jsonDecode(value));
       } on FormatException {
         return false;
       }
     }
     return false;
+  }
+
+  static final _monthKey = RegExp(r'^\d{4}-\d{1,2}$');
+  static bool _day(String s) => DateTime.tryParse(s) != null;
+
+  /// Whether this version can write it into its row: a key of the kind's
+  /// shape, and a value it can take. What this version doesn't keep is only
+  /// kept as a register, so anything goes there.
+  static bool _sensible(String kind, String rowkey, String field, Object? v) {
+    final kept = SyncEngine.fields[kind];
+    if (kept == null) return true;
+    final slash = rowkey.indexOf('/');
+    final head = slash < 0 ? null : rowkey.substring(0, slash);
+    final key = switch (kind) {
+      'habit_month' => _monthKey.hasMatch(rowkey),
+      'month_habit' || 'sleep_note' => head != null && _monthKey.hasMatch(head),
+      'entry' || 'todo_history' => head != null && _day(head),
+      'journal' => _day(rowkey),
+      _ => true,
+    };
+    if (!key || !kept.containsKey(field)) return key;
+    return switch ((kind, field)) {
+      (_, SyncEngine._present) || ('habit_month', 'initialized') => v is bool,
+      ('entry', 'status') => v == null || v is int,
+      ('journal', 'text') => v is String,
+      ('setting', 'value') || ('sleep_note', 'note') || ('todo_history', 'snapshot') => v == null || v is String,
+      _ => v == null || v is num || v is String,
+    };
   }
 
   static bool _validVv(Object? vv) => vv is Map && vv.entries.every((e) => e.key is String && e.value is int);
@@ -851,6 +931,7 @@ class _Reg {
     origin,
     jsonEncode(vv),
     journalVersions == null ? null : jsonEncode(journalVersions!.map((v) => v.toJson()).toList()),
+    seq,
   ];
 
   List<Object?> toJson() => [
@@ -960,6 +1041,10 @@ class SyncFolder {
   /// Eclipse; read once it's updated.
   Set<String> newer = {};
 
+  /// The computers, by name, some of whose files couldn't be read or
+  /// taken in: tried again each round.
+  Set<String> unread = {};
+
   /// The other computers' names, by id, from the files read.
   final names = <String, String>{};
 
@@ -993,7 +1078,10 @@ class SyncFolder {
       // stopping the rest, and tried again next time.
       try {
         final json = jsonDecode(file.readAsStringSync());
-        if (json is! Map) continue;
+        if (json is! Map) {
+          if (who != machine) read.unreadIds.add(who);
+          continue;
+        }
         final name = json['name'] is String ? json['name'] as String : 'another computer';
         if (who != machine) read.names[who] = name;
         // Written by a newer version of Eclipse, in a way this one can't
@@ -1002,16 +1090,21 @@ class SyncFolder {
           if (who != machine) read.newer.add(name);
           continue;
         }
-        if (json['registers'] is! List) continue;
-        final registers = [
-          for (final row in json['registers'] as List)
-            if (row is List) row.cast<Object?>().toList() else const <Object?>[],
-        ];
-        if (!registers.every(_Reg.valid)) continue;
-        read.batches.add((registers, who == machine ? machine : name));
-        read.stamps[key] = stamp;
+        if (json['registers'] is List) {
+          final registers = [
+            for (final row in json['registers'] as List)
+              if (row is List) row.cast<Object?>().toList() else const <Object?>[],
+          ];
+          if (registers.every(_Reg.valid)) {
+            read.batches.add((registers, who == machine ? machine : name));
+            read.keys.add(key);
+            read.stamps[key] = stamp;
+            continue;
+          }
+        }
+        if (who != machine) read.unread.add(name);
       } on FormatException {
-        continue;
+        if (who != machine) read.unreadIds.add(who);
       } on FileSystemException {
         continue;
       }
@@ -1020,10 +1113,20 @@ class SyncFolder {
   }
 
   Incoming _mergeFiles(SyncEngine engine, _Files prepared) {
-    final _Files(:batches, :stamps) = prepared;
+    final _Files(:batches, :keys, :stamps) = prepared;
     newer = prepared.newer;
     names.addAll(prepared.names);
     final incoming = engine.mergeAll(batches);
+    // Not marked read, so they're tried again.
+    for (final i in incoming.failed) {
+      stamps.remove(keys[i]);
+    }
+    unread = {
+      ...prepared.unread,
+      for (final id in prepared.unreadIds) names[id] ?? 'another computer',
+      for (final i in incoming.failed)
+        if (batches[i].$2 != me) batches[i].$2,
+    };
     engine.store.transaction(() {
       for (final MapEntry(:key, :value) in stamps.entries) {
         engine.store.raw.execute('INSERT OR REPLACE INTO sync_seen VALUES (?, ?)', [key, value]);
@@ -1036,7 +1139,14 @@ class SyncFolder {
 /// What reading the change files found.
 class _Files {
   final batches = <(List<List<Object?>>, String)>[];
+
+  /// Each batch's file, by place.
+  final keys = <String>[];
   final stamps = <String, String>{};
   final newer = <String>{};
+  final unread = <String>{};
+
+  /// Unread before their names were: by id.
+  final unreadIds = <String>{};
   final names = <String, String>{};
 }

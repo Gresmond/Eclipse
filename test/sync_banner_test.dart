@@ -90,4 +90,50 @@ void main() {
     await tester.pump();
     expect(find.text('Keep your journal in Drive'), findsNothing);
   });
+
+  testWidgets('changes waiting on another computer show in one card, until put off', (tester) async {
+    final home = Directory.systemTemp.createTempSync('eclipse-sync-waiting');
+    final store = Store.memory();
+    final sync = SyncService.load(home, store);
+    addTearDown(() {
+      sync.dispose();
+      store.close();
+      home.deleteSync(recursive: true);
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: themeNamed(null),
+        home: Scaffold(body: SyncBanner(sync: sync)),
+      ),
+    );
+    expect(find.byType(Container), findsNothing);
+
+    sync.unreadFrom = {'Mac'};
+    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    sync.notifyListeners();
+    await tester.pump();
+    expect(find.text('Some changes couldn’t be read'), findsOneWidget);
+    expect(
+      find.text(
+        'Some changes from Mac couldn’t be read, so they’re waiting. Your own changes still go to your other computers.',
+      ),
+      findsOneWidget,
+    );
+
+    sync.newerFrom = {'Laptop'};
+    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    sync.notifyListeners();
+    await tester.pump();
+    expect(find.text('Some changes are waiting'), findsOneWidget);
+    expect(find.textContaining('need a newer version of Eclipse'), findsOneWidget);
+    expect(find.textContaining('couldn’t be read, so'), findsOneWidget);
+
+    await tester.tap(find.text('Not now'));
+    await tester.pump();
+    expect(find.text('Some changes are waiting'), findsNothing);
+    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    sync.notifyListeners();
+    await tester.pump();
+    expect(find.text('Some changes are waiting'), findsNothing, reason: 'until Eclipse next opens');
+  });
 }

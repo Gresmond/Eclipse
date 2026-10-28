@@ -98,7 +98,7 @@ class SyncService extends ChangeNotifier {
   SyncDrive? _drive;
   SyncDrive get _signedIn => _drive ??= _connect(_config['refresh'] as String);
 
-  /// Time of the newest edit already copied up.
+  /// The number ([SyncEngine.latest]) of the newest edit already copied up.
   int get _pushed => _config['pushed'] as int? ?? 0;
 
   /// Each file's version last copied: other computers' by Drive's time,
@@ -175,9 +175,14 @@ class SyncService extends ChangeNotifier {
   /// Eclipse to show here.
   Set<String> newerFrom = {};
 
+  /// The computers, by name, some of whose change files couldn't be read
+  /// or taken in here: they're tried again each round.
+  Set<String> unreadFrom = {};
+
   void _checkNewer() {
     final names = (_config['names'] ??= <String, dynamic>{}) as Map<String, dynamic>;
     names.addAll(folder.names);
+    unreadFrom = {...folder.unread};
     newerFrom = {
       ...folder.newer,
       for (final id in engine.newerOrigins)
@@ -446,9 +451,17 @@ class SyncService extends ChangeNotifier {
       final drive = _signedIn;
       final mine = await _pull(drive);
       if (_stopped) return;
-      final incoming = await folder.readAsync(engine, beforeMerge: beforeMerge, canMerge: () => !_stopped);
-      if (_stopped) return;
-      _deliver(incoming);
+      // Whatever goes wrong taking the others' changes in, this computer's
+      // own still go up.
+      Object? merging;
+      try {
+        final incoming = await folder.readAsync(engine, beforeMerge: beforeMerge, canMerge: () => !_stopped);
+        if (_stopped) return;
+        _deliver(incoming);
+      } catch (e) {
+        merging = e;
+        debugPrint('Taking changes in failed: $e');
+      }
       _checkNewer();
       engine.flush();
       final latest = engine.latest;
@@ -467,7 +480,7 @@ class SyncService extends ChangeNotifier {
         if (_stopped) return;
       }
       lastSynced = DateTime.now();
-      error = null;
+      error = merging == null ? null : '$merging';
     } on DriveError catch (e) {
       if (_stopped) return;
       if (e.signedOut) {

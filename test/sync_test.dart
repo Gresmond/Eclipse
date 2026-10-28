@@ -600,6 +600,72 @@ void main() {
     expect(laptop.store.entriesInMonth(2026, 10).singleWhere((e) => e.day == '2026-10-24').status, HabitStatus.missed);
   });
 
+  test('once a wrong clock is put right, its next edits use the real time, and still go', () {
+    join();
+    final future = DateTime(2040).millisecondsSinceEpoch;
+    laptop.engine = SyncEngine(laptop.store, 'laptop', clock: () => future);
+    final read = laptop.store.monthHabits(2026, 10).first;
+    laptop.store.setEntry('2026-10-24', read.id, HabitStatus.done);
+    laptop.store.raw.execute('UPDATE sync_dirty SET at = ?', [future]);
+    laptop.engine.flush();
+    final sent = laptop.engine.latest;
+    // Put right by Google's time.
+    laptop.engine = SyncEngine(laptop.store, 'laptop');
+    laptop.store.setEntry('2026-10-25', read.id, HabitStatus.done);
+    laptop.engine.flush();
+    final ts = laptop.store.raw.select(
+      "SELECT ts FROM sync_reg WHERE kind = 'entry' AND rowkey LIKE '2026-10-25/%' AND field = 'status'",
+    );
+    expect(ts.single['ts'] as int, lessThanOrEqualTo(DateTime.now().millisecondsSinceEpoch));
+    expect(
+      [for (final r in laptop.engine.changesSince(sent).values.expand((d) => d)) r[1]],
+      contains(startsWith('2026-10-25/')),
+      reason: 'still sent, though its time is earlier than the last one sent',
+    );
+    // The PC marks that day differently a minute later, not having heard.
+    final later = DateTime.now().millisecondsSinceEpoch + 60000;
+    pc.engine = SyncEngine(pc.store, 'pc', clock: () => later);
+    pc.store.setEntry('2026-10-25', pc.store.monthHabits(2026, 10).first.id, HabitStatus.missed);
+    pc.store.raw.execute('UPDATE sync_dirty SET at = ?', [later]);
+    pc.engine.flush();
+    laptop.engine.mergeAll([(pc.engine.changesSince(0).values.expand((d) => d), 'pc')]);
+    pc.engine.mergeAll([(laptop.engine.changesSince(0).values.expand((d) => d), 'laptop')]);
+    for (final c in [pc, laptop]) {
+      expect(
+        c.store.entriesInMonth(2026, 10).singleWhere((e) => e.day == '2026-10-25').status,
+        HabitStatus.missed,
+        reason: '${c.name}: the later edit wins',
+      );
+    }
+  });
+
+  test('a file this version can\'t take in is left for later, without holding up the rest', () {
+    join();
+    pc.store.setJournal('2026-10-24', 'Fine');
+    pc.engine.flush();
+    final incoming = laptop.engine.mergeAll([
+      (
+        [
+          [
+            'journal',
+            '2026-10-25',
+            'text',
+            jsonEncode(4),
+            5000,
+            'mac',
+            {'mac': 5000},
+          ],
+        ],
+        'Mac',
+      ),
+      (pc.engine.changesSince(0).values.expand((d) => d).toList(), 'pc'),
+    ]);
+    expect(incoming.failed, {0});
+    expect(incoming.from, {'pc'});
+    expect(laptop.store.journal('2026-10-24'), 'Fine');
+    expect(laptop.store.raw.select("SELECT 1 FROM sync_reg WHERE rowkey = '2026-10-25'"), isEmpty);
+  });
+
   test('edits the database loses come back from this computer\'s own change files', () async {
     final dir = Directory.systemTemp.createTempSync('eclipse-sync');
     addTearDown(() => dir.deleteSync(recursive: true));
@@ -803,6 +869,39 @@ void main() {
       await onLaptop.run();
       expect(onLaptop.error, isNull, reason: 'the round carried on');
       expect(onLaptop.newerFrom, {'Mac'});
+    });
+
+    test('a change file that can\'t be read waits, says so, and this computer\'s own still go', () async {
+      final (onPc, onLaptop) = await syncBoth();
+      const mac = 'ffffffffffffffff';
+      await drive.upload(
+        '${mac}_2026-10-25.json',
+        utf8.encode(
+          jsonEncode({
+            'version': 1,
+            'name': 'Mac',
+            'registers': [
+              [
+                'journal',
+                '2026-10-25',
+                'text',
+                jsonEncode(4),
+                5000,
+                mac,
+                {mac: 5000},
+              ],
+            ],
+          }),
+        ),
+      );
+      laptop.store.setJournal('2026-10-24', 'Still goes');
+      onLaptop.recordEdits();
+      await onLaptop.run();
+      expect(onLaptop.error, isNull);
+      expect(onLaptop.unreadFrom, {'Mac'});
+      await onPc.run();
+      expect(pc.store.journal('2026-10-24'), 'Still goes');
+      expect(onPc.unreadFrom, {'Mac'});
     });
 
     test('a file Drive doesn\'t list yet isn\'t made twice, and two of one name are both read', () async {
@@ -1066,8 +1165,10 @@ void main() {
     final soak = int.tryParse(Platform.environment['SYNC_SOAK'] ?? '');
     final seeds = soak ?? 6, steps = soak == null ? 150 : 600;
     for (var seed = 1; seed <= seeds; seed++) {
-      test('three computers editing, starting days, offline and hearing late lose nothing (seed $seed)', () {
+      test('three computers editing, starting days, offline, signing out and back in, losing their database '
+          'and hearing late lose nothing (seed $seed)', () {
         final world = _World(seed)..begin();
+        addTearDown(world.dispose);
         for (var step = 0; step < steps; step++) {
           world.step();
         }
@@ -1080,25 +1181,37 @@ void main() {
 
 /// A computer in the randomized simulation, used the way the app uses it.
 class _Sim {
-  _Sim(this.world, this.id) : store = Store.memory() {
-    // Ids from the seed too, so a seed runs the same each time.
-    final random = Random(world.seed * 31 + id.hashCode);
-    store.raw.createFunction(
-      functionName: 'randomblob',
-      argumentCount: const AllowedArgumentCount(1),
-      function: (args) => Uint8List.fromList([for (var i = 0; i < (args[0] as int); i++) random.nextInt(256)]),
-    );
-    engine = SyncEngine(store, id, clock: () => world.now);
+  _Sim(this.world, this.id) : store = Store.memory(), _ids = Random(world.seed * 31 + id.hashCode) {
+    _use(store);
   }
 
   final _World world;
-  final String id;
-  final Store store;
-  late final SyncEngine engine;
+
+  /// Changes when sync's settings are lost: the computer gets a new id.
+  String id;
+  Store store;
+  late SyncEngine engine;
+
+  /// Ids from the seed too, so a seed runs the same each time.
+  final Random _ids;
+
+  void _use(Store s) {
+    s.raw.createFunction(
+      functionName: 'randomblob',
+      argumentCount: const AllowedArgumentCount(1),
+      function: (args) => Uint8List.fromList([for (var i = 0; i < (args[0] as int); i++) _ids.nextInt(256)]),
+    );
+    store = s;
+    engine = SyncEngine(s, id, clock: () => world.now);
+  }
 
   /// The app's today, from its last day start.
   late DateTime day;
-  bool open = true, online = true, joined = false;
+  bool open = true, online = true, joined = false, signedIn = true;
+
+  /// Copies of the database as it was at some rounds, and what it had
+  /// heard then, to lose what came after.
+  final copies = <(String, Map<String, int>)>[];
 
   /// The version of each other computer's file merged here, by name.
   final heard = <String, int>{};
@@ -1121,6 +1234,15 @@ class _World {
 
   final int seed;
   final Random random;
+
+  /// For the copies of databases.
+  final temp = Directory.systemTemp.createTempSync('eclipse-sim');
+  void dispose() {
+    for (final c in sims) {
+      c.store.close();
+    }
+    temp.deleteSync(recursive: true);
+  }
 
   /// Earlier than the real time, so the times the triggers note never win.
   int now = DateTime(2025, 10, 27, 7).millisecondsSinceEpoch;
@@ -1210,19 +1332,29 @@ class _World {
       if (r < 0.1) join(c);
     } else if (r < 0.05) {
       // Quitting sends what's waiting; opening hears the others.
-      if (c.open && c.online) publish(c);
+      if (c.open && c.online && c.signedIn) publish(c);
       c.open = !c.open;
       note(c, c.open ? 'opened' : 'closed');
       if (c.open) {
         c
           ..day = date
           ..startDay();
-        if (c.online) deliver(c);
+        if (c.online && c.signedIn) deliver(c);
       }
     } else if (r < 0.09) {
       c.online = !c.online;
+    } else if (r < 0.11) {
+      if (!c.signedIn) {
+        if (c.open && c.online) signIn(c);
+      } else {
+        // Its edits meanwhile go once it's back.
+        c.signedIn = false;
+        note(c, 'signed out');
+      }
+    } else if (r < 0.13) {
+      if (c.open && c.online && c.signedIn && c.copies.isNotEmpty) lose(c);
     } else if (r < 0.30) {
-      if (c.open && c.online) {
+      if (c.open && c.online && c.signedIn) {
         publish(c);
         deliver(c);
       }
@@ -1240,6 +1372,7 @@ class _World {
         ..online = true
         ..day = date
         ..startDay();
+      if (!c.signedIn) signIn(c);
     }
     for (var round = 0; round < 6; round++) {
       for (final c in sims) {
@@ -1261,6 +1394,63 @@ class _World {
     }
     c.pushed = latest;
     note(c, 'sent');
+    if (chance(0.3)) {
+      final path = '${temp.path}/${c.copies.length}-${c.id}.db';
+      c.store.raw.execute("VACUUM INTO '$path'");
+      c.copies.add((path, {...c.heard}));
+    }
+  }
+
+  /// The latest time in each computer's files in Drive, by id.
+  Map<String, int> latestSent() {
+    final latest = <String, int>{};
+    for (final MapEntry(key: name, value: versions) in drive.entries) {
+      final who = name.split('/').first;
+      for (final r in versions.last) {
+        latest[who] = max(latest[who] ?? 0, r[4] as int);
+      }
+    }
+    return latest;
+  }
+
+  /// Signing in again, as the app does: it shares the history, so it
+  /// merges. Sometimes sync's settings were lost meanwhile, the database
+  /// kept, so it comes back as a new computer.
+  void signIn(_Sim c) {
+    if (chance(0.5)) {
+      c.id = '${c.id}+';
+      c.engine = SyncEngine(c.store, c.id, clock: () => now);
+    }
+    c
+      ..engine.adoptUnsent(latestSent())
+      ..engine.flush()
+      ..pushed = 0
+      ..heard.clear()
+      ..signedIn = true;
+    note(c, 'signed in as ${c.id}');
+    deliver(c, everything: true);
+    publish(c);
+  }
+
+  /// The database goes back to a copy from an earlier round, just after
+  /// this one's: everything since comes back from its own change files.
+  void lose(_Sim c) {
+    publish(c);
+    final (path, heard) = pick(c.copies);
+    final copy = '${temp.path}/lost-${_count++}.db';
+    File(path).copySync(copy);
+    final lost = c.store;
+    c._use(Store.open(copy));
+    lost.close();
+    c.heard
+      ..clear()
+      ..addAll(heard);
+    note(c, 'lost its database back to $path');
+    c.engine.mergeAll([
+      for (final MapEntry(key: name, value: versions) in drive.entries)
+        if (name.split('/').first == c.id) (versions.last, c.id),
+    ]);
+    deliver(c);
   }
 
   /// What [c] finds of the others' files and merges, as the app does: most

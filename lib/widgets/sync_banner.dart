@@ -9,9 +9,11 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 
 /// A card that floats up over the bottom-right corner for a few seconds
-/// when changes come in from another computer, saying where from. While
-/// the sign-in is from before the journal went to Drive, a card asking to
-/// sign in again stays there instead, until done or closed.
+/// when changes come in from another computer, saying where from. Otherwise,
+/// cards that stay there until done or closed: one while some changes from
+/// another computer are waiting (they need a newer version, or couldn't be
+/// read), and one asking to sign in again while the sign-in is from before
+/// the journal went to Drive.
 class SyncBanner extends StatefulWidget {
   const SyncBanner({super.key, required this.sync});
 
@@ -39,6 +41,9 @@ class _SyncBannerState extends State<SyncBanner> {
     _hide?.cancel();
     super.dispose();
   }
+
+  /// The waiting card, closed until Eclipse next opens.
+  bool _waitingClosed = false;
 
   /// The sign-in card: closed for now, waiting on the browser, or why
   /// signing in didn't work.
@@ -91,8 +96,23 @@ class _SyncBannerState extends State<SyncBanner> {
   Widget build(BuildContext context) {
     final shown = _shown;
     if (!_visible) {
-      if (_askClosed || !widget.sync.needsJournalSignIn) return const SizedBox.shrink();
-      return _AskCard(signingIn: _signingIn, error: _askError, onSignIn: _signIn, onClose: _close);
+      final sync = widget.sync;
+      final waiting = !_waitingClosed && (sync.newerFrom.isNotEmpty || sync.unreadFrom.isNotEmpty);
+      final ask = !_askClosed && sync.needsJournalSignIn;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (waiting)
+            _WaitingCard(
+              newerFrom: sync.newerFrom,
+              unreadFrom: sync.unreadFrom,
+              onClose: () => setState(() => _waitingClosed = true),
+            ),
+          if (waiting && ask) const SizedBox(height: 12),
+          if (ask) _AskCard(signingIn: _signingIn, error: _askError, onSignIn: _signIn, onClose: _close),
+        ],
+      );
     }
     return IgnorePointer(
       ignoring: !_visible,
@@ -260,6 +280,96 @@ class _AskCard extends StatelessWidget {
                     onPressed: onSignIn,
                     child: Text('Sign in again', style: TextStyle(color: p.accent)),
                   ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Says some changes from another computer are waiting: they need a newer
+/// version of Eclipse, or their files couldn't be read here.
+class _WaitingCard extends StatelessWidget {
+  const _WaitingCard({required this.newerFrom, required this.unreadFrom, required this.onClose});
+
+  final Set<String> newerFrom, unreadFrom;
+  final VoidCallback onClose;
+
+  /// "Laptop", "Laptop and PC", "Laptop, PC and Mac".
+  static String names(Set<String> names) {
+    final list = [for (final n in names) curlyQuotes(n)]..sort();
+    return list.length == 1 ? list.single : '${list.sublist(0, list.length - 1).join(', ')} and ${list.last}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final newer = newerFrom.isNotEmpty, unread = unreadFrom.isNotEmpty;
+    final title = newer && unread
+        ? 'Some changes are waiting'
+        : newer
+        ? 'Some changes need an update'
+        : 'Some changes couldn’t be read';
+    final body = TextStyle(fontFamily: Fonts.body, fontSize: 12.5, height: 1.4, color: p.inkMuted);
+    return Container(
+      width: 340,
+      padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
+      decoration: BoxDecoration(
+        color: p.tile,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: p.tileBorder.withValues(alpha: 0.9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(
+              title,
+              style: TextStyle(
+                fontFamily: Fonts.display,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.2,
+                color: p.ink,
+              ),
+            ),
+          ),
+          if (newer) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                'Some changes from ${names(newerFrom)} need a newer version of Eclipse. '
+                'They come in once you update.',
+                style: body,
+              ),
+            ),
+          ],
+          if (unread) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                'Some changes from ${names(unreadFrom)} couldn’t be read, so they’re waiting. '
+                'Your own changes still go to your other computers.',
+                style: body,
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: onClose,
+                  child: Text('Not now', style: TextStyle(color: p.inkMuted)),
+                ),
               ],
             ),
           ),
