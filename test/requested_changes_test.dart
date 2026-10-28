@@ -165,7 +165,7 @@ void main() {
         child: MaterialApp(
           theme: buildTheme(palettes.first),
           home: const Scaffold(
-            body: SizedBox(width: 420, height: 500, child: TodoPanel(scope: TodoScope.today)),
+            body: SizedBox(width: 420, height: 500, child: WeekCard()),
           ),
         ),
       ),

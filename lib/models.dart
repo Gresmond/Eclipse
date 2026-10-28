@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 enum HabitStatus { none, done, missed, other }
 
@@ -172,6 +173,13 @@ class TodoItem {
   /// How many times this item has rolled over unfinished.
   int carried;
 
+  /// The repeating task it's an occurrence of, if any: an occurrence's uid
+  /// is its repeat's, '@', and its day, so every computer makes the same one.
+  String? get repeatUid => uid?.contains('@') == true ? uid!.substring(0, uid!.indexOf('@')) : null;
+
+  /// The day it's an occurrence for.
+  DateTime? get repeatDay => repeatUid == null ? null : DateTime.tryParse(uid!.substring(uid!.indexOf('@') + 1));
+
   bool sameContent(TodoItem other) {
     if ((id, text, done, doneAt, carried, since, dueDate, uid) !=
             (other.id, other.text, other.done, other.doneAt, other.carried, other.since, other.dueDate, other.uid) ||
@@ -185,6 +193,108 @@ class TodoItem {
       }
     }
     return true;
+  }
+}
+
+enum RepeatKind { weekly, days, weeks, monthly }
+
+/// When a repeating task comes round: on chosen weekdays, every so many
+/// days or weeks from its start, or on a date each month.
+class RepeatRule {
+  const RepeatRule.weekly(Set<int> this.weekdays) : kind = RepeatKind.weekly, every = 1;
+  const RepeatRule.every(this.every, {bool weeks = false})
+    : kind = weeks ? RepeatKind.weeks : RepeatKind.days,
+      weekdays = null;
+  const RepeatRule.monthly(this.every) : kind = RepeatKind.monthly, weekdays = null;
+
+  final RepeatKind kind;
+
+  /// Monday is 1.
+  final Set<int>? weekdays;
+
+  /// The days or weeks between, or the date of the month.
+  final int every;
+
+  /// 'weekly:1,3,5', 'days:2', 'weeks:2' or 'monthly:15'.
+  String encode() => '${kind.name}:${kind == RepeatKind.weekly ? (weekdays!.toList()..sort()).join(',') : every}';
+
+  static RepeatRule? decode(String value) {
+    final i = value.indexOf(':');
+    if (i < 0) return null;
+    final kind = RepeatKind.values.asNameMap()[value.substring(0, i)];
+    final rest = value.substring(i + 1);
+    if (kind == RepeatKind.weekly) {
+      final days = {for (final d in rest.split(',')) ?int.tryParse(d)}.where((d) => d >= 1 && d <= 7).toSet();
+      return days.isEmpty ? null : RepeatRule.weekly(days);
+    }
+    final n = int.tryParse(rest);
+    if (kind == null || n == null || n < 1 || (kind == RepeatKind.monthly && n > 31)) return null;
+    return kind == RepeatKind.monthly ? RepeatRule.monthly(n) : RepeatRule.every(n, weeks: kind == RepeatKind.weeks);
+  }
+
+  /// Whether it comes round on [day], counting from [start].
+  bool on(DateTime day, DateTime start) {
+    final since = DateTime.utc(
+      day.year,
+      day.month,
+      day.day,
+    ).difference(DateTime.utc(start.year, start.month, start.day)).inDays;
+    if (since < 0) return false;
+    return switch (kind) {
+      RepeatKind.weekly => weekdays!.contains(day.weekday),
+      RepeatKind.days => since % every == 0,
+      RepeatKind.weeks => since % (7 * every) == 0,
+      // The 31st falls on a shorter month's last day.
+      RepeatKind.monthly => day.day == min(every, DateTime(day.year, day.month + 1, 0).day),
+    };
+  }
+
+  /// 'Every Mon, Wed', 'Every 2 days', 'Every week', 'Monthly on the 15th'.
+  String get label => switch (kind) {
+    RepeatKind.weekly =>
+      weekdays!.length == 7
+          ? 'Every day'
+          : 'Every ${[for (final d in weekdays!.toList()..sort()) weekdayNames[d - 1].substring(0, 3)].join(', ')}',
+    RepeatKind.days => every == 1 ? 'Every day' : 'Every $every days',
+    RepeatKind.weeks => every == 1 ? 'Every week' : 'Every $every weeks',
+    RepeatKind.monthly => 'Monthly on the ${ordinal(every)}',
+  };
+
+  @override
+  bool operator ==(Object other) => other is RepeatRule && other.encode() == encode();
+
+  @override
+  int get hashCode => encode().hashCode;
+}
+
+/// '1st', '2nd', '11th', '23rd'.
+String ordinal(int n) {
+  final suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : const ['th', 'st', 'nd', 'rd'].elementAtOrNull(n % 10) ?? 'th';
+  return '$n$suffix';
+}
+
+/// A task that comes round by its [rule], from [start] until [until] (if
+/// set). Each time is an ordinary to-do, made a week ahead.
+class Repeat {
+  const Repeat({required this.uid, required this.text, required this.rule, required this.start, this.until});
+
+  final String uid;
+  final String text;
+  final RepeatRule rule;
+  final DateTime start;
+  final DateTime? until;
+
+  bool on(DateTime day) => (until == null || !day.isAfter(until!)) && rule.on(day, start);
+
+  /// The first day it comes round on or after [from], if any within a year
+  /// and a bit (a monthly 31st needs no more).
+  DateTime? next(DateTime from) {
+    var day = from.isBefore(start) ? start : from;
+    for (var i = 0; i < 400; i++, day = DateTime(day.year, day.month, day.day + 1)) {
+      if (until != null && day.isAfter(until!)) return null;
+      if (on(day)) return day;
+    }
+    return null;
   }
 }
 

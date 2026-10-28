@@ -282,13 +282,14 @@ extension StoreTodos on Store {
   }
 
   /// A manual move keeps identity/history and clears all automatic routing.
-  void moveTodo(int id, TodoScope destination, DateTime day) {
+  /// [due]: the day it's now due, for This week or This month.
+  void moveTodo(int id, TodoScope destination, DateTime day, {DateTime? due}) {
     transaction(() {
       _db.execute(
-        'UPDATE todos SET scope = ?, period = ?, due_date = NULL, '
+        'UPDATE todos SET scope = ?, period = ?, due_date = ?, '
         'return_scope = NULL, return_to_tomorrow = 0, defer_promotion_day = NULL '
         'WHERE id = ? AND done = 0',
-        [destination.name, destination.period(day), id],
+        [destination.name, destination.period(day), due == null ? null : dateKey(due), id],
       );
       if (_db.updatedRows > 0) {
         _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [id]), day);
@@ -525,4 +526,125 @@ extension StoreTodos on Store {
   }
 
   static String _tickTime() => DateTime.now().toUtc().toIso8601String();
+
+  // Repeating tasks
+
+  List<Repeat> repeats() => [
+    for (final r in _db.select('SELECT * FROM todo_repeats ORDER BY start, uid'))
+      if (RepeatRule.decode(r['rule'] as String) case final rule?)
+        Repeat(
+          uid: r['uid'] as String,
+          text: curlyQuotes(r['text'] as String),
+          rule: rule,
+          start: DateTime.parse(r['start'] as String),
+          until: DateTime.tryParse(r['until'] as String? ?? ''),
+        ),
+  ];
+
+  Repeat addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until}) {
+    final repeat = Repeat(uid: _newUid(), text: text, rule: rule, start: dateOnly(start), until: until);
+    saveRepeat(repeat);
+    return repeat;
+  }
+
+  void saveRepeat(Repeat r) => _db.execute(
+    'INSERT INTO todo_repeats (uid, text, rule, start, until) VALUES (?, ?, ?, ?, ?) '
+    'ON CONFLICT (uid) DO UPDATE SET text = excluded.text, rule = excluded.rule, start = excluded.start, until = excluded.until',
+    [r.uid, r.text, r.rule.encode(), dateKey(r.start), r.until == null ? null : dateKey(r.until!)],
+  );
+
+  /// The open to-dos of repeat [uid] for [from] on.
+  List<Row> _openOccurrences(String uid, DateTime from) => [
+    for (final r in _db.select('SELECT * FROM todos WHERE substr(uid, 1, length(?1)) = ?1 AND done = 0', ['$uid@']))
+      if ((r['uid'] as String).substring(uid.length + 1).compareTo(dateKey(from)) >= 0) r,
+  ];
+
+  /// Stops repeat [uid] coming round from [from] on, and takes away the
+  /// open to-dos it had made for then.
+  void endRepeat(String uid, DateTime from, DateTime today) {
+    transaction(() {
+      final rows = _db.select('SELECT start FROM todo_repeats WHERE uid = ?', [uid]);
+      if (rows.isEmpty) return;
+      if (DateTime.parse(rows.single['start'] as String).isBefore(from)) {
+        _db.execute('UPDATE todo_repeats SET until = ? WHERE uid = ?', [
+          dateKey(DateTime(from.year, from.month, from.day - 1)),
+          uid,
+        ]);
+      } else {
+        _db.execute('DELETE FROM todo_repeats WHERE uid = ?', [uid]);
+      }
+      for (final r in _openOccurrences(uid, from)) {
+        deleteTodo(r['id'] as int, day: today);
+      }
+    });
+  }
+
+  /// Renames repeat [uid], and the open to-dos it has made for [from] on.
+  void renameRepeat(String uid, String text, DateTime from, DateTime today) {
+    transaction(() {
+      _db.execute('UPDATE todo_repeats SET text = ? WHERE uid = ?', [text, uid]);
+      for (final r in _openOccurrences(uid, from)) {
+        _db.execute('UPDATE todos SET text = ? WHERE id = ?', [text, r['id']]);
+        _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [r['id']]), today);
+      }
+    });
+  }
+
+  /// The uids of every to-do repeat [uid] has made, here or (taken away
+  /// since) on another computer.
+  Set<String> madeOccurrences(String uid) => {
+    for (final r in _db.select(
+      'SELECT uid FROM todos WHERE substr(uid, 1, length(?1)) = ?1 '
+      'UNION SELECT uid FROM todo_history WHERE substr(uid, 1, length(?1)) = ?1 '
+      "UNION SELECT rowkey FROM sync_reg WHERE kind = 'todo' AND substr(rowkey, 1, length(?1)) = ?1",
+      ['$uid@'],
+    ))
+      r.columnAt(0) as String,
+  };
+
+  /// Makes the to-do for each time a repeat comes round, up to a week
+  /// after [today], that hasn't been made (or made and taken away) yet.
+  ///
+  /// Filled in, not edited: each computer makes the same ones, with the
+  /// same uids, so they meet in sync rather than doubling up. They start in
+  /// This month, by their day, and a day start moves them on from there.
+  void makeRepeats(DateTime today) => weak(() {
+    final last = DateTime(today.year, today.month, today.day + 7);
+    for (final repeat in repeats()) {
+      final made = madeOccurrences(repeat.uid);
+      for (var day = repeat.start; !day.isAfter(last); day = DateTime(day.year, day.month, day.day + 1)) {
+        if (repeat.on(day) && !made.contains('${repeat.uid}@${dateKey(day)}')) _makeOccurrence(repeat, day);
+      }
+    }
+  });
+
+  /// The to-do for [repeat] on [day], made now if it hasn't been: a time
+  /// further ahead than [makeRepeats] reaches, to change or take away.
+  TodoItem makeOccurrence(Repeat repeat, DateTime day) => weak(() {
+    final uid = '${repeat.uid}@${dateKey(day)}';
+    final rows = _db.select('SELECT * FROM todos WHERE uid = ?', [uid]);
+    if (rows.isNotEmpty) return _todo(rows.single);
+    _makeOccurrence(repeat, day);
+    return _todo(_db.select('SELECT * FROM todos WHERE uid = ?', [uid]).single);
+  });
+
+  void _makeOccurrence(Repeat repeat, DateTime day) =>
+      _db.execute('INSERT INTO todos (uid, scope, period, text, since, due_date) VALUES (?, ?, ?, ?, ?, ?)', [
+        '${repeat.uid}@${dateKey(day)}',
+        TodoScope.month.name,
+        TodoScope.month.period(day),
+        repeat.text,
+        dateKey(day),
+        dateKey(day),
+      ]);
+
+  /// Tasks from before every task had a day: anything open in This week or
+  /// This month without a due date goes to Today.
+  void dateUndatedTodos(DateTime today) {
+    for (final r in _db.select(
+      "SELECT id FROM todos WHERE scope IN ('week', 'month') AND done = 0 AND due_date IS NULL",
+    )) {
+      moveTodo(r['id'] as int, TodoScope.today, today);
+    }
+  }
 }

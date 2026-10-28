@@ -748,6 +748,7 @@ void main() {
     );
     final squat = store.addExercise('Squat', MuscleGroup.quads, bodyweight: true);
     store.addTrainingSet('2026-10-24', squat.uid, position: 1, weight: 20, reps: 5);
+    store.addRepeat('Gym', RepeatRule.weekly({1}), DateTime(2026, 10, 24), until: DateTime(2026, 12, 1));
     pc.engine.claimAll();
     final sent = {
       for (final r in store.raw.select('SELECT DISTINCT kind, field FROM sync_reg'))

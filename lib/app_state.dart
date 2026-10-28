@@ -103,7 +103,6 @@ class AppState extends ChangeNotifier {
   /// Opens the welcome tour, on the Today view it walks through.
   void startTour() {
     touring = true;
-    setDisplayMode(false);
     showToday();
   }
 
@@ -145,7 +144,7 @@ class AppState extends ChangeNotifier {
         case 'sleep_note':
           _monthSleep.clear();
           habitsRevision++;
-        case 'todo' || 'todo_history':
+        case 'todo' || 'todo_history' || 'todo_repeat':
           reloadTodos = true;
         case 'exercise' || 'training_set':
           training.reload();
@@ -425,6 +424,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _todosChanged() {
+    _repeats = null;
     _todoDays.clear();
     _orderedTodos.clear();
     todosRevision++;
@@ -527,9 +527,12 @@ class AppState extends ChangeNotifier {
   }
 
   void _startDay() {
+    _repeats = null;
     _todoDays.clear();
     _orderedTodos.clear();
     todosRevision++;
+    store.dateUndatedTodos(today);
+    store.makeRepeats(today);
     todos.addAll(store.startDay(today));
     habitsFor(today.year, today.month);
   }
@@ -546,18 +549,6 @@ class AppState extends ChangeNotifier {
     saveDrafts();
     showingTraining = !showingTraining;
     if (!showingTraining) training.day = null;
-    notifyListeners();
-  }
-
-  /// Display mode: everything as one day-by-day list of to-dos, rather than
-  /// the Ritual cards. Kept per computer, not synced.
-  late bool displayMode = store.setting('displayMode') == '1';
-
-  void setDisplayMode(bool display) {
-    if (display == displayMode) return;
-    saveDrafts();
-    displayMode = display;
-    store.setSetting('displayMode', display ? '1' : '0');
     notifyListeners();
   }
 
@@ -964,6 +955,26 @@ class AppState extends ChangeNotifier {
     _todosChanged();
   }
 
+  /// Moves an open task to [day]: Today, Tomorrow, or due that day.
+  void moveTodoTo(TodoScope source, TodoItem item, DateTime day) {
+    final current = todos[source]!.where((t) => t.id == item.id).firstOrNull;
+    if (current == null || current.done || day.isBefore(today)) return;
+    final days = DateTime.utc(
+      day.year,
+      day.month,
+      day.day,
+    ).difference(DateTime.utc(today.year, today.month, today.day)).inDays;
+    if (days <= 1) {
+      moveTodo(source, current, days == 0 ? TodoScope.today : TodoScope.tomorrow);
+      return;
+    }
+    // Due this week files under This week, anything after under This month.
+    final sunday = DateTime(today.year, today.month, today.day + 7 - today.weekday);
+    store.moveTodo(current.id, day.isAfter(sunday) ? TodoScope.month : TodoScope.week, today, due: day);
+    _reloadTodos();
+    _todosChanged();
+  }
+
   void removeTodo(TodoScope scope, TodoItem item, {DateTime? day}) {
     final target = day ?? today;
     if (!canEditDay(target)) return;
@@ -976,6 +987,90 @@ class AppState extends ChangeNotifier {
     } else {
       store.editPastTodo(scope, target, item: item, deleted: true);
     }
+    _todosChanged();
+  }
+
+  // Repeating tasks
+
+  List<Repeat>? _repeats;
+  List<Repeat> get repeats => _repeats ??= store.repeats();
+
+  /// The repeat [item] is a time of, while it still repeats.
+  Repeat? repeatOf(TodoItem item) {
+    final uid = item.repeatUid;
+    return uid == null ? null : repeats.where((r) => r.uid == uid).firstOrNull;
+  }
+
+  /// The first time [repeat] comes round on or after [from] that hasn't
+  /// been made yet: what's shown further ahead than its to-dos reach.
+  DateTime? nextOccurrence(Repeat repeat, DateTime from) {
+    final made = store.madeOccurrences(repeat.uid);
+    for (var day = repeat.next(from); day != null; day = repeat.next(DateTime(day.year, day.month, day.day + 1))) {
+      if (!made.contains('${repeat.uid}@${dateKey(day)}')) return day;
+    }
+    return null;
+  }
+
+  /// [repeat]'s to-do for [day], made now so it can be changed on its own.
+  TodoItem occurrence(Repeat repeat, DateTime day) {
+    final item = store.makeOccurrence(repeat, day);
+    _startDay();
+    _todosChanged();
+    return item;
+  }
+
+  void addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until}) {
+    if (text.trim().isEmpty) return;
+    store.addRepeat(normaliseNote(text.trim()), rule, start, until: until);
+    _startDay();
+    _todosChanged();
+  }
+
+  /// Makes [item] repeat from its day (or today) on, in place of it.
+  void makeRepeating(TodoScope scope, TodoItem item, String text, RepeatRule rule, {DateTime? until}) {
+    final due = item.dueDate;
+    final start = due == null || due.isBefore(today) ? today : dateOnly(due);
+    store.transaction(() {
+      store.addRepeat(normaliseNote(text.trim()), rule, start, until: until);
+      store.deleteTodo(item.id, day: today);
+    });
+    _reloadTodos();
+    _startDay();
+    _todosChanged();
+  }
+
+  /// Renames [repeat] from [from] on.
+  void renameRepeat(Repeat repeat, String text, DateTime from) {
+    if (text.trim().isEmpty) return;
+    store.renameRepeat(repeat.uid, normaliseNote(text.trim()), from, today);
+    _reloadTodos();
+    _todosChanged();
+  }
+
+  /// Stops [repeat] coming round from [from] on.
+  void endRepeat(Repeat repeat, DateTime from) {
+    store.endRepeat(repeat.uid, from, today);
+    _reloadTodos();
+    _startDay();
+    _todosChanged();
+  }
+
+  /// [repeat] from [from] on, as a new repeat by [rule]; or, without one,
+  /// no more after [from], whose to-do stays.
+  void changeRepeat(Repeat repeat, DateTime from, String text, RepeatRule? rule, {DateTime? until}) {
+    if (text.trim().isEmpty) return;
+    final value = normaliseNote(text.trim());
+    store.transaction(() {
+      if (rule == null) {
+        store.endRepeat(repeat.uid, DateTime(from.year, from.month, from.day + 1), today);
+        if (value != repeat.text) store.renameRepeat(repeat.uid, value, from, today);
+      } else {
+        store.endRepeat(repeat.uid, from, today);
+        store.addRepeat(value, rule, from.isBefore(today) ? today : from, until: until);
+      }
+    });
+    _reloadTodos();
+    _startDay();
     _todosChanged();
   }
 

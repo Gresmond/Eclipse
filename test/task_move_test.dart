@@ -62,14 +62,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Finder panel(TodoScope scope) => find.byWidgetPredicate((w) => w is TodoPanel && w.scope == scope);
+  /// Tomorrow's heading in the week card.
+  Finder tomorrow() => find.descendant(of: find.byType(WeekCard), matching: find.textContaining('Tomorrow'));
 
   testWidgets('drag moves an unfinished task into an empty section', (tester) async {
     state.addTodo(TodoScope.today, 'Drag me');
     await showApp(tester);
     await tester.dragFrom(
       tester.getCenter(find.text('Drag me')),
-      tester.getCenter(panel(TodoScope.tomorrow)) - tester.getCenter(find.text('Drag me')),
+      tester.getCenter(tomorrow()) - tester.getCenter(find.text('Drag me')),
     );
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.today], isEmpty);
@@ -82,7 +83,7 @@ void main() {
     state.toggleTodo(state.todos[TodoScope.today]!.single);
     state.addTodo(TodoScope.today, 'Still open');
     await showApp(tester);
-    final destination = tester.getCenter(panel(TodoScope.tomorrow));
+    final destination = tester.getCenter(tomorrow());
     final finished = tester.getCenter(find.text('Finished'));
     await tester.dragFrom(finished, destination - finished);
     await tester.pumpAndSettle();

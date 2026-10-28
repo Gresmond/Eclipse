@@ -21,7 +21,7 @@ abstract interface class AutomaticWrites {
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 27;
+  static const schemaVersion = 28;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -210,6 +210,7 @@ class Store {
       'settings': 'key, value',
       'exercises': 'uid, name, muscle, bodyweight',
       'training_sets': 'uid, day, exercise, position, weight, reps',
+      'todo_repeats': 'uid, text, rule, start, until',
       'sync_reg': 'kind, rowkey, field, value, ts, origin, vv, journal_versions, seq',
       'sync_dirty': 'kind, rowkey, at',
       'sync_seen': 'file, stamp',
@@ -237,10 +238,14 @@ class Store {
     }
     for (final r in _db.select(
       'SELECT day FROM entries UNION SELECT day FROM journal UNION SELECT since AS day FROM todos '
-      'UNION SELECT due_date AS day FROM todos WHERE due_date IS NOT NULL UNION SELECT day FROM training_sets',
+      'UNION SELECT due_date AS day FROM todos WHERE due_date IS NOT NULL UNION SELECT day FROM training_sets '
+      'UNION SELECT start AS day FROM todo_repeats UNION SELECT until AS day FROM todo_repeats WHERE until IS NOT NULL',
     )) {
       final day = r['day'];
       if (!_validDay(day)) throw StateError('Backup contains an invalid date');
+    }
+    for (final r in _db.select('SELECT rule FROM todo_repeats')) {
+      if (RepeatRule.decode(r['rule'] as String) == null) throw StateError('Backup contains an invalid repeat');
     }
     for (final r in _db.select('SELECT subtasks FROM todos')) {
       if (!_validSubtasks(r['subtasks'])) throw StateError('Backup contains invalid subtasks');
@@ -723,6 +728,29 @@ class Store {
         _db.execute('PRAGMA user_version = 27');
       });
     }
+    if (version < 28) {
+      transaction(() {
+        _db.execute('''
+          -- Repeating tasks: each time one comes round is an ordinary to-do,
+          -- made a week ahead (see StoreTodos.makeRepeats).
+          CREATE TABLE IF NOT EXISTS todo_repeats (
+            uid TEXT PRIMARY KEY,
+            text TEXT NOT NULL,
+            rule TEXT NOT NULL,
+            start TEXT NOT NULL,
+            until TEXT
+          );
+        ''');
+        for (final (event, row) in [('INSERT', 'NEW'), ('UPDATE', 'NEW'), ('DELETE', 'OLD')]) {
+          _db.execute(
+            'CREATE TRIGGER IF NOT EXISTS todo_repeats_${event.toLowerCase()} AFTER $event ON todo_repeats BEGIN '
+            "INSERT INTO sync_dirty VALUES ('todo_repeat', $row.uid, $_now) "
+            'ON CONFLICT (kind, rowkey) DO UPDATE SET at = excluded.at; END',
+          );
+        }
+        _db.execute('PRAGMA user_version = 28');
+      });
+    }
 
     if (version >= 1 && version < schemaVersion) upgradedFrom = version;
     // Versions before 25 changed synced rows where the sync triggers
@@ -757,6 +785,7 @@ class Store {
         UNION ALL SELECT 'sleep_note', year || '-' || month || '/' || item FROM sleep_notes
         UNION ALL SELECT 'exercise', uid FROM exercises
         UNION ALL SELECT 'training_set', uid FROM training_sets
+        UNION ALL SELECT 'todo_repeat', uid FROM todo_repeats
         UNION ALL SELECT 'setting', key FROM settings WHERE key IN (${syncedSettings.map((k) => "'$k'").join(', ')})
       )
     ''');

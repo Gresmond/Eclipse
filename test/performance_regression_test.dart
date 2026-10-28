@@ -9,10 +9,8 @@ import 'package:eclipse/data/updates.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/util/lru_cache.dart';
-import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:eclipse/widgets/lazy_motion.dart';
 import 'package:eclipse/screens/month_view.dart';
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -59,36 +57,6 @@ void main() {
     state.setTheme('Lunar Eclipse');
     await tester.pumpAndSettle();
     expect(cells, 0, reason: 'theme frames repaint the grid without rebuilding its cells');
-  });
-
-  testWidgets('a long task list mounts only its viewport and rebuilds only that scope', (tester) async {
-    for (var i = 0; i < 200; i++) {
-      state.addTodo(TodoScope.today, 'Review task $i');
-    }
-    state.addTodo(TodoScope.week, 'Untouched planner');
-    await show(tester);
-    final labels = find.byWidgetPredicate((w) => w is Text && (w.data?.startsWith('Review task ') ?? false));
-    final mounted = labels.evaluate().length;
-    expect(mounted, greaterThan(0));
-    expect(mounted, lessThan(40));
-    var rows = 0, panels = 0;
-    debugOnRebuildDirtyWidget = (element, built) {
-      if (element.widget.runtimeType.toString() == '_TodoRow') rows++;
-      if (element.widget is TodoPanel) panels++;
-    };
-    addTearDown(() => debugOnRebuildDirtyWidget = null);
-    state.toggleTodo(state.todos[TodoScope.today]!.first);
-    await tester.pump();
-    expect(rows, lessThan(40));
-    expect(panels, 1);
-    await tester.pumpAndSettle();
-    debugOnRebuildDirtyWidget = null;
-    final todayPanel = find.byWidgetPredicate((w) => w is TodoPanel && w.scope == TodoScope.today);
-    final scroll = find.descendant(of: todayPanel, matching: find.byType(Scrollable));
-    await tester.drag(scroll.first, const Offset(0, -700));
-    await tester.pumpAndSettle();
-    expect(labels.evaluate().length, lessThan(40));
-    expect(find.text('Review task 0'), findsNothing);
   });
 
   testWidgets('rapid navigation does not build an invisible month grid', (tester) async {

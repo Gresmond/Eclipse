@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
+import '../models.dart';
 import 'store.dart';
 
 /// What one round of merging brought in from other computers.
@@ -113,7 +114,7 @@ class SyncEngine implements AutomaticWrites {
   static const _present = '_';
 
   /// Kinds whose rows can be removed; the others always exist, blank.
-  static const _removable = {'month_habit', 'todo', 'exercise', 'training_set'};
+  static const _removable = {'month_habit', 'todo', 'exercise', 'training_set', 'todo_repeat'};
 
   /// What each kind of row keeps, by field, with the database version that
   /// first kept it. An older version keeps another computer's edit of a
@@ -145,6 +146,7 @@ class SyncEngine implements AutomaticWrites {
     'setting': {'value': 8},
     'exercise': {_present: 22, 'name': 22, 'muscle': 22, 'bodyweight': 22},
     'training_set': {_present: 22, 'day': 22, 'exercise': 22, 'position': 22, 'weight': 22, 'reps': 22},
+    'todo_repeat': {_present: 28, 'text': 28, 'rule': 28, 'start': 28, 'until': 28},
   };
 
   /// A to-do's fields that say where it is. A change of whether it's done,
@@ -228,6 +230,8 @@ class SyncEngine implements AutomaticWrites {
         fields = row('SELECT name, muscle, bodyweight FROM exercises WHERE uid = ?', [rowkey]);
       case 'training_set':
         fields = row('SELECT day, exercise, position, weight, reps FROM training_sets WHERE uid = ?', [rowkey]);
+      case 'todo_repeat':
+        fields = row('SELECT text, rule, start, until FROM todo_repeats WHERE uid = ?', [rowkey]);
       default:
         // From a newer version: kept as registers until this one is updated.
         return const {};
@@ -242,7 +246,13 @@ class SyncEngine implements AutomaticWrites {
 
   /// What a row of a kind that can be removed can't be without: until it's
   /// come (in a file not read yet), an edit of it waits, the row not there.
-  static const _made = {'todo': 'since', 'month_habit': 'name', 'exercise': 'name', 'training_set': 'exercise'};
+  static const _made = {
+    'todo': 'since',
+    'month_habit': 'name',
+    'exercise': 'name',
+    'training_set': 'exercise',
+    'todo_repeat': 'start',
+  };
 
   /// Makes the row match [f], its fields from the registers.
   void _write(String kind, String rowkey, Map<String, Object?> f) {
@@ -357,6 +367,17 @@ class SyncEngine implements AutomaticWrites {
             'ON CONFLICT (uid) DO UPDATE SET day = excluded.day, exercise = excluded.exercise, '
             'position = excluded.position, weight = excluded.weight, reps = excluded.reps',
             [rowkey, f['day'] ?? '', f['exercise'] ?? '', f['position'] ?? 0, f['weight'], f['reps'] ?? 0],
+          );
+        }
+      case 'todo_repeat':
+        if (gone || RepeatRule.decode(f['rule'] as String? ?? '') == null) {
+          _db.execute('DELETE FROM todo_repeats WHERE uid = ?', [rowkey]);
+        } else {
+          _db.execute(
+            'INSERT INTO todo_repeats (uid, text, rule, start, until) VALUES (?, ?, ?, ?, ?) '
+            'ON CONFLICT (uid) DO UPDATE SET text = excluded.text, rule = excluded.rule, '
+            'start = excluded.start, until = excluded.until',
+            [rowkey, f['text'] ?? '', f['rule'], f['start'], f['until']],
           );
         }
     }
@@ -621,6 +642,7 @@ class SyncEngine implements AutomaticWrites {
       _db.execute('DELETE FROM sleep_notes');
       _db.execute('DELETE FROM exercises');
       _db.execute('DELETE FROM training_sets');
+      _db.execute('DELETE FROM todo_repeats');
       _db.execute('DELETE FROM settings WHERE key IN (${Store.syncedSettings.map((k) => "'$k'").join(', ')})');
       _db.execute('DELETE FROM habits WHERE id NOT IN (SELECT habit_id FROM sleep_habits)');
       _db.execute('DELETE FROM sync_reg');
@@ -916,6 +938,9 @@ class _Reg {
       ('entry', 'status') => v == null || v is int,
       ('journal', 'text') => v is String,
       ('setting', 'value') || ('sleep_note', 'note') || ('todo_history', 'snapshot') => v == null || v is String,
+      ('todo_repeat', 'rule') => v is String && RepeatRule.decode(v) != null,
+      ('todo_repeat', 'start') => v is String && _day(v),
+      ('todo_repeat', 'until') => v == null || v is String && _day(v),
       _ => v == null || v is num || v is String,
     };
   }

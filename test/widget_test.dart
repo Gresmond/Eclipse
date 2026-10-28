@@ -19,7 +19,6 @@ import 'package:eclipse/data/sync_service.dart';
 import 'package:eclipse/data/updates.dart';
 import 'package:eclipse/data/windows_night_light.dart';
 import 'package:eclipse/main.dart';
-import 'package:eclipse/screens/display_view.dart';
 import 'package:eclipse/screens/today_view.dart';
 import 'package:eclipse/screens/month_view.dart';
 import 'package:eclipse/models.dart';
@@ -27,6 +26,7 @@ import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/theme/oklch.dart';
 import 'package:eclipse/widgets/status_cell.dart';
 import 'package:eclipse/widgets/tile.dart';
+import 'package:eclipse/widgets/day_picker.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 
 /// Pass --dart-define=SCREENSHOT_DIR=/some/dir to save PNGs of each view.
@@ -125,7 +125,7 @@ void main() {
       state.selectStatus(day, meditate, HabitStatus.missed);
       state.selectStatus(day, meditate, HabitStatus.other);
       state.setNote(day, meditate, 'Sick');
-      state.addTodo(TodoScope.week, 'Book dentist');
+      state.addTodo(TodoScope.week, 'Book dentist', dueDate: DateTime(day.year, day.month, day.day + 5));
       await state.setJournal(day, 'A good day.');
       state.setTheme('Sunset');
       store.close();
@@ -559,8 +559,8 @@ void main() {
       state.addTodo(TodoScope.today, 'Unfinished');
       state.addTodo(TodoScope.today, 'Finished');
       state.toggleTodo(state.todos[TodoScope.today]!.last);
-      state.addTodo(TodoScope.week, 'Weekly');
-      state.addTodo(TodoScope.month, 'Monthly');
+      state.addTodo(TodoScope.week, 'Weekly', dueDate: DateTime(2026, 12, 20));
+      state.addTodo(TodoScope.month, 'Monthly', dueDate: DateTime(2026, 12, 30));
 
       now = DateTime(2026, 10, 24, 0, 1); // Saturday
       state.checkDate();
@@ -1254,7 +1254,8 @@ void main() {
 
   testWidgets('a long ritual wraps onto more lines, its row growing to fit', (tester) async {
     await _loadFonts();
-    tester.view.physicalSize = const Size(1000, 720); // a tiled window
+    // A tiled window; the rituals' column is the narrower middle one.
+    tester.view.physicalSize = const Size(1000, 1040);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
@@ -1500,177 +1501,81 @@ void main() {
     expect(top('Charlie'), lessThan(top('Alpha')));
   });
 
-  for (final scope in [TodoScope.tomorrow, TodoScope.week, TodoScope.month]) {
-    testWidgets('${scope.label} transfer opens at the bottom before ticking and gliding', (tester) async {
-      tester.view.physicalSize = const Size(1440, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
-      for (final item in [...state.todos[TodoScope.today]!]) {
-        state.removeTodo(TodoScope.today, item);
-      }
-      state.addTodo(TodoScope.today, 'First existing task');
-      state.addTodo(TodoScope.today, 'Last existing task');
-      state.addTodo(scope, 'Incoming completed task');
-      final incoming = state.todos[scope]!.last;
-      await tester.pumpWidget(EclipseApp(state: state));
-      await tester.pumpAndSettle();
-      final todayPanel = find.widgetWithText(TodoPanel, 'Today');
-      Finder row(int id) => find.descendant(of: todayPanel, matching: find.byKey(ValueKey(id)));
-      final last = state.todos[TodoScope.today]!.last;
-      final first = state.todos[TodoScope.today]!.first;
-      final firstTop = tester.getTopLeft(row(first.id)).dy;
-      final lastBottom = tester.getBottomLeft(row(last.id)).dy;
-      state.toggleTodo(incoming, scope: scope);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(tester.getTopLeft(row(incoming.id)).dy, moreOrLessEquals(lastBottom));
-      expect(tester.getTopLeft(row(first.id)).dy, moreOrLessEquals(firstTop));
-      expect(tester.getSize(row(incoming.id)).height, greaterThan(0));
-      expect(
-        DefaultTextStyle.of(tester.element(find.text('Incoming completed task'))).style.decoration,
-        isNot(TextDecoration.lineThrough),
-      );
-      await tester.pump(const Duration(milliseconds: 230));
-      // The tick lands while the row still sits in its new space.
-      expect(tester.getTopLeft(row(incoming.id)).dy, moreOrLessEquals(lastBottom));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(tester.getTopLeft(row(incoming.id)).dy, moreOrLessEquals(lastBottom));
-      await tester.pumpAndSettle();
-      expect(tester.getTopLeft(row(incoming.id)).dy, moreOrLessEquals(lastBottom));
-      expect(tester.getTopLeft(row(first.id)).dy, moreOrLessEquals(firstTop));
-      expect(
-        DefaultTextStyle.of(tester.element(find.text('Incoming completed task'))).style.decoration,
-        TextDecoration.lineThrough,
-      );
-    });
-  }
-
-  testWidgets('rapid transfers reserve separate spaces and undo can interrupt arrival', (tester) async {
-    tester.view.physicalSize = const Size(1440, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
-    state.addTodo(TodoScope.tomorrow, 'First transfer');
-    state.addTodo(TodoScope.week, 'Second transfer');
-    final first = state.todos[TodoScope.tomorrow]!.last;
-    final second = state.todos[TodoScope.week]!.last;
-    await tester.pumpWidget(EclipseApp(state: state));
-    await tester.pumpAndSettle();
-    final todayPanel = find.widgetWithText(TodoPanel, 'Today');
-    Finder row(int id) => find.descendant(of: todayPanel, matching: find.byKey(ValueKey(id)));
-    state.toggleTodo(first, scope: TodoScope.tomorrow);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    state.toggleTodo(second, scope: TodoScope.week);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(tester.getTopLeft(row(second.id)).dy, greaterThanOrEqualTo(tester.getBottomLeft(row(first.id)).dy));
-    state.toggleTodo(state.todos[TodoScope.today]!.singleWhere((t) => t.id == first.id));
-    await tester.pumpAndSettle();
-    expect(row(first.id), findsNothing);
-    expect(state.todos[TodoScope.tomorrow]!.singleWhere((t) => t.id == first.id).done, isFalse);
-    expect(state.todos[TodoScope.today]!.singleWhere((t) => t.id == second.id).done, isTrue);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('a removed to-do persists immediately while its visual closes up', (tester) async {
+  testWidgets('the week ahead, rituals and further ahead fill the columns', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
     final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
-    for (final t in [...state.todos[TodoScope.tomorrow]!]) {
-      state.removeTodo(TodoScope.tomorrow, t);
-    }
-    for (final t in ['Alpha', 'Bravo', 'Charlie']) {
-      state.addTodo(TodoScope.tomorrow, t);
-    }
+    state.addTodo(TodoScope.month, 'Book flights', dueDate: DateTime(2026, 11, 20));
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
 
-    double top(String text) => tester.getTopLeft(find.text(text)).dy;
-    final charlie = top('Charlie');
-
-    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    await gesture.addPointer(location: tester.getCenter(find.text('Bravo')));
-    addTearDown(gesture.removePointer);
-    await tester.pumpAndSettle();
-    // Bravo's remove button: the nearest one to the right of its text.
-    // Clicked with the mouse, so the row stays hovered.
-    final bravo = tester.getCenter(find.text('Bravo'));
-    final remove = [
-      for (final e in find.byTooltip('Remove').evaluate()) tester.getCenter(find.byElementPredicate((x) => x == e)),
-    ].where((c) => c.dx > bravo.dx).reduce((a, b) => (a - bravo).distance <= (b - bravo).distance ? a : b);
-    await gesture.moveTo(remove);
-    await tester.pump();
-    await gesture.down(remove);
-    await gesture.up();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(state.todos[TodoScope.tomorrow]!.length, 2, reason: 'persisted before the exit finishes');
-    expect(find.text('Bravo'), findsOneWidget, reason: 'the exit visual is still closing up');
-    expect(top('Charlie'), lessThan(charlie), reason: 'the row below follows it up');
-
-    await tester.pumpAndSettle();
-    expect(state.todos[TodoScope.tomorrow]!.map((t) => t.text), ['Alpha', 'Charlie']);
-    expect(top('Charlie'), lessThan(charlie));
-  });
-
-  testWidgets('tomorrow lines up with the rituals and the journal with the sleep schedule', (tester) async {
-    tester.view.physicalSize = const Size(1440, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
-    await tester.pumpWidget(EclipseApp(state: state));
-    await tester.pumpAndSettle();
-
-    final tomorrowPanel = find.widgetWithText(TodoPanel, 'Tomorrow');
-    final todayPanel = find.widgetWithText(TodoPanel, 'Today');
-
-    expect(tomorrowPanel, findsOneWidget);
-    expect(todayPanel, findsOneWidget);
-    expect(find.byWidgetPredicate((w) => w is TodoPanel && w.tabbed), findsNothing);
-
+    final week = find.byType(WeekCard), later = find.byType(FurtherAheadCard);
     Rect card(String title) => tester.getRect(find.ancestor(of: find.text(title), matching: find.byType(Tile)).first);
-    final tomorrowRect = tester.getRect(tomorrowPanel);
-    final todayRect = tester.getRect(todayPanel);
-    final journalRect = card('Journal');
+    final weekRect = tester.getRect(week);
+    final laterRect = tester.getRect(later);
     final ritualsRect = card('Daily rituals');
     final sleepRect = card('Sleep schedule');
+    final journalRect = card('Journal');
 
-    expect(todayRect.top, tomorrowRect.top);
-    expect(todayRect.bottom, closeTo(journalRect.bottom, 0.5));
-    expect(tomorrowRect.left, greaterThan(todayRect.right));
-    expect(tomorrowRect.left, journalRect.left);
-    expect(tomorrowRect.bottom, closeTo(ritualsRect.bottom, 0.5));
+    expect(weekRect.right, lessThan(ritualsRect.left));
+    expect(weekRect.width, greaterThan(ritualsRect.width), reason: 'the week keeps the widest column');
+    expect(laterRect.left, greaterThan(ritualsRect.right));
+    expect(laterRect.width, closeTo(ritualsRect.width, 0.5));
+    expect(laterRect.bottom, closeTo(ritualsRect.bottom, 0.5));
     expect(journalRect.top, closeTo(sleepRect.top, 0.5));
     expect(journalRect.height, closeTo(sleepRect.height, 0.5));
+    expect(weekRect.bottom, closeTo(journalRect.bottom, 0.5));
 
-    // Test adding and ticking a task in Tomorrow via UI
-    final addField = find.descendant(of: tomorrowPanel, matching: find.byType(TextField));
-    expect(addField, findsOneWidget);
-    await tester.enterText(addField, 'Prepare tomorrow breakfast');
+    // Eight days, today first; anything later is further ahead, under its day.
+    expect(find.descendant(of: week, matching: find.textContaining('Oct 23')), findsOneWidget);
+    expect(find.descendant(of: week, matching: find.textContaining('Oct 30')), findsOneWidget);
+    expect(find.descendant(of: week, matching: find.textContaining('Oct 31')), findsNothing);
+    expect(find.descendant(of: later, matching: find.text('Book flights')), findsOneWidget);
+    expect(find.descendant(of: later, matching: find.textContaining('Nov 20')), findsOneWidget);
+
+    // Adding under Tomorrow, then ticking it, which files it under today.
+    final tomorrow = find.ancestor(
+      of: find.descendant(of: week, matching: find.textContaining('Tomorrow')),
+      matching: find.byWidgetPredicate((w) => w.runtimeType.toString() == '_DaySection'),
+    );
+    await tester.tap(find.descendant(of: tomorrow, matching: find.text('Add task')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.descendant(of: week, matching: find.byType(TextField)), 'Prepare tomorrow breakfast');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-
-    expect(find.descendant(of: tomorrowPanel, matching: find.text('Prepare tomorrow breakfast')), findsOneWidget);
+    expect(find.descendant(of: tomorrow, matching: find.text('Prepare tomorrow breakfast')), findsOneWidget);
     expect(state.todos[TodoScope.tomorrow]!.map((t) => t.text), contains('Prepare tomorrow breakfast'));
-    expect(state.todos[TodoScope.tomorrow]!.first.done, isFalse);
 
-    // Tapping the task toggles it done
     await tester.tap(find.text('Prepare tomorrow breakfast'));
     await tester.pumpAndSettle();
-    expect(state.todos[TodoScope.tomorrow], isEmpty);
-    final completed = find.descendant(of: todayPanel, matching: find.text('Prepare tomorrow breakfast'));
-    expect(completed, findsOneWidget);
-    expect(DefaultTextStyle.of(tester.element(completed)).style.decoration, TextDecoration.lineThrough);
     expect(state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Prepare tomorrow breakfast').done, isTrue);
+    final completed = find.text('Prepare tomorrow breakfast');
+    expect(find.descendant(of: tomorrow, matching: completed), findsNothing);
+    expect(DefaultTextStyle.of(tester.element(completed)).style.decoration, TextDecoration.lineThrough);
     await tester.tap(completed);
     await tester.pumpAndSettle();
-    expect(find.descendant(of: tomorrowPanel, matching: find.text('Prepare tomorrow breakfast')), findsOneWidget);
+    expect(find.descendant(of: tomorrow, matching: completed), findsOneWidget);
     expect(state.todos[TodoScope.tomorrow]!.single.done, isFalse);
+  });
+
+  testWidgets('dragging a task onto another day moves it there', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
+    state.addTodo(TodoScope.today, 'Drag me');
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    final week = find.byType(WeekCard);
+    final from = tester.getCenter(find.text('Drag me'));
+    final to = tester.getCenter(find.descendant(of: week, matching: find.textContaining('Oct 25')));
+    await tester.dragFrom(from, to - from);
+    await tester.pumpAndSettle();
+    expect(state.todos[TodoScope.today]!.map((t) => t.text), isNot(contains('Drag me')));
+    expect(state.todos[TodoScope.week]!.single.dueDate, DateTime(2026, 10, 25));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('task actions reveal per row and pills only on each icon', (tester) async {
@@ -1682,7 +1587,7 @@ void main() {
     state.addTodo(TodoScope.today, 'Hover second');
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    final panel = find.byWidgetPredicate((w) => w is TodoPanel && w.scope == TodoScope.today);
+    final panel = find.byType(WeekCard);
     final edits = find.descendant(of: panel, matching: find.byTooltip('Edit task'));
     final removes = find.descendant(of: panel, matching: find.byTooltip('Remove'));
     double opacity(Finder action) =>
@@ -1770,18 +1675,17 @@ void main() {
     store.close();
   });
 
-  testWidgets('tasks can be edited and dated in Display; only yesterday stays editable', (tester) async {
+  testWidgets('tasks can be edited and dated; only yesterday stays editable', (tester) async {
     await _loadFonts();
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     var now = DateTime(2026, 10, 23, 12);
     final state = AppState(_testStore(), clock: () => now);
-    state.addTodo(TodoScope.week, 'Original task');
-    state.setDisplayMode(true);
+    state.addTodo(TodoScope.week, 'Original task', dueDate: DateTime(2026, 10, 27));
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    final panel = find.byType(DisplayView);
+    final panel = find.byType(WeekCard);
     final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await pointer.addPointer(location: Offset.zero);
     addTearDown(pointer.removePointer);
@@ -1790,7 +1694,7 @@ void main() {
     await tester.tap(find.descendant(of: panel, matching: find.byTooltip('Edit task')).last);
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Original task'), 'Revised task');
-    await tester.tap(find.text('Add a due date'));
+    await tester.tap(find.text('Due 27/10/2026'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24').last);
     await tester.sendKeyEvent(LogicalKeyboardKey.numpadEnter);
@@ -1799,17 +1703,15 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.tomorrow]!.single.text, 'Revised task');
-    expect(find.text('Due 24/10/2026'), findsOneWidget);
-    state.setDisplayMode(false);
-    await tester.pumpAndSettle();
     state.addTodo(TodoScope.today, 'Yesterday task');
     now = DateTime(2026, 10, 24, 12);
     state.checkDate();
     state.showDay(DateTime(2026, 10, 23));
     await tester.pumpAndSettle();
     expect(state.canEditDay(state.shownDay), isTrue);
-    final todayPanel = find.byWidgetPredicate((w) => w is TodoPanel && w.scope == TodoScope.today);
-    await tester.enterText(find.descendant(of: todayPanel, matching: find.byType(TextField)), 'Late task');
+    await tester.tap(find.descendant(of: panel, matching: find.text('Add task')).first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.descendant(of: panel, matching: find.byType(TextField)), 'Late task');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(state.todosOn(TodoScope.today, state.shownDay).map((t) => t.text), contains('Late task'));
@@ -1826,7 +1728,7 @@ void main() {
     now = DateTime(2026, 10, 25, 12);
     state.checkDate();
     await tester.pumpAndSettle();
-    expect(find.text('Add a task').hitTestable(), findsNothing);
+    expect(find.text('Add task').hitTestable(), findsNothing);
     expect(find.byTooltip('Edit task'), findsNothing);
     expect(tester.widget<TextField>(journal).readOnly, isTrue);
     expect(tester.widget<StatusCell>(mark).enabled, isFalse);
@@ -1953,10 +1855,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('October 2026'), findsOneWidget);
     await _shoot(tester, 'day_picker');
-    await tester.tap(find.text('25'));
+    await tester.tap(find.descendant(of: find.byType(DayPicker), matching: find.text('25')));
     await tester.pumpAndSettle();
     expect(state.viewDay, isNull, reason: 'the future is not open');
-    await tester.tap(find.text('22'));
+    await tester.tap(find.descendant(of: find.byType(DayPicker), matching: find.text('22')));
     // The cards stay put through the change: their headings never fade,
     // while the journal's words fade through to the other day's.
     double opacity(Finder f) => tester
@@ -1966,7 +1868,7 @@ void main() {
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 16));
       if (find.byType(TodayView).evaluate().isEmpty) continue;
-      for (final heading in ['Daily rituals', 'Sleep schedule', 'This week', 'This month', 'Journal']) {
+      for (final heading in ['Daily rituals', 'Sleep schedule', 'Week ahead', 'Further ahead', 'Journal']) {
         expect(opacity(find.text(heading)), 1, reason: '$heading stays while the day changes');
       }
       final words = find.text('A quiet Thursday.');

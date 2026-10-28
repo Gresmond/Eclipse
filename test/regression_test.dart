@@ -140,15 +140,11 @@ void main() {
     state.editTodo(TodoScope.month, state.todos[TodoScope.month]!.single, 'Updated', now);
     expect(state.todos[TodoScope.today]!.single.text, 'Updated');
     expect(state.todosOn(TodoScope.today, DateTime(2026, 10, 30)), isEmpty);
-    state.addTodo(TodoScope.week, 'Undated');
-    state.editTodo(TodoScope.week, state.todos[TodoScope.week]!.single, 'Undated', DateTime(2026, 11, 2));
-    state.editTodo(TodoScope.week, state.todos[TodoScope.week]!.single, 'Undated', null);
     state.addTodo(TodoScope.month, 'Completed');
     state.toggleTodo(state.todos[TodoScope.month]!.single);
     state.editTodo(TodoScope.today, state.todos[TodoScope.today]!.last, 'Completed', DateTime(2026, 11, 2));
     now = DateTime(2026, 11, 2);
     state.checkDate();
-    expect(state.todos[TodoScope.week]!.single.dueDate, isNull);
     expect(state.todos[TodoScope.tomorrow], isEmpty);
     expect(state.todos[TodoScope.today]!.single.text, 'Updated');
     expect(store.todos(TodoScope.today, '2026-10-31').single.done, isTrue);
@@ -262,9 +258,11 @@ void main() {
       store.addHabit(2026, 10, 'Read');
       var now = DateTime(2026, 10, 24);
       var state = AppState(store, clock: () => now);
-      state.addTodo(scope, 'Collect prescription');
+      // Planned tasks always have a day; one far off stays planned.
+      final due = scope == TodoScope.week || scope == TodoScope.month ? DateTime(2026, 12, 20) : null;
+      state.addTodo(scope, 'Collect prescription', dueDate: due);
       // A separate task with identical wording must not be affected.
-      state.addTodo(scope, 'Collect prescription');
+      state.addTodo(scope, 'Collect prescription', dueDate: due);
       now = DateTime(2026, 10, 25);
       state.checkDate();
       final yesterday = DateTime(2026, 10, 24);
@@ -671,6 +669,7 @@ void main() {
     final store = memory();
     store.addHabit(2026, 10, 'Read');
     final item = store.addTodo(TodoScope.week, DateTime(2026, 10, 19), 'Call');
+    store.raw.execute("UPDATE todos SET due_date = '2026-12-20'");
     store.raw.execute('DELETE FROM todo_history'); // a task from a pre-history version
     var now = DateTime(2026, 10, 20);
     final state = AppState(store, clock: () => now);

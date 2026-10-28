@@ -11,8 +11,6 @@ class _TodoRow extends StatefulWidget {
     required this.day,
     this.readOnly = false,
     this.fadeIn = false,
-    this.arriving = false,
-    this.leaving = false,
     required this.onRemove,
   });
 
@@ -28,10 +26,6 @@ class _TodoRow extends StatefulWidget {
 
   /// Fades in when first shown: a newly added item.
   final bool fadeIn;
-
-  /// Show the incoming task before its completion tick lands.
-  final bool arriving;
-  final bool leaving;
   final VoidCallback onRemove;
 
   @override
@@ -152,7 +146,7 @@ class _TodoRowState extends State<_TodoRow> {
     final p = context.palette;
     final item = widget.item;
     final child = item.subtasks[index];
-    final canDrag = !widget.readOnly && !widget.leaving && item.subtasks.length > 1 && (item.numbered || !child.done);
+    final canDrag = !widget.readOnly && item.subtasks.length > 1 && (item.numbered || !child.done);
     return DragTarget<_SubtaskDrag>(
       key: _subtaskKey(index),
       onWillAcceptWithDetails: (details) {
@@ -228,15 +222,19 @@ class _TodoRowState extends State<_TodoRow> {
     final p = context.palette;
     final state = AppScope.read(context);
     final item = widget.item;
-    final done = item.done && !widget.arriving;
-    final carried = widget.scope.period(item.since) != widget.scope.period(widget.day);
+    final done = item.done;
+    // Planned tasks are on their own day; only Today and Tomorrow carry.
+    final carried =
+        (widget.scope == TodoScope.today || widget.scope == TodoScope.tomorrow) &&
+        widget.scope.period(item.since) != widget.scope.period(widget.day);
+    final repeat = state.repeatOf(item);
 
     final parentRow = Appear(
       animate: widget.fadeIn,
-      shown: !widget.leaving && !_nestingOut,
+      shown: !_nestingOut,
       fadeBeforeCollapse: _nestingOut,
       child: IgnorePointer(
-        ignoring: widget.readOnly || widget.leaving || _nestingOut,
+        ignoring: widget.readOnly || _nestingOut,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           onEnter: (_) => setState(() => _hover = _actions = true),
@@ -302,10 +300,24 @@ class _TodoRowState extends State<_TodoRow> {
                                   '${item.subtasks.where((child) => child.done).length}/${item.subtasks.length} complete',
                                   style: TextStyle(fontSize: 10.5, color: p.inkMuted, decoration: TextDecoration.none),
                                 ),
-                              if (item.dueDate case final due?)
-                                Text(
-                                  'Due ${dayMonth(due)}/${due.year}',
-                                  style: TextStyle(fontSize: 10.5, color: p.inkMuted, decoration: TextDecoration.none),
+                              if (repeat != null)
+                                Row(
+                                  children: [
+                                    Icon(Icons.repeat_rounded, size: 11, color: p.inkMuted),
+                                    const SizedBox(width: 3),
+                                    Flexible(
+                                      child: Text(
+                                        repeat.rule.label,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          color: p.inkMuted,
+                                          decoration: TextDecoration.none,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                             ],
                           ),
@@ -339,9 +351,9 @@ class _TodoRowState extends State<_TodoRow> {
                       ],
                       if (!widget.readOnly)
                         IgnorePointer(
-                          ignoring: !_hover || widget.leaving,
+                          ignoring: !_hover,
                           child: ExcludeFocus(
-                            excluding: !_hover || widget.leaving,
+                            excluding: !_hover,
                             child: AnimatedOpacity(
                               opacity: _hover ? 1 : 0,
                               duration: Motion.hover,
@@ -363,27 +375,12 @@ class _TodoRowState extends State<_TodoRow> {
                                         _TaskAction(
                                           tooltip: 'Edit task',
                                           icon: Icons.edit_outlined,
-                                          onPressed: () async {
-                                            final result = await showAppDialog<({String text, DateTime? due})>(
-                                              context: context,
-                                              builder: (_) =>
-                                                  _EditTaskDialog(item: item, scope: widget.scope, day: widget.day),
-                                            );
-                                            if (result != null && mounted) {
-                                              state.editTodo(
-                                                widget.scope,
-                                                item,
-                                                result.text,
-                                                result.due,
-                                                day: widget.day,
-                                              );
-                                            }
-                                          },
+                                          onPressed: () => _editTask(context, widget.scope, item, widget.day),
                                         ),
                                         _TaskAction(
                                           tooltip: 'Remove',
                                           icon: Icons.close_rounded,
-                                          onPressed: widget.onRemove,
+                                          onPressed: () => _removeTask(context, item, widget.day, widget.onRemove),
                                         ),
                                       ],
                                     ),
@@ -510,7 +507,7 @@ class _TodoRowState extends State<_TodoRow> {
     );
     // Keep the row's subtree mounted when completion changes. Swapping the
     // Draggable for the row resets its tick and nested glide animations.
-    final canDrag = !item.done && !widget.readOnly && widget.day == state.today && !widget.leaving && !_nestingOut;
+    final canDrag = !item.done && !widget.readOnly && widget.day == state.today && !_nestingOut;
     final drag = _TaskDrag(widget.scope, item, widget.day)
       ..fadeForNesting = _fadeForNesting
       ..restoreAfterNesting = _restoreAfterNesting;

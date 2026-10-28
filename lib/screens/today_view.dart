@@ -17,9 +17,10 @@ import '../widgets/tile.dart';
 import '../widgets/todo_panel.dart';
 import '../widgets/welcome_tour.dart';
 
-/// Three columns that exactly fill the window: rituals over the sleep
-/// schedule, today's to-dos, and tomorrow over the journal, lined up with
-/// the rituals and sleep cards. Only a card whose list outgrows it scrolls.
+/// Three columns that exactly fill the window: the week ahead's to-dos,
+/// rituals over the sleep schedule, and what's further ahead over the
+/// journal, lined up with the rituals and sleep cards. Only a card whose
+/// list outgrows it scrolls.
 class TodayView extends StatelessWidget {
   const TodayView({super.key});
 
@@ -27,9 +28,8 @@ class TodayView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.shownDay, s.viewDay, s.today, s.habitsRevision));
+    final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.habitsRevision));
     final day = state.shownDay;
-    final past = state.viewDay != null;
     return LayoutBuilder(
       builder: (context, constraints) {
         // When width is tight (e.g. a tiled window under 860px), scroll sideways
@@ -41,26 +41,20 @@ class TodayView extends StatelessWidget {
         Widget content = Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Expanded(flex: 11, child: _HabitColumn()),
-            const SizedBox(width: _gap),
-            Expanded(
-              flex: 9,
-              child: TourTarget(
-                spot: TourSpot.todayTodos,
-                child: TodoPanel(scope: TodoScope.today, day: past ? day : null),
-              ),
+            const Expanded(
+              flex: 11,
+              child: TourTarget(spot: TourSpot.week, child: WeekCard()),
             ),
+            const SizedBox(width: _gap),
+            const Expanded(flex: 9, child: _HabitColumn()),
             const SizedBox(width: _gap),
             Expanded(
               flex: 9,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: TourTarget(
-                      spot: TourSpot.tomorrowTodos,
-                      child: TodoPanel(scope: TodoScope.tomorrow, day: past ? day : null),
-                    ),
+                  const Expanded(
+                    child: TourTarget(spot: TourSpot.later, child: FurtherAheadCard()),
                   ),
                   const SizedBox(height: _gap),
                   SizedBox(

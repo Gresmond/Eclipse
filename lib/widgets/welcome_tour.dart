@@ -15,8 +15,8 @@ import 'fade_menu.dart';
 enum TourSpot {
   rituals,
   sleep,
-  todayTodos,
-  tomorrowTodos,
+  week,
+  later,
   journal,
   date,
   tabs,
@@ -135,16 +135,17 @@ List<_Step> _steps(AppState state) => [
     TourSpot.sleep,
   ),
   const _Step(
-    'Today’s to-dos',
-    'Type a task and press Enter to add it, then tick it off when done. '
-        'Unfinished tasks carry forward with the day they came from.',
-    TourSpot.todayTodos,
+    'The week ahead',
+    'Every task from today to a week out, under its day. Click Add task under a day, '
+        'then tick tasks off when done. Unfinished tasks carry into Today with the day '
+        'they came from. The repeat button makes a task come round again.',
+    TourSpot.week,
   ),
   const _Step(
-    'Tomorrow',
-    'Plan the next day here. When a new day starts, unfinished Tomorrow tasks move '
-        'into Today automatically.',
-    TourSpot.tomorrowTodos,
+    'Further ahead',
+    'Tasks more than a week away, under their days, and the next time each repeating '
+        'task comes round. They move into the week ahead as their day nears.',
+    TourSpot.later,
   ),
   const _Step(
     'Journal',

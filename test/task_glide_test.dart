@@ -31,7 +31,7 @@ void main() {
         child: MaterialApp(
           theme: buildTheme(palettes.first),
           home: const Scaffold(
-            body: SizedBox(width: 420, height: 550, child: TodoPanel(scope: TodoScope.today)),
+            body: SizedBox(width: 420, height: 550, child: WeekCard()),
           ),
         ),
       ),
@@ -49,7 +49,7 @@ void main() {
     final end = top('Charlie');
     final tick = find
         .descendant(
-          of: find.byKey(ValueKey(state.todos[TodoScope.today]!.first.id)),
+          of: find.byKey(ValueKey((TodoScope.today, state.todos[TodoScope.today]!.first.id))),
           matching: find.byWidgetPredicate((widget) => widget.runtimeType.toString() == '_Check'),
         )
         .first;

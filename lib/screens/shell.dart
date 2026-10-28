@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OverflowBoxFit;
@@ -20,7 +19,6 @@ import '../widgets/page_turn.dart';
 import '../widgets/sync_banner.dart';
 import '../widgets/update_banner.dart';
 import '../widgets/welcome_tour.dart';
-import 'display_view.dart';
 import 'month_view.dart';
 import 'today_view.dart';
 import 'training_view.dart';
@@ -35,7 +33,7 @@ class Shell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.navigation, s.touring, s.showingTraining, s.displayMode));
+    final state = AppScope.watch(context, (s) => (s.navigation, s.touring, s.showingTraining));
     final month = state.viewMonth;
 
     final updater = this.updater;
@@ -50,9 +48,7 @@ class Shell extends StatelessWidget {
           child: FadeThrough(
             deferBuild: true,
             layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
-            child: state.displayMode
-                ? const DisplayView(key: ValueKey('display'))
-                : state.viewingYear
+            child: state.viewingYear
                 ? YearView(key: ValueKey('year ${state.viewYear}'), year: state.viewYear)
                 : month == null
                 ? const TodayView(key: ValueKey('today'))
@@ -108,7 +104,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.navigation, s.displayMode));
+    final state = AppScope.watch(context, (s) => s.navigation);
     final today = state.today;
     final month = state.viewMonth;
     final shown = state.shownDay;
@@ -139,230 +135,130 @@ class _Header extends StatelessWidget {
       color: p.ink,
     );
 
-    final kickerStyle = TextStyle(
-      fontFamily: Fonts.ui,
-      fontSize: 11,
-      letterSpacing: 2.2,
-      fontWeight: FontWeight.w700,
-      color: p.inkMuted.withValues(alpha: 0.8),
-    );
-    final scaler = MediaQuery.textScalerOf(context);
-    final inherited = DefaultTextStyle.of(context);
-    // Measured as the date's Text lays out, inherited style included.
-    double lineHeight(TextStyle style) {
-      final painter = TextPainter(
-        text: TextSpan(text: 'A', style: inherited.style.merge(style)),
-        textDirection: TextDirection.ltr,
-        textScaler: scaler,
-        textHeightBehavior: inherited.textHeightBehavior,
-      )..layout();
-      final height = painter.height;
-      painter.dispose();
-      return height;
-    }
-
-    final display = state.displayMode;
-    // Hidden in Display, but still laid out, so nothing else moves.
-    Widget ritualOnly(Widget child) => IgnorePointer(
-      ignoring: display,
-      child: AnimatedOpacity(
-        opacity: display ? 0 : 1,
-        duration: Motion.morph,
-        curve: Motion.morphCurve,
-        child: ExcludeFocus(excluding: display, child: child),
-      ),
-    );
-
     return Padding(
       // On macOS the window buttons float over the top of the content.
       padding: EdgeInsets.fromLTRB(32, Platform.isMacOS ? 27 : 15, 32, 11),
-      // The date pill sets the header's height.
-      child: SizedBox(
-        height: 2 * 10 + 2 + lineHeight(kickerStyle) + 3 + lineHeight(titleStyle),
-        child: CustomMultiChildLayout(
-          delegate: _HeaderLayout(),
-          children: [
-            LayoutId(
-              id: _HeaderSlot.left,
-              child: ritualOnly(
-                // Fit the visible date, easing the right edge as its length changes.
-                TourTarget(
-                  spot: TourSpot.date,
-                  child: _DateButton(
-                    enabled: month == null && !state.viewingYear,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: p.tile.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
-                      ),
-                      child: AnimatedSize(
-                        duration: Motion.morph,
-                        curve: Motion.morphCurve,
-                        alignment: Alignment.centerLeft,
-                        // Fades with the page below it, rather than snapping first.
-                        child: FadeThrough(
-                          layoutBuilder: (current, previous) => Stack(
-                            clipBehavior: Clip.none,
-                            alignment: Alignment.topLeft,
-                            children: [
-                              // Outgoing text fades without holding the old width.
-                              for (final child in previous) Positioned(left: 0, top: 0, child: child),
-                              ?current,
-                            ],
-                          ),
-                          // Tooltip enablement belongs to each fading label, so it
-                          // cannot remount the pill's size or fade animations.
-                          child: Tooltip(
-                            key: ValueKey((kicker, title)),
-                            message: month == null && !state.viewingYear ? 'Look back at another day' : '',
-                            waitDuration: const Duration(milliseconds: 600),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(kicker.toUpperCase(), style: kickerStyle),
-                                const SizedBox(height: 3),
-                                Text(title, style: titleStyle),
-                              ],
+      child: Row(
+        children: [
+          // Fit the visible date, easing the right edge as its length changes.
+          TourTarget(
+            spot: TourSpot.date,
+            child: _DateButton(
+              enabled: month == null && !state.viewingYear,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                decoration: BoxDecoration(
+                  color: p.tile.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
+                ),
+                child: AnimatedSize(
+                  duration: Motion.morph,
+                  curve: Motion.morphCurve,
+                  alignment: Alignment.centerLeft,
+                  // Fades with the page below it, rather than snapping first.
+                  child: FadeThrough(
+                    layoutBuilder: (current, previous) => Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.topLeft,
+                      children: [
+                        // Outgoing text fades without holding the old width.
+                        for (final child in previous) Positioned(left: 0, top: 0, child: child),
+                        ?current,
+                      ],
+                    ),
+                    // Tooltip enablement belongs to each fading label, so it
+                    // cannot remount the pill's size or fade animations.
+                    child: Tooltip(
+                      key: ValueKey((kicker, title)),
+                      message: month == null && !state.viewingYear ? 'Look back at another day' : '',
+                      waitDuration: const Duration(milliseconds: 600),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            kicker.toUpperCase(),
+                            style: TextStyle(
+                              fontFamily: Fonts.ui,
+                              fontSize: 11,
+                              letterSpacing: 2.2,
+                              fontWeight: FontWeight.w700,
+                              color: p.inkMuted.withValues(alpha: 0.8),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 3),
+                          Text(title, style: titleStyle),
+                        ],
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-            LayoutId(
-              id: _HeaderSlot.right,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: ritualOnly(
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: TourTarget(
-                              spot: TourSpot.tabs,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: p.tile.withValues(alpha: 0.8),
-                                  borderRadius: BorderRadius.circular(30),
-                                  border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(26),
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    clipBehavior: Clip.none,
-                                    child: _TabBar(
-                                      selected: state.viewDay != null
-                                          ? -1
-                                          : state.viewingYear
-                                          ? months.length + 1
-                                          : month == null
-                                          ? 0
-                                          : months.indexOf(month) + 1,
-                                      past: state.viewDay == null
-                                          ? null
-                                          : shown == DateTime(today.year, today.month, today.day - 1)
-                                          ? 'Yesterday'
-                                          : '${shown.day} ${monthNames[shown.month - 1].substring(0, 3)}'
-                                                '${shown.year != today.year ? ' ${shown.year}' : ''}',
-                                      tabs: [
-                                        _Tab(
-                                          label: 'Today',
-                                          selected: month == null && !state.viewingYear && state.viewDay == null,
-                                          onTap: state.showToday,
-                                        ),
-                                        for (final m in months)
-                                          _Tab(
-                                            label: monthNames[m - 1].substring(0, 3),
-                                            selected: month == m,
-                                            isCurrent: state.viewYear == today.year && m == today.month,
-                                            onTap: () => state.showMonth(m),
-                                          ),
-                                        _Tab(label: 'Year', selected: state.viewingYear, onTap: state.showYear),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
+          ),
+          const SizedBox(width: 16),
+          // Takes all the free space (a Spacer beside a Flexible would halve
+          // it), right-aligned, scrolling only when the window is too narrow.
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TourTarget(
+                spot: TourSpot.tabs,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: p.tile.withValues(alpha: 0.8),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(26),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      clipBehavior: Clip.none,
+                      child: _TabBar(
+                        selected: state.viewDay != null
+                            ? -1
+                            : state.viewingYear
+                            ? months.length + 1
+                            : month == null
+                            ? 0
+                            : months.indexOf(month) + 1,
+                        past: state.viewDay == null
+                            ? null
+                            : shown == DateTime(today.year, today.month, today.day - 1)
+                            ? 'Yesterday'
+                            : '${shown.day} ${monthNames[shown.month - 1].substring(0, 3)}'
+                                  '${shown.year != today.year ? ' ${shown.year}' : ''}',
+                        tabs: [
+                          _Tab(
+                            label: 'Today',
+                            selected: month == null && !state.viewingYear && state.viewDay == null,
+                            onTap: state.showToday,
                           ),
-                          const SizedBox(width: 14),
-                          _YearSwitcher(year: state.viewYear),
+                          for (final m in months)
+                            _Tab(
+                              label: monthNames[m - 1].substring(0, 3),
+                              selected: month == m,
+                              isCurrent: state.viewYear == today.year && m == today.month,
+                              onTap: () => state.showMonth(m),
+                            ),
+                          _Tab(label: 'Year', selected: state.viewingYear, onTap: state.showYear),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  const TourTarget(spot: TourSpot.settings, child: _SettingsButton()),
-                  const SizedBox(width: 10),
-                  const TourTarget(spot: TourSpot.appearance, child: _ThemeButton()),
-                ],
+                ),
               ),
             ),
-            LayoutId(id: _HeaderSlot.centre, child: const _ModeToggle()),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-enum _HeaderSlot { left, centre, right }
-
-/// The date on the left, the tabs and buttons on the right, and the mode
-/// toggle at the true centre, easing aside only when the tabs need the room.
-/// The tabs scroll when even that isn't enough.
-class _HeaderLayout extends MultiChildLayoutDelegate {
-  static const _gap = 16.0;
-
-  @override
-  void performLayout(Size size) {
-    final toggle = layoutChild(_HeaderSlot.centre, BoxConstraints.loose(size));
-    final left = layoutChild(_HeaderSlot.left, BoxConstraints.loose(Size(size.width / 2, size.height)));
-    final room = max(0.0, size.width - left.width - toggle.width - 2 * _gap);
-    final right = layoutChild(_HeaderSlot.right, BoxConstraints.loose(Size(room, size.height)));
-    final lowest = left.width + _gap, highest = size.width - right.width - _gap - toggle.width;
-    final x = max(lowest, min((size.width - toggle.width) / 2, highest));
-    double middle(Size child) => (size.height - child.height) / 2;
-    positionChild(_HeaderSlot.left, Offset(0, middle(left)));
-    positionChild(_HeaderSlot.centre, Offset(x, middle(toggle)));
-    positionChild(_HeaderSlot.right, Offset(size.width - right.width, middle(right)));
-  }
-
-  @override
-  bool shouldRelayout(_HeaderLayout old) => false;
-}
-
-/// Ritual or Display, in the tab bar's style.
-class _ModeToggle extends StatelessWidget {
-  const _ModeToggle();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final state = AppScope.watch(context, (s) => s.displayMode);
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: p.tile.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
-      ),
-      child: _TabBar(
-        dividers: false,
-        selected: state.displayMode ? 1 : 0,
-        tabs: [
-          _Tab(label: 'Ritual', selected: !state.displayMode, onTap: () => state.setDisplayMode(false)),
-          _Tab(label: 'Display', selected: state.displayMode, onTap: () => state.setDisplayMode(true)),
+          ),
+          const SizedBox(width: 14),
+          _YearSwitcher(year: state.viewYear),
+          const SizedBox(width: 10),
+          const TourTarget(spot: TourSpot.settings, child: _SettingsButton()),
+          const SizedBox(width: 10),
+          const TourTarget(spot: TourSpot.appearance, child: _ThemeButton()),
         ],
       ),
     );
@@ -406,10 +302,7 @@ class _DateButton extends StatelessWidget {
 /// The tabs in a row, with one highlight pill that glides to the selected
 /// tab instead of each tab lighting up on its own.
 class _TabBar extends StatefulWidget {
-  const _TabBar({required this.tabs, required this.selected, this.past, this.dividers = true});
-
-  /// Today and Year stand apart from the months.
-  final bool dividers;
+  const _TabBar({required this.tabs, required this.selected, this.past});
 
   /// Today first, then the months shown, then the year.
   final List<Widget> tabs;
@@ -545,7 +438,6 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
             ),
           ),
         Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             // Grows in from Today's left, its label easing into view.
             AnimatedBuilder(
@@ -584,7 +476,7 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
               KeyedSubtree(key: _key(i), child: tab),
               const SizedBox(width: 2),
               // Today and Year stand apart from the months.
-              if (widget.dividers && (i == 0 || i == widget.tabs.length - 2)) divider,
+              if (i == 0 || i == widget.tabs.length - 2) divider,
             ],
           ],
         ),
