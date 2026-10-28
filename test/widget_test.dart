@@ -370,8 +370,9 @@ void main() {
       await state.setJournal(now, 'The 23rd');
 
       await state.restore(backups.list().firstWhere((b) => b.day == now));
-      expect(files.fileFor(DateTime(2026, 10, 22)).readAsStringSync(), contains('The 22nd, as first written'));
-      expect(files.fileFor(now).existsSync(), isFalse, reason: 'the copy has nothing for the 23rd');
+      final the22nd = files.fileFor(DateTime(2026, 10, 22)).readAsStringSync();
+      expect(the22nd, allOf(contains('The 22nd, as first written'), contains('The 22nd, rewritten')));
+      expect(files.fileFor(now).readAsStringSync(), contains('The 23rd'), reason: 'a restore never removes writing');
       store.close();
     });
   });
@@ -1072,10 +1073,10 @@ void main() {
 
     await tester.tap(find.text('Restore').at(1)); // Thursday 22 October
     await tester.pumpAndSettle();
-    expect(find.text('Replaces everything you have now.'), findsOneWidget);
+    expect(find.text('Replaces everything you have now, except journal writing.'), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(find.text('Replaces everything you have now.'), findsOneWidget);
+    expect(find.text('Replaces everything you have now, except journal writing.'), findsOneWidget);
     await _shoot(tester, 'backups_confirm');
     expect(state.statusOf(now, weights), HabitStatus.done, reason: 'nothing happens before confirming');
 
@@ -1085,7 +1086,7 @@ void main() {
     });
     await tester.pumpAndSettle();
     expect(state.statusOf(now, weights), HabitStatus.none);
-    expect(find.text('Written after the backup'), findsNothing, reason: 'the journal reloads too');
+    expect(find.text('Written after the backup'), findsOneWidget, reason: 'a restore never removes writing');
     expect(find.textContaining('Restored 22 October'), findsOneWidget);
     await _shoot(tester, 'backups_restored');
     state.store.close();
@@ -1219,14 +1220,15 @@ void main() {
     expect(field().selection, const TextSelection.collapsed(offset: 17), reason: 'still after what you wrote');
     expect(tester.widget<EditableText>(find.byType(EditableText).last).focusNode.hasFocus, isTrue);
 
-    // Typing not saved yet is newer than anything stored, so it stays.
+    // Typing not saved yet stays where you are; what came in underneath it
+    // is kept too, once it's saved.
     await tester.enterText(journal, 'Typing');
-    store.setJournal('2026-10-23', 'Older');
+    store.setJournal('2026-10-23', 'From the laptop');
     state.notifyListeners();
     await tester.pump();
     expect(field().text, 'Typing');
     await tester.pump(const Duration(milliseconds: 400));
-    expect(store.journal('2026-10-23'), 'Typing');
+    expect(store.journal('2026-10-23'), normaliseNote('Typing${Store.journalBreak}From the laptop'));
   });
 
   testWidgets('the month view fits rituals and sleep schedule without scrolling', (tester) async {

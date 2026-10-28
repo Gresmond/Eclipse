@@ -612,7 +612,9 @@ class _JournalTextState extends State<_JournalText> {
     if (controller == null) {
       _day = _state.shownDay;
       _past = !_state.canEditDay(_day);
-      _controller = TextEditingController(text: _state.journalOf(_day));
+      final text = _state.journalOf(_day);
+      _state.journalShown(_day, text);
+      _controller = TextEditingController(text: text);
       return;
     }
     _past = !_state.canEditDay(_day);
@@ -623,6 +625,7 @@ class _JournalTextState extends State<_JournalText> {
     if (_state.hasJournalDraft(_day)) return;
     final text = _state.journalOf(_day);
     final old = controller.value;
+    _state.journalShown(_day, text);
     if (text == old.text) return;
     final shift = old.text.isEmpty ? 0 : max(text.indexOf(old.text), 0);
     controller.value = TextEditingValue(

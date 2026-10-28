@@ -706,6 +706,12 @@ extension on _SettingsDialogState {
             ),
           ],
         ),
+        if (sync.newerFrom.isNotEmpty)
+          Text(
+            'Some changes from ${_names(sync.newerFrom)} need a newer version of Eclipse. '
+            'They come in once you update.',
+            style: small,
+          ),
         const SizedBox(height: 4),
         if (sync.needsJournalSignIn) ...[
           Text(
@@ -818,6 +824,12 @@ extension on _SettingsDialogState {
       _ => 'at ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
     };
   }
+
+  /// "Laptop", "Laptop and PC", "Laptop, PC and Mac".
+  static String _names(Set<String> names) {
+    final list = names.toList()..sort();
+    return list.length == 1 ? list.single : '${list.sublist(0, list.length - 1).join(', ')} and ${list.last}';
+  }
 }
 
 String _shortPath(String path) {
@@ -872,7 +884,7 @@ class _BackupRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  confirming ? 'Replaces everything you have now.' : subtitle,
+                  confirming ? 'Replaces everything you have now, except journal writing.' : subtitle,
                   style: TextStyle(fontFamily: Fonts.body, fontSize: 12.5, color: p.inkMuted),
                 ),
               ],

@@ -9,10 +9,19 @@ import '../training.dart';
 
 part 'store_todos.dart';
 
+/// How sync hears of writes the app makes by itself rather than for an
+/// edit: [before] sends the edits made until then, and [after] what the
+/// write changed, as [Store.local] or [Store.weak] says.
+abstract interface class AutomaticWrites {
+  /// [day]: the day a [Store.local] write moves things on to.
+  void before({required bool local, String? day});
+  void after({required bool local});
+}
+
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 25;
+  static const schemaVersion = 26;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -45,6 +54,49 @@ class Store {
   /// level of rituals and to-dos.
   Database get raw => _db;
 
+  /// Set by sync; null while nothing syncs.
+  AutomaticWrites? automatic;
+
+  /// The version this database was upgraded from when it opened, for sync
+  /// to take in what the older version couldn't keep; null if it wasn't.
+  int? upgradedFrom;
+
+  /// [body] moves things on by itself, as a day starting does. Sync never
+  /// sends what it changes: each computer does it itself, from what it has,
+  /// so one that's behind can't undo an edit it hasn't heard of.
+  T local<T>(T Function() body, {String? day}) => _automatic(body, local: true, day: day);
+
+  /// [body] fills something in for you, as a new month's list copied from
+  /// the month before. Sync sends it, but any edit it hadn't heard of wins.
+  T weak<T>(T Function() body) => _automatic(body, local: false);
+
+  var _automaticDepth = 0;
+
+  T _automatic<T>(T Function() body, {required bool local, String? day}) => transaction(() {
+    // Inside another, it's part of that one.
+    if (_automaticDepth > 0) return body();
+    _automaticDepth++;
+    try {
+      automatic?.before(local: local, day: day);
+      final result = body();
+      automatic?.after(local: local);
+      return result;
+    } finally {
+      _automaticDepth--;
+    }
+  });
+
+  /// Between two texts of a day's journal kept together.
+  static const journalBreak = '\n\n---\n\n';
+
+  /// Both texts, unless one already holds the other: so neither's writing
+  /// is lost.
+  static String keepWriting(String first, String second) {
+    if (second.trim().isEmpty || first.contains(second)) return first;
+    if (first.trim().isEmpty || second.contains(first)) return second;
+    return '$first$journalBreak$second';
+  }
+
   void close() => _db.close();
 
   /// Puts every save so far safely on the disk, so a power cut can't take
@@ -60,7 +112,9 @@ class Store {
     part.renameSync(path);
   }
 
-  /// Replaces everything in this database with the copy at [path].
+  /// Replaces everything in this database with the copy at [path], except
+  /// that journal writing is never lost: a day the copy has no entry for
+  /// keeps its text, and one written differently since keeps both.
   ///
   /// What sync knows of your other computers stays as it was, and every
   /// row is marked changed, so the restored data is sent to them as new
@@ -107,8 +161,13 @@ class Store {
     final seen = _db.select('SELECT * FROM sync_seen').toList();
     final db = target.raw;
     target.transaction(() {
+      for (final e in journalEntries()) {
+        target.setJournal(e.day, keepWriting(target.journal(e.day), e.text));
+      }
       db.execute('DELETE FROM sync_reg');
       db.execute('DELETE FROM sync_seen');
+      // The copy's own day starts are sent as it has them: it's restored exactly.
+      db.execute('DELETE FROM sync_local');
       final reg = db.prepare('INSERT INTO sync_reg VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
       for (final r in known) {
         reg.execute([
@@ -150,6 +209,7 @@ class Store {
       'sync_reg': 'kind, rowkey, field, value, ts, origin, vv, journal_versions',
       'sync_dirty': 'kind, rowkey, at',
       'sync_seen': 'file, stamp',
+      'sync_local': 'kind, rowkey, field, value',
     };
     for (final e in columns.entries) {
       _db.select('SELECT ${e.value} FROM ${e.key} LIMIT 0');
@@ -632,11 +692,30 @@ class Store {
         _db.execute('PRAGMA user_version = 25');
       });
     }
+    if (version < 26) {
+      _db.execute('''
+        -- What a day start moved on this computer, field by field: the
+        -- value it left, which sync doesn't send as an edit.
+        CREATE TABLE IF NOT EXISTS sync_local (
+          kind TEXT NOT NULL,
+          rowkey TEXT NOT NULL,
+          field TEXT NOT NULL,
+          value TEXT NOT NULL,
+          PRIMARY KEY (kind, rowkey, field)
+        ) WITHOUT ROWID;
+        PRAGMA user_version = 26;
+      ''');
+    }
 
-    // A migration can change synced rows where the sync triggers can't see
-    // it (a column dropped or added back, say), so after any upgrade sync
-    // compares every row with what it last sent and sends what differs.
-    if (version >= 1 && version < schemaVersion) {
+    if (version >= 1 && version < schemaVersion) upgradedFrom = version;
+    // Versions before 25 changed synced rows where the sync triggers
+    // couldn't see it (a column dropped and added back), so upgrading from
+    // one compares every row with what sync last sent and sends what
+    // differs. Since then, a migration that changes synced rows does it
+    // through the triggers (weakly, see [weak]), and sync takes in what an
+    // older version couldn't keep rather than sending its blanks (see
+    // SyncEngine.fields); comparing every row would send each day start.
+    if (version >= 1 && version < 25) {
       transaction(() {
         _db.execute('INSERT OR IGNORE INTO sync_dirty SELECT DISTINCT kind, rowkey, $_now FROM sync_reg');
         markAllChanged();
@@ -740,8 +819,11 @@ class Store {
   }
 
   List<Habit> monthHabits(int year, int month) => [
+    // Rituals reordered on two computers at once can share a place: they
+    // sort the same on both.
     for (final r in _db.select(
-      'SELECT habit_id, name, note, added_on, days FROM month_habits WHERE year = ? AND month = ? ORDER BY position',
+      'SELECT habit_id, name, note, added_on, days FROM month_habits JOIN habits h ON h.id = habit_id '
+      'WHERE year = ? AND month = ? ORDER BY position, h.uid',
       [year, month],
     ))
       Habit(
@@ -766,6 +848,18 @@ class Store {
     }
     return null;
   }
+
+  /// Saves the month's list as a copy of the nearest month's, unless it
+  /// has its own. Returns whether it saved one. Filled in, not an edit: an
+  /// edit made to the month on another computer that this one hasn't heard
+  /// of yet wins over it.
+  bool ensureMonth(int year, int month) => weak(() {
+    if (hasMonth(year, month)) return false;
+    final source = nearestMonthWithHabits(year, month);
+    if (source != null) copyMonth(source, (year, month));
+    initializeMonth(year, month);
+    return true;
+  });
 
   /// Whether the ritual was on any month's list before [year].
   bool habitBeforeYear(int habitId, int year) =>
@@ -1037,7 +1131,7 @@ class Store {
   String _newUid() => _db.select('SELECT lower(hex(randomblob(8)))').first.columnAt(0) as String;
 
   List<Exercise> exercises() => [
-    for (final r in _db.select('SELECT * FROM exercises ORDER BY name COLLATE NOCASE'))
+    for (final r in _db.select('SELECT * FROM exercises ORDER BY name COLLATE NOCASE, uid'))
       Exercise(
         uid: r['uid'] as String,
         name: r['name'] as String,
@@ -1060,7 +1154,7 @@ class Store {
 
   /// Every set logged, oldest day first, in order within each day.
   List<TrainingSet> trainingSets() => [
-    for (final r in _db.select('SELECT * FROM training_sets ORDER BY day, position'))
+    for (final r in _db.select('SELECT * FROM training_sets ORDER BY day, position, uid'))
       TrainingSet(
         uid: r['uid'] as String,
         day: r['day'] as String,

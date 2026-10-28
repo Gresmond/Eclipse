@@ -41,7 +41,9 @@ class AppState extends ChangeNotifier {
     today = dayOf(_clock(), dayStartHour);
     lateNight = dateOnly(_clock()) != today;
     viewYear = today.year;
-    firstRun = store.isEmpty;
+    // Signed in already, an empty store fills from sync: no examples are
+    // added to your history.
+    firstRun = store.isEmpty && !(sync?.isOn ?? false);
     if (firstRun) _seed();
     _backUp();
     _savesFiles = savesJournalFiles;
@@ -91,7 +93,8 @@ class AppState extends ChangeNotifier {
     super.dispose();
   }
 
-  /// The store was empty: a new install, or a new, empty data folder.
+  /// The store was empty and sync off: a new install, or a new, empty data
+  /// folder.
   late final bool firstRun;
 
   /// The welcome tour is showing.
@@ -601,6 +604,9 @@ class AppState extends ChangeNotifier {
   @override
   void notifyListeners() {
     _firstDay = null;
+    // Each change is an edit from the moment it's made, not from whenever
+    // sync next looks.
+    if (!closing && !_disposed) sync?.recordEdits();
     super.notifyListeners();
   }
 
@@ -643,7 +649,15 @@ class AppState extends ChangeNotifier {
     String key(int? m) => m == null ? '' : clockKey(m);
     final next = DateTime(year, month + 1);
     if (!isFutureMonth(next.year, next.month) && store.sleepNote(next.year, next.month, item, own: true) == null) {
-      store.setSleepNote(next.year, next.month, item, key(sleepHabitsFor(next.year, next.month)[item.index].minutes));
+      // Kept as it was, not set: a time set there on another computer wins.
+      store.weak(
+        () => store.setSleepNote(
+          next.year,
+          next.month,
+          item,
+          key(sleepHabitsFor(next.year, next.month)[item.index].minutes),
+        ),
+      );
     }
     store.setSleepNote(year, month, item, key(minutes));
     _monthSleep.clear();
@@ -680,10 +694,7 @@ class AppState extends ChangeNotifier {
   List<Habit> _savedList(int year, int month) {
     final cached = _monthHabits[(year, month)];
     if (cached != null) return cached;
-    if (!store.hasMonth(year, month)) {
-      final source = store.nearestMonthWithHabits(year, month);
-      if (source != null) store.copyMonth(source, (year, month));
-      store.initializeMonth(year, month);
+    if (store.ensureMonth(year, month)) {
       _previewHabits.clear();
       habitsRevision++;
     }
@@ -965,10 +976,18 @@ class AppState extends ChangeNotifier {
   Future<void> setJournal(DateTime day, String text) {
     text = normaliseNote(text);
     store.setJournal(dateKey(day), text);
+    _journalShown = (day: day, text: store.journal(dateKey(day)));
     journalRevision++;
     notifyListeners();
     return _writeJournalFile(day, text);
   }
+
+  /// The entry the journal's editor has, as stored, by day: what typing
+  /// there is on top of.
+  ({DateTime day, String text})? _journalShown;
+
+  /// The editor now has [text] as [day]'s stored entry.
+  void journalShown(DateTime day, String text) => _journalShown = (day: day, text: text);
 
   /// Typed but not saved yet: saved a moment after typing stops, rather
   /// than on every keystroke, and at once before sync merges, a restore,
@@ -992,7 +1011,19 @@ class AppState extends ChangeNotifier {
     final draft = _draft;
     if (draft == null) return;
     _draft = null;
-    unawaited(setJournal(draft.day, draft.text));
+    final stored = store.journal(dateKey(draft.day));
+    final shown = _journalShown?.day == draft.day ? _journalShown!.text : stored;
+    // Another computer's text came in as a key was pressed, before the
+    // editor showed it: both kept.
+    unawaited(setJournal(draft.day, stored == shown ? draft.text : _typedOver(shown, draft.text, stored)));
+  }
+
+  /// [typed] on top of [shown], saved where [stored] replaced it meanwhile.
+  static String _typedOver(String shown, String typed, String stored) {
+    if (shown.trim().isNotEmpty && stored.contains(shown) && !typed.contains(stored) && !stored.contains(typed)) {
+      return stored.replaceFirst(shown, typed);
+    }
+    return Store.keepWriting(typed, stored);
   }
 
   /// Why the journal's files aren't being saved, for the folder button;

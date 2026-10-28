@@ -21,8 +21,9 @@ import 'sync.dart';
 /// sync.json, so a restored backup or a moved data folder doesn't change it.
 class SyncService extends ChangeNotifier {
   SyncService._(this.home, this.store, this._config, this._connect, this._signIn) {
-    engine = SyncEngine(store, machine);
+    engine = SyncEngine(store, machine)..offset = _config['clock'] as int? ?? 0;
     folder = SyncFolder(Directory(p.join(home.path, 'sync')), machine, Platform.localHostname);
+    _checkNewer();
   }
 
   /// [connect] and [signIn] stand in for Google in tests.
@@ -65,12 +66,21 @@ class SyncService extends ChangeNotifier {
   bool get isOn => _config['refresh'] is String;
 
   /// Account identity survives signing out; sync history belongs to it.
+  /// A computer that hasn't synced yet isn't returning, whatever the
+  /// account: it joins like a new one.
   bool isReturning(GoogleAccount account) {
+    if (!hasSynced) return false;
+    if (_sharesHistoryWith == account.identity) return true;
     final id = _config['accountId'] as String?;
     return id != null
         ? id == account.identity
         : (_config['accountEmail'] as String?)?.toLowerCase() == account.email.toLowerCase();
   }
+
+  /// The account [look] found already holds history this computer shares,
+  /// though sync's settings here don't say so (they were lost, the data
+  /// folder kept): signing in merges, never replaces.
+  String? _sharesHistoryWith;
 
   bool needsAccountChoice(GoogleAccount account) => hasSynced && !isReturning(account);
 
@@ -152,7 +162,28 @@ class SyncService extends ChangeNotifier {
     });
   }
 
-  bool get _changed => store.raw.select('SELECT 1 FROM sync_dirty LIMIT 1').isNotEmpty;
+  bool get _changed => store.raw.select('SELECT 1 FROM sync_dirty LIMIT 1').isNotEmpty || engine.latest > _pushed;
+
+  /// Records what was just changed here as edits, at the time they were
+  /// made: sent at the next round, even if that's days away offline. Not
+  /// before the first sign-in, which takes everything as it is.
+  void recordEdits() {
+    if (hasSynced) engine.flush();
+  }
+
+  /// The computers, by name, some of whose changes need a newer version of
+  /// Eclipse to show here.
+  Set<String> newerFrom = {};
+
+  void _checkNewer() {
+    final names = (_config['names'] ??= <String, dynamic>{}) as Map<String, dynamic>;
+    names.addAll(folder.names);
+    newerFrom = {
+      ...folder.newer,
+      for (final id in engine.newerOrigins)
+        if (id != machine) names[id] as String? ?? 'another computer',
+    };
+  }
 
   /// Syncs unless a round started in the last 20 seconds: for when the
   /// window comes back to the front, to show the latest from elsewhere.
@@ -215,9 +246,16 @@ class SyncService extends ChangeNotifier {
     if (folder.dir.existsSync()) folder.dir.deleteSync(recursive: true);
     _config
       ..remove('down')
-      ..remove('up');
+      ..remove('up')
+      ..remove('ids');
     _drive = _connect(account.refreshToken);
-    await _pull(_drive!);
+    final mine = await _pull(_drive!);
+    final there = {...folder.computers, if (mine.isNotEmpty) machine};
+    _sharesHistoryWith =
+        hasSynced &&
+            store.raw.select('SELECT DISTINCT origin FROM sync_reg').any((r) => there.contains(r['origin'] as String))
+        ? account.identity
+        : null;
     return folder.hasOthers;
   }
 
@@ -238,7 +276,16 @@ class SyncService extends ChangeNotifier {
       _deliver(folder.read(engine));
     } else {
       if (switching) engine.forgetSync();
-      engine.claimAll();
+      // Back with history already shared: only edits go up, never what the
+      // app did by itself meanwhile. The first computer, or one moving its
+      // data to another account, sends everything as it is.
+      if (hasSynced) {
+        engine
+          ..adoptUnsent(folder.latestSent())
+          ..flush();
+      } else {
+        engine.claimAll();
+      }
     }
     _forgetJournalFolder();
     _config
@@ -296,40 +343,81 @@ class SyncService extends ChangeNotifier {
   }
 
   /// Copies down every other computer's file that's new or changed, into
-  /// the folder here, and returns this computer's own, by name.
+  /// the folder here, and returns this computer's own, by name. Its own
+  /// come down only when the copy here is gone (after signing in again,
+  /// say), so any of its edits the database here lost come back.
   Future<Map<String, String>> _pull(SyncDrive drive) async {
-    final down = _seen('down'), mine = <String, String>{};
-    for (final f in await drive.list()) {
+    final down = _seen('down'), ids = _seen('ids'), mine = <String, String>{};
+    final files = await drive.list(), seen = <String, dynamic>{}, copies = <String, int>{};
+    for (final f in files) {
+      copies[f.name] = (copies[f.name] ?? 0) + 1;
+    }
+    for (final f in files) {
       final (who, day) = _split(f.name) ?? (null, null);
       if (who == null || day == null) continue;
+      // Two files of one name (Drive's list lagged behind a new one): each
+      // is read.
+      final file = File(
+        p.join(folder.dir.path, who, copies[f.name]! > 1 ? '${p.basenameWithoutExtension(day)}~${f.id}.json' : day),
+      );
       if (who == machine) {
-        mine[f.name] = f.id;
+        if (mine[f.name] == null || f.id == ids[f.name]) mine[f.name] = f.id;
+        if (await file.exists()) continue;
+      } else if (down[f.id] == f.modified && await file.exists()) {
+        seen[f.id] = f.modified;
         continue;
       }
-      if (down[f.name] == f.modified) continue;
-      final file = File(p.join(folder.dir.path, who, day));
+      final bytes = await drive.download(f.id);
+      try {
+        jsonDecode(utf8.decode(bytes));
+      } on FormatException {
+        continue; // cut short: fetched again next round
+      }
       await file.parent.create(recursive: true);
       final part = File('${file.path}.part');
-      await part.writeAsBytes(await drive.download(f.id), flush: true);
+      await part.writeAsBytes(bytes, flush: true);
       await part.rename(file.path);
-      down[f.name] = f.modified;
+      if (who != machine) seen[f.id] = f.modified;
     }
+    // By id, as names can repeat; files gone from Drive are forgotten.
+    _config['down'] = seen;
     return mine;
   }
 
-  /// Copies up this computer's files written since they last went.
+  /// Copies up this computer's files written since they last went. A file
+  /// made here is remembered, so one Drive doesn't list yet isn't made twice.
   Future<void> _push(SyncDrive drive, Map<String, String> there) async {
-    final up = _seen('up');
+    final up = _seen('up'), ids = _seen('ids');
     if (!folder.mine.existsSync()) return;
     for (final f in folder.mine.listSync().whereType<File>()) {
-      if (!f.path.endsWith('.json')) continue;
+      if (!f.path.endsWith('.json') || p.basename(f.path).contains('~')) continue;
       final name = '${machine}_${p.basename(f.path)}';
       final stat = f.statSync();
       final stamp = '${stat.size}:${stat.modified.millisecondsSinceEpoch}';
       if (up[name] == stamp && there.containsKey(name)) continue;
-      await drive.upload(name, await f.readAsBytes(), id: there[name]);
+      final bytes = await f.readAsBytes(), id = there[name] ?? ids[name] as String?;
+      final sent = DateTime.now();
+      DriveFile made;
+      try {
+        made = await drive.upload(name, bytes, id: id);
+      } on DriveError catch (e) {
+        if (!e.notFound || id == null) rethrow;
+        made = await drive.upload(name, bytes); // deleted from Drive: made again
+      }
+      _timed(sent, made.modified);
+      ids[name] = made.id;
       up[name] = stamp;
     }
+  }
+
+  /// Puts this computer's clock right by Google's, from a file just written:
+  /// Drive stamps it with its own time. Within a second is network time
+  /// doing its job, and left alone.
+  void _timed(DateTime sent, String modified) {
+    final server = DateTime.tryParse(modified), back = DateTime.now();
+    if (server == null || back.difference(sent) > const Duration(seconds: 10)) return;
+    final behind = server.millisecondsSinceEpoch - (sent.millisecondsSinceEpoch + back.millisecondsSinceEpoch) ~/ 2;
+    engine.offset = _config['clock'] = behind.abs() < 1000 ? 0 : behind;
   }
 
   /// A file in Drive's name, like a1b2c3d4e5f6a7b8_2026-10-24.json, as the
@@ -356,14 +444,19 @@ class SyncService extends ChangeNotifier {
     busy = true;
     notifyListeners();
     try {
+      engine.flush();
       final drive = _signedIn;
       final mine = await _pull(drive);
       if (_stopped) return;
       final incoming = await folder.readAsync(engine, beforeMerge: beforeMerge, canMerge: () => !_stopped);
       if (_stopped) return;
       _deliver(incoming);
+      _checkNewer();
       engine.flush();
       final latest = engine.latest;
+      // On the disk before it's recorded as sent, so a power cut can't leave
+      // the others with edits this computer has lost.
+      store.flushToDisk();
       await folder.write(engine, _pushed);
       if (_stopped) return;
       await _push(drive, mine);
@@ -375,7 +468,6 @@ class SyncService extends ChangeNotifier {
         await _copyJournal(drive as JournalDrive);
         if (_stopped) return;
       }
-      store.flushToDisk();
       lastSynced = DateTime.now();
       error = null;
     } on DriveError catch (e) {

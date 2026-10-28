@@ -42,8 +42,20 @@ class Incoming {
 /// file per day of changes, so no file is ever written in two places.
 /// Merging takes whichever edit saw the other; between two that didn't, the
 /// later one wins, except for the journal, which keeps both texts.
-class SyncEngine {
-  SyncEngine(this.store, this.me);
+///
+/// What the app does by itself is never an edit that can beat yours: a day
+/// start's moves aren't sent at all ([Store.local]), and what it fills in,
+/// like a new month's list, goes without counting as having seen anything
+/// ([Store.weak]), so any edit it hadn't heard of wins over it.
+class SyncEngine implements AutomaticWrites {
+  /// [clock] stands in for the time, in tests.
+  SyncEngine(this.store, this.me, {this._clock}) {
+    store.automatic = this;
+    if (store.upgradedFrom case final from?) {
+      store.upgradedFrom = null;
+      _upgrade(from);
+    }
+  }
 
   final Store store;
 
@@ -52,13 +64,36 @@ class SyncEngine {
 
   Database get _db => store.raw;
 
+  /// Milliseconds this computer's clock is behind Google's; its times are
+  /// put right by it.
+  int offset = 0;
+
+  final int Function()? _clock;
+
+  int _now() => (_clock?.call() ?? DateTime.now().millisecondsSinceEpoch) + offset;
+
+  /// How far past now another computer's times count here, so one with a
+  /// badly wrong clock can't push every later edit's time out with it.
+  static const _ahead = Duration.millisecondsPerDay;
+
   int? _last;
 
-  /// [at], or later if a register is newer, so each edit sorts after
-  /// everything this computer had seen when it was made.
+  /// What this computer's next edit must come after: its own latest, so
+  /// they always go up, and the others' latest, up to a day ahead.
+  int get _seen => _last ??= () {
+    final r = _db.select(
+      'SELECT MAX(CASE WHEN origin = ?1 THEN ts END), MAX(CASE WHEN origin != ?1 THEN ts END) FROM sync_reg',
+      [me],
+    ).first;
+    return max(r.columnAt(0) as int? ?? 0, min(r.columnAt(1) as int? ?? 0, _now() + _ahead));
+  }();
+
+  /// [at] (when the row was written, by this computer's clock), or later
+  /// if a register is newer, so each edit sorts after everything this
+  /// computer had seen when it was made.
   int _tick([int? at]) {
-    _last ??= _db.select('SELECT MAX(ts) FROM sync_reg').first.columnAt(0) as int? ?? 0;
-    return _last = max(at ?? DateTime.now().millisecondsSinceEpoch, _last! + 1);
+    final now = _now();
+    return _last = max(at == null ? now : min(at + offset, now), _seen + 1);
   }
 
   // Rows as registers
@@ -67,6 +102,54 @@ class SyncEngine {
 
   /// Kinds whose rows can be removed; the others always exist, blank.
   static const _removable = {'month_habit', 'todo', 'exercise', 'training_set'};
+
+  /// What each kind of row keeps, by field, with the database version that
+  /// first kept it. An older version keeps another computer's edit of a
+  /// field it doesn't have only as a register, so upgrading takes those in
+  /// rather than sending the blanks it had (see [_upgrade]). A field added
+  /// later goes here with the version that adds it.
+  static const fields = <String, Map<String, int>>{
+    'habit_month': {'initialized': 9},
+    'todo_history': {'snapshot': 9},
+    'month_habit': {_present: 8, 'name': 8, 'position': 8, 'note': 8, 'added_on': 14, 'days': 18},
+    'entry': {'status': 8, 'note': 8},
+    'todo': {
+      _present: 8,
+      'scope': 8,
+      'period': 8,
+      'text': 8,
+      'done': 8,
+      'carried': 8,
+      'since': 8,
+      'due_date': 10,
+      'return_to_tomorrow': 11,
+      'return_scope': 12,
+      'defer_promotion_day': 12,
+      'subtasks': 13,
+      'done_at': 17,
+    },
+    'journal': {'text': 8},
+    'sleep_note': {'note': 8},
+    'setting': {'value': 8},
+    'exercise': {_present: 22, 'name': 22, 'muscle': 22, 'bodyweight': 22},
+    'training_set': {_present: 22, 'day': 22, 'exercise': 22, 'position': 22, 'weight': 22, 'reps': 22},
+  };
+
+  /// A to-do's fields that say where it is. A change of whether it's done,
+  /// its list or its day sends them all, so its place goes as a whole: a
+  /// tick on one computer and a move on the other can't mix, and the day a
+  /// day start had moved it to here goes with a tick.
+  static const _place = [
+    'scope',
+    'period',
+    'carried',
+    'done',
+    'done_at',
+    'return_to_tomorrow',
+    'return_scope',
+    'defer_promotion_day',
+  ];
+  static const _moves = {'scope', 'period', 'done'};
 
   static (String, String) _split(String rowkey) {
     final i = rowkey.indexOf('/');
@@ -134,7 +217,8 @@ class SyncEngine {
       case 'training_set':
         fields = row('SELECT day, exercise, position, weight, reps FROM training_sets WHERE uid = ?', [rowkey]);
       default:
-        throw ArgumentError(kind);
+        // From a newer version: kept as registers until this one is updated.
+        return const {};
     }
     return fields == null ? {_present: false} : {...fields, _present: true};
   }
@@ -144,9 +228,13 @@ class SyncEngine {
     return _db.select('SELECT id FROM habits WHERE uid = ?', [uid]).first['id'] as int;
   }
 
+  /// What a row of a kind that can be removed can't be without: until it's
+  /// come (in a file not read yet), an edit of it waits, the row not there.
+  static const _made = {'todo': 'since', 'month_habit': 'name', 'exercise': 'name', 'training_set': 'exercise'};
+
   /// Makes the row match [f], its fields from the registers.
   void _write(String kind, String rowkey, Map<String, Object?> f) {
-    final gone = _removable.contains(kind) && f[_present] != true;
+    final gone = _removable.contains(kind) && (f[_present] != true || f[_made[kind]] == null);
     switch (kind) {
       case 'habit_month':
         final (y, m) = _month(rowkey);
@@ -273,39 +361,193 @@ class SyncEngine {
 
   void _put(_Reg r) => _db.execute('INSERT OR REPLACE INTO sync_reg VALUES (?, ?, ?, ?, ?, ?, ?, ?)', r.row);
 
+  /// What a day start left in the row's fields, as [_markLocal] marked it.
+  Map<String, String> _marks(String kind, String rowkey) => {
+    for (final r in _db.select('SELECT field, value FROM sync_local WHERE kind = ? AND rowkey = ?', [kind, rowkey]))
+      r['field'] as String: r['value'] as String,
+  };
+
   /// Turns rows written here since last time into edits of this computer.
-  void flush() {
+  void flush() => _flush();
+
+  /// [weak]: filled in, not edited, so they don't count as having seen
+  /// anything: an edit another computer made that this one hadn't heard of
+  /// wins over them. [skip]: fields left as they are.
+  void _flush({bool weak = false, Set<(String, String)> skip = const {}}) {
     final dirty = _db.select('SELECT kind, rowkey, at FROM sync_dirty ORDER BY at');
     if (dirty.isEmpty) return;
     store.transaction(() {
       for (final d in dirty) {
         final kind = d['kind'] as String, rowkey = d['rowkey'] as String;
-        for (final MapEntry(key: field, value: v) in _read(kind, rowkey).entries) {
+        final now = _read(kind, rowkey), local = _marks(kind, rowkey);
+        final changed = <String, Object?>{};
+        for (final MapEntry(key: field, value: v) in now.entries) {
+          if (skip.contains((kind, field))) continue;
           final value = jsonEncode(v);
+          if (local[field] case final left?) {
+            // Set by a day start: an edit once it's changed from that, even
+            // back to what sync has (moved back to the list it came from).
+            if (left == value) continue;
+          } else {
+            final old = _reg(kind, rowkey, field);
+            if (old == null ? _blank(v) : old.value == value) continue;
+          }
+          changed[field] = v;
+        }
+        if (changed.isEmpty) continue;
+        if (local.isNotEmpty) _movedEdited = true;
+        if (kind == 'todo' && changed.keys.any(_moves.contains)) {
+          for (final field in _place) {
+            changed.putIfAbsent(field, () => now[field]);
+          }
+        }
+        // An edit says the row is there, so one made after it was deleted
+        // elsewhere brings it back; the later of the two wins.
+        if (_removable.contains(kind) && now[_present] == true) changed[_present] = true;
+        final ts = _tick(d['at'] as int);
+        for (final MapEntry(key: field, value: v) in changed.entries) {
           final old = _reg(kind, rowkey, field);
-          if (old == null ? _blank(v) : old.value == value) continue;
-          final ts = _tick(d['at'] as int);
-          final vv = {...?old?.vv, me: ts};
+          final vv = weak ? {...?old?.vv} : {...?old?.vv, me: ts};
           _put(
             _Reg(
               kind,
               rowkey,
               field,
-              value,
+              jsonEncode(v),
               ts,
               me,
               vv,
-              kind == 'journal' && field == 'text' ? [_JournalVersion(me, ts, v as String, vv)] : null,
+              kind == 'journal' && field == 'text' && !weak ? [_JournalVersion(me, ts, v as String, vv)] : null,
             ),
           );
+          if (local.containsKey(field)) {
+            _db.execute('DELETE FROM sync_local WHERE kind = ? AND rowkey = ? AND field = ?', [kind, rowkey, field]);
+          }
         }
       }
       _db.execute('DELETE FROM sync_dirty');
     });
   }
 
-  /// Makes every row an edit of this computer: the first computer to sync.
+  /// Whether this computer has synced. Until it has, what the app does by
+  /// itself is left to its first sign-in, which takes everything as it is.
+  bool get _engaged => _db.select('SELECT 1 FROM sync_reg LIMIT 1').isNotEmpty;
+
+  /// Before the app writes by itself: what was edited until now goes as
+  /// edits, with their own times. The first day start of a day (or the
+  /// next after an edit of something one had moved) then works from the
+  /// edits alone: what the ones before moved here goes back to how sync has
+  /// it, so this computer moves things on just as the others do.
+  @override
+  void before({required bool local, String? day}) {
+    if (!_engaged) return;
+    flush();
+    if (local && (day != _startedFor || _movedEdited)) {
+      _resetLocal();
+      _startedFor = day;
+      _movedEdited = false;
+    }
+  }
+
+  String? _startedFor;
+  var _movedEdited = false;
+
+  void _resetLocal() {
+    final rows = {
+      for (final r in _db.select('SELECT DISTINCT kind, rowkey FROM sync_local'))
+        (r['kind'] as String, r['rowkey'] as String),
+    };
+    if (rows.isEmpty) return;
+    store.transaction(() {
+      for (final (kind, rowkey) in rows) {
+        final synced = _fields(kind, rowkey);
+        if (synced.isNotEmpty) {
+          _write(kind, rowkey, synced);
+        } else if (kind == 'todo_history') {
+          final (day, uid) = _split(rowkey);
+          _db.execute('DELETE FROM todo_history WHERE uid = ? AND day = ?', [uid, day]);
+        }
+      }
+      _db.execute('DELETE FROM sync_local');
+      _db.execute('DELETE FROM sync_dirty');
+    });
+  }
+
+  @override
+  void after({required bool local}) {
+    if (!_engaged) return;
+    if (local) {
+      _markLocal();
+    } else {
+      _flush(weak: true);
+    }
+  }
+
+  /// Marks what the rows written since [before] now hold, where it differs
+  /// from what sync has, as this computer's own, never sent; any edit to
+  /// those fields later is.
+  void _markLocal() {
+    store.transaction(() {
+      for (final d in _db.select('SELECT kind, rowkey FROM sync_dirty')) {
+        final kind = d['kind'] as String, rowkey = d['rowkey'] as String;
+        final synced = {
+          for (final r in _db.select('SELECT field, value FROM sync_reg WHERE kind = ? AND rowkey = ?', [kind, rowkey]))
+            r['field'] as String: r['value'] as String,
+        };
+        _db.execute('DELETE FROM sync_local WHERE kind = ? AND rowkey = ?', [kind, rowkey]);
+        for (final MapEntry(key: field, value: v) in _read(kind, rowkey).entries) {
+          final value = jsonEncode(v), old = synced[field];
+          if (old == null ? _blank(v) : old == value) continue;
+          _db.execute('INSERT INTO sync_local VALUES (?, ?, ?, ?)', [kind, rowkey, field, value]);
+        }
+      }
+      _db.execute('DELETE FROM sync_dirty');
+    });
+  }
+
+  /// After an upgrade from [from]: what this version keeps that that one
+  /// couldn't is taken in from the registers, rather than its blanks sent;
+  /// and the to-dos' day starts from before they were marked are marked.
+  void _upgrade(int from) {
+    if (!_engaged) return;
+    final added = {
+      for (final MapEntry(key: kind, value: kept) in fields.entries)
+        for (final MapEntry(key: field, value: since) in kept.entries)
+          if (since > from) (kind, field),
+    };
+    store.transaction(() {
+      _flush(skip: added);
+      final rows = {
+        for (final (kind, field) in added)
+          for (final r in _db.select('SELECT rowkey FROM sync_reg WHERE kind = ? AND field = ?', [kind, field]))
+            (kind, r['rowkey'] as String),
+      };
+      for (final (kind, rowkey) in rows) {
+        _write(kind, rowkey, _fields(kind, rowkey));
+        _db.execute('DELETE FROM sync_local WHERE kind = ? AND rowkey = ?', [kind, rowkey]);
+      }
+      _db.execute('DELETE FROM sync_dirty');
+      // Version 25 kept day starts apart without marking them.
+      if (from >= 25) {
+        _db.execute(
+          "INSERT OR IGNORE INTO sync_dirty SELECT 'todo', uid, 0 FROM todos "
+          "UNION ALL SELECT 'todo_history', day || '/' || uid, 0 FROM todo_history",
+        );
+        _markLocal();
+      }
+    });
+  }
+
+  /// The row as sync has it, field by field.
+  Map<String, Object?> _fields(String kind, String rowkey) => {
+    for (final r in _db.select('SELECT field, value FROM sync_reg WHERE kind = ? AND rowkey = ?', [kind, rowkey]))
+      r['field'] as String: jsonDecode(r['value'] as String),
+  };
+
+  /// Makes every row an edit of this computer, as it is: the first computer
+  /// to sync, or one moving its data to another account.
   void claimAll() {
+    _db.execute('DELETE FROM sync_local');
     store.markAllChanged();
     flush();
   }
@@ -316,9 +558,29 @@ class SyncEngine {
       _db.execute('DELETE FROM sync_reg');
       _db.execute('DELETE FROM sync_seen');
       _db.execute('DELETE FROM sync_dirty');
+      _db.execute('DELETE FROM sync_local');
     });
     _last = null;
   }
+
+  /// Takes as this computer's own the edits under another id newer than
+  /// anything of that id's in Drive ([sent]): its own, from before it had
+  /// this id (sync's settings lost, the database kept), which never went.
+  void adoptUnsent(Map<String, int> sent) {
+    store.transaction(() {
+      for (final r in _db.select('SELECT DISTINCT origin FROM sync_reg WHERE origin != ?', [me])) {
+        final origin = r['origin'] as String;
+        _db.execute('UPDATE sync_reg SET origin = ? WHERE origin = ? AND ts > ?', [me, origin, sent[origin] ?? 0]);
+      }
+    });
+  }
+
+  /// The computers with edits of things this version doesn't keep: they
+  /// show once it's updated.
+  Set<String> get newerOrigins => {
+    for (final r in _db.select('SELECT DISTINCT kind, field, origin FROM sync_reg'))
+      if (fields[r['kind']]?.containsKey(r['field']) != true) r['origin'] as String,
+  };
 
   /// Clears this computer's rows and registers, to take another's whole
   /// history in their place. The sleep schedule's rituals stay: they're
@@ -342,6 +604,7 @@ class SyncEngine {
       _db.execute('DELETE FROM sync_reg');
       _db.execute('DELETE FROM sync_seen');
       _db.execute('DELETE FROM sync_dirty');
+      _db.execute('DELETE FROM sync_local');
     });
     _last = null;
     return days;
@@ -401,23 +664,21 @@ class SyncEngine {
       for (final (regs, from) in batches) {
         for (final json in regs) {
           final theirs = _Reg.fromJson(json);
-          _last = max(_last ?? 0, theirs.ts);
+          _last = max(_seen, min(theirs.ts, _now() + _ahead));
           final ours = _reg(theirs.kind, theirs.rowkey, theirs.field);
           final merged = ours == null ? theirs : _resolve(ours, theirs);
           if (merged == null) continue;
           _put(merged);
           if (ours?.value != merged.value) {
             touched.add((theirs.kind, theirs.rowkey));
-            names.add(from);
+            // This computer's own, read back after its database lost them.
+            if (from != me) names.add(from);
           }
         }
       }
-      Map<String, Object?> fields(String kind, String rowkey) => {
-        for (final r in _db.select('SELECT field, value FROM sync_reg WHERE kind = ? AND rowkey = ?', [kind, rowkey]))
-          r['field'] as String: jsonDecode(r['value'] as String),
-      };
       for (final (kind, rowkey) in touched) {
-        _write(kind, rowkey, fields(kind, rowkey));
+        _write(kind, rowkey, _fields(kind, rowkey));
+        _db.execute('DELETE FROM sync_local WHERE kind = ? AND rowkey = ?', [kind, rowkey]);
       }
       // Day-start moves are never sent (see Store.startDay), so a task
       // another computer changed goes back to how the edits left it, and
@@ -427,12 +688,20 @@ class SyncEngine {
           if (kind == 'todo') rowkey else if (kind == 'todo_history') _split(rowkey).$2,
       };
       for (final uid in tasks) {
+        for (final r in _db.select('SELECT day FROM todo_history WHERE uid = ?', [uid])) {
+          final rowkey = '${r['day']}/$uid', synced = _fields('todo_history', rowkey);
+          if (synced.isEmpty) {
+            _db.execute('DELETE FROM todo_history WHERE uid = ? AND day = ?', [uid, r['day']]);
+          } else {
+            _write('todo_history', rowkey, synced);
+          }
+        }
         _db.execute(
-          'DELETE FROM todo_history WHERE uid = ? AND NOT EXISTS (SELECT 1 FROM sync_reg '
-          "WHERE kind = 'todo_history' AND rowkey = todo_history.day || '/' || todo_history.uid)",
+          "DELETE FROM sync_local WHERE kind = 'todo' AND rowkey = ?1 "
+          "OR kind = 'todo_history' AND substr(rowkey, instr(rowkey, '/') + 1) = ?1",
           [uid],
         );
-        final task = fields('todo', uid);
+        final task = _fields('todo', uid);
         if (task.isNotEmpty) _write('todo', uid, task);
       }
       // Writing them marked them changed; they match their registers.
@@ -448,15 +717,16 @@ class SyncEngine {
   _Reg? _resolve(_Reg ours, _Reg theirs) {
     if (ours.kind == 'journal' && ours.field == 'text') return _resolveJournal(ours, theirs);
     final order = _compare(ours.vv, theirs.vv);
-    if (order == 0 || order == 1) return null; // ours has seen theirs
+    if (order == 1) return null; // ours has seen theirs
     if (order == -1) return theirs; // theirs has seen ours
-    final vv = _maxVv(ours.vv, theirs.vv);
-    if (ours.value == theirs.value) {
-      final keep = ours.ts >= theirs.ts ? ours : theirs;
-      return _Reg(ours.kind, ours.rowkey, ours.field, ours.value, keep.ts, keep.origin, vv);
-    }
+    // Neither saw the other, or both filled in the same thing (see [Store.weak]):
+    // the later wins.
     final win = (ours.ts, ours.origin).compareTo(theirs.ts, theirs.origin) >= 0 ? ours : theirs;
-    return _Reg(ours.kind, ours.rowkey, ours.field, win.value, win.ts, win.origin, vv);
+    final vv = _maxVv(ours.vv, theirs.vv);
+    // The same value: it stays, with the later one's time.
+    final value = ours.value == theirs.value ? ours.value : win.value;
+    if (value == ours.value && win == ours && _compare(ours.vv, vv) == 0) return null;
+    return _Reg(ours.kind, ours.rowkey, ours.field, value, win.ts, win.origin, vv);
   }
 
   _Reg? _resolveJournal(_Reg ours, _Reg theirs) {
@@ -480,7 +750,7 @@ class SyncEngine {
       for (final v in kept)
         if (v.text.trim().isNotEmpty) v.text,
     };
-    final value = jsonEncode(texts.join('\n\n---\n\n'));
+    final value = jsonEncode(texts.join(Store.journalBreak));
     final vv = _maxVv(ours.vv, theirs.vv);
     final sameVersions =
         jsonEncode(versions(ours).map((v) => v.toJson()).toList()) == jsonEncode(kept.map((v) => v.toJson()).toList());
@@ -550,6 +820,28 @@ class _Reg {
   final Map<String, int> vv;
   final List<_JournalVersion>? journalVersions;
 
+  /// Whether [j], from a file, can be read as one.
+  static bool valid(List<Object?> j) {
+    if (j.length < 7 || j[0] is! String || j[1] is! String || j[2] is! String || j[4] is! int || j[5] is! String) {
+      return false;
+    }
+    if (!_validVv(j[6]) ||
+        (j.length > 7 && j[7] != null && (j[7] is! List || !(j[7] as List).every(_JournalVersion.valid)))) {
+      return false;
+    }
+    if (j[3] case final String value) {
+      try {
+        jsonDecode(value);
+        return true;
+      } on FormatException {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  static bool _validVv(Object? vv) => vv is Map && vv.entries.every((e) => e.key is String && e.value is int);
+
   List<Object?> get row => [
     kind,
     rowkey,
@@ -580,6 +872,8 @@ class _JournalVersion {
   final String origin, text;
   final int ts;
   final Map<String, int> vv;
+  static bool valid(Object? j) =>
+      j is List && j.length >= 4 && j[0] is String && j[1] is int && j[2] is String && _Reg._validVv(j[3]);
   List<Object?> toJson() => [
     origin,
     ts,
@@ -624,20 +918,52 @@ class SyncFolder {
   }
 
   /// Whether another computer has left any changes here.
-  bool get hasOthers => _others().isNotEmpty;
+  bool get hasOthers => computers.isNotEmpty;
 
-  List<File> _others() {
+  /// The other computers that have left changes here, by id.
+  Set<String> get computers => {
+    for (final f in _files())
+      if (p.basename(f.parent.path) != me) p.basename(f.parent.path),
+  };
+
+  /// Every change file here, this computer's own too: read back, they
+  /// return any of its edits the database here has lost (to a power cut,
+  /// say).
+  List<File> _files() {
     if (!dir.existsSync()) return [];
     return [
       for (final d in dir.listSync().whereType<Directory>())
-        if (p.basename(d.path) != me)
-          for (final f in d.listSync().whereType<File>())
-            if (f.path.endsWith('.json')) f,
+        for (final f in d.listSync().whereType<File>())
+          if (f.path.endsWith('.json')) f,
     ]..sort((a, b) => a.path.compareTo(b.path));
   }
 
-  /// Merges every other computer's file that's new or changed since it was
-  /// last read.
+  /// The latest edit in each computer's files here, by id.
+  Map<String, int> latestSent() {
+    final latest = <String, int>{};
+    for (final file in _files()) {
+      try {
+        final json = jsonDecode(file.readAsStringSync());
+        if (json is! Map || json['registers'] is! List) continue;
+        final who = p.basename(file.parent.path);
+        for (final r in json['registers'] as List) {
+          if (r is List && r.length > 4 && r[4] is int) latest[who] = max(latest[who] ?? 0, r[4] as int);
+        }
+      } on FormatException {
+        continue;
+      }
+    }
+    return latest;
+  }
+
+  /// The computers, by name, whose last files read need a newer version of
+  /// Eclipse; read once it's updated.
+  Set<String> newer = {};
+
+  /// The other computers' names, by id, from the files read.
+  final names = <String, String>{};
+
+  /// Merges every file that's new or changed since it was last read.
   Map<String, String> _seen(SyncEngine engine) => {
     for (final row in engine.store.raw.select('SELECT file, stamp FROM sync_seen'))
       row['file'] as String: row['stamp'] as String,
@@ -655,33 +981,48 @@ class SyncFolder {
     return _mergeFiles(engine, prepared);
   }
 
-  static (List<(List<List<Object?>>, String)>, Map<String, String>) _readFiles(
-    String root,
-    String machine,
-    Map<String, String> seen,
-  ) {
-    final batches = <(List<List<Object?>>, String)>[];
-    final stamps = <String, String>{};
-    final folder = SyncFolder(Directory(root), machine, '');
-    for (final file in folder._others()) {
+  static _Files _readFiles(String root, String machine, Map<String, String> seen) {
+    final read = _Files();
+    for (final file in SyncFolder(Directory(root), machine, '')._files()) {
       final key = p.relative(file.path, from: root);
       final stat = file.statSync();
       final stamp = '${stat.size}:${stat.modified.millisecondsSinceEpoch}';
       if (seen[key] == stamp) continue;
+      final who = p.basename(file.parent.path);
+      // A file that can't be read (cut short, say) is skipped, never
+      // stopping the rest, and tried again next time.
       try {
-        final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-        final registers = [for (final row in json['registers'] as List) (row as List).cast<Object?>().toList()];
-        batches.add((registers, json['name'] as String? ?? 'another computer'));
-        stamps[key] = stamp;
+        final json = jsonDecode(file.readAsStringSync());
+        if (json is! Map) continue;
+        final name = json['name'] is String ? json['name'] as String : 'another computer';
+        if (who != machine) read.names[who] = name;
+        // Written by a newer version of Eclipse, in a way this one can't
+        // read: left until this one is updated.
+        if ((json['version'] ?? 1) != 1) {
+          if (who != machine) read.newer.add(name);
+          continue;
+        }
+        if (json['registers'] is! List) continue;
+        final registers = [
+          for (final row in json['registers'] as List)
+            if (row is List) row.cast<Object?>().toList() else const <Object?>[],
+        ];
+        if (!registers.every(_Reg.valid)) continue;
+        read.batches.add((registers, who == machine ? machine : name));
+        read.stamps[key] = stamp;
       } on FormatException {
+        continue;
+      } on FileSystemException {
         continue;
       }
     }
-    return (batches, stamps);
+    return read;
   }
 
-  static Incoming _mergeFiles(SyncEngine engine, (List<(List<List<Object?>>, String)>, Map<String, String>) prepared) {
-    final (batches, stamps) = prepared;
+  Incoming _mergeFiles(SyncEngine engine, _Files prepared) {
+    final _Files(:batches, :stamps) = prepared;
+    newer = prepared.newer;
+    names.addAll(prepared.names);
     final incoming = engine.mergeAll(batches);
     engine.store.transaction(() {
       for (final MapEntry(:key, :value) in stamps.entries) {
@@ -690,4 +1031,12 @@ class SyncFolder {
     });
     return incoming;
   }
+}
+
+/// What reading the change files found.
+class _Files {
+  final batches = <(List<List<Object?>>, String)>[];
+  final stamps = <String, String>{};
+  final newer = <String>{};
+  final names = <String, String>{};
 }

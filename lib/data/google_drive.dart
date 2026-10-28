@@ -208,8 +208,9 @@ abstract class SyncDrive {
   Future<List<DriveFile>> list();
   Future<List<int>> download(String id);
 
-  /// Writes [name], over the file [id] when it's already there.
-  Future<void> upload(String name, List<int> bytes, {String? id});
+  /// Writes [name], over the file [id] when it's already there, and returns
+  /// it as Drive now has it: its id, and its time by Drive's clock.
+  Future<DriveFile> upload(String name, List<int> bytes, {String? id});
 }
 
 /// The journal's folder in Drive, which you can see: a folder of year
@@ -304,15 +305,26 @@ class AppDataFolder implements SyncDrive, JournalDrive {
       _call('GET', Uri.https('www.googleapis.com', '/drive/v3/files/$id', {'alt': 'media'}));
 
   @override
-  Future<void> upload(String name, List<int> bytes, {String? id}) async {
-    if (id != null) {
-      await _call(
-        'PATCH',
-        Uri.https('www.googleapis.com', '/upload/drive/v3/files/$id', {'uploadType': 'media'}),
-        body: bytes,
-        type: 'application/json',
+  Future<DriveFile> upload(String name, List<int> bytes, {String? id}) async {
+    DriveFile made(List<int> reply) {
+      final json = _decode(reply);
+      return DriveFile(
+        id: json['id'] as String? ?? id ?? '',
+        name: json['name'] as String? ?? name,
+        modified: json['modifiedTime'] as String? ?? '',
       );
-      return;
+    }
+
+    const fields = 'id,name,modifiedTime';
+    if (id != null) {
+      return made(
+        await _call(
+          'PATCH',
+          Uri.https('www.googleapis.com', '/upload/drive/v3/files/$id', {'uploadType': 'media', 'fields': fields}),
+          body: bytes,
+          type: 'application/json',
+        ),
+      );
     }
     const boundary = 'eclipse-sync-boundary';
     final body = BytesBuilder()
@@ -328,11 +340,13 @@ class AppDataFolder implements SyncDrive, JournalDrive {
       )
       ..add(bytes)
       ..add(utf8.encode('\r\n--$boundary--'));
-    await _call(
-      'POST',
-      Uri.https('www.googleapis.com', '/upload/drive/v3/files', {'uploadType': 'multipart'}),
-      body: body.takeBytes(),
-      type: 'multipart/related; boundary=$boundary',
+    return made(
+      await _call(
+        'POST',
+        Uri.https('www.googleapis.com', '/upload/drive/v3/files', {'uploadType': 'multipart', 'fields': fields}),
+        body: body.takeBytes(),
+        type: 'multipart/related; boundary=$boundary',
+      ),
     );
   }
 

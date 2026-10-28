@@ -5,9 +5,7 @@ extension StoreTodos on Store {
   /// Moves tasks on for [day]. These moves aren't synced: each computer
   /// makes them itself from the edits it has, so one that hasn't heard of
   /// a tick yet can't overwrite it by carrying the task forward.
-  Map<TodoScope, List<TodoItem>> startDay(DateTime day) => transaction(() {
-    String key(Row r) => '${r['kind']}/${r['rowkey']}';
-    final pending = {for (final r in _db.select('SELECT kind, rowkey FROM sync_dirty')) key(r)};
+  Map<TodoScope, List<TodoItem>> startDay(DateTime day) => local(day: dateKey(day), () {
     captureTodoBaseline(day);
     promoteDueTodos(day);
     rollTomorrowToToday(dateKey(day));
@@ -15,11 +13,6 @@ extension StoreTodos on Store {
     for (final scope in TodoScope.values) {
       carryForward(scope, scope.period(day), day: day);
       lists[scope] = todos(scope, scope.period(day));
-    }
-    for (final r in _db.select('SELECT kind, rowkey FROM sync_dirty')) {
-      if (!pending.contains(key(r))) {
-        _db.execute('DELETE FROM sync_dirty WHERE kind = ? AND rowkey = ?', [r['kind'], r['rowkey']]);
-      }
     }
     return lists;
   });
@@ -40,7 +33,9 @@ extension StoreTodos on Store {
       WITH latest AS (
         SELECT uid, MAX(day) AS day FROM todo_history WHERE day <= ? GROUP BY uid
       )
-      SELECT h.rowid AS history_id, h.uid, h.snapshot, t.id FROM latest l
+      SELECT h.rowid AS history_id, h.uid, h.snapshot, t.id,
+        CASE WHEN t.done = 1 AND t.scope = 'today' THEN t.period END AS ticked
+      FROM latest l
       JOIN todo_history h ON h.uid = l.uid AND h.day = l.day
       LEFT JOIN todos t ON t.uid = h.uid
       ORDER BY COALESCE(t.id, h.rowid)
@@ -65,6 +60,16 @@ extension StoreTodos on Store {
     }
     for (final r in snapshots) {
       final s = jsonDecode(r['snapshot'] as String) as Map<String, dynamic>;
+      // Ticked, and still: done on the day it was ticked (unless taken off
+      // that day's record) and open on none after, whatever another
+      // computer that hadn't heard of the tick wrote for those days.
+      if (r['ticked'] case final String ticked when ticked.compareTo(key) <= 0) {
+        if (ticked != key) continue;
+        s
+          ..['scope'] = TodoScope.today.name
+          ..['period'] = key
+          ..['done'] = 1;
+      }
       final scope = TodoScope.values.byName(s['scope'] as String);
       if (s['deleted'] == true ||
           (s['since'] as String).compareTo(key) > 0 ||
@@ -435,7 +440,9 @@ extension StoreTodos on Store {
         : jsonDecode(previous.single['snapshot'] as String) as Map<String, dynamic>;
     final following = _db.select('SELECT 1 FROM todo_history WHERE uid = ? AND day = ?', [uid, next]);
     if (following.isEmpty) {
-      _db.execute('INSERT INTO todo_history VALUES (?, ?, ?)', [uid, next, jsonEncode(snapshot)]);
+      // Filled in, not an edit: one made to that day on another computer
+      // wins over it.
+      weak(() => _db.execute('INSERT INTO todo_history VALUES (?, ?, ?)', [uid, next, jsonEncode(snapshot)]));
     }
     snapshot['deleted'] = deleted;
     if (text != null) {
@@ -445,6 +452,9 @@ extension StoreTodos on Store {
     if (subtasks != null) snapshot['subtasks'] = subtasks;
     if (done != null) {
       _toggleTodoSnapshot(snapshot, done, day);
+      // Ticked, it's on that day's list: the day before's record may have
+      // it on the day it was carried from.
+      if (done) snapshot['period'] = TodoScope.values.byName(snapshot['scope'] as String).period(day);
       if (subtasks == null) {
         snapshot['subtasks'] = TodoSubtask.encode([
           for (final child in TodoSubtask.decode(snapshot['subtasks'] as String?)) child.copyWith(done: done),

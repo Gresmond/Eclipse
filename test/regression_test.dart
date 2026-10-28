@@ -26,8 +26,10 @@ class _Drive implements SyncDrive {
   @override
   Future<List<int>> download(String id) async => files[id]!.$2;
   @override
-  Future<void> upload(String name, List<int> bytes, {String? id}) async {
-    files[id ?? 'file${serial++}'] = (name, bytes, serial++);
+  Future<DriveFile> upload(String name, List<int> bytes, {String? id}) async {
+    final key = id ?? 'file${serial++}';
+    files[key] = (name, bytes, serial++);
+    return DriveFile(id: key, name: name, modified: '${files[key]!.$3}');
   }
 }
 
