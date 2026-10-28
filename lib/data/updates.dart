@@ -116,7 +116,7 @@ class GitUpdater extends Updater {
   final Future<void> Function()? onRestart;
 
   @override
-  String get actionLabel => 'Update and reopen';
+  String get actionLabel => 'Update';
 
   @override
   Duration get checkEvery => const Duration(minutes: 2);
@@ -384,7 +384,7 @@ class LinuxUpdater extends ReleaseUpdater {
   final Future<void> Function({required Future<void> Function() beforeRestart, String? executable}) restart;
 
   @override
-  String get actionLabel => 'Update and reopen';
+  String get actionLabel => 'Update';
 
   @override
   String get progressDetail => 'Downloading and installing Eclipse.';

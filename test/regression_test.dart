@@ -723,7 +723,7 @@ void main() {
     final metadata = File('${dir.path}/version')..writeAsStringSync('26.10.1\n');
     final updater = LinuxUpdater('26.10.1', installRoot: dir.path);
     expect(updater.installedVersion, '26.10.1');
-    expect(updater.actionLabel, 'Update and reopen');
+    expect(updater.actionLabel, 'Update');
     final release = <String, dynamic>{
       'tag_name': 'v26.10.2',
       'html_url': 'https://example.com/release',
