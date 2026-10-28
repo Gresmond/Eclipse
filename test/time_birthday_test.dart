@@ -86,6 +86,58 @@ void main() {
     expect(AppState(store, clock: () => DateTime(2026, 10, 23, 9)).laterBirthdays, isFalse);
   });
 
+  testWidgets('birthdays open up and close up where they belong in Further ahead', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 23, 9));
+    state.addTodo(TodoScope.month, 'Party', dueDate: DateTime(2026, 11, 20), time: 18 * 60);
+    state.addTodo(TodoScope.month, 'Gran', dueDate: DateTime(2026, 11, 20), time: 8 * 60, birthday: true);
+    state.addRepeat('Papa', const RepeatRule.yearly(1), DateTime(2026, 11, 1), birthday: true);
+    state.toggleLaterBirthdays();
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    final later = find.byType(FurtherAheadCard);
+    // Opening from nothing, a row starts with no height, so counts as offstage.
+    Finder row(String text) =>
+        find.descendant(of: later, matching: find.textContaining(text, skipOffstage: false), skipOffstage: false);
+    double top(String text) => tester.getTopLeft(row(text)).dy;
+    await tester.tap(find.byTooltip('Show birthdays'));
+    await tester.pump();
+    // Gran opens up above Party, where she belongs, not at the foot of the
+    // day waiting to glide up; Papa's day opens with him.
+    final opacities = <double>[];
+    for (var i = 0; i < 16; i++) {
+      expect(top('Gran'), lessThanOrEqualTo(top('Party')));
+      opacities.add(
+        tester
+            .widget<FadeTransition>(
+              find.ancestor(of: row('Papa'), matching: find.byType(FadeTransition, skipOffstage: false)).first,
+            )
+            .opacity
+            .value,
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(opacities.first, lessThan(0.1));
+    await tester.pumpAndSettle();
+    expect(top('Gran'), lessThan(top('Party')));
+
+    // Hidden, they close up rather than vanish.
+    await tester.tap(find.byTooltip('Hide birthdays'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(row('Gran'), findsOneWidget);
+    expect(row('Papa'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(row('Gran'), findsNothing);
+    expect(row('Papa'), findsNothing);
+    expect(row('Party'), findsOneWidget);
+  });
+
   testWidgets('in the week, a birthday looks like any other task', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
@@ -112,6 +164,12 @@ void main() {
     final state = AppState(store, clock: () => DateTime(2026, 10, 23, 9));
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
+    // Only a task further ahead can be a birthday.
+    await tester.tap(find.descendant(of: find.byType(WeekCard), matching: find.byTooltip('Pick a day')));
+    await tester.pumpAndSettle();
+    expect(find.text('Not a birthday'), findsNothing);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
     await tester.tap(find.descendant(of: find.byType(FurtherAheadCard), matching: find.byTooltip('Pick a day')));
     await tester.pumpAndSettle();
     final next = find.byTooltip('Next month');
@@ -123,9 +181,9 @@ void main() {
     }
     expect(places.toSet(), hasLength(1));
 
-    // Ticking Birthday folds the repeat away; it comes round every year.
+    // Making it a birthday folds the repeat away; it comes round every year.
     expect(find.text("Doesn't repeat").hitTestable(), findsOneWidget);
-    await tester.tap(find.text('Birthday'));
+    await tester.tap(find.text('Not a birthday'));
     await tester.pumpAndSettle();
     expect(find.text("Doesn't repeat").hitTestable(), findsNothing);
     await tester.tap(find.text('OK'));

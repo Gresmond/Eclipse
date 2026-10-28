@@ -291,7 +291,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('open counts crossfade without shifting the badge width', (tester) async {
+  testWidgets('open counts fade through without shifting the badge width', (tester) async {
     final count = ValueNotifier('9 open');
     addTearDown(count.dispose);
     await tester.pumpWidget(
@@ -310,12 +310,18 @@ void main() {
     final oldCenter = tester.getCenter(find.text('9 OPEN'));
     count.value = '10 open';
     await tester.pump();
-    final fade = find.ancestor(of: find.text('10 OPEN'), matching: find.byType(FadeTransition)).first;
-    expect(tester.widget<FadeTransition>(fade).opacity.value, 0);
-    await tester.pump(const Duration(milliseconds: 210));
-    final halfway = tester.widget<FadeTransition>(fade).opacity.value;
-    expect(halfway, greaterThan(0));
-    expect(halfway, lessThan(1));
+    double opacity(String text) => tester
+        .widget<FadeTransition>(find.ancestor(of: find.text(text), matching: find.byType(FadeTransition)).first)
+        .opacity
+        .value;
+    expect(opacity('10 OPEN'), 0);
+    // The old count fades out first, then the new one in: never both.
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(opacity('9 OPEN'), greaterThan(0));
+    expect(opacity('10 OPEN'), 0);
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(opacity('9 OPEN'), 0);
+    expect(opacity('10 OPEN'), allOf(greaterThan(0), lessThan(1)));
     expect(tester.getCenter(find.text('10 OPEN')), oldCenter);
     await tester.pumpAndSettle();
     expect(find.text('9 OPEN'), findsNothing);

@@ -139,13 +139,14 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
     _timers.add(timer);
   }
 
-  /// [tasks], [group]'s list in order, as it's drawn now. Call once per
-  /// group per build, after [_settle] for the build before.
-  List<_Shown> _shown(String group, List<_Task> tasks) {
+  /// [tasks], [group]'s list in order, as it's drawn now; those [inPlace]
+  /// open up where they belong. Call once per group per build, after
+  /// [_settle] for the build before.
+  List<_Shown> _shown(String group, List<_Task> tasks, {Set<Object> inPlace = const {}}) {
     final ids = [for (final (_, item) in tasks) item.id];
     // Everything there when the list first shows is simply there.
     final before = _drawn[group] ?? (_started ? const <int>[] : ids);
-    final added = ids.toSet().difference(before.toSet());
+    final added = ids.toSet().difference(before.toSet()).difference(inPlace);
     if (added.isNotEmpty) {
       _arriving.addAll(added);
       _after(() => _arriving.removeAll(added));
@@ -688,7 +689,10 @@ class _DayHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Padding(
+    // Easing when a day comes in above it, or the one above goes.
+    return AnimatedPadding(
+      duration: Motion.morph,
+      curve: Motion.morphCurve,
       padding: EdgeInsets.only(top: first ? 12 : 22, bottom: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -750,13 +754,15 @@ class _FoldAway extends StatelessWidget {
 }
 
 /// The field at a card's foot for a new task on a day between [first] and
-/// [last]. The calendar button picks the day, its time, how it repeats and
-/// whether it's a birthday; Enter without a day asks for one.
+/// [last]. The calendar button picks the day, its time, how it repeats and,
+/// with [birthdays], whether it's a birthday; Enter without a day asks for
+/// one.
 class _DatedAdd extends StatefulWidget {
-  const _DatedAdd({required this.first, this.last, required this.onAdd});
+  const _DatedAdd({required this.first, this.last, this.birthdays = false, required this.onAdd});
 
   final DateTime first;
   final DateTime? last;
+  final bool birthdays;
   final void Function(String text, _DayChoice choice) onAdd;
 
   @override
@@ -785,6 +791,7 @@ class _DatedAddState extends State<_DatedAdd> {
       repeat: choice?.repeat,
       time: choice?.time,
       birthday: choice?.birthday ?? false,
+      birthdays: widget.birthdays,
     );
     if (picked == null || !mounted) return null;
     setState(() => _choice = picked);
@@ -1190,13 +1197,14 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
           Expanded(
             child: FadeThrough(
               layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
-              child: _LaterList(key: ValueKey(dateKey(day)), groups: groups, added: added),
+              child: _LaterList(key: ValueKey(dateKey(day)), groups: groups, birthdays: birthdays, added: added),
             ),
           ),
           _FoldAway(
             folded: past,
             child: _DatedAdd(
               first: DateTime(today.year, today.month, today.day + WeekCard.span + 1),
+              birthdays: true,
               onAdd: (text, choice) => _addChosen(state, text, choice.day, choice),
             ),
           ),
@@ -1209,9 +1217,13 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
 /// One day's further-ahead list: each date's tasks, then the repeats due
 /// round on it; tasks without a day last.
 class _LaterList extends StatefulWidget {
-  const _LaterList({super.key, required this.groups, required this.added});
+  const _LaterList({super.key, required this.groups, required this.birthdays, required this.added});
 
   final List<(DateTime?, List<_Later>)> groups;
+
+  /// Whether birthdays show: shown or hidden, they open up or close up
+  /// where they belong.
+  final bool birthdays;
 
   /// Tasks just added, which fade in.
   final Set<int> added;
@@ -1221,6 +1233,57 @@ class _LaterList extends StatefulWidget {
 }
 
 class _LaterListState extends State<_LaterList> with _DayMotion {
+  /// Birthdays just shown, by task id and repeat uid, and the days come
+  /// with them: they open up in place, not at the foot of their day.
+  final _showing = <Object>{};
+
+  /// Birthday repeats just hidden, closing up where they were.
+  final _hiding = <String, ({String group, int index, Repeat repeat})>{};
+
+  static String _key(DateTime? date) => date == null ? 'none' : dateKey(date);
+
+  static bool _birthday(_Later later) => later.item?.birthday ?? later.repeat!.birthday;
+
+  @override
+  void didUpdateWidget(_LaterList old) {
+    super.didUpdateWidget(old);
+    if (old.birthdays == widget.birthdays) return;
+    if (widget.birthdays) {
+      final before = {for (final (date, _) in old.groups) _key(date)};
+      final showing = {
+        for (final (date, items) in widget.groups) ...[
+          if (!before.contains(_key(date))) _key(date),
+          for (final later in items)
+            if (_birthday(later)) later.item?.id ?? later.repeat!.uid,
+        ],
+      };
+      _showing.addAll(showing);
+      _after(() => _showing.removeAll(showing));
+      return;
+    }
+    for (final (date, items) in old.groups) {
+      final group = _key(date);
+      var repeats = 0;
+      for (final later in items) {
+        if (later.repeat != null) repeats++;
+        if (!_birthday(later)) continue;
+        if (later.item case final item?) {
+          if (_departing.containsKey(item.id)) continue;
+          _departing[item.id] = (
+            group: group,
+            index: (_drawn[group] ?? const []).indexOf(item.id),
+            task: (later.scope!, item),
+          );
+          _after(() => _departing.remove(item.id));
+        } else {
+          final uid = later.repeat!.uid;
+          _hiding[uid] = (group: group, index: repeats - 1, repeat: later.repeat!);
+          _after(() => _hiding.remove(uid));
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
@@ -1239,12 +1302,21 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
           repeats: [for (final later in items) ?later.repeat],
         ),
     ];
+    final current = {for (final g in groups) g.key};
     // A day whose last task was just removed stays while it closes up.
-    for (final key in {for (final d in _departing.values) d.group}.difference({for (final g in groups) g.key})) {
-      groups.add((date: key == 'none' ? null : DateTime.parse(key), key: key, tasks: const [], repeats: const []));
+    for (final key in {
+      for (final d in _departing.values) d.group,
+      for (final h in _hiding.values) h.group,
+    }.difference(current)) {
+      groups.add((date: key == 'none' ? null : DateTime.parse(key), key: key, tasks: const [], repeats: <Repeat>[]));
     }
+    for (final h in _hiding.values) {
+      final repeats = groups.firstWhere((g) => g.key == h.group).repeats;
+      if (!repeats.any((r) => r.uid == h.repeat.uid)) repeats.insert(h.index.clamp(0, repeats.length), h.repeat);
+    }
+    final hidden = _hiding.keys.toSet();
     groups.sort((a, b) => a.date == null ? 1 : (b.date == null ? -1 : a.date!.compareTo(b.date!)));
-    final shown = {for (final g in groups) g.key: _shown(g.key, g.tasks)};
+    final shown = {for (final g in groups) g.key: _shown(g.key, g.tasks, inPlace: _showing)};
     _settle();
     if (groups.isEmpty) {
       return Center(
@@ -1266,16 +1338,25 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
         slivers: [
           for (final (i, g) in groups.indexed)
             SliverPadding(
+              key: ValueKey(g.key),
               padding: const EdgeInsets.only(right: 8),
               sliver: SliverMainAxisGroup(
                 slivers: [
                   SliverToBoxAdapter(
-                    child: _DayHeading(
-                      first: i == 0,
-                      parts: switch (g.date) {
-                        null => const [('No date', true)],
-                        final date => [(_shortDate(date, state.today), true), (weekdayNames[date.weekday - 1], false)],
-                      },
+                    // A day comes and goes with its last tasks.
+                    child: Appear(
+                      animate: _showing.contains(g.key),
+                      shown: current.contains(g.key),
+                      child: _DayHeading(
+                        first: i == 0,
+                        parts: switch (g.date) {
+                          null => const [('No date', true)],
+                          final date => [
+                            (_shortDate(date, state.today), true),
+                            (weekdayNames[date.weekday - 1], false),
+                          ],
+                        },
+                      ),
                     ),
                   ),
                   LazyTaskSliver(
@@ -1286,7 +1367,14 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                     itemBuilder: (context, index) {
                       final tasks = shown[g.key]!;
                       if (index >= tasks.length) {
-                        return _LaterRow(day: day, repeat: g.repeats[index - tasks.length], date: g.date);
+                        final repeat = g.repeats[index - tasks.length];
+                        return _LaterRow(
+                          day: day,
+                          repeat: repeat,
+                          date: g.date,
+                          fadeIn: _showing.contains(repeat.uid),
+                          leaving: hidden.contains(repeat.uid),
+                        );
                       }
                       final (:task, :arriving, :leaving) = tasks[index];
                       final (scope, item) = task;
@@ -1295,7 +1383,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                         day: day,
                         task: task,
                         readOnly: readOnly,
-                        fadeIn: widget.added.contains(item.id) || arriving,
+                        fadeIn: widget.added.contains(item.id) || arriving || _showing.contains(item.id),
                         leaving: leaving,
                         onRemove: () => _remove(g.key, task, () => state.removeTodo(scope, item, day: day)),
                       );

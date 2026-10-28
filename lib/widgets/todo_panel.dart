@@ -12,6 +12,7 @@ import 'app_dialog.dart';
 import 'appear.dart';
 import 'confirm_on_enter.dart';
 import 'day_toggles.dart';
+import 'fade_menu.dart';
 import 'fade_through.dart';
 import 'hover_fill.dart';
 import 'mark.dart';

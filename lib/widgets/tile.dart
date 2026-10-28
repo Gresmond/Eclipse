@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'fade_through.dart';
 
 /// The base card surface every panel sits on.
 class Tile extends StatelessWidget {
@@ -71,11 +72,10 @@ class TileHeader extends StatelessWidget {
           ),
           child: SizedBox(
             width: 70,
-            child: AnimatedSwitcher(
-              duration: Motion.morph,
-              switchInCurve: Motion.morphCurve,
-              switchOutCurve: Motion.morphCurve,
-              transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+            // A swapped word: the old one fades out before the new one fades
+            // in, so the two never overlap.
+            child: FadeThrough(
+              duration: Motion.click,
               child: Text(
                 caption!.toUpperCase(),
                 key: ValueKey(caption),

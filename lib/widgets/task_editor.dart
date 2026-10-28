@@ -13,9 +13,9 @@ Future<DateTime?> _pickDate(BuildContext context, {required DateTime first, Date
 /// birthday.
 typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, bool birthday});
 
-/// A new task's day, as [_pickDate], with its time, repeat and birthday
-/// set under the calendar. Without [calendar], [selected] is the day and
-/// only those are asked.
+/// A new task's day, as [_pickDate], with its time and repeat set under
+/// the calendar, and with [birthdays] whether it's a birthday. Without
+/// [calendar], [selected] is the day and only those are asked.
 Future<_DayChoice?> _pickDayAndRepeat(
   BuildContext context, {
   required DateTime first,
@@ -24,6 +24,7 @@ Future<_DayChoice?> _pickDayAndRepeat(
   _RepeatChoice? repeat,
   int? time,
   bool birthday = false,
+  bool birthdays = false,
   bool calendar = true,
 }) => showAppDialog<_DayChoice>(
   context: context,
@@ -35,12 +36,14 @@ Future<_DayChoice?> _pickDayAndRepeat(
     repeat: repeat,
     time: time,
     birthday: birthday,
+    birthdays: birthdays,
     calendar: calendar,
   ),
 );
 
 /// A calendar between two days, with no redundant date header, and with
-/// [details] the time, repeat and birthday under it.
+/// [details] the time and repeat under it, and with [birthdays] whether
+/// it's a birthday.
 class _DueDateDialog extends StatefulWidget {
   const _DueDateDialog({
     required this.first,
@@ -50,13 +53,14 @@ class _DueDateDialog extends StatefulWidget {
     this.repeat,
     this.time,
     this.birthday = false,
+    this.birthdays = false,
     this.calendar = true,
   });
 
   final DateTime first;
   final DateTime? last;
   final DateTime? due;
-  final bool details, calendar;
+  final bool details, birthdays, calendar;
   final _RepeatChoice? repeat;
   final int? time;
   final bool birthday;
@@ -194,7 +198,6 @@ class _DueDateDialogState extends State<_DueDateDialog> {
               if (widget.details) ...[
                 SizedBox(height: widget.calendar ? 8 : 4),
                 _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
-                _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
                 _FoldAway(
                   folded: _birthday,
                   child: _RepeatRow(
@@ -203,6 +206,8 @@ class _DueDateDialogState extends State<_DueDateDialog> {
                     onChanged: (repeat) => setState(() => _repeat = repeat),
                   ),
                 ),
+                if (widget.birthdays)
+                  _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
                 const SizedBox(height: 4),
               ],
             ],
@@ -342,7 +347,40 @@ String _repeatLabel(_RepeatChoice choice) {
   return until == null ? choice.rule.label : '${choice.rule.label} until ${dayMonth(until)}/${until.year}';
 }
 
-/// A task's time: "Add a time", or its time, opening the wheel.
+/// One of a task's details under its field, as a button: [icon] and
+/// [label], and with [onClear] a cross that takes it away.
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.icon, required this.label, required this.onPressed, this.clear, this.onClear});
+
+  final IconData icon;
+  final String label;
+  final void Function(BuildContext button) onPressed;
+
+  /// The cross's tooltip.
+  final String? clear;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Builder(
+              builder: (button) =>
+                  TextButton.icon(icon: Icon(icon, size: 18), label: Text(label), onPressed: () => onPressed(button)),
+            ),
+          ),
+        ),
+        if (onClear != null) IconButton(tooltip: clear, icon: const Icon(Icons.close_rounded), onPressed: onClear),
+      ],
+    );
+  }
+}
+
+/// A task's time: "Add a time", or its time, opening the wheel; a cross
+/// makes it all day.
 class _TimeRow extends StatelessWidget {
   const _TimeRow({required this.time, required this.onChanged});
 
@@ -351,23 +389,19 @@ class _TimeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
-      child: Row(
-        children: [
-          Icon(Icons.schedule_rounded, size: 18, color: p.inkMuted),
-          const SizedBox(width: 10),
-          TimePill(minutes: time, start: 9 * 60, placeholder: 'Add a time', alignLeft: true, onChanged: onChanged),
-          if (time != null)
-            IconButton(
-              tooltip: 'All day',
-              iconSize: 18,
-              icon: const Icon(Icons.close_rounded),
-              onPressed: () => onChanged(null),
-            ),
-        ],
+    final time = this.time;
+    return _DetailRow(
+      icon: Icons.schedule_rounded,
+      label: time == null ? 'Add a time' : clockLabel(time),
+      onPressed: (button) => showFadeMenu(
+        button,
+        width: 248,
+        above: true,
+        alignLeft: true,
+        builder: (_) => TimeWheel(initial: time ?? 9 * 60, unset: time == null, onChanged: onChanged),
       ),
+      clear: 'All day',
+      onClear: time == null ? null : () => onChanged(null),
     );
   }
 }
@@ -384,28 +418,15 @@ class _RepeatRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repeat = this.repeat;
-    return Row(
-      children: [
-        Expanded(
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              icon: const Icon(Icons.repeat_rounded, size: 18),
-              label: Text(repeat == null ? "Doesn't repeat" : _repeatLabel(repeat)),
-              onPressed: () async {
-                final picked = await _pickRepeat(context, start, repeat);
-                if (picked != null && context.mounted) onChanged(picked.choice);
-              },
-            ),
-          ),
-        ),
-        if (repeat != null)
-          IconButton(
-            tooltip: 'Stop repeating',
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () => onChanged(null),
-          ),
-      ],
+    return _DetailRow(
+      icon: Icons.repeat_rounded,
+      label: repeat == null ? "Doesn't repeat" : _repeatLabel(repeat),
+      onPressed: (button) async {
+        final picked = await _pickRepeat(context, start, repeat);
+        if (picked != null && context.mounted) onChanged(picked.choice);
+      },
+      clear: 'Stop repeating',
+      onClear: repeat == null ? null : () => onChanged(null),
     );
   }
 }
@@ -415,7 +436,7 @@ _RepeatChoice? _birthdayRepeat(bool birthday, _RepeatChoice? repeat) =>
     !birthday || repeat?.rule == const RepeatRule.yearly(1) ? repeat : (rule: const RepeatRule.yearly(1), until: null);
 
 /// Whether a task is someone's birthday, which comes round every year in
-/// place of a repeat.
+/// place of a repeat; a cross makes it not one.
 class _BirthdayRow extends StatelessWidget {
   const _BirthdayRow({required this.birthday, required this.onChanged});
 
@@ -423,42 +444,13 @@ class _BirthdayRow extends StatelessWidget {
   final ValueChanged<bool> onChanged;
 
   @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => onChanged(!birthday),
-          child: SizedBox(
-            height: 32,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox.square(
-                  dimension: 18,
-                  child: Checkbox(
-                    value: birthday,
-                    onChanged: (value) => onChanged(value ?? false),
-                    mouseCursor: SystemMouseCursors.click,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Birthday',
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: birthday ? p.ink : p.inkMuted),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => _DetailRow(
+    icon: _birthdayIcon,
+    label: birthday ? 'Birthday' : 'Not a birthday',
+    onPressed: (_) => onChanged(!birthday),
+    clear: 'Not a birthday',
+    onClear: birthday ? () => onChanged(false) : null,
+  );
 }
 
 class _EditTaskDialog extends StatefulWidget {
@@ -482,7 +474,9 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
     null => null,
   };
   late int? _time = widget.item.dueTime;
-  late bool _birthday = widget.item.birthday;
+
+  /// Kept as it is: whether it's a birthday is only set when it's added.
+  late final bool _birthday = widget.item.birthday;
 
   @override
   void dispose() {
@@ -541,7 +535,6 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
               ],
               const SizedBox(height: 4),
               _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
-              _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
               _FoldAway(
                 folded: _birthday,
                 child: _RepeatRow(
