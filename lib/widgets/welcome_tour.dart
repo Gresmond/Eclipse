@@ -132,19 +132,19 @@ List<_Step> _steps(AppState state) => [
   const _Step(
     'Sleep schedule',
     'Track your sleep schedule independently from your daily rituals. '
-        'Each item’s target time appears beside its name, and you can edit the schedule from a month view.',
+        'Each item’s target time appears beside its name.',
     TourSpot.sleep,
   ),
   const _Step(
     'Today’s to-dos',
-    'Type a task and press Enter to add it, then tick it off when done. Use the pencil '
-        'to edit its text. Unfinished tasks carry forward with the day they came from.',
+    'Type a task and press Enter to add it, then tick it off when done. '
+        'Unfinished tasks carry forward with the day they came from.',
     TourSpot.todayTodos,
   ),
   const _Step(
     'Tomorrow',
     'Plan the next day here. When a new day starts, unfinished Tomorrow tasks move '
-        'into Today automatically, alongside anything still unfinished from today.',
+        'into Today automatically.',
     TourSpot.tomorrowTodos,
   ),
   const _Step(
@@ -170,29 +170,26 @@ List<_Step> _steps(AppState state) => [
     'Months and the year',
     'Open a month for the full daily grid. Edit its ritual list and notes, or the '
         'sleep schedule and target times. Year compares monthly and yearly totals '
-        'for rituals and sleep. Use the arrows to visit other months and years.',
+        'for rituals and sleep.',
     TourSpot.tabs,
   ),
   const _Step(
     'Settings',
-    'Choose your day-start hour and journal folder. With weekends as rest days, '
-        'blank weekends do not break streaks. Done rituals still count. Reopen this '
-        'tour here whenever you want.',
+    'Choose your journal folder and day-start hour. With weekends as rest days, '
+        'blank weekends do not break streaks. Done rituals still count.',
     TourSpot.settingsPreview,
     0,
   ),
   const _Step(
     'Data and backups',
     'Data shows your data folder and the last 30 daily backups. Restore '
-        'a copy there if you need to go back; Eclipse saves a safety copy before restoring.',
+        'a copy there if you need to go back.',
     TourSpot.settingsPreview,
     1,
   ),
   const _Step(
     'Google sync',
-    'Connect Google in Data to sync through Eclipse’s hidden Drive folder. '
-        'Use the same account on your computers. Each keeps its own theme and journal '
-        'folder; changing accounts asks how to handle the existing data.',
+    'Connect to Google to sync your Eclipse data across all of your devices.',
     TourSpot.googleSync,
     1,
   ),

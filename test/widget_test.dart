@@ -1912,6 +1912,50 @@ void main() {
     });
   }
 
+  testWidgets('completing yesterday’s carried task removes it from today and undo restores it', (tester) async {
+    await _loadFonts();
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    var now = DateTime(2026, 10, 23, 12);
+    final store = _testStore();
+    final state = AppState(store, clock: () => now);
+    state.addTodo(TodoScope.today, 'Collect prescription');
+    state.addTodo(TodoScope.today, 'Keep this task');
+    now = DateTime(2026, 10, 24, 12);
+    state.checkDate();
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    expect(find.text('Collect prescription'), findsOneWidget);
+
+    final yesterday = DateTime(2026, 10, 23);
+    state.showDay(yesterday);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Collect prescription'));
+    await tester.pumpAndSettle();
+    expect(state.todosOn(TodoScope.today, yesterday).singleWhere((t) => t.text == 'Collect prescription').done, isTrue);
+    state.showDay(state.today);
+    await tester.pumpAndSettle();
+    expect(find.text('Collect prescription'), findsNothing);
+    expect(find.text('Keep this task'), findsOneWidget);
+
+    state.showDay(yesterday);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Collect prescription'));
+    await tester.pumpAndSettle();
+    expect(
+      state.todosOn(TodoScope.today, yesterday).singleWhere((t) => t.text == 'Collect prescription').done,
+      isFalse,
+    );
+    state.showDay(state.today);
+    await tester.pumpAndSettle();
+    expect(find.text('Collect prescription'), findsOneWidget);
+    expect(state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Collect prescription').done, isFalse);
+    await tester.pumpWidget(const SizedBox());
+    state.dispose();
+    store.close();
+  });
+
   testWidgets('tasks can be edited and assigned a date; only yesterday stays editable', (tester) async {
     await _loadFonts();
     tester.view.physicalSize = const Size(1440, 900);

@@ -790,7 +790,7 @@ class _AppearanceMenu extends StatelessWidget {
             title: Platform.isMacOS ? 'Follow Dark mode' : 'Follow the sun',
             subtitle: Platform.isMacOS
                 ? 'Follows macOS appearance, including ‘Auto’ (System Settings → Appearance).'
-                : 'Automatically switch to your theme’s dark partner when Night Light is on.',
+                : 'Switch to your theme’s dark partner when Night Light is on.',
             on: state.followNightLight,
             onTap: () => state.setFollowNightLight(!state.followNightLight),
           ),
