@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -14,8 +16,40 @@ class YearView extends StatelessWidget {
 
   final int year;
 
+  /// The smallest a cell gets before the page scrolls instead.
+  static const _minCell = 24.0;
+
+  /// [text]'s height in [style], as it's drawn here, wrapping at [width].
+  static double _line(BuildContext context, TextStyle style, {String text = 'X', double width = double.infinity}) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: DefaultTextStyle.of(context).style.merge(style)),
+      textScaler: MediaQuery.textScalerOf(context),
+      textDirection: TextDirection.ltr,
+      maxLines: 2,
+    )..layout(maxWidth: width);
+    final height = painter.height;
+    painter.dispose();
+    return height;
+  }
+
+  /// The cell height whose rows, each as tall as it or its name, add up to
+  /// [room]; at least [_minCell].
+  static double _fill(double room, List<double> names) {
+    final sorted = [...names]..sort();
+    // Rows whose names stand taller than the cell keep their names' height;
+    // the cell shares out what's left among the rest.
+    for (var tall = 0; tall < sorted.length; tall++) {
+      final rest = sorted.length - tall;
+      final cell = (room - sorted.skip(rest).fold(0.0, (a, b) => a + b)) / rest;
+      if (cell >= sorted[rest - 1]) return math.max(cell, _minCell);
+    }
+    return _minCell;
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) => _build(context, c.maxHeight));
+
+  Widget _build(BuildContext context, double height) {
     final state = AppScope.watch(context, (s) => (s.habitsRevision, s.entriesRevision, s.today));
     final header = TextStyle(
       fontSize: 11,
@@ -36,6 +70,27 @@ class YearView extends StatelessWidget {
       }
     }
     final sleep = state.sleepHabitsFor(year, state.isFutureMonth(year, 12) ? state.today.month : 12);
+    final empty = TextStyle(fontFamily: Fonts.body, fontSize: 15, color: context.palette.inkMuted);
+
+    // Cells as tall as fills the window with both cards, as on a month's
+    // tab: the rest is the page's and cards' padding and borders, titles,
+    // month names, the rule above each total and the rows' gaps.
+    final title = (2 * (24 + 1)) + _line(context, header) + 18;
+    final table = title + _line(context, _Table.labelStyle(context.palette)) + 10 + 17;
+    // A name on two lines keeps its row at least that tall.
+    double name(String text, {bool total = false}) => _line(
+      context,
+      _Table.nameStyle(context.palette, total: total),
+      text: text,
+      width: _Table._nameWidth,
+    );
+    final names = [
+      if (rituals.isNotEmpty) ...[for (final h in rituals.values) name(h.name), name('All rituals', total: true)],
+      for (final h in sleep) name(h.name),
+      name('Whole schedule', total: true),
+    ];
+    final chrome = 32 + 20 + (rituals.isEmpty ? title + 48 + _line(context, empty) : table) + table + names.length * 6;
+    final cell = _fill(height - chrome, names);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
@@ -51,10 +106,7 @@ class YearView extends StatelessWidget {
                 if (rituals.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Text(
-                      'No rituals logged in $year.',
-                      style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: context.palette.inkMuted),
-                    ),
+                    child: Text('No rituals logged in $year.', style: empty),
                   )
                 else
                   _Table(
@@ -66,6 +118,7 @@ class YearView extends StatelessWidget {
                         !state.store.habitBeforeYear(h.id, year) &&
                         !inMonth.entries.any((e) => e.key <= m && e.value.contains(h.id)),
                     totalLabel: 'All rituals',
+                    cell: cell,
                   ),
               ],
             ),
@@ -77,7 +130,7 @@ class YearView extends StatelessWidget {
               children: [
                 Text('SLEEP SCHEDULE  ·  ${sleep.length}', style: header),
                 const SizedBox(height: 18),
-                _Table(year: year, habits: sleep, has: (_, _) => true, totalLabel: 'Whole schedule'),
+                _Table(year: year, habits: sleep, has: (_, _) => true, totalLabel: 'Whole schedule', cell: cell),
               ],
             ),
           ),
@@ -100,7 +153,14 @@ class _Score {
 }
 
 class _Table extends StatelessWidget {
-  const _Table({required this.year, required this.habits, required this.has, this.notYet, required this.totalLabel});
+  const _Table({
+    required this.year,
+    required this.habits,
+    required this.has,
+    this.notYet,
+    required this.totalLabel,
+    required this.cell,
+  });
 
   final int year;
   final List<Habit> habits;
@@ -112,7 +172,20 @@ class _Table extends StatelessWidget {
   final bool Function(Habit, int month)? notYet;
   final String totalLabel;
 
+  /// Each cell's height.
+  final double cell;
+
   static const _nameWidth = 240.0;
+
+  static TextStyle nameStyle(Palette p, {bool total = false}) => TextStyle(
+    fontFamily: Fonts.body,
+    fontSize: 13.5,
+    fontWeight: total ? FontWeight.w600 : FontWeight.w500,
+    color: p.ink,
+  );
+
+  static TextStyle labelStyle(Palette p) =>
+      TextStyle(fontFamily: Fonts.ui, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.6, color: p.inkMuted);
 
   @override
   Widget build(BuildContext context) {
@@ -137,13 +210,7 @@ class _Table extends StatelessWidget {
     _Score sum(Iterable<_Score> all) => all.fold(_Score(), (a, b) => a..add(b));
     final monthTotals = [for (var i = 0; i < shown.length; i++) sum(scores.map((row) => row[i]))];
 
-    final label = TextStyle(
-      fontFamily: Fonts.ui,
-      fontSize: 11,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.6,
-      color: p.inkMuted,
-    );
+    final label = labelStyle(p);
 
     Widget row(String name, List<_Score> months, {Habit? habit, bool total = false}) {
       return Padding(
@@ -156,21 +223,23 @@ class _Table extends StatelessWidget {
                 name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: Fonts.body,
-                  fontSize: 13.5,
-                  fontWeight: total ? FontWeight.w600 : FontWeight.w500,
-                  color: p.ink,
-                ),
+                style: nameStyle(p, total: total),
               ),
             ),
             for (final (i, m) in shown.indexed)
               Expanded(
-                child: _Cell(ratio: months[i].ratio, future: habit != null && (notYet?.call(habit, m) ?? false)),
+                child: _Cell(
+                  ratio: months[i].ratio,
+                  height: cell,
+                  future: habit != null && (notYet?.call(habit, m) ?? false),
+                ),
               ),
             if (shown.length < 12) Spacer(flex: 12 - shown.length),
             const SizedBox(width: 10),
-            Expanded(flex: 2, child: _Cell(ratio: sum(months).ratio, strong: true)),
+            Expanded(
+              flex: 2,
+              child: _Cell(ratio: sum(months).ratio, height: cell, strong: true),
+            ),
           ],
         ),
       );
@@ -211,9 +280,10 @@ class _Table extends StatelessWidget {
 /// A percentage on a square tinted by how high it is, from missed through
 /// other to done; a dash when nothing was logged.
 class _Cell extends StatelessWidget {
-  const _Cell({required this.ratio, this.future = false, this.strong = false});
+  const _Cell({required this.ratio, required this.height, this.future = false, this.strong = false});
 
   final double? ratio;
+  final double height;
   final bool future;
   final bool strong;
 
@@ -232,7 +302,7 @@ class _Cell extends StatelessWidget {
       child: AnimatedContainer(
         duration: Motion.morph,
         curve: Motion.morphCurve,
-        height: 38,
+        height: height,
         alignment: Alignment.center,
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), color: fill),
         child: Text(
