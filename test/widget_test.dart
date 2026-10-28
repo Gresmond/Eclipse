@@ -19,6 +19,7 @@ import 'package:eclipse/data/sync_service.dart';
 import 'package:eclipse/data/updates.dart';
 import 'package:eclipse/data/windows_night_light.dart';
 import 'package:eclipse/main.dart';
+import 'package:eclipse/screens/display_view.dart';
 import 'package:eclipse/screens/today_view.dart';
 import 'package:eclipse/screens/month_view.dart';
 import 'package:eclipse/models.dart';
@@ -1579,11 +1580,11 @@ void main() {
     addTearDown(tester.view.reset);
 
     final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
-    for (final t in [...state.todos[TodoScope.week]!]) {
-      state.removeTodo(TodoScope.week, t);
+    for (final t in [...state.todos[TodoScope.tomorrow]!]) {
+      state.removeTodo(TodoScope.tomorrow, t);
     }
     for (final t in ['Alpha', 'Bravo', 'Charlie']) {
-      state.addTodo(TodoScope.week, t);
+      state.addTodo(TodoScope.tomorrow, t);
     }
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
@@ -1607,16 +1608,16 @@ void main() {
     await gesture.up();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    expect(state.todos[TodoScope.week]!.length, 2, reason: 'persisted before the exit finishes');
+    expect(state.todos[TodoScope.tomorrow]!.length, 2, reason: 'persisted before the exit finishes');
     expect(find.text('Bravo'), findsOneWidget, reason: 'the exit visual is still closing up');
     expect(top('Charlie'), lessThan(charlie), reason: 'the row below follows it up');
 
     await tester.pumpAndSettle();
-    expect(state.todos[TodoScope.week]!.map((t) => t.text), ['Alpha', 'Charlie']);
+    expect(state.todos[TodoScope.tomorrow]!.map((t) => t.text), ['Alpha', 'Charlie']);
     expect(top('Charlie'), lessThan(charlie));
   });
 
-  testWidgets('today fills its column and tomorrow sits above the tabbed planner', (tester) async {
+  testWidgets('tomorrow lines up with the rituals and the journal with the sleep schedule', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1630,26 +1631,22 @@ void main() {
 
     expect(tomorrowPanel, findsOneWidget);
     expect(todayPanel, findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is TodoPanel && w.tabbed), findsNothing);
 
+    Rect card(String title) => tester.getRect(find.ancestor(of: find.text(title), matching: find.byType(Tile)).first);
     final tomorrowRect = tester.getRect(tomorrowPanel);
     final todayRect = tester.getRect(todayPanel);
-    final journalCard = find.ancestor(of: find.text('Journal'), matching: find.byType(Tile));
-    final journalRect = tester.getRect(journalCard);
+    final journalRect = card('Journal');
+    final ritualsRect = card('Daily rituals');
+    final sleepRect = card('Sleep schedule');
 
     expect(todayRect.top, tomorrowRect.top);
     expect(todayRect.bottom, closeTo(journalRect.bottom, 0.5));
     expect(tomorrowRect.left, greaterThan(todayRect.right));
     expect(tomorrowRect.left, journalRect.left);
-    expect(tomorrowRect.bottom, lessThan(journalRect.top));
-    expect(tomorrowRect.height, closeTo(journalRect.height, 0.5));
-    final planner = find.byWidgetPredicate((w) => w is TodoPanel && w.tabbed);
-    expect(tester.getRect(planner).top, greaterThan(tomorrowRect.bottom));
-    await tester.tap(find.byTooltip('Switch to this month'));
-    await tester.pumpAndSettle();
-    expect(find.text('This month'), findsOneWidget);
-    expect(find.text('This week'), findsNothing);
-    await tester.tap(find.byTooltip('Switch to this week'));
-    await tester.pumpAndSettle();
+    expect(tomorrowRect.bottom, closeTo(ritualsRect.bottom, 0.5));
+    expect(journalRect.top, closeTo(sleepRect.top, 0.5));
+    expect(journalRect.height, closeTo(sleepRect.height, 0.5));
 
     // Test adding and ticking a task in Tomorrow via UI
     final addField = find.descendant(of: tomorrowPanel, matching: find.byType(TextField));
@@ -1675,34 +1672,6 @@ void main() {
     expect(find.descendant(of: tomorrowPanel, matching: find.text('Prepare tomorrow breakfast')), findsOneWidget);
     expect(state.todos[TodoScope.tomorrow]!.single.done, isFalse);
   });
-
-  for (final scope in [TodoScope.week, TodoScope.month]) {
-    testWidgets('${scope.label} completion moves to Today and undo restores the planner', (tester) async {
-      tester.view.physicalSize = const Size(1440, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
-      state.addTodo(scope, 'Finish planned task');
-      await tester.pumpWidget(EclipseApp(state: state));
-      await tester.pumpAndSettle();
-      if (scope == TodoScope.month) {
-        await tester.tap(find.byTooltip('Switch to this month'));
-        await tester.pumpAndSettle();
-      }
-      final planner = find.byWidgetPredicate((w) => w is TodoPanel && w.tabbed);
-      final todayPanel = find.widgetWithText(TodoPanel, 'Today');
-      await tester.tap(find.descendant(of: planner, matching: find.text('Finish planned task')));
-      await tester.pumpAndSettle();
-      expect(find.descendant(of: planner, matching: find.text('Finish planned task')), findsNothing);
-      final completed = find.descendant(of: todayPanel, matching: find.text('Finish planned task'));
-      expect(completed, findsOneWidget);
-      expect(DefaultTextStyle.of(tester.element(completed)).style.decoration, TextDecoration.lineThrough);
-      await tester.tap(completed);
-      await tester.pumpAndSettle();
-      expect(find.descendant(of: planner, matching: find.text('Finish planned task')), findsOneWidget);
-      expect(state.todos[scope]!.last.done, isFalse);
-    });
-  }
 
   testWidgets('task actions reveal per row and pills only on each icon', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
@@ -1757,161 +1726,6 @@ void main() {
     expect(tester.getCenter(edits.at(0)).dy, greaterThan(original.bottom), reason: "now on the second row");
   });
 
-  testWidgets('planner can assign and clear a due date before adding a task', (tester) async {
-    await _loadFonts();
-    tester.view.physicalSize = const Size(1440, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
-    await tester.pumpWidget(EclipseApp(state: state));
-    await tester.pumpAndSettle();
-    final panel = find.byWidgetPredicate((w) => w is TodoPanel && w.tabbed);
-    final input = find.descendant(of: panel, matching: find.byType(TextField));
-    final calendar = find.byTooltip('Add a due date');
-    expect(tester.getCenter(calendar).dx, lessThan(tester.getTopLeft(input).dx));
-    await tester.tap(calendar);
-    await tester.pumpAndSettle();
-    await _shoot(tester, 'planner_due_calendar');
-    await tester.tap(find.text('28').last);
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    await _shoot(tester, 'planner_due_date');
-    await tester.enterText(input, 'Scheduled at creation');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    expect(state.todos[TodoScope.week]!.single.dueDate, DateTime(2026, 10, 28));
-    expect(find.byTooltip('Add a due date'), findsOneWidget);
-    await tester.tap(calendar);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('29').last);
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Clear due date'));
-    await tester.pumpAndSettle();
-    await tester.enterText(input, 'Unscheduled');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    expect(state.todos[TodoScope.week]!.last.dueDate, isNull);
-    await tester.tap(find.byTooltip('Switch to this month'));
-    await tester.pumpAndSettle();
-    expect(find.text('This week'), findsNothing);
-    expect(find.text('This month'), findsOneWidget);
-    await _shoot(tester, 'planner_month_heading');
-    expect(find.descendant(of: panel, matching: find.byType(TileHeader)), findsOneWidget);
-    expect(find.byTooltip('Add a due date'), findsOneWidget);
-  });
-
-  for (final dates in [
-    (DateTime(2026, 10, 25), DateTime(2026, 11, 25)),
-    (DateTime(2027, 1, 31), DateTime(2027, 2, 28)),
-    (DateTime(2028, 1, 31), DateTime(2028, 2, 29)),
-    (DateTime(2026, 12, 25), DateTime(2027, 1, 25)),
-  ]) {
-    testWidgets('due calendar uses the tab cutoff from ${dates.$1}', (tester) async {
-      tester.view.physicalSize = const Size(1440, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      final state = AppState(_testStore(), clock: () => dates.$1);
-      await tester.pumpWidget(EclipseApp(state: state));
-      await tester.pumpAndSettle();
-      for (final scope in [TodoScope.week, TodoScope.month]) {
-        final cutoff = scope == TodoScope.week ? DateTime(dates.$1.year, dates.$1.month, dates.$1.day + 7) : dates.$2;
-        if (scope == TodoScope.month) {
-          await tester.tap(find.byTooltip('Switch to this month'));
-          await tester.pumpAndSettle();
-        }
-        await tester.tap(find.byTooltip('Add a due date'));
-        await tester.pumpAndSettle();
-        expect(find.byType(YearPicker), findsNothing);
-        expect(find.text('Select date'), findsNothing);
-        final dialog = find.byType(AlertDialog);
-        Finder day(int number) => find.descendant(of: dialog, matching: find.widgetWithText(TextButton, '$number'));
-        final localizations = MaterialLocalizations.of(tester.element(dialog));
-        expect(
-          tester
-              .widget<IconButton>(
-                find.byWidgetPredicate((w) => w is IconButton && w.tooltip == localizations.previousMonthTooltip),
-              )
-              .onPressed,
-          isNull,
-        );
-        if (dates.$1.day > 1) {
-          expect(tester.widget<TextButton>(day(dates.$1.day - 1)).onPressed, isNull);
-        }
-        expect(tester.widget<TextButton>(day(dates.$1.day)).onPressed, isNotNull);
-        await tester.tap(find.byTooltip(localizations.nextMonthTooltip));
-        await tester.pumpAndSettle();
-        expect(
-          tester
-              .widget<IconButton>(
-                find.byWidgetPredicate((w) => w is IconButton && w.tooltip == localizations.nextMonthTooltip),
-              )
-              .onPressed,
-          isNull,
-        );
-        expect(tester.widget<TextButton>(day(cutoff.day)).onPressed, isNotNull);
-        if (cutoff.day < DateUtils.getDaysInMonth(cutoff.year, cutoff.month)) {
-          expect(tester.widget<TextButton>(day(cutoff.day + 1)).onPressed, isNull);
-        }
-        await tester.tap(day(cutoff.day));
-        await tester.tap(find.text('OK'));
-        await tester.pumpAndSettle();
-        final panel = find.byWidgetPredicate((w) => w is TodoPanel && w.tabbed);
-        await tester.enterText(find.descendant(of: panel, matching: find.byType(TextField)), 'At cutoff');
-        await tester.testTextInput.receiveAction(TextInputAction.done);
-        await tester.pumpAndSettle();
-        expect(state.todos[scope]!.single.dueDate, cutoff);
-        expect(tester.takeException(), isNull);
-      }
-    });
-  }
-
-  for (final scope in [TodoScope.week, TodoScope.month]) {
-    testWidgets('editing ${scope.name} task limits the due calendar and clamps an old date', (tester) async {
-      tester.view.physicalSize = const Size(1440, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 10));
-      state.addTodo(scope, 'Existing task', dueDate: DateTime(2026, 11, 20));
-      final cutoff = scope == TodoScope.week ? DateTime(2026, 10, 17) : DateTime(2026, 11, 10);
-      await tester.pumpWidget(EclipseApp(state: state));
-      await tester.pumpAndSettle();
-      if (scope == TodoScope.month) {
-        await tester.tap(find.byTooltip('Switch to this month'));
-        await tester.pumpAndSettle();
-      }
-      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await pointer.addPointer(location: Offset.zero);
-      addTearDown(pointer.removePointer);
-      await pointer.moveTo(tester.getCenter(find.text('Existing task')));
-      await tester.pumpAndSettle();
-      final panel = find.byWidgetPredicate((w) => w is TodoPanel && w.tabbed);
-      await tester.tap(find.descendant(of: panel, matching: find.byTooltip('Edit task')).last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Due 20/11/2026')));
-      await tester.pumpAndSettle();
-      final calendar = find.byType(AlertDialog).last;
-      Finder day(int number) => find.descendant(of: calendar, matching: find.widgetWithText(TextButton, '$number'));
-      expect(tester.widget<TextButton>(day(cutoff.day)).onPressed, isNotNull);
-      expect(tester.widget<TextButton>(day(cutoff.day + 1)).onPressed, isNull);
-      final localizations = MaterialLocalizations.of(tester.element(calendar));
-      expect(
-        tester
-            .widget<IconButton>(
-              find.byWidgetPredicate((w) => w is IconButton && w.tooltip == localizations.nextMonthTooltip),
-            )
-            .onPressed,
-        isNull,
-      );
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-      expect(state.todos[scope]!.single.dueDate, cutoff);
-      expect(tester.takeException(), isNull);
-    });
-  }
-
   testWidgets('completing yesterday’s carried task removes it from today and undo restores it', (tester) async {
     await _loadFonts();
     tester.view.physicalSize = const Size(1440, 900);
@@ -1956,7 +1770,7 @@ void main() {
     store.close();
   });
 
-  testWidgets('tasks can be edited and assigned a date; only yesterday stays editable', (tester) async {
+  testWidgets('tasks can be edited and dated in Display; only yesterday stays editable', (tester) async {
     await _loadFonts();
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
@@ -1964,9 +1778,10 @@ void main() {
     var now = DateTime(2026, 10, 23, 12);
     final state = AppState(_testStore(), clock: () => now);
     state.addTodo(TodoScope.week, 'Original task');
+    state.setDisplayMode(true);
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    final panel = find.byWidgetPredicate((w) => w is TodoPanel && w.tabbed);
+    final panel = find.byType(DisplayView);
     final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await pointer.addPointer(location: Offset.zero);
     addTearDown(pointer.removePointer);
@@ -1985,6 +1800,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.tomorrow]!.single.text, 'Revised task');
     expect(find.text('Due 24/10/2026'), findsOneWidget);
+    state.setDisplayMode(false);
+    await tester.pumpAndSettle();
     state.addTodo(TodoScope.today, 'Yesterday task');
     now = DateTime(2026, 10, 24, 12);
     state.checkDate();
@@ -2284,23 +2101,23 @@ void main() {
     await tester.tap(find.text('Oct').first, warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(state.viewMonth, isNull);
-    for (var i = 1; i < 13; i++) {
+    for (var i = 1; i < 12; i++) {
       await _shoot(tester, 'tour_$i');
-      await tester.tap(find.text(i == 12 ? 'Get started' : 'Next'));
-      if (_shotDir.isNotEmpty && i == 8) {
+      await tester.tap(find.text(i == 11 ? 'Get started' : 'Next'));
+      if (_shotDir.isNotEmpty && i == 7) {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 55));
         await _shoot(tester, 'tour_settings_open_55ms');
         await tester.pump(const Duration(milliseconds: 55));
         await _shoot(tester, 'tour_settings_open_110ms');
       }
-      if (_shotDir.isNotEmpty && (i == 9 || i == 10)) {
+      if (_shotDir.isNotEmpty && (i == 8 || i == 9)) {
         await tester.pump();
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 210));
-        await _shoot(tester, i == 9 ? 'tour_data_transition' : 'tour_google_transition');
+        await _shoot(tester, i == 8 ? 'tour_data_transition' : 'tour_google_transition');
       }
-      if (_shotDir.isNotEmpty && i == 11) {
+      if (_shotDir.isNotEmpty && i == 10) {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 105));
         await _shoot(tester, 'tour_appearance_open_105ms');

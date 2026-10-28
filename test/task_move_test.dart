@@ -77,26 +77,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('hover switches after 500ms and a task survives switching its own source panel', (tester) async {
-    state.addTodo(TodoScope.week, 'Across tabs');
-    await showApp(tester);
-    final gesture = await tester.startGesture(tester.getCenter(find.text('Across tabs')));
-    await gesture.moveBy(const Offset(20, 0));
-    await tester.pump();
-    await gesture.moveTo(tester.getCenter(find.byTooltip('Switch to this month')));
-    await tester.pump(const Duration(milliseconds: 499));
-    expect(find.byTooltip('Switch to this month'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 1));
-    expect(find.byTooltip('Switch to this week'), findsOneWidget);
-    await gesture.moveTo(tester.getCenter(panel(TodoScope.week)));
-    await gesture.up();
-    await tester.pumpAndSettle();
-    expect(state.todos[TodoScope.week], isEmpty);
-    expect(state.todos[TodoScope.month]!.single.text, 'Across tabs');
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('completed tasks cannot drag and leaving the switch cancels its timer', (tester) async {
+  testWidgets('completed tasks cannot drag; open ones can', (tester) async {
     state.addTodo(TodoScope.today, 'Finished');
     state.toggleTodo(state.todos[TodoScope.today]!.single);
     state.addTodo(TodoScope.today, 'Still open');
@@ -106,15 +87,8 @@ void main() {
     await tester.dragFrom(finished, destination - finished);
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.tomorrow], isEmpty);
-    final gesture = await tester.startGesture(tester.getCenter(find.text('Still open')));
-    await gesture.moveBy(const Offset(20, 0));
-    await tester.pump();
-    await gesture.moveTo(tester.getCenter(find.byTooltip('Switch to this month')));
-    await tester.pump(const Duration(milliseconds: 200));
-    await gesture.moveTo(destination);
-    await tester.pump(const Duration(milliseconds: 600));
-    expect(find.byTooltip('Switch to this month'), findsOneWidget);
-    await gesture.up();
+    final open = tester.getCenter(find.text('Still open'));
+    await tester.dragFrom(open, destination - open);
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.tomorrow]!.single.text, 'Still open');
   });
@@ -132,7 +106,7 @@ void main() {
     await showApp(tester);
     await tester.tap(find.text('Show me around'));
     await tester.pumpAndSettle();
-    for (var i = 1; i < 9; i++) {
+    for (var i = 1; i < 8; i++) {
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
     }

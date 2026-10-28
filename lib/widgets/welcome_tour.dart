@@ -17,7 +17,6 @@ enum TourSpot {
   sleep,
   todayTodos,
   tomorrowTodos,
-  laterTodos,
   journal,
   date,
   tabs,
@@ -146,13 +145,6 @@ List<_Step> _steps(AppState state) => [
     'Plan the next day here. When a new day starts, unfinished Tomorrow tasks move '
         'into Today automatically.',
     TourSpot.tomorrowTodos,
-  ),
-  const _Step(
-    'This week and this month',
-    'Switch tabs for longer plans. Add a due date when creating or editing a task. '
-        'Dated tasks move from ‘This month’ to ‘This week’ a week before they’re due, '
-        'then into Tomorrow and Today.',
-    TourSpot.laterTodos,
   ),
   const _Step(
     'Journal',

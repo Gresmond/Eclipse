@@ -103,6 +103,7 @@ class AppState extends ChangeNotifier {
   /// Opens the welcome tour, on the Today view it walks through.
   void startTour() {
     touring = true;
+    setDisplayMode(false);
     showToday();
   }
 
@@ -545,6 +546,18 @@ class AppState extends ChangeNotifier {
     saveDrafts();
     showingTraining = !showingTraining;
     if (!showingTraining) training.day = null;
+    notifyListeners();
+  }
+
+  /// Display mode: everything as one day-by-day list of to-dos, rather than
+  /// the Ritual cards. Kept per computer, not synced.
+  late bool displayMode = store.setting('displayMode') == '1';
+
+  void setDisplayMode(bool display) {
+    if (display == displayMode) return;
+    saveDrafts();
+    displayMode = display;
+    store.setSetting('displayMode', display ? '1' : '0');
     notifyListeners();
   }
 

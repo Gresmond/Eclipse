@@ -455,3 +455,18 @@ class _TaskAction extends StatelessWidget {
     );
   }
 }
+
+/// One live task outside a [TodoPanel]: a row of Display's day list, which
+/// ticks, edits and nests the same way.
+class TaskRow extends StatelessWidget {
+  const TaskRow({super.key, required this.scope, required this.item});
+
+  final TodoScope scope;
+  final TodoItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.read(context);
+    return _TodoRow(scope: scope, item: item, day: state.today, onRemove: () => state.removeTodo(scope, item));
+  }
+}

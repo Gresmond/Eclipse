@@ -128,32 +128,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  for (final ownSource in [false, true]) {
-    for (final dropElsewhere in [false, true]) {
-      testWidgets('hover preview reverts: own source $ownSource, other drop $dropElsewhere', (tester) async {
-        final source = ownSource ? TodoScope.week : TodoScope.today;
-        state.addTodo(source, 'Drag project');
-        await show(tester);
-        final gesture = await tester.startGesture(tester.getCenter(find.text('Drag project')));
-        await gesture.moveBy(const Offset(20, 0));
-        await tester.pump();
-        await gesture.moveTo(tester.getCenter(find.byTooltip('Switch to this month')));
-        await tester.pump(const Duration(milliseconds: 550));
-        expect(find.byTooltip('Switch to this week'), findsOneWidget);
-        await gesture.moveTo(
-          dropElsewhere
-              ? tester.getCenter(find.byWidgetPredicate((w) => w is TodoPanel && w.scope == TodoScope.tomorrow))
-              : const Offset(20, 70),
-        );
-        await gesture.up();
-        await tester.pumpAndSettle();
-        expect(find.byTooltip('Switch to this month'), findsOneWidget);
-        expect(state.todos[dropElsewhere ? TodoScope.tomorrow : source]!.single.text, 'Drag project');
-        expect(tester.takeException(), isNull);
-      });
-    }
-  }
-
   testWidgets('wheel scrolling eases, accumulates ticks and clamps to the end', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -193,18 +167,18 @@ void main() {
 
   testWidgets('dropping on a task name nests across lists and preserves the project', (tester) async {
     state.addTodo(TodoScope.today, 'Read source material');
-    state.addTodo(TodoScope.week, 'Write report', dueDate: DateTime(2026, 10, 29));
+    state.addTodo(TodoScope.tomorrow, 'Write report', dueDate: DateTime(2026, 10, 29));
     await show(tester);
     final source = tester.getCenter(find.text('Read source material'));
     final target = tester.getCenter(find.text('Write report'));
     await tester.dragFrom(source, target - source);
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.today], isEmpty);
-    expect(task(TodoScope.week).subtasks.single.text, 'Read source material');
-    expect(task(TodoScope.week).dueDate, DateTime(2026, 10, 29));
+    expect(task(TodoScope.tomorrow).subtasks.single.text, 'Read source material');
+    expect(task(TodoScope.tomorrow).dueDate, DateTime(2026, 10, 29));
     expect(find.byTooltip('Collapse subtasks'), findsOneWidget);
     expect(store.todoListsOn(today)[TodoScope.today]!, isEmpty);
-    expect(store.todoListsOn(today)[TodoScope.week]!.single.subtasks.single.text, 'Read source material');
+    expect(store.todoListsOn(today)[TodoScope.tomorrow]!.single.subtasks.single.text, 'Read source material');
     expect(tester.takeException(), isNull);
   });
 

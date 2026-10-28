@@ -52,7 +52,7 @@ void main() {
       }
     }
     state.addTodo(TodoScope.today, 'Research the project');
-    state.addTodo(TodoScope.week, 'Launch the project');
+    state.addTodo(TodoScope.tomorrow, 'Launch the project');
   });
   tearDown(() {
     state.dispose();
@@ -83,7 +83,7 @@ void main() {
       tester,
     ) async {
       if (existing) {
-        state.setTodoSubtasks(TodoScope.week, state.todos[TodoScope.week]!.single, [
+        state.setTodoSubtasks(TodoScope.tomorrow, state.todos[TodoScope.tomorrow]!.single, [
           const TodoSubtask('Existing step'),
         ]);
       }
@@ -99,12 +99,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 105));
       expect(opacity(tester, 'Research the project'), greaterThan(0));
       expect(opacity(tester, 'Research the project'), lessThan(1));
-      expect(state.todos[TodoScope.week]!.single.subtasks.length, existing ? 1 : 0);
+      expect(state.todos[TodoScope.tomorrow]!.single.subtasks.length, existing ? 1 : 0);
       if (existing) expect(opacity(tester, 'Existing step'), 1);
       await _shot(tester, 'nest_${existing}_source_fading');
       await tester.pump(const Duration(milliseconds: 315));
       expect(state.todos[TodoScope.today], isEmpty);
-      expect(state.todos[TodoScope.week]!.single.subtasks.last.text, 'Research the project');
+      expect(state.todos[TodoScope.tomorrow]!.single.subtasks.last.text, 'Research the project');
       expect(opacity(tester, 'Research the project'), 0);
       await tester.pump(); // Start the enclosing size animation on its own frame.
       await tester.pump(const Duration(milliseconds: 210));
@@ -128,7 +128,7 @@ void main() {
   }
 
   testWidgets('subtasks drag to a new place in their task, the others gliding aside', (tester) async {
-    state.setTodoSubtasks(TodoScope.week, state.todos[TodoScope.week]!.single, [
+    state.setTodoSubtasks(TodoScope.tomorrow, state.todos[TodoScope.tomorrow]!.single, [
       for (final text in ['Step one', 'Step two', 'Step three']) TodoSubtask(text, numbered: true),
     ]);
     await show(tester);
@@ -144,10 +144,10 @@ void main() {
     // Shown in its new place before it's let go, and only saved when it is.
     await tester.pumpAndSettle();
     expect(tester.getCenter(find.text('Step two')).dy, lessThan(start.dy + 4), reason: 'Step two glides up');
-    expect(state.todos[TodoScope.week]!.single.subtasks.first.text, 'Step one');
+    expect(state.todos[TodoScope.tomorrow]!.single.subtasks.first.text, 'Step one');
     await drag.up();
     await tester.pumpAndSettle();
-    final task = state.todos[TodoScope.week]!.single;
+    final task = state.todos[TodoScope.tomorrow]!.single;
     expect(task.subtasks.map((s) => s.text), ['Step two', 'Step one', 'Step three']);
     expect(task.numbered, isTrue);
     expect(state.todos[TodoScope.today]!.single.text, 'Research the project', reason: 'the task itself stayed');
@@ -164,11 +164,11 @@ void main() {
     await show(tester);
     await drop(tester);
     await tester.pump(const Duration(milliseconds: 210));
-    state.removeTodo(TodoScope.week, state.todos[TodoScope.week]!.single);
+    state.removeTodo(TodoScope.tomorrow, state.todos[TodoScope.tomorrow]!.single);
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.today]!.single.text, 'Research the project');
     expect(opacity(tester, 'Research the project'), 1);
-    expect(state.todos[TodoScope.week], isEmpty);
+    expect(state.todos[TodoScope.tomorrow], isEmpty);
     expect(tester.takeException(), isNull);
   });
 }

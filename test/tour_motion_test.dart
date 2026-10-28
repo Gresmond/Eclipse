@@ -37,7 +37,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show me around'));
     await tester.pumpAndSettle();
-    for (var step = 1; step < 8; step++) {
+    for (var step = 1; step < 7; step++) {
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
     }
@@ -201,7 +201,7 @@ void main() {
     state.startTour();
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    for (var step = 0; step < 9; step++) {
+    for (var step = 0; step < 8; step++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
     }

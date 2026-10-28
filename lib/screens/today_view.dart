@@ -18,7 +18,8 @@ import '../widgets/todo_panel.dart';
 import '../widgets/welcome_tour.dart';
 
 /// Three columns that exactly fill the window: rituals over the sleep
-/// schedule, today's to-dos, and tomorrow / week-month tabs / journal. Only a card whose list outgrows it scrolls.
+/// schedule, today's to-dos, and tomorrow over the journal, lined up with
+/// the rituals and sleep cards. Only a card whose list outgrows it scrolls.
 class TodayView extends StatelessWidget {
   const TodayView({super.key});
 
@@ -26,7 +27,7 @@ class TodayView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.shownDay, s.viewDay, s.today));
+    final state = AppScope.watch(context, (s) => (s.shownDay, s.viewDay, s.today, s.habitsRevision));
     final day = state.shownDay;
     final past = state.viewDay != null;
     return LayoutBuilder(
@@ -35,6 +36,7 @@ class TodayView extends StatelessWidget {
         // so columns maintain their clean proportions instead of getting squished.
         const minContentWidth = 860.0;
         final needsScroll = constraints.maxWidth < minContentWidth;
+        final sleepHeight = _HabitColumn.sleepHeight(state, day, constraints.maxHeight - 28);
 
         Widget content = Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -61,14 +63,8 @@ class TodayView extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: _gap),
-                  Expanded(
-                    child: TourTarget(
-                      spot: TourSpot.laterTodos,
-                      child: TodoPanel(scope: TodoScope.week, day: past ? day : null, tabbed: true),
-                    ),
-                  ),
-                  const SizedBox(height: _gap),
-                  Expanded(
+                  SizedBox(
+                    height: sleepHeight,
                     child: TourTarget(spot: TourSpot.journal, child: const _JournalCard()),
                   ),
                 ],
@@ -95,6 +91,17 @@ class TodayView extends StatelessWidget {
 class _HabitColumn extends StatelessWidget {
   const _HabitColumn();
 
+  /// The sleep card's height in a column [height] tall, which the journal
+  /// beside it matches.
+  static double sleepHeight(AppState state, DateTime day, double height) {
+    final rituals = state.habitsFor(day.year, day.month).where((h) => h.onDay(day)).length;
+    final sleep = state.sleepHabitsFor(day.year, day.month).length;
+    final rows = height - 2 * _HabitsCard.chrome - TodayView._gap;
+    final count = rituals + sleep;
+    final share = count == 0 ? _HabitsCard._maxRow : rows / count;
+    return _HabitsCard.chrome + sleep * share.clamp(_HabitsCard._minRow, _HabitsCard._maxRow);
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => (s.shownDay, s.habitsRevision));
@@ -107,10 +114,7 @@ class _HabitColumn extends StatelessWidget {
     ];
     return LayoutBuilder(
       builder: (context, constraints) {
-        final rows = constraints.maxHeight - 2 * _HabitsCard.chrome - TodayView._gap;
-        final count = rituals.length + sleep.length;
-        final share = count == 0 ? _HabitsCard._maxRow : rows / count;
-        final sleepHeight = _HabitsCard.chrome + sleep.length * share.clamp(_HabitsCard._minRow, _HabitsCard._maxRow);
+        final sleepHeight = _HabitColumn.sleepHeight(state, day, constraints.maxHeight);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
