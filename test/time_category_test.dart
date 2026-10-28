@@ -123,7 +123,11 @@ void main() {
     }
     expect(places.toSet(), hasLength(1));
 
-    // Birthday sets it to come round every year.
+    // Categories wait behind "Add a category"; Birthday sets it to come
+    // round every year.
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.text('Birthday')), findsNothing);
+    await tester.tap(find.text('Add a category'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Birthday').last);
     await tester.pumpAndSettle();
     expect(find.text('Every year'), findsOneWidget);

@@ -65,9 +65,12 @@ class _DueDateDialog extends StatefulWidget {
 }
 
 class _DueDateDialogState extends State<_DueDateDialog> {
-  /// Every month shows six weeks' rows, so the dialog (and its arrows)
-  /// stays put as the months go by.
-  static const _weeks = 6;
+  static const _contentPadding = EdgeInsets.fromLTRB(16, 12, 16, 0);
+  final _content = GlobalKey();
+
+  /// Where the dialog opened, centred: its top stays there after, so the
+  /// arrows stay put as the months' weeks grow and shrink it below.
+  double? _top;
 
   late final DateTime _first;
   late final DateTime? _last;
@@ -88,6 +91,11 @@ class _DueDateDialogState extends State<_DueDateDialog> {
     final due = widget.due == null ? _first : DateUtils.dateOnly(widget.due!);
     _selected = due.isBefore(_first) ? _first : (_last != null && due.isAfter(_last) ? _last : due);
     _month = DateTime(_selected.year, _selected.month);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final box = _content.currentContext?.findRenderObject() as RenderBox?;
+      if (!mounted || box == null) return;
+      setState(() => _top = box.localToGlobal(Offset.zero).dy - _contentPadding.top);
+    });
   }
 
   void _moveMonth(int offset) {
@@ -112,13 +120,18 @@ class _DueDateDialogState extends State<_DueDateDialog> {
     // Weeks start on Monday, as everywhere else in the app.
     final leading = DateTime(_month.year, _month.month).weekday - 1;
     final days = DateUtils.getDaysInMonth(_month.year, _month.month);
+    final weeks = ((leading + days) / 7).ceil();
+    final top = _top;
 
     return ConfirmOnEnter(
       onConfirm: _done,
       preserveButtons: false,
       child: AlertDialog(
-        contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        alignment: top == null ? null : Alignment.topCenter,
+        insetPadding: top == null ? null : EdgeInsets.fromLTRB(40, top, 40, 24),
+        contentPadding: _contentPadding,
         content: SizedBox(
+          key: _content,
           width: 336,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -163,20 +176,29 @@ class _DueDateDialogState extends State<_DueDateDialog> {
                       ),
                   ],
                 ),
-                for (var row = 0; row < _weeks; row++)
-                  Row(
+                // Only the weeks the month has, the rows below moving with it.
+                AnimatedSize(
+                  duration: Motion.morph,
+                  curve: Motion.morphCurve,
+                  alignment: Alignment.topCenter,
+                  child: Column(
                     children: [
-                      for (var column = 0; column < 7; column++)
-                        Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
+                      for (var row = 0; row < weeks; row++)
+                        Row(
+                          children: [
+                            for (var column = 0; column < 7; column++)
+                              Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
+                          ],
+                        ),
                     ],
                   ),
+                ),
               ],
               if (widget.details) ...[
                 SizedBox(height: widget.calendar ? 8 : 4),
                 _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
-                _RepeatRow(repeat: _repeat, start: _selected, onChanged: (repeat) => setState(() => _repeat = repeat)),
-                const SizedBox(height: 4),
                 _CategoryRow(category: _category, onChanged: _pickCategory),
+                _RepeatRow(repeat: _repeat, start: _selected, onChanged: (repeat) => setState(() => _repeat = repeat)),
                 const SizedBox(height: 4),
               ],
             ],
@@ -384,7 +406,8 @@ class _RepeatRow extends StatelessWidget {
   }
 }
 
-/// A task's category, one pill each: clicking the lit one clears it.
+/// A task's category: "Add a category", or its label, opening a menu of
+/// them; a cross clears it.
 class _CategoryRow extends StatelessWidget {
   const _CategoryRow({required this.category, required this.onChanged});
 
@@ -392,20 +415,121 @@ class _CategoryRow extends StatelessWidget {
   final ValueChanged<TaskCategory?> onChanged;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(left: 8),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 6,
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 0, 4),
+      child: Row(
         children: [
-          for (final c in TaskCategory.values)
-            CategoryChip(category: c, selected: c == category, onTap: () => onChanged(c == category ? null : c)),
+          Icon(Icons.sell_outlined, size: 18, color: p.inkMuted),
+          const SizedBox(width: 10),
+          _CategoryPill(category: category, onChanged: onChanged),
+          if (category != null)
+            IconButton(
+              tooltip: 'No category',
+              iconSize: 18,
+              icon: const Icon(Icons.close_rounded),
+              onPressed: () => onChanged(null),
+            ),
         ],
       ),
-    ),
+    );
+  }
+}
+
+/// The category row's pill, styled as the time's.
+class _CategoryPill extends StatefulWidget {
+  const _CategoryPill({required this.category, required this.onChanged});
+
+  final TaskCategory? category;
+  final ValueChanged<TaskCategory?> onChanged;
+
+  @override
+  State<_CategoryPill> createState() => _CategoryPillState();
+}
+
+class _CategoryPillState extends State<_CategoryPill> {
+  bool _hover = false;
+
+  void _open() => showFadeMenu(
+    context,
+    width: 200,
+    above: true,
+    alignLeft: true,
+    builder: (menu) {
+      final p = menu.palette;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final c in TaskCategory.values)
+            FadeMenuRow(
+              height: 40,
+              onTap: () {
+                widget.onChanged(c);
+                Navigator.pop(menu);
+              },
+              child: Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(color: categoryColour(p, c), shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    c.label,
+                    style: TextStyle(
+                      fontFamily: Fonts.ui,
+                      fontSize: 13,
+                      fontWeight: c == widget.category ? FontWeight.w600 : FontWeight.w500,
+                      color: p.ink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      );
+    },
   );
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final category = widget.category;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: _open,
+        child: AnimatedContainer(
+          duration: Motion.hover,
+          curve: Motion.hoverCurve,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: _hover ? p.empty : p.tile.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: p.tileBorder.withValues(alpha: 0.8)),
+          ),
+          child: FadeThrough(
+            duration: Motion.click,
+            child: Text(
+              category?.label ?? 'Add a category',
+              key: ValueKey(category),
+              style: TextStyle(
+                fontFamily: Fonts.body,
+                fontSize: 13,
+                color: category == null ? p.inkMuted : categoryColour(p, category),
+                fontWeight: category == null ? null : FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _EditTaskDialog extends StatefulWidget {
@@ -482,13 +606,12 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
               ],
               const SizedBox(height: 4),
               _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
+              _CategoryRow(category: _category, onChanged: (category) => setState(() => _category = category)),
               _RepeatRow(
                 repeat: _repeat,
                 start: start.isBefore(today) ? today : start,
                 onChanged: (repeat) => setState(() => _repeat = repeat),
               ),
-              const SizedBox(height: 4),
-              _CategoryRow(category: _category, onChanged: (category) => setState(() => _category = category)),
             ],
           ),
         ),

@@ -434,13 +434,17 @@ class _TodoRowState extends State<_TodoRow> {
           children: [
             Padding(padding: const EdgeInsets.only(left: 18), child: parentRow),
             if (item.subtasks.isNotEmpty)
+              // Centred on the checkbox, which is centred in its row.
               Positioned(
                 left: 0,
-                top: 7,
-                child: _TaskAction(
-                  tooltip: _expanded ? 'Collapse subtasks' : 'Expand subtasks',
-                  icon: _expanded ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
-                  onPressed: () => setState(() => _expanded = !_expanded),
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: _TaskAction(
+                    tooltip: _expanded ? 'Collapse subtasks' : 'Expand subtasks',
+                    icon: _expanded ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
+                    onPressed: () => setState(() => _expanded = !_expanded),
+                  ),
                 ),
               ),
           ],
