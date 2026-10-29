@@ -29,9 +29,10 @@ class SyncFolder {
     for (final MapEntry(key: day, value: regs) in days.entries) {
       final file = File(p.join(root, machine, '$day.json'));
       file.parent.createSync(recursive: true);
-      final part = File('${file.path}.part');
-      part.writeAsStringSync(jsonEncode({'version': 1, 'name': computer, 'registers': regs}), flush: true);
-      part.renameSync(file.path);
+      replaceSafelySync(
+        file.path,
+        (part) => part.writeAsStringSync(jsonEncode({'version': 1, 'name': computer, 'registers': regs}), flush: true),
+      );
     }
   }
 

@@ -95,9 +95,9 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     _hover = hover;
     final animation = _hoverAnim ??= AnimationController(vsync: this, duration: Motion.hover);
     if (hover) {
-      animation.forward();
+      animation.animateTo(1, curve: Motion.hoverCurve);
     } else {
-      animation.reverse();
+      animation.animateBack(0, curve: Motion.hoverCurve);
     }
   }
 

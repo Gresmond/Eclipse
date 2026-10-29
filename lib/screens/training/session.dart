@@ -258,6 +258,7 @@ class _SetRowState extends State<_SetRow> {
             AnimatedOpacity(
               opacity: _hover ? 1 : 0,
               duration: Motion.hover,
+              curve: Motion.hoverCurve,
               child: _IconAction(icon: Icons.remove_rounded, tooltip: 'Delete set', onTap: () => log.deleteSet(s)),
             ),
           ],

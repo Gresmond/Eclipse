@@ -1,10 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
@@ -12,19 +9,6 @@ import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
-
-const _shots = String.fromEnvironment('SCREENSHOT_DIR');
-
-Future<void> _shot(WidgetTester tester, String name) async {
-  if (_shots.isEmpty) return;
-  final view = tester.binding.renderViews.first;
-  await tester.runAsync(() async {
-    final image = await (view.debugLayer! as OffsetLayer).toImage(Offset.zero & view.size);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    File('$_shots/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());
-    image.dispose();
-  });
-}
 
 void main() {
   final today = DateTime(2026, 10, 25);
@@ -92,7 +76,6 @@ void main() {
         await tester.tap(find.byTooltip('Expand subtasks'));
         await tester.pumpAndSettle();
       }
-      await _shot(tester, 'nest_${existing}_before');
       await drop(tester);
       expect(state.todos[TodoScope.today]!.single.text, 'Research the project');
       expect(opacity(tester, 'Research the project'), 1);
@@ -101,7 +84,6 @@ void main() {
       expect(opacity(tester, 'Research the project'), lessThan(1));
       expect(state.todos[TodoScope.tomorrow]!.single.subtasks.length, existing ? 1 : 0);
       if (existing) expect(opacity(tester, 'Existing step'), 1);
-      await _shot(tester, 'nest_${existing}_source_fading');
       await tester.pump(const Duration(milliseconds: 315));
       expect(state.todos[TodoScope.today], isEmpty);
       expect(state.todos[TodoScope.tomorrow]!.single.subtasks.last.text, 'Research the project');
@@ -112,10 +94,8 @@ void main() {
       expect(opacity(tester, 'Research the project'), lessThan(1));
       if (existing) expect(opacity(tester, 'Existing step'), 1);
       expect(find.text('Research the project').hitTestable(), findsOneWidget);
-      await _shot(tester, 'nest_${existing}_subtask_fading');
       await tester.pumpAndSettle();
       expect(opacity(tester, 'Research the project'), 1);
-      await _shot(tester, 'nest_${existing}_settled');
       // Opening the parent later must not replay the arrival animation.
       await tester.tap(find.byTooltip('Collapse subtasks'));
       await tester.pumpAndSettle();

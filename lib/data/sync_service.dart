@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import 'google_drive.dart';
+import 'safe_write.dart';
 import 'journal_drive.dart';
 import 'store.dart';
 import 'sync.dart';
@@ -108,16 +109,20 @@ class SyncService extends ChangeNotifier {
 
   Future<void> _save() {
     final contents = jsonEncode(_config);
-    final file = File(p.join(home.path, 'sync.json'));
-    return _saving = _saving.catchError((Object _) {}).then((_) async {
-      final part = File('${file.path}.part');
-      await part.writeAsString(contents, flush: true);
-      if (!Platform.isWindows) {
-        final result = await Process.run('chmod', ['600', part.path]);
-        if (result.exitCode != 0) throw FileSystemException('Cannot protect sync credentials', part.path);
-      }
-      await part.rename(file.path);
-    });
+    final path = p.join(home.path, 'sync.json');
+    return _saving = _saving
+        .catchError((Object _) {})
+        .then(
+          (_) => replaceSafely(path, (part) async {
+            // Protected while still empty, so the sign-in is never readable by others.
+            await part.writeAsString('');
+            if (!Platform.isWindows) {
+              final result = await Process.run('chmod', ['600', part.path]);
+              if (result.exitCode != 0) throw FileSystemException('Cannot protect sync credentials', part.path);
+            }
+            await part.writeAsString(contents, flush: true);
+          }),
+        );
   }
 
   /// Called with each round's changes from other computers, after they're
@@ -145,7 +150,10 @@ class SyncService extends ChangeNotifier {
   int incomingCount = 0;
 
   Timer? _timer;
-  bool _paused = false, _stopped = false;
+  bool _stopped = false;
+
+  /// How many [exclusive] actions are running: rounds wait until none are.
+  int _paused = 0;
   DateTime _lastFull = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// Looks every half minute: syncs at once when something changed here,
@@ -224,12 +232,12 @@ class SyncService extends ChangeNotifier {
 
   /// Serialize restore operations with rounds already in flight.
   Future<T> exclusive<T>(Future<T> Function() action) async {
-    _paused = true;
+    _paused++;
     try {
       await _running;
       return await action();
     } finally {
-      _paused = false;
+      _paused--;
     }
   }
 
@@ -375,9 +383,7 @@ class SyncService extends ChangeNotifier {
         continue; // cut short: fetched again next round
       }
       await file.parent.create(recursive: true);
-      final part = File('${file.path}.part');
-      await part.writeAsBytes(bytes, flush: true);
-      await part.rename(file.path);
+      await replaceSafely(file.path, (part) => part.writeAsBytes(bytes, flush: true));
       if (who != machine) seen[f.id] = f.modified;
     }
     // By id, as names can repeat; files gone from Drive are forgotten.
@@ -435,7 +441,7 @@ class SyncService extends ChangeNotifier {
 
   /// One round: everyone else's changes down and merged, ours up.
   Future<void> run() {
-    if (_paused || _stopped || !isOn) return Future.value();
+    if (_paused > 0 || _stopped || !isOn) return Future.value();
     return _running ??= _round().whenComplete(() => _running = null);
   }
 

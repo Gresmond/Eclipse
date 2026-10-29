@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:path/path.dart' as p;
 
 import '../models.dart';
+import 'safe_write.dart';
 
 /// Journal entries as plain Markdown files, one per day, in a folder you can
 /// open, read, copy or back up without the app:
@@ -81,9 +82,7 @@ class JournalFiles {
         return;
       }
       await file.parent.create(recursive: true);
-      final part = File('${file.path}.part');
-      await part.writeAsString(content, flush: true);
-      await part.rename(file.path);
+      await replaceSafely(file.path, (part) => part.writeAsString(content, flush: true));
     });
   }
 }

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
 import '../models.dart';
+import 'safe_write.dart';
 import 'store.dart';
 
 part 'sync_folder.dart';

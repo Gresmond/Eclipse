@@ -5,12 +5,7 @@ part of 'store.dart';
 extension StoreBackups on Store {
   /// Writes a consistent, compacted copy of the whole database to [path].
   /// Written beside it first and renamed, so a crash never leaves half a file.
-  void saveCopy(String path) {
-    final part = File('$path.part');
-    if (part.existsSync()) part.deleteSync();
-    _db.execute('VACUUM INTO ?', [part.path]);
-    part.renameSync(path);
-  }
+  void saveCopy(String path) => replaceSafelySync(path, (part) => _db.execute('VACUUM INTO ?', [part.path]));
 
   /// Replaces everything in this database with the copy at [path], except
   /// that journal writing is never lost: a day the copy has no entry for

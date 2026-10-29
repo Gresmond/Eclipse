@@ -570,7 +570,7 @@ class _CheckState extends State<_Check> with TickerProviderStateMixin {
       widget.done ? _fill.forward() : _fill.reverse();
     }
     if (widget.hover != old.hover) {
-      widget.hover ? _hover.forward() : _hover.reverse();
+      widget.hover ? _hover.animateTo(1, curve: Motion.hoverCurve) : _hover.animateBack(0, curve: Motion.hoverCurve);
     }
   }
 

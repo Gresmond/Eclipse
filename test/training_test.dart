@@ -1,11 +1,6 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
@@ -13,19 +8,6 @@ import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/training.dart';
 import 'package:eclipse/training_log.dart';
-
-const _shots = String.fromEnvironment('SCREENSHOT_DIR');
-
-Future<void> _shot(WidgetTester tester, String name) async {
-  if (_shots.isEmpty) return;
-  final view = tester.binding.renderViews.first;
-  await tester.runAsync(() async {
-    final image = await (view.debugLayer! as OffsetLayer).toImage(Offset.zero & view.size);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    File('$_shots/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());
-    image.dispose();
-  });
-}
 
 /// The user's own example session, logged on [day] with [extra] kg added
 /// to every weight, so a few days make a rising line.
@@ -116,18 +98,6 @@ void main() {
     late Store store;
     late AppState state;
 
-    setUpAll(() async {
-      if (_shots.isEmpty) return;
-      final manifest = jsonDecode(await rootBundle.loadString('FontManifest.json')) as List;
-      for (final family in manifest.cast<Map<String, dynamic>>()) {
-        final loader = FontLoader(family['family'] as String);
-        for (final font in (family['fonts'] as List).cast<Map<String, dynamic>>()) {
-          loader.addFont(rootBundle.load(font['asset'] as String));
-        }
-        await loader.load();
-      }
-    });
-
     setUp(() {
       store = Store.memory();
       state = AppState(store, clock: () => today);
@@ -151,21 +121,17 @@ void main() {
         _logExample(state.training, today.subtract(Duration(days: w * 7)), (8 - w) * 1.5);
       }
       await show(tester);
-      await _shot(tester, 'training_0_today');
       await tester.tap(find.byTooltip('Training'));
       await tester.pump();
       for (final ms in [200, 140, 140]) {
         await tester.pump(Duration(milliseconds: ms));
-        await _shot(tester, 'training_1_turning_$ms${tester.binding.clock.now().millisecond}');
       }
       await tester.pumpAndSettle();
       expect(state.showingTraining, isTrue);
       expect(find.text('Estimated one-rep max'), findsOneWidget);
-      await _shot(tester, 'training_2_kg');
 
       state.training.setAxis(TrainingAxis.change);
       await tester.pumpAndSettle();
-      await _shot(tester, 'training_3_percent');
 
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
@@ -191,7 +157,6 @@ void main() {
       await tester.tap(find.text('Add set'));
       await tester.pumpAndSettle();
       expect(state.training.session(today).single.$2.last.weight, 106.0);
-      await _shot(tester, 'training_4_session');
       expect(tester.takeException(), isNull);
     });
   });

@@ -25,14 +25,12 @@ class PageTurn extends StatefulWidget {
   final Widget front, back;
   final String tooltip;
 
-  static const duration = Duration(milliseconds: 680);
-
   @override
   State<PageTurn> createState() => _PageTurnState();
 }
 
 class _PageTurnState extends State<PageTurn> with TickerProviderStateMixin {
-  late final _turn = AnimationController(vsync: this, duration: PageTurn.duration, value: widget.turned ? 1 : 0)
+  late final _turn = AnimationController(vsync: this, duration: Motion.turn, value: widget.turned ? 1 : 0)
     ..addStatusListener((_) => setState(() {}));
   late final _lift = AnimationController(vsync: this, duration: Motion.hover);
 
@@ -148,7 +146,7 @@ class _Fold {
   /// [t] from 0 (the earmark) to 1 (page gone). The tip is pulled mostly
   /// left first, then sweeps up, as a hand would turn it.
   factory _Fold.turning(Size size, double t) {
-    final e = Curves.easeInOutCubic.transform(t);
+    final e = Motion.morphCurve.transform(t);
     final w = size.width, h = size.height;
     final start = Offset(w - restLift, h - restLift);
     // Far enough past the top left that the crease clears the page.

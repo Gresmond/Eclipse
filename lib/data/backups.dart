@@ -86,7 +86,7 @@ class Backups {
     var source = backup.file;
     if (backup.isBeforeRestore) source = backup.file.copySync('${backup.file.path}.restoring');
     try {
-      if (before.existsSync()) before.deleteSync();
+      // Written beside the old one and renamed over it, so it's kept until replaced.
       store.saveCopy(before.path);
       await store.restoreFrom(source.path);
     } finally {

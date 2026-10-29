@@ -20,6 +20,9 @@ abstract final class Motion {
   static const scroll = Duration(milliseconds: 120);
   static const page = Duration(milliseconds: 320);
 
+  /// The Training page's corner turning over: a whole page, handled slowly.
+  static const turn = Duration(milliseconds: 680);
+
   /// A fade-through, split in two: the old thing eases out over the first
   /// ~55% of [t] and the new one eases in over the last ~55%, so the two
   /// never show together at any real strength. Both ends are gentle: a

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -93,14 +92,6 @@ void main() {
       expectColour(pixel(point(8, 1 / 8)), palette.gradient.last);
     }
 
-    const screenshotDir = String.fromEnvironment('SCREENSHOT_DIR');
-    if (screenshotDir.isNotEmpty) {
-      final png = await tester.runAsync(() => image.toByteData(format: ui.ImageByteFormat.png));
-      await tester.runAsync(() async {
-        await Directory(screenshotDir).create(recursive: true);
-        await File('$screenshotDir/progress-rings.png').writeAsBytes(png!.buffer.asUint8List());
-      });
-    }
     image.dispose();
   });
 }
