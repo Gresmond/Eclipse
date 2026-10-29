@@ -318,8 +318,9 @@ class _TodoRowState extends State<_TodoRow> {
                                 onAcceptWithDetails: (details) => _nest(state, details.data),
                                 builder: (context, candidates, rejected) => AnimatedContainer(
                                   duration: Motion.hover,
+                                  curve: Motion.hoverCurve,
                                   decoration: BoxDecoration(
-                                    color: candidates.isEmpty ? Colors.transparent : p.accent.withValues(alpha: 0.18),
+                                    color: p.accent.withValues(alpha: candidates.isEmpty ? 0 : 0.18),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text.rich(
@@ -483,7 +484,7 @@ class _TodoRowState extends State<_TodoRow> {
                             Appear(
                               animate: _incomingSubtask == index || widget.fadeIn,
                               animateSize: false,
-                              child: _SubtaskHover(
+                              child: Hoverable(
                                 builder: (hover) {
                                   final child = item.subtasks[index];
                                   return Row(
@@ -696,21 +697,4 @@ class _SubtaskDrag {
   const _SubtaskDrag(this.itemId, this.index);
   final int itemId;
   final int index;
-}
-
-class _SubtaskHover extends StatefulWidget {
-  const _SubtaskHover({required this.builder});
-  final Widget Function(bool) builder;
-  @override
-  State<_SubtaskHover> createState() => _SubtaskHoverState();
-}
-
-class _SubtaskHoverState extends State<_SubtaskHover> {
-  bool _hover = false;
-  @override
-  Widget build(BuildContext context) => MouseRegion(
-    onEnter: (_) => setState(() => _hover = true),
-    onExit: (_) => setState(() => _hover = false),
-    child: widget.builder(_hover),
-  );
 }

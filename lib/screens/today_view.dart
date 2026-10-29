@@ -259,8 +259,7 @@ class _HabitsCard extends StatelessWidget {
                     // old and new lines share their start.
                     FadeThrough(
                       duration: Motion.click,
-                      layoutBuilder: (current, previous) =>
-                          Stack(alignment: Alignment.centerLeft, children: [...previous, ?current]),
+                      layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
                       child: Text(
                         subtitle,
                         key: ValueKey(subtitle),
@@ -283,8 +282,7 @@ class _HabitsCard extends StatelessWidget {
                 return IgnorePointer(
                   ignoring: readOnly,
                   child: FadeThrough(
-                    layoutBuilder: (current, previous) =>
-                        Stack(fit: StackFit.expand, children: [...previous, ?current]),
+                    layoutBuilder: FadeThrough.fill,
                     child: ListView.builder(
                       key: ValueKey([for (final h in habits) '${h.id} ${h.name}'].join('|')),
                       padding: EdgeInsets.zero,
@@ -312,48 +310,39 @@ class _HabitsCard extends StatelessWidget {
 
 /// Fades a highlight in behind [child] on hover, as the month grid's rows
 /// do. Only the highlight and divider repaint; [child] is never rebuilt.
-class _HoverHighlight extends StatefulWidget {
+class _HoverHighlight extends StatelessWidget {
   const _HoverHighlight({required this.divider, required this.child});
 
   final bool divider;
   final Widget child;
 
   @override
-  State<_HoverHighlight> createState() => _HoverHighlightState();
-}
-
-class _HoverHighlightState extends State<_HoverHighlight> {
-  bool _hover = false;
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: HoverFill(
-        hover: _hover,
+    return Hoverable(
+      builder: (hover) => HoverFill(
+        hover: hover,
         child: Stack(
           // The list gives each row a fixed height; the row fills it.
           fit: StackFit.passthrough,
           children: [
             // The divider fades out as the highlight fades in, rather than
             // swapping borders mid-animation.
-            if (widget.divider)
+            if (divider)
               Positioned(
                 left: 0,
                 right: 0,
                 top: 0,
                 child: IgnorePointer(
                   child: AnimatedOpacity(
-                    opacity: _hover ? 0 : 1,
+                    opacity: hover ? 0 : 1,
                     duration: Motion.hover,
                     curve: Motion.hoverCurve,
                     child: ColoredBox(color: p.tileBorder.withValues(alpha: 0.5), child: const SizedBox(height: 1)),
                   ),
                 ),
               ),
-            widget.child,
+            child,
           ],
         ),
       ),
@@ -419,7 +408,6 @@ class _HabitRow extends StatelessWidget {
                     )
                   : Tooltip(
                       message: habit.description ?? habit.name,
-                      waitDuration: const Duration(milliseconds: 300),
                       // The whole height of the row, not just the line of text,
                       // so the tooltip is easy to catch.
                       child: Align(
@@ -511,7 +499,6 @@ class _WeekTrail extends StatelessWidget {
     final days = state.trailDays(habit, day);
     // Another day's week fades through in place.
     return FadeThrough(
-      layoutBuilder: (current, previous) => Stack(alignment: Alignment.center, children: [...previous, ?current]),
       child: Row(
         key: ValueKey(dateKey(day)),
         children: [
@@ -573,7 +560,7 @@ class _JournalCard extends StatelessWidget {
           const SizedBox(height: 6),
           Expanded(
             child: FadeThrough(
-              layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+              layoutBuilder: FadeThrough.fill,
               child: _JournalText(key: ValueKey(dateKey(day))),
             ),
           ),

@@ -13,6 +13,7 @@ import '../training.dart';
 import '../training_log.dart';
 import '../widgets/day_picker.dart';
 import '../widgets/fade_menu.dart';
+import '../widgets/hover_fill.dart';
 import '../widgets/tile.dart';
 import '../widgets/note_input.dart';
 
@@ -329,9 +330,7 @@ class _ChartPainter extends CustomPainter {
     hi = (hi / step).ceil() * step;
 
     final start = dateOnly(from), end = dateOnly(to);
-    // Whole days, counted in UTC so a daylight-saving change can't lose one.
-    int days(DateTime a, DateTime b) =>
-        DateTime.utc(b.year, b.month, b.day).difference(DateTime.utc(a.year, a.month, a.day)).inDays;
+    const days = daysBetween;
     final span = math.max(1, days(start, end));
     double x(DateTime d) => plot.left + plot.width * (days(start, d) / span);
     double y(double v) => plot.bottom - plot.height * ((v - lo) / (hi - lo));
@@ -680,7 +679,7 @@ class _Segments extends StatelessWidget {
                   curve: Motion.clickCurve,
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: i == selected ? p.done : Colors.transparent,
+                    color: p.done.withValues(alpha: i == selected ? 1 : 0),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
@@ -1074,7 +1073,6 @@ class _InlineNameState extends State<_InlineName> {
     }
     return Tooltip(
       message: 'Rename',
-      waitDuration: const Duration(milliseconds: 600),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
@@ -1107,6 +1105,7 @@ class _GroupPill extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: Motion.hover,
+          curve: Motion.hoverCurve,
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
           decoration: BoxDecoration(
             color: colour.withValues(alpha: selected ? 0.2 : 0.06),
@@ -1285,9 +1284,10 @@ class _Chip extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: Motion.click,
+          curve: Motion.clickCurve,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: on ? colour.withValues(alpha: 0.16) : Colors.transparent,
+            color: colour.withValues(alpha: on ? 0.16 : 0),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: colour.withValues(alpha: on ? 0.55 : 0.3), width: 0.8),
           ),
@@ -1346,7 +1346,6 @@ class _IconAction extends StatelessWidget {
     final p = context.palette;
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 600),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
@@ -1406,7 +1405,7 @@ class _HistoryTile extends StatelessWidget {
   }
 }
 
-class _HistoryRow extends StatefulWidget {
+class _HistoryRow extends StatelessWidget {
   const _HistoryRow({required this.day, required this.selected, required this.session, required this.onTap});
 
   final DateTime day;
@@ -1415,68 +1414,53 @@ class _HistoryRow extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_HistoryRow> createState() => _HistoryRowState();
-}
-
-class _HistoryRowState extends State<_HistoryRow> {
-  bool _hover = false;
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final d = widget.day;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: Motion.hover,
-          margin: const EdgeInsets.only(bottom: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: widget.selected
-                ? p.today.withValues(alpha: 0.35)
-                : _hover
-                ? p.empty.withValues(alpha: 0.5)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 88,
-                child: Text(
-                  '${weekdayNames[d.weekday - 1].substring(0, 3)} ${_shortDate(d)}',
-                  style: _label(p, size: 12.5, weight: FontWeight.w600),
-                ),
+    final d = day;
+    return Hoverable(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      builder: (hover) => AnimatedContainer(
+        duration: Motion.hover,
+        curve: Motion.hoverCurve,
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? p.today.withValues(alpha: 0.35) : p.empty.withValues(alpha: hover ? 0.5 : 0),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 88,
+              child: Text(
+                '${weekdayNames[d.weekday - 1].substring(0, 3)} ${_shortDate(d)}',
+                style: _label(p, size: 12.5, weight: FontWeight.w600),
               ),
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    for (final (e, sets) in widget.session)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(color: groupColour(e.group, p), shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 5),
-                          Text('${e.name} ×${sets.length}', style: _label(p, size: 12, color: p.inkMuted)),
-                        ],
-                      ),
-                  ],
-                ),
+            ),
+            Expanded(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final (e, sets) in session)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(color: groupColour(e.group, p), shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 5),
+                        Text('${e.name} ×${sets.length}', style: _label(p, size: 12, color: p.inkMuted)),
+                      ],
+                    ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

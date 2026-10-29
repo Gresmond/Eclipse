@@ -138,8 +138,12 @@ class AppState extends ChangeNotifier {
           entryDays.add(key.split('/').first);
         case 'month_habit' || 'habit_month':
           final month = key.split('/').first.split('-').map(int.parse).toList();
+          // Its rituals' days may have changed, and with them what counts.
           _monthHabits.remove((month[0], month[1]));
+          _monthScores.remove((month[0], month[1]));
           _previewHabits.clear();
+          _trails.clear();
+          _streaks.clear();
           habitsRevision++;
         case 'sleep_note':
           _monthSleep.clear();
@@ -494,6 +498,8 @@ class AppState extends ChangeNotifier {
     restWeekends = store.setting('restWeekends') == '1';
     followNightLight = store.setting('followNightLight') != '0';
     dayStartHour = int.tryParse(store.setting('dayStartHour') ?? '') ?? 0;
+    laterBirthdays = store.setting('laterBirthdays') != 'hidden';
+    weekEmptyDays = store.setting('weekEmptyDays') == 'shown';
     _monthSleep.clear();
     _streaks.clear();
     _startDay();
@@ -968,11 +974,7 @@ class AppState extends ChangeNotifier {
   void moveTodoTo(TodoScope source, TodoItem item, DateTime day) {
     final current = todos[source]!.where((t) => t.id == item.id).firstOrNull;
     if (current == null || current.done || day.isBefore(today)) return;
-    final days = DateTime.utc(
-      day.year,
-      day.month,
-      day.day,
-    ).difference(DateTime.utc(today.year, today.month, today.day)).inDays;
+    final days = daysBetween(today, day);
     if (days <= 1) {
       moveTodo(source, current, days == 0 ? TodoScope.today : TodoScope.tomorrow);
       return;

@@ -1,9 +1,5 @@
 part of 'todo_panel.dart';
 
-/// Calendar days from [from] to [to], unaffected by clock changes.
-int _daysBetween(DateTime from, DateTime to) =>
-    DateTime.utc(to.year, to.month, to.day).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
-
 /// A task in one of a day's lists.
 typedef _Task = (TodoScope, TodoItem);
 
@@ -48,7 +44,7 @@ class _Planned {
           if (!item.done) undated.add((scope: scope, item: item, repeat: null));
           continue;
         }
-        final i = _daysBetween(day, due);
+        final i = daysBetween(day, due);
         if (i <= WeekCard.span) {
           days[i < 0 ? 0 : i].add((scope, item));
         } else if (!waits(item)) {
@@ -58,7 +54,7 @@ class _Planned {
     }
     for (final repeat in state.repeats) {
       final next = coming[repeat.uid];
-      if (next == null || _daysBetween(day, next) <= WeekCard.span) continue;
+      if (next == null || daysBetween(day, next) <= WeekCard.span) continue;
       if (kept.contains('${repeat.uid}@${dateKey(next)}')) continue;
       (byDay[dateKey(next)] ??= []).add((scope: null, item: null, repeat: repeat));
     }
@@ -187,7 +183,7 @@ String _shortDate(DateTime day, DateTime today) =>
 /// Adds [text] as a task due on [day], in the list it belongs to now.
 void _addDue(AppState state, String text, DateTime day, {int? time, bool birthday = false}) {
   final today = state.today;
-  final days = _daysBetween(today, day);
+  final days = daysBetween(today, day);
   if (days <= 0) {
     state.addTodo(TodoScope.today, text, time: time, birthday: birthday);
   } else if (days == 1) {
@@ -264,7 +260,7 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
           // Another day's week fades through as a whole.
           Expanded(
             child: FadeThrough(
-              layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+              layoutBuilder: FadeThrough.fill,
               child: _WeekList(
                 key: ValueKey(dateKey(day)),
                 planned: planned,
@@ -384,7 +380,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
     final date = _date(i);
     final added = widget.added;
     final weekday = weekdayNames[date.weekday - 1];
-    final name = switch (_daysBetween(state.today, date)) {
+    final name = switch (daysBetween(state.today, date)) {
       0 => 'Today',
       1 => 'Tomorrow',
       -1 => 'Yesterday',
@@ -1007,7 +1003,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
           const SizedBox(height: 4),
           Expanded(
             child: FadeThrough(
-              layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+              layoutBuilder: FadeThrough.fill,
               child: _LaterList(key: ValueKey(dateKey(day)), groups: groups, birthdays: birthdays, added: added),
             ),
           ),

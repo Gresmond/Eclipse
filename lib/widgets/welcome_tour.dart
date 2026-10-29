@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../app_state.dart';
 import '../theme/app_theme.dart';
 import 'fade_through.dart';
+import 'hover_fill.dart';
 import 'settings_dialog.dart';
 import 'fade_menu.dart';
 
@@ -721,40 +722,28 @@ class _StepBody extends StatelessWidget {
   }
 }
 
-class _TextButton extends StatefulWidget {
+class _TextButton extends StatelessWidget {
   const _TextButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
 
   @override
-  State<_TextButton> createState() => _TextButtonState();
-}
-
-class _TextButtonState extends State<_TextButton> {
-  bool _hover = false;
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: Motion.hover,
-          curve: Motion.hoverCurve,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: p.empty.withValues(alpha: _hover ? 0.8 : 0),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            widget.label,
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, fontWeight: FontWeight.w600, color: p.inkMuted),
-          ),
+    return Hoverable(
+      onTap: onTap,
+      builder: (hover) => AnimatedContainer(
+        duration: Motion.hover,
+        curve: Motion.hoverCurve,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: p.empty.withValues(alpha: hover ? 0.8 : 0),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, fontWeight: FontWeight.w600, color: p.inkMuted),
         ),
       ),
     );
@@ -762,42 +751,30 @@ class _TextButtonState extends State<_TextButton> {
 }
 
 /// The step forward, filled with the theme's gradient like the other pills.
-class _PillButton extends StatefulWidget {
+class _PillButton extends StatelessWidget {
   const _PillButton({required this.label, required this.onTap});
 
   final String label;
   final VoidCallback onTap;
 
   @override
-  State<_PillButton> createState() => _PillButtonState();
-}
-
-class _PillButtonState extends State<_PillButton> {
-  bool _hover = false;
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedSlide(
-          offset: Offset(0, _hover ? -0.04 : 0),
-          duration: Motion.hover,
-          curve: Motion.hoverCurve,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(colors: p.gradient.skip(1).toList()),
-            ),
-            child: Text(
-              widget.label,
-              style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, fontWeight: FontWeight.w600, color: p.onAccent),
-            ),
+    return Hoverable(
+      onTap: onTap,
+      builder: (hover) => AnimatedSlide(
+        offset: Offset(0, hover ? -0.04 : 0),
+        duration: Motion.hover,
+        curve: Motion.hoverCurve,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(colors: p.gradient.skip(1).toList()),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, fontWeight: FontWeight.w600, color: p.onAccent),
           ),
         ),
       ),

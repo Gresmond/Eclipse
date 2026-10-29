@@ -1056,13 +1056,7 @@ class Store {
     bool excused(DateTime day) => off(day) || restWeekends && day.weekday >= DateTime.saturday;
 
     bool gapBreaks(DateTime from, DateTime until) {
-      final gap =
-          DateTime.utc(
-            until.year,
-            until.month,
-            until.day,
-          ).difference(DateTime.utc(from.year, from.month, from.day)).inDays -
-          1;
+      final gap = daysBetween(from, until) - 1;
       if (gap <= 0) return false;
       if (!restWeekends && months.isEmpty) return true;
       for (var i = 1; i <= gap; i++) {

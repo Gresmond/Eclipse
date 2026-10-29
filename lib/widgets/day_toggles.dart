@@ -36,7 +36,6 @@ class DayToggles extends StatelessWidget {
                 final last = on && bits == bit;
                 return Tooltip(
                   message: last ? lastReason : weekdayNames[weekday - 1],
-                  waitDuration: const Duration(milliseconds: 400),
                   child: MouseRegion(
                     cursor: last ? MouseCursor.defer : SystemMouseCursors.click,
                     child: GestureDetector(
@@ -73,7 +72,7 @@ class _DayCircle extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size / 2),
-        color: on ? p.done : Colors.transparent,
+        color: p.done.withValues(alpha: on ? 1 : 0),
         border: Border.all(color: on ? p.done : p.inkMuted.withValues(alpha: 0.35)),
       ),
       child: Text(

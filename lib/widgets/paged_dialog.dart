@@ -103,14 +103,7 @@ class _PagedDialogState extends State<PagedDialog> {
                       _PageSize(
                         page: widget.page,
                         child: FadeThrough(
-                          layoutBuilder: (current, previous) => Stack(
-                            clipBehavior: Clip.none,
-                            alignment: Alignment.topLeft,
-                            children: [
-                              for (final w in previous) Positioned(left: 0, right: 0, top: 0, child: w),
-                              ?current,
-                            ],
-                          ),
+                          layoutBuilder: FadeThrough.pinTop,
                           child: KeyedSubtree(
                             key: ValueKey(widget.page),
                             child: SizedBox(width: widget.width, child: widget.child),

@@ -187,8 +187,7 @@ class _MonthViewState extends State<MonthView> {
             children: [
               FadeThrough(
                 duration: Motion.click,
-                layoutBuilder: (current, previous) =>
-                    Stack(alignment: Alignment.centerLeft, children: [...previous, ?current]),
+                layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
                 child: Text(label, key: ValueKey(label), style: header),
               ),
               const Spacer(),
@@ -861,7 +860,6 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                 ? SleepName(habit: widget.habit, names: widget.names!, style: nameStyle)
                 : Tooltip(
                     message: widget.habit.description ?? widget.habit.name,
-                    waitDuration: const Duration(milliseconds: 600),
                     child: SizedBox(
                       height: height,
                       child: FittedBox(
@@ -942,6 +940,7 @@ class _PillButton extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: Motion.hover,
+          curve: Motion.hoverCurve,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(30),

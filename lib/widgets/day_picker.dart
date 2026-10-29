@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../theme/app_theme.dart';
+import 'hover_fill.dart';
 
 /// A month of days to pick from, opening on [selected]. Days after
 /// [today] can't be picked, and months before [first] aren't shown.
@@ -109,7 +110,7 @@ class _DayPickerState extends State<DayPicker> {
   }
 }
 
-class _PickerDay extends StatefulWidget {
+class _PickerDay extends StatelessWidget {
   const _PickerDay({
     required this.day,
     required this.selected,
@@ -123,51 +124,38 @@ class _PickerDay extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_PickerDay> createState() => _PickerDayState();
-}
-
-class _PickerDayState extends State<_PickerDay> {
-  bool _hover = false;
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final selected = widget.selected;
     final fg = selected
         ? p.onAccent
-        : !widget.enabled
+        : !enabled
         ? p.inkMuted.withValues(alpha: 0.3)
-        : widget.isToday
+        : isToday
         ? p.accent
         : p.ink;
-    return MouseRegion(
-      cursor: widget.enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.enabled ? widget.onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: AnimatedContainer(
-            duration: Motion.hover,
-            curve: Motion.hoverCurve,
-            height: 34,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: selected ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
-              color: selected ? null : (_hover && widget.enabled ? p.empty : p.empty.withValues(alpha: 0)),
-              border: widget.isToday && !selected ? Border.all(color: p.accent.withValues(alpha: 0.5)) : null,
-            ),
-            child: Text(
-              '${widget.day}',
-              style: TextStyle(
-                fontFamily: Fonts.ui,
-                fontSize: 13,
-                fontWeight: selected || widget.isToday ? FontWeight.w600 : FontWeight.w500,
-                color: fg,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
+    return Hoverable(
+      onTap: enabled ? onTap : null,
+      builder: (hover) => Padding(
+        padding: const EdgeInsets.all(2),
+        child: AnimatedContainer(
+          duration: Motion.hover,
+          curve: Motion.hoverCurve,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: selected ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
+            color: selected ? null : (hover && enabled ? p.empty : p.empty.withValues(alpha: 0)),
+            border: isToday && !selected ? Border.all(color: p.accent.withValues(alpha: 0.5)) : null,
+          ),
+          child: Text(
+            '$day',
+            style: TextStyle(
+              fontFamily: Fonts.ui,
+              fontSize: 13,
+              fontWeight: selected || isToday ? FontWeight.w600 : FontWeight.w500,
+              color: fg,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
         ),

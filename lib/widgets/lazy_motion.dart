@@ -62,25 +62,3 @@ class _LazyMotionState extends State<LazyMotion> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) => widget.transition(_value, widget.child);
 }
-
-class LazyOpacity extends StatelessWidget {
-  const LazyOpacity({
-    super.key,
-    required this.opacity,
-    required this.duration,
-    required this.curve,
-    required this.child,
-  });
-  final double opacity;
-  final Duration duration;
-  final Curve curve;
-  final Widget child;
-  @override
-  Widget build(BuildContext context) => LazyMotion(
-    value: opacity,
-    duration: duration,
-    curve: curve,
-    transition: (animation, child) => FadeTransition(opacity: animation, child: child),
-    child: child,
-  );
-}

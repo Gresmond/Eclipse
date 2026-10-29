@@ -57,6 +57,11 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     expect(find.text('Updated from Remote laptop'), findsOneWidget);
     await tester.pump(const Duration(seconds: 1));
+    // It slides away, then goes.
+    await tester.pump(Motion.morph ~/ 2);
+    expect(find.text('Updated from Remote laptop'), findsOneWidget);
+    await tester.pump(Motion.morph);
+    await tester.pump();
     expect(find.text('Updated from Remote laptop'), findsNothing);
 
     // Later local activity must not replay the previous incoming card.
@@ -86,8 +91,9 @@ void main() {
     );
     expect(find.text('Keep your journal in Drive'), findsOneWidget);
     expect(find.text('Sign in again'), findsOneWidget);
+    await tester.pump(Motion.morph); // it slides in
     await tester.tap(find.text('Not now'));
-    await tester.pump();
+    await tester.pumpAndSettle(); // it slides away, then goes
     expect(find.text('Keep your journal in Drive'), findsNothing);
   });
 
@@ -128,8 +134,9 @@ void main() {
     expect(find.textContaining('need a newer version of Eclipse'), findsOneWidget);
     expect(find.textContaining('couldn’t be read, so'), findsOneWidget);
 
+    await tester.pump(Motion.morph); // it slides in
     await tester.tap(find.text('Not now'));
-    await tester.pump();
+    await tester.pumpAndSettle(); // it slides away, then goes
     expect(find.text('Some changes are waiting'), findsNothing);
     // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
     sync.notifyListeners();

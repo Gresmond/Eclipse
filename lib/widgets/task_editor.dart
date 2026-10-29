@@ -949,7 +949,7 @@ class _Pills extends StatelessWidget {
                   curve: Motion.clickCurve,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: i == selected ? p.done : Colors.transparent,
+                    color: p.done.withValues(alpha: i == selected ? 1 : 0),
                     borderRadius: BorderRadius.circular(17),
                   ),
                   child: Text(

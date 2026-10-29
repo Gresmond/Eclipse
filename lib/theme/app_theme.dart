@@ -330,6 +330,7 @@ ThemeData buildTheme(Palette p) {
     fontFamily: Fonts.ui,
     textSelectionTheme: TextSelectionThemeData(cursorColor: p.accent, selectionColor: p.other.withValues(alpha: 0.3)),
     tooltipTheme: TooltipThemeData(
+      waitDuration: const Duration(milliseconds: 600),
       decoration: BoxDecoration(color: p.ink, borderRadius: BorderRadius.circular(10)),
       textStyle: TextStyle(fontFamily: Fonts.body, color: p.tile, fontSize: 13),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

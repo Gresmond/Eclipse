@@ -7,6 +7,7 @@ import '../data/sync.dart';
 import '../data/sync_service.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import 'corner_card.dart';
 
 /// A card that floats up over the bottom-right corner for a few seconds
 /// when changes come in from another computer, saying where from. Otherwise,
@@ -95,35 +96,28 @@ class _SyncBannerState extends State<SyncBanner> {
   @override
   Widget build(BuildContext context) {
     final shown = _shown;
-    if (!_visible) {
-      final sync = widget.sync;
-      final waiting = !_waitingClosed && (sync.newerFrom.isNotEmpty || sync.unreadFrom.isNotEmpty);
-      final ask = !_askClosed && sync.needsJournalSignIn;
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (waiting)
-            _WaitingCard(
-              newerFrom: sync.newerFrom,
-              unreadFrom: sync.unreadFrom,
-              onClose: () => setState(() => _waitingClosed = true),
-            ),
-          if (waiting && ask) const SizedBox(height: 12),
-          if (ask) _AskCard(signingIn: _signingIn, error: _askError, onSignIn: _signIn, onClose: _close),
-        ],
-      );
-    }
-    return IgnorePointer(
-      ignoring: !_visible,
-      child: AnimatedSlide(
-        offset: _visible ? Offset.zero : const Offset(0, 0.35),
-        duration: Motion.morph,
-        curve: Motion.morphCurve,
-        child: AnimatedOpacity(
-          opacity: _visible ? 1 : 0,
-          duration: Motion.morph,
-          curve: Motion.morphCurve,
+    final sync = widget.sync;
+    // The waiting and sign-in cards make way while changes are shown.
+    final waiting = !_visible && !_waitingClosed && (sync.newerFrom.isNotEmpty || sync.unreadFrom.isNotEmpty);
+    final ask = !_visible && !_askClosed && sync.needsJournalSignIn;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        CornerCard(
+          visible: waiting,
+          child: _WaitingCard(
+            newerFrom: sync.newerFrom,
+            unreadFrom: sync.unreadFrom,
+            onClose: () => setState(() => _waitingClosed = true),
+          ),
+        ),
+        CornerCard(
+          visible: ask,
+          child: _AskCard(signingIn: _signingIn, error: _askError, onSignIn: _signIn, onClose: _close),
+        ),
+        CornerCard(
+          visible: _visible && shown != null,
           child: shown == null
               ? const SizedBox.shrink()
               : MouseRegion(
@@ -134,7 +128,7 @@ class _SyncBannerState extends State<SyncBanner> {
                   ),
                 ),
         ),
-      ),
+      ],
     );
   }
 }

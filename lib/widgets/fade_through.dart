@@ -38,6 +38,39 @@ class FadeThrough extends StatelessWidget {
   // halves follow [Motion.incoming] and [Motion.outgoing].
   static final _curve = CurveTween(curve: Motion.incoming);
 
+  // The layouts in use. The default ([AnimatedSwitcher.defaultLayoutBuilder])
+  // centres the two.
+
+  /// Both fill the space given: whole pages and cards.
+  static Widget fill(Widget? current, List<Widget> previous) =>
+      Stack(fit: StackFit.expand, children: [...previous, ?current]);
+
+  /// Both sit at [alignment], the box sized by the larger.
+  static AnimatedSwitcherLayoutBuilder aligned(Alignment alignment) =>
+      (current, previous) => Stack(alignment: alignment, children: [...previous, ?current]);
+
+  /// Only the incoming child sizes the box; the outgoing one is pinned over
+  /// its top, as wide as the box, and may hang below it as it fades.
+  static Widget pinTop(Widget? current, List<Widget> previous) => Stack(
+    clipBehavior: Clip.none,
+    alignment: Alignment.topLeft,
+    children: [
+      for (final w in previous) Positioned(left: 0, right: 0, top: 0, child: w),
+      ?current,
+    ],
+  );
+
+  /// As [pinTop], but the outgoing child keeps its own width rather than
+  /// holding the box to it.
+  static Widget pinTopLeft(Widget? current, List<Widget> previous) => Stack(
+    clipBehavior: Clip.none,
+    alignment: Alignment.topLeft,
+    children: [
+      for (final w in previous) Positioned(left: 0, top: 0, child: w),
+      ?current,
+    ],
+  );
+
   /// Lays the outgoing child over the incoming one. The box is as tall as
   /// either while the outgoing one still shows, so it's never cut off as it
   /// fades; once it's gone, the box takes the incoming child's height (an

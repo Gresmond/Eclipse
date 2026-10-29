@@ -270,11 +270,7 @@ class RepeatRule {
 
   /// Whether it comes round on [day], counting from [start].
   bool on(DateTime day, DateTime start) {
-    final since = DateTime.utc(
-      day.year,
-      day.month,
-      day.day,
-    ).difference(DateTime.utc(start.year, start.month, start.day)).inDays;
+    final since = daysBetween(start, day);
     if (since < 0) return false;
     return switch (kind) {
       RepeatKind.weekly => weekdays!.contains(day.weekday),
@@ -430,6 +426,11 @@ String autoDashes(String text) {
 String normaliseNote(String text) => autoDashes(capitaliseFirst(curlyQuotes(text)));
 
 DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+/// Calendar days from [from] to [to], counted in UTC so a daylight-saving
+/// change can't gain or lose one.
+int daysBetween(DateTime from, DateTime to) =>
+    DateTime.utc(to.year, to.month, to.day).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
 
 /// The day [now] counts towards when each day starts at [startHour] o'clock:
 /// before then, it's still the day before. Works in calendar days, so a

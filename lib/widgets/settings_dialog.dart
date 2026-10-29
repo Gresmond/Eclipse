@@ -282,14 +282,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     alignment: Alignment.topCenter,
                     clipBehavior: Clip.none,
                     child: FadeThrough(
-                      layoutBuilder: (current, previous) => Stack(
-                        clipBehavior: Clip.none,
-                        alignment: Alignment.topLeft,
-                        children: [
-                          for (final w in previous) Positioned(left: 0, right: 0, top: 0, child: w),
-                          ?current,
-                        ],
-                      ),
+                      layoutBuilder: FadeThrough.pinTop,
                       child: KeyedSubtree(
                         key: ValueKey(_ribbon),
                         child: _ribbon == 0 ? _general(p) : _backupsAndSync(p),
@@ -920,11 +913,7 @@ class _BackupRow extends StatelessWidget {
     final d = b.day!;
     final year = d.year == today.year ? '' : ' ${d.year}';
     final title = '${weekdayNames[d.weekday - 1]} ${d.day} ${monthNames[d.month - 1]}$year';
-    final days = DateTime.utc(
-      today.year,
-      today.month,
-      today.day,
-    ).difference(DateTime.utc(d.year, d.month, d.day)).inDays;
+    final days = daysBetween(d, today);
     final ago = switch (days) {
       0 => 'Today, as it was when you opened the app',
       1 => 'Yesterday',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'hover_fill.dart';
 
 /// Opens [builder]'s panel under [anchor] (over it with [above]), right
 /// edges lined up (left edges with [alignLeft]). It fades
@@ -113,7 +114,7 @@ class _FadeMenuRoute extends PopupRoute<void> {
 }
 
 /// A row in a [showFadeMenu] panel, shaded on hover.
-class FadeMenuRow extends StatefulWidget {
+class FadeMenuRow extends StatelessWidget {
   const FadeMenuRow({super.key, required this.onTap, required this.height, required this.child});
 
   final VoidCallback onTap;
@@ -121,30 +122,18 @@ class FadeMenuRow extends StatefulWidget {
   final Widget child;
 
   @override
-  State<FadeMenuRow> createState() => _FadeMenuRowState();
-}
-
-class _FadeMenuRowState extends State<FadeMenuRow> {
-  bool _hover = false;
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: Motion.hover,
-          curve: Motion.hoverCurve,
-          height: widget.height,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          color: _hover ? p.empty.withValues(alpha: 0.6) : p.empty.withValues(alpha: 0),
-          child: widget.child,
-        ),
+    return Hoverable(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      builder: (hover) => AnimatedContainer(
+        duration: Motion.hover,
+        curve: Motion.hoverCurve,
+        height: height,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        color: p.empty.withValues(alpha: hover ? 0.6 : 0),
+        child: child,
       ),
     );
   }

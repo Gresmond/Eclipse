@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import 'confirm_on_enter.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
+import 'hover_fill.dart';
 import 'rolling_number.dart';
 import 'sleep_time.dart';
 
@@ -66,7 +67,7 @@ Future<int?> pickTime(
 /// starting from [start] when there's no time. Save (or Enter) sets it,
 /// its changed digits rolling into place; Cancel, Escape or clicking away
 /// leaves it as it was.
-class TimePill extends StatefulWidget {
+class TimePill extends StatelessWidget {
   const TimePill({
     super.key,
     required this.minutes,
@@ -86,72 +87,54 @@ class TimePill extends StatefulWidget {
   /// Whether the wheel lines up with the pill's left edge, not its right.
   final bool alignLeft;
 
-  @override
-  State<TimePill> createState() => _TimePillState();
-}
-
-class _TimePillState extends State<TimePill> {
-  bool _hover = false;
-
-  Future<void> _open() async {
-    final minutes = await pickTime(
-      context,
-      minutes: widget.minutes,
-      start: widget.start,
-      title: widget.title,
-      alignLeft: widget.alignLeft,
-    );
-    if (minutes != null) widget.onChanged(minutes);
+  Future<void> _open(BuildContext context) async {
+    final picked = await pickTime(context, minutes: minutes, start: start, title: title, alignLeft: alignLeft);
+    if (picked != null) onChanged(picked);
   }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final minutes = widget.minutes;
+    final minutes = this.minutes;
     final style = SleepName.timeStyle(p).copyWith(fontSize: 13, color: p.ink);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: _open,
-        child: AnimatedContainer(
-          duration: Motion.hover,
-          curve: Motion.hoverCurve,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          decoration: BoxDecoration(
-            color: _hover ? p.empty : p.tile.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: p.tileBorder.withValues(alpha: 0.8)),
-          ),
-          child: FadeThrough(
-            duration: Motion.click,
-            child: minutes == null
-                ? Text(
-                    widget.placeholder,
-                    key: const ValueKey(false),
-                    style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted),
-                  )
-                // "9:05 pm", as a count's digits roll.
-                : Semantics(
-                    key: const ValueKey(true),
-                    label: clockLabel(minutes),
-                    excludeSemantics: true,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        RollingNumber(value: (minutes ~/ 60 + 11) % 12 + 1, style: style),
-                        Text(':', style: style),
-                        RollingNumber(value: minutes % 60, digits: 2, style: style),
-                        Text(' ', style: style),
-                        FadeThrough(
-                          duration: Motion.morph,
-                          child: Text(minutes < 12 * 60 ? 'am' : 'pm', key: ValueKey(minutes < 12 * 60), style: style),
-                        ),
-                      ],
-                    ),
+    return Hoverable(
+      onTap: () => _open(context),
+      builder: (hover) => AnimatedContainer(
+        duration: Motion.hover,
+        curve: Motion.hoverCurve,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: hover ? p.empty : p.tile.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: p.tileBorder.withValues(alpha: 0.8)),
+        ),
+        child: FadeThrough(
+          duration: Motion.click,
+          child: minutes == null
+              ? Text(
+                  placeholder,
+                  key: const ValueKey(false),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted),
+                )
+              // "9:05 pm", as a count's digits roll.
+              : Semantics(
+                  key: const ValueKey(true),
+                  label: clockLabel(minutes),
+                  excludeSemantics: true,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RollingNumber(value: (minutes ~/ 60 + 11) % 12 + 1, style: style),
+                      Text(':', style: style),
+                      RollingNumber(value: minutes % 60, digits: 2, style: style),
+                      Text(' ', style: style),
+                      FadeThrough(
+                        duration: Motion.morph,
+                        child: Text(minutes < 12 * 60 ? 'am' : 'pm', key: ValueKey(minutes < 12 * 60), style: style),
+                      ),
+                    ],
                   ),
-          ),
+                ),
         ),
       ),
     );

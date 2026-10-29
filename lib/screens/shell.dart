@@ -15,6 +15,7 @@ import '../widgets/app_dialog.dart';
 import '../widgets/day_picker.dart';
 import '../widgets/fade_menu.dart';
 import '../widgets/fade_through.dart';
+import '../widgets/hover_fill.dart';
 import '../widgets/page_turn.dart';
 import '../widgets/sync_banner.dart';
 import '../widgets/update_banner.dart';
@@ -47,7 +48,7 @@ class Shell extends StatelessWidget {
           // TodayView the same way: only what differs fades or eases.
           child: FadeThrough(
             deferBuild: true,
-            layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+            layoutBuilder: FadeThrough.fill,
             child: state.viewingYear
                 ? YearView(key: ValueKey('year ${state.viewYear}'), year: state.viewYear)
                 : month == null
@@ -78,16 +79,7 @@ class Shell extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 if (state.sync != null) SyncBanner(sync: state.sync!),
-                if (updater != null)
-                  ListenableBuilder(
-                    listenable: updater,
-                    builder: (context, _) => updater.status == UpdateStatus.none
-                        ? const SizedBox.shrink()
-                        : Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: UpdateBanner(updater: updater),
-                          ),
-                  ),
+                if (updater != null) UpdateBanner(updater: updater),
               ],
             ),
           ),
@@ -158,21 +150,13 @@ class _Header extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   // Fades with the page below it, rather than snapping first.
                   child: FadeThrough(
-                    layoutBuilder: (current, previous) => Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.topLeft,
-                      children: [
-                        // Outgoing text fades without holding the old width.
-                        for (final child in previous) Positioned(left: 0, top: 0, child: child),
-                        ?current,
-                      ],
-                    ),
+                    // Outgoing text fades without holding the old width.
+                    layoutBuilder: FadeThrough.pinTopLeft,
                     // Tooltip enablement belongs to each fading label, so it
                     // cannot remount the pill's size or fade animations.
                     child: Tooltip(
                       key: ValueKey((kicker, title)),
                       message: month == null && !state.viewingYear ? 'Look back at another day' : '',
-                      waitDuration: const Duration(milliseconds: 600),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
@@ -485,7 +469,7 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
   }
 }
 
-class _Tab extends StatefulWidget {
+class _Tab extends StatelessWidget {
   const _Tab({
     required this.label,
     required this.selected,
@@ -525,68 +509,53 @@ class _Tab extends StatefulWidget {
   final VoidCallback? onTap;
 
   @override
-  State<_Tab> createState() => _TabState();
-}
-
-class _TabState extends State<_Tab> {
-  bool _hover = false;
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final selected = widget.selected;
     final fg = selected
         ? p.onAccent
-        : widget.isCurrent
+        : isCurrent
         ? p.accent
         : p.ink;
-    TextStyle style(FontWeight weight) => _Tab._style(weight, fg);
-    final label = Stack(
+    TextStyle style(FontWeight weight) => _style(weight, fg);
+    final text = Stack(
       alignment: Alignment.center,
       children: [
         // Reserves the bold width, so selecting a tab never resizes the bar.
-        Visibility.maintain(visible: false, child: Text(widget.label, style: style(FontWeight.w600))),
+        Visibility.maintain(visible: false, child: Text(label, style: style(FontWeight.w600))),
         AnimatedDefaultTextStyle(
           duration: Motion.morph,
           curve: Motion.morphCurve,
-          style: style(selected || widget.isCurrent ? FontWeight.w600 : FontWeight.w500),
-          child: Text(widget.label),
+          style: style(selected || isCurrent ? FontWeight.w600 : FontWeight.w500),
+          child: Text(label),
         ),
       ],
     );
-    final width = widget.labelWidth;
+    final width = labelWidth;
 
     // The selected background is the bar's gliding pill; a tab only draws
     // its hover shade, and its text colour eases as the pill arrives.
-    return MouseRegion(
-      cursor: widget.onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: Motion.hover,
-          curve: Motion.hoverCurve,
-          padding: const EdgeInsets.symmetric(horizontal: _Tab.padding, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(30),
-            color: !selected && _hover ? p.empty : p.empty.withValues(alpha: 0),
-          ),
-          child: width == null
-              ? label
-              : SizedBox(
-                  width: width,
-                  child: OverflowBox(
-                    maxWidth: double.infinity,
-                    fit: OverflowBoxFit.deferToChild,
-                    child: FadeThrough(
-                      layoutBuilder: (current, previous) =>
-                          Stack(alignment: Alignment.center, children: [...previous, ?current]),
-                      child: KeyedSubtree(key: ValueKey(widget.label), child: label),
-                    ),
+    return Hoverable(
+      onTap: onTap,
+      builder: (hover) => AnimatedContainer(
+        duration: Motion.hover,
+        curve: Motion.hoverCurve,
+        padding: const EdgeInsets.symmetric(horizontal: padding, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          color: !selected && hover ? p.empty : p.empty.withValues(alpha: 0),
+        ),
+        child: width == null
+            ? text
+            : SizedBox(
+                width: width,
+                child: OverflowBox(
+                  maxWidth: double.infinity,
+                  fit: OverflowBoxFit.deferToChild,
+                  child: FadeThrough(
+                    child: KeyedSubtree(key: ValueKey(label), child: text),
                   ),
                 ),
-        ),
+              ),
       ),
     );
   }

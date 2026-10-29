@@ -3,50 +3,27 @@ import 'package:flutter/material.dart';
 import '../data/updates.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import 'corner_card.dart';
 import 'fade_through.dart';
+import 'hover_fill.dart';
 
 /// A small card floating over the bottom-right corner when a newer version
 /// is out, naming it: one click updates and reopens source/Linux installs, or
 /// opens the Mac/Windows download. It floats rather than
 /// taking space, so the Today view keeps fitting the window.
-class UpdateBanner extends StatefulWidget {
+class UpdateBanner extends StatelessWidget {
   const UpdateBanner({super.key, required this.updater});
 
   final Updater updater;
 
   @override
-  State<UpdateBanner> createState() => _UpdateBannerState();
-}
-
-class _UpdateBannerState extends State<UpdateBanner> {
-  /// What the card last showed, kept while it slides away.
-  UpdateStatus _shown = UpdateStatus.available;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.updater,
-      builder: (context, _) {
-        final status = widget.updater.status;
-        final visible = status != UpdateStatus.none;
-        if (visible) _shown = status;
-        return IgnorePointer(
-          ignoring: !visible,
-          child: AnimatedSlide(
-            offset: visible ? Offset.zero : const Offset(0, 0.35),
-            duration: Motion.morph,
-            curve: Motion.morphCurve,
-            child: AnimatedOpacity(
-              opacity: visible ? 1 : 0,
-              duration: Motion.morph,
-              curve: Motion.morphCurve,
-              child: _Card(updater: widget.updater, status: _shown),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: updater,
+    builder: (context, _) => CornerCard(
+      visible: updater.status != UpdateStatus.none,
+      child: _Card(updater: updater, status: updater.status),
+    ),
+  );
 }
 
 class _Card extends StatelessWidget {
@@ -165,7 +142,7 @@ class _Mark extends StatelessWidget {
   }
 }
 
-class _Button extends StatefulWidget {
+class _Button extends StatelessWidget {
   const _Button({required this.label, required this.onTap, this.filled = false});
 
   final String label;
@@ -173,38 +150,26 @@ class _Button extends StatefulWidget {
   final bool filled;
 
   @override
-  State<_Button> createState() => _ButtonState();
-}
-
-class _ButtonState extends State<_Button> {
-  bool _hover = false;
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: Motion.hover,
-          curve: Motion.hoverCurve,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(30),
-            gradient: widget.filled ? LinearGradient(colors: p.gradient) : null,
-            color: widget.filled ? null : (_hover ? p.empty : p.empty.withValues(alpha: 0)),
-          ),
-          child: Text(
-            widget.label,
-            style: TextStyle(
-              fontFamily: Fonts.ui,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: widget.filled ? p.onAccent : p.inkMuted,
-            ),
+    return Hoverable(
+      onTap: onTap,
+      builder: (hover) => AnimatedContainer(
+        duration: Motion.hover,
+        curve: Motion.hoverCurve,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          gradient: filled ? LinearGradient(colors: p.gradient) : null,
+          color: filled ? null : (hover ? p.empty : p.empty.withValues(alpha: 0)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: Fonts.ui,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: filled ? p.onAccent : p.inkMuted,
           ),
         ),
       ),
