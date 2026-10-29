@@ -9,6 +9,7 @@ import 'package:sqlite3/sqlite3.dart' show AllowedArgumentCount;
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/backups.dart';
 import 'package:eclipse/data/google_drive.dart';
+import 'package:eclipse/data/journal_drive.dart';
 import 'package:eclipse/data/journal_files.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
@@ -1143,15 +1144,15 @@ void main() {
       });
 
       test('uploads a few at a time, so a round stays short', () async {
-        for (var d = 1; d <= SyncService.journalBatch + 5; d++) {
+        for (var d = 1; d <= JournalFolder.batch + 5; d++) {
           pc.store.setJournal('2026-09-${'$d'.padLeft(2, '0')}', 'Day $d');
         }
         final onPc = signedIn(pc);
         await onPc.look(withJournal);
         await onPc.turnOn(withJournal, join: false);
-        expect(drive.journal, hasLength(SyncService.journalBatch));
+        expect(drive.journal, hasLength(JournalFolder.batch));
         await onPc.run();
-        expect(drive.journal, hasLength(SyncService.journalBatch + 6));
+        expect(drive.journal, hasLength(JournalFolder.batch + 6));
         onPc.dispose();
       });
     });

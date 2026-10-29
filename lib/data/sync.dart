@@ -549,8 +549,7 @@ class SyncEngine implements AutomaticWrites {
   }
 
   /// After an upgrade from [from]: what this version keeps that that one
-  /// couldn't is taken in from the registers, rather than its blanks sent;
-  /// and the to-dos' day starts from before they were marked are marked.
+  /// couldn't is taken in from the registers, rather than its blanks sent.
   void _upgrade(int from) {
     if (!_engaged) return;
     final added = {
@@ -570,14 +569,6 @@ class SyncEngine implements AutomaticWrites {
         _db.execute('DELETE FROM sync_local WHERE kind = ? AND rowkey = ?', [kind, rowkey]);
       }
       _db.execute('DELETE FROM sync_dirty');
-      // Version 25 kept day starts apart without marking them.
-      if (from == 25) {
-        _db.execute(
-          "INSERT OR IGNORE INTO sync_dirty SELECT 'todo', uid, 0 FROM todos "
-          "UNION ALL SELECT 'todo_history', day || '/' || uid, 0 FROM todo_history",
-        );
-        _markLocal();
-      }
     });
   }
 
