@@ -92,7 +92,7 @@ void main() {
       final start = top('Alpha step');
       final end = top('Charlie step');
 
-      await tester.tap(find.byTooltip('Complete subtask').first);
+      await tester.tap(find.text('Alpha step'));
       await tester.pump();
       await tester.pump(Motion.reorder ~/ 4);
       expect(top('Alpha step'), allOf(greaterThan(start), lessThan(end)));
@@ -103,7 +103,7 @@ void main() {
         expect(top('Alpha step'), closeTo(end, 0.01));
       }
       final turningPoint = top('Alpha step');
-      await tester.tap(find.byTooltip('Reopen subtask'));
+      await tester.tap(find.text('Alpha step'));
       await tester.pump();
       expect(top('Alpha step'), closeTo(turningPoint, 0.01), reason: 'reversing must start where the row is drawn');
       await tester.pump(Motion.reorder ~/ 2);

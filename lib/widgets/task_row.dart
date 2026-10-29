@@ -197,7 +197,7 @@ class _TodoRowState extends State<_TodoRow> {
             padding: const EdgeInsets.all(10),
             child: Text(
               child.text,
-              style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.ink),
+              style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.ink),
             ),
           ),
         ),
@@ -474,7 +474,7 @@ class _TodoRowState extends State<_TodoRow> {
             child: !_expanded || item.subtasks.isEmpty
                 ? const SizedBox.shrink()
                 : Padding(
-                    padding: const EdgeInsets.only(left: 46, bottom: 4),
+                    padding: const EdgeInsets.only(left: 44, bottom: 4),
                     child: GlidingColumn(
                       children: [
                         for (final index in _subtaskOrder)
@@ -484,60 +484,20 @@ class _TodoRowState extends State<_TodoRow> {
                             Appear(
                               animate: _incomingSubtask == index || widget.fadeIn,
                               animateSize: false,
-                              child: Hoverable(
-                                builder: (hover) {
-                                  final child = item.subtasks[index];
-                                  return Row(
-                                    children: [
-                                      IconButton(
-                                        tooltip: child.done ? 'Reopen subtask' : 'Complete subtask',
-                                        icon: _Check(done: child.done, hover: false, pressed: false),
-                                        onPressed: widget.readOnly
-                                            ? null
-                                            : () {
-                                                final next = [...item.subtasks];
-                                                next[index] = child.copyWith(done: !child.done);
-                                                state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
-                                              },
-                                        padding: const EdgeInsets.all(6),
-                                        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-                                      ),
-                                      if (item.numbered)
-                                        Padding(
-                                          padding: const EdgeInsets.only(right: 6),
-                                          child: Text(
-                                            '${index + 1}.',
-                                            style: _timeStyle(p),
-                                          ),
-                                        ),
-                                      Expanded(
-                                        child: Text(
-                                          child.text,
-                                          style: TextStyle(
-                                            fontFamily: Fonts.body,
-                                            fontSize: 13,
-                                            color: child.done ? p.inkMuted : p.ink,
-                                            decoration: child.done ? TextDecoration.lineThrough : null,
-                                          ),
-                                        ),
-                                      ),
-                                      if (!widget.readOnly && hover) ...[
-                                        _TaskAction(
-                                          tooltip: 'Edit subtask',
-                                          icon: Icons.edit_outlined,
-                                          onPressed: () => _editSubtask(state, index: index),
-                                        ),
-                                        _TaskAction(
-                                          tooltip: 'Remove subtask',
-                                          icon: Icons.close_rounded,
-                                          onPressed: () {
-                                            final next = [...item.subtasks]..removeAt(index);
-                                            state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
-                                          },
-                                        ),
-                                      ],
-                                    ],
-                                  );
+                              child: _SubtaskRow(
+                                done: item.subtasks[index].done,
+                                text: item.subtasks[index].text,
+                                number: item.numbered ? index + 1 : null,
+                                readOnly: widget.readOnly,
+                                onToggle: () {
+                                  final next = [...item.subtasks];
+                                  next[index] = next[index].copyWith(done: !next[index].done);
+                                  state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
+                                },
+                                onEdit: () => _editSubtask(state, index: index),
+                                onRemove: () {
+                                  final next = [...item.subtasks]..removeAt(index);
+                                  state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
                                 },
                               ),
                             ),
@@ -691,4 +651,134 @@ class _SubtaskDrag {
   const _SubtaskDrag(this.itemId, this.index);
   final int itemId;
   final int index;
+}
+
+/// A subtask, laid out, tinted and ticked as a lone task row is.
+class _SubtaskRow extends StatefulWidget {
+  const _SubtaskRow({
+    required this.done,
+    required this.text,
+    required this.number,
+    required this.readOnly,
+    required this.onToggle,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  final bool done;
+  final String text;
+
+  /// Its place in a numbered list.
+  final int? number;
+  final bool readOnly;
+  final VoidCallback onToggle;
+  final VoidCallback onEdit;
+  final VoidCallback onRemove;
+
+  @override
+  State<_SubtaskRow> createState() => _SubtaskRowState();
+}
+
+class _SubtaskRowState extends State<_SubtaskRow> {
+  bool _hover = false;
+  bool _pressed = false;
+  bool _actions = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final done = widget.done;
+    return IgnorePointer(
+      ignoring: widget.readOnly,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = _actions = true),
+        onExit: (_) => setState(() {
+          _hover = false;
+          _pressed = false;
+        }),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) => setState(() => _pressed = false),
+          onTapCancel: () => setState(() => _pressed = false),
+          onTap: widget.onToggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: HoverFill(
+              hover: _hover,
+              drop: 1.5,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                child: Row(
+                  children: [
+                    Transform.translate(
+                      offset: const Offset(0, 1.5),
+                      child: _Check(done: done, hover: _hover, pressed: _pressed),
+                    ),
+                    const SizedBox(width: 11),
+                    if (widget.number case final number?)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Text('$number.', style: _timeStyle(p).copyWith(height: 1.35)),
+                      ),
+                    Expanded(
+                      child: AnimatedDefaultTextStyle(
+                        duration: Motion.click,
+                        curve: Motion.clickCurve,
+                        style: TextStyle(
+                          fontFamily: Fonts.body,
+                          fontSize: 14,
+                          height: 1.35,
+                          color: done
+                              ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
+                              : p.ink,
+                          decoration: done ? TextDecoration.lineThrough : null,
+                          decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                        ),
+                        child: Text(widget.text),
+                      ),
+                    ),
+                    if (!widget.readOnly)
+                      IgnorePointer(
+                        ignoring: !_hover,
+                        child: ExcludeFocus(
+                          excluding: !_hover,
+                          child: AnimatedOpacity(
+                            opacity: _hover ? 1 : 0,
+                            duration: Motion.hover,
+                            curve: Motion.hoverCurve,
+                            onEnd: () {
+                              if (mounted && !_hover) setState(() => _actions = false);
+                            },
+                            child: !_actions
+                                // The two buttons' room, so the text never reflows.
+                                ? const SizedBox(width: 2 * _TaskAction.size, height: _TaskAction.size)
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _TaskAction(
+                                        tooltip: 'Edit subtask',
+                                        icon: Icons.edit_outlined,
+                                        onPressed: widget.onEdit,
+                                      ),
+                                      _TaskAction(
+                                        tooltip: 'Remove subtask',
+                                        icon: Icons.close_rounded,
+                                        onPressed: widget.onRemove,
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

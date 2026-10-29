@@ -252,7 +252,7 @@ void main() {
     await tester.tap(find.byTooltip('Expand subtasks'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Complete subtask'));
+    await tester.tap(find.text('Build'));
     await tester.pump(Motion.reorder ~/ 2);
     expect(find.text('Build'), findsOneWidget, reason: 'still open while it moves');
     await tester.pumpAndSettle();
@@ -311,7 +311,7 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(find.text('Research details'), findsOneWidget);
-    await tester.tap(find.byTooltip('Complete subtask'));
+    await tester.tap(find.text('Research details'));
     await tester.pumpAndSettle();
     expect(task(TodoScope.today).done, isTrue);
     expect(find.text('1/1 complete'), findsOneWidget);
