@@ -88,7 +88,14 @@ class _TimePillState extends State<TimePill> {
 /// Three wheels, hour, minute (in fives) and am/pm, that set a time as
 /// they turn. The hour and minute wheels go round and round.
 class TimeWheel extends StatefulWidget {
-  const TimeWheel({super.key, this.title, required this.initial, required this.onChanged, this.unset = false});
+  const TimeWheel({
+    super.key,
+    this.title,
+    required this.initial,
+    required this.onChanged,
+    this.unset = false,
+    this.onDone,
+  });
 
   final String? title;
 
@@ -100,6 +107,10 @@ class TimeWheel extends StatefulWidget {
 
   /// Null when the time is cleared.
   final ValueChanged<int?> onChanged;
+
+  /// Leaves the wheel, on Enter or once the time is cleared; by default it
+  /// closes the menu it's in.
+  final VoidCallback? onDone;
 
   @override
   State<TimeWheel> createState() => _TimeWheelState();
@@ -133,6 +144,8 @@ class _TimeWheelState extends State<TimeWheel> {
   }
 
   void _save() => widget.onChanged((_hour + (_pm ? 12 : 0)) * 60 + _minute * 5);
+
+  void _done() => (widget.onDone ?? Navigator.of(context).pop)();
 
   @override
   Widget build(BuildContext context) {
@@ -196,7 +209,7 @@ class _TimeWheelState extends State<TimeWheel> {
 
     final title = widget.title;
     return ConfirmOnEnter(
-      onConfirm: () => Navigator.of(context).pop(),
+      onConfirm: _done,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
         child: Column(
@@ -279,7 +292,7 @@ class _TimeWheelState extends State<TimeWheel> {
               child: TextButton(
                 onPressed: () {
                   widget.onChanged(null);
-                  Navigator.of(context).pop();
+                  _done();
                 },
                 style: TextButton.styleFrom(foregroundColor: p.inkMuted, visualDensity: VisualDensity.compact),
                 child: Text('Clear time', style: TextStyle(fontFamily: Fonts.ui, fontSize: 12.5)),

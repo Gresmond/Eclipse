@@ -1,21 +1,13 @@
 part of 'todo_panel.dart';
 
-/// A day from [first] on (to [last], if given), opening on [selected].
-Future<DateTime?> _pickDate(BuildContext context, {required DateTime first, DateTime? last, DateTime? selected}) async {
-  final picked = await showAppDialog<_DayChoice>(
-    context: context,
-    builder: (_) => _DueDateDialog(first: first, last: last, due: selected),
-  );
-  return picked?.day;
-}
-
 /// A day, how a task first due on it repeats, its time and whether it's a
 /// birthday.
 typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, bool birthday});
 
-/// A new task's day, as [_pickDate], with its time and repeat set under
-/// the calendar, and with [birthdays] whether it's a birthday. Without
-/// [calendar], [selected] is the day and only those are asked.
+/// A new task's day from [first] on (to [last], if given), opening on
+/// [selected], with its time and repeat set under the calendar, and with
+/// [birthdays] whether it's a birthday. Without [calendar], [selected] is
+/// the day and only those are asked.
 Future<_DayChoice?> _pickDayAndRepeat(
   BuildContext context, {
   required DateTime first,
@@ -32,7 +24,6 @@ Future<_DayChoice?> _pickDayAndRepeat(
     first: first,
     last: last,
     due: selected,
-    details: true,
     repeat: repeat,
     time: time,
     birthday: birthday,
@@ -41,72 +32,128 @@ Future<_DayChoice?> _pickDayAndRepeat(
   ),
 );
 
-/// A calendar between two days, with no redundant date header, and with
-/// [details] the time and repeat under it, and with [birthdays] whether
-/// it's a birthday.
-class _DueDateDialog extends StatefulWidget {
-  const _DueDateDialog({
-    required this.first,
-    this.last,
-    this.due,
-    this.details = false,
-    this.repeat,
-    this.time,
-    this.birthday = false,
-    this.birthdays = false,
-    this.calendar = true,
-  });
+/// What a task's dialog shows: its own page, or one of the task's details
+/// in its place.
+enum _Page { main, day, time, repeat, until }
+
+/// A task's time and repeat, each set on a page of its own in place of
+/// the dialog's main one, and the repeat's last day on another. They
+/// change as they're set; the dialog's own buttons keep or drop them all.
+mixin _DetailPages<T extends StatefulWidget> on State<T> {
+  _Page _page = _Page.main;
+  int? _time;
+  _RepeatChoice? _repeat;
+
+  void _open(_Page page) => setState(() => _page = page);
+
+  /// Back to the page this one opened from; null on the main page.
+  VoidCallback? get _back => switch (_page) {
+    _Page.main => null,
+    _Page.until => () => _open(_Page.repeat),
+    _ => () => _open(_Page.main),
+  };
+
+  Widget _timeRow() =>
+      _TimeRow(time: _time, onOpen: () => _open(_Page.time), onClear: () => setState(() => _time = null));
+
+  Widget _repeatRow() =>
+      _RepeatRow(repeat: _repeat, onOpen: () => _open(_Page.repeat), onClear: () => setState(() => _repeat = null));
+
+  /// The time, repeat or last day's page, at least [width] wide, for a
+  /// task first due on [start].
+  Widget _detailPage(DateTime start, double width) {
+    final back = _back!;
+    return switch (_page) {
+      _Page.time => _SubPage(
+        title: 'Time',
+        onBack: back,
+        child: SizedBox(
+          width: width,
+          child: TimeWheel(
+            initial: _time ?? 9 * 60,
+            unset: _time == null,
+            onChanged: (time) => setState(() => _time = time),
+            onDone: back,
+          ),
+        ),
+      ),
+      _Page.until => _SubPage(
+        title: 'Repeat until',
+        onBack: back,
+        child: _MonthCalendar(
+          first: start,
+          selected: _repeat?.until ?? start,
+          onSelected: (day) => setState(() {
+            if (_repeat case final repeat?) _repeat = (rule: repeat.rule, until: day);
+            _page = _Page.repeat;
+          }),
+        ),
+      ),
+      _ => _SubPage(
+        title: 'Repeat',
+        onBack: back,
+        child: _RepeatPanel(
+          start: start,
+          current: _repeat,
+          minWidth: width,
+          onChanged: (repeat) => setState(() => _repeat = repeat),
+          onPickUntil: () => _open(_Page.until),
+        ),
+      ),
+    };
+  }
+}
+
+/// One of a dialog's pages in place of its main one: a back arrow and
+/// [title] over [child].
+class _SubPage extends StatelessWidget {
+  const _SubPage({required this.title, required this.onBack, required this.child});
+
+  final String title;
+  final VoidCallback onBack;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(tooltip: 'Back', onPressed: onBack, icon: const Icon(Icons.arrow_back_rounded)),
+          const SizedBox(width: 4),
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+        ],
+      ),
+      const SizedBox(height: 4),
+      child,
+    ],
+  );
+}
+
+/// A month of days from [first] on (to [last], if given), with arrows to
+/// the months either side; weeks start on Monday, as everywhere else in
+/// the app.
+class _MonthCalendar extends StatefulWidget {
+  const _MonthCalendar({required this.first, this.last, required this.selected, required this.onSelected});
+
+  static const width = 336.0;
 
   final DateTime first;
   final DateTime? last;
-  final DateTime? due;
-  final bool details, birthdays, calendar;
-  final _RepeatChoice? repeat;
-  final int? time;
-  final bool birthday;
+  final DateTime selected;
+  final ValueChanged<DateTime> onSelected;
 
   @override
-  State<_DueDateDialog> createState() => _DueDateDialogState();
+  State<_MonthCalendar> createState() => _MonthCalendarState();
 }
 
-class _DueDateDialogState extends State<_DueDateDialog> {
-  static const _contentPadding = EdgeInsets.fromLTRB(16, 12, 16, 0);
-  static const _inset = EdgeInsets.symmetric(horizontal: 40, vertical: 24);
-  final _content = GlobalKey();
+class _MonthCalendarState extends State<_MonthCalendar> {
+  late DateTime _month = DateTime(widget.selected.year, widget.selected.month);
 
-  /// Where the dialog opened, centred: its top stays there after, so the
-  /// arrows stay put as the months' weeks grow and shrink it below.
-  double? _top;
-
-  late final DateTime _first;
-  late final DateTime? _last;
-  late DateTime _selected;
-  late DateTime _month;
-  late _RepeatChoice? _repeat = widget.repeat;
-  late int? _time = widget.time;
-  late bool _birthday = widget.birthday;
-
-  void _done() => Navigator.pop<_DayChoice>(context, (
-    day: _selected,
-    repeat: _birthdayRepeat(_birthday, _repeat),
-    time: _time,
-    birthday: _birthday,
-  ));
-
-  @override
-  void initState() {
-    super.initState();
-    _first = DateUtils.dateOnly(widget.first);
-    _last = widget.last == null ? null : DateUtils.dateOnly(widget.last!);
-    final due = widget.due == null ? _first : DateUtils.dateOnly(widget.due!);
-    _selected = due.isBefore(_first) ? _first : (_last != null && due.isAfter(_last) ? _last : due);
-    _month = DateTime(_selected.year, _selected.month);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final box = _content.currentContext?.findRenderObject() as RenderBox?;
-      if (!mounted || box == null) return;
-      setState(() => _top = box.localToGlobal(Offset.zero).dy - _contentPadding.top);
-    });
-  }
+  DateTime get _first => DateUtils.dateOnly(widget.first);
+  DateTime? get _last => widget.last == null ? null : DateUtils.dateOnly(widget.last!);
 
   void _moveMonth(int offset) {
     setState(() => _month = DateTime(_month.year, _month.month + offset));
@@ -119,110 +166,68 @@ class _DueDateDialogState extends State<_DueDateDialog> {
     final firstMonth = DateTime(_first.year, _first.month);
     final last = _last;
     final lastMonth = last == null ? null : DateTime(last.year, last.month);
-    // Weeks start on Monday, as everywhere else in the app.
     final leading = DateTime(_month.year, _month.month).weekday - 1;
     final days = DateUtils.getDaysInMonth(_month.year, _month.month);
     final weeks = ((leading + days) / 7).ceil();
-    final top = _top;
-
-    return ConfirmOnEnter(
-      onConfirm: _done,
-      preserveButtons: false,
-      // Pinned by an outer padding, not the dialog's own inset, which would
-      // slide it there: the panel only fades.
-      child: Padding(
-        padding: EdgeInsets.only(top: top == null ? 0 : top - _inset.top),
-        child: AlertDialog(
-          alignment: top == null ? null : Alignment.topCenter,
-          insetPadding: _inset,
-          contentPadding: _contentPadding,
-          content: SizedBox(
-            key: _content,
-            width: 336,
+    return SizedBox(
+      width: _MonthCalendar.width,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(localizations.formatMonthYear(_month), style: Theme.of(context).textTheme.titleSmall),
+                ),
+              ),
+              IconButton(
+                tooltip: localizations.previousMonthTooltip,
+                onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
+                icon: const Icon(Icons.chevron_left_rounded),
+              ),
+              IconButton(
+                tooltip: localizations.nextMonthTooltip,
+                onPressed: lastMonth == null || _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
+                icon: const Icon(Icons.chevron_right_rounded),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              for (var i = 0; i < 7; i++)
+                Expanded(
+                  child: SizedBox(
+                    height: 36,
+                    child: Center(
+                      child: Text(
+                        localizations.narrowWeekdays[(1 + i) % 7],
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          // Only the weeks the month has, the rows below moving with it.
+          AnimatedSize(
+            duration: Motion.morph,
+            curve: Motion.morphCurve,
+            alignment: Alignment.topCenter,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                if (widget.calendar) ...[
+                for (var row = 0; row < weeks; row++)
                   Row(
                     children: [
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: Text(
-                            localizations.formatMonthYear(_month),
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: localizations.previousMonthTooltip,
-                        onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
-                        icon: const Icon(Icons.chevron_left_rounded),
-                      ),
-                      IconButton(
-                        tooltip: localizations.nextMonthTooltip,
-                        onPressed: lastMonth == null || _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
-                        icon: const Icon(Icons.chevron_right_rounded),
-                      ),
+                      for (var column = 0; column < 7; column++)
+                        Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
                     ],
                   ),
-                  Row(
-                    children: [
-                      for (var i = 0; i < 7; i++)
-                        Expanded(
-                          child: SizedBox(
-                            height: 36,
-                            child: Center(
-                              child: Text(
-                                localizations.narrowWeekdays[(1 + i) % 7],
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  // Only the weeks the month has, the rows below moving with it.
-                  AnimatedSize(
-                    duration: Motion.morph,
-                    curve: Motion.morphCurve,
-                    alignment: Alignment.topCenter,
-                    child: Column(
-                      children: [
-                        for (var row = 0; row < weeks; row++)
-                          Row(
-                            children: [
-                              for (var column = 0; column < 7; column++)
-                                Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
-                            ],
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-                if (widget.details) ...[
-                  SizedBox(height: widget.calendar ? 8 : 4),
-                  _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
-                  _FoldAway(
-                    folded: _birthday,
-                    child: _RepeatRow(
-                      repeat: _repeat,
-                      start: _selected,
-                      onChanged: (repeat) => setState(() => _repeat = repeat),
-                    ),
-                  ),
-                  if (widget.birthdays)
-                    _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
-                  const SizedBox(height: 4),
-                ],
               ],
             ),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
-            TextButton(onPressed: _done, child: Text(localizations.okButtonLabel)),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -230,8 +235,8 @@ class _DueDateDialogState extends State<_DueDateDialog> {
   Widget _buildDay(int day, int days, MaterialLocalizations localizations, ColorScheme colors) {
     if (day < 1 || day > days) return const SizedBox(height: 42);
     final date = DateTime(_month.year, _month.month, day);
-    final enabled = !date.isBefore(_first) && (_last == null || !date.isAfter(_last));
-    final selected = DateUtils.isSameDay(date, _selected);
+    final enabled = !date.isBefore(_first) && (_last == null || !date.isAfter(_last!));
+    final selected = DateUtils.isSameDay(date, widget.selected);
     final today = DateUtils.isSameDay(date, AppScope.read(context).today);
     return SizedBox(
       height: 42,
@@ -239,7 +244,7 @@ class _DueDateDialogState extends State<_DueDateDialog> {
         selected: selected,
         label: localizations.formatFullDate(date),
         child: TextButton(
-          onPressed: enabled ? () => setState(() => _selected = date) : null,
+          onPressed: enabled ? () => widget.onSelected(date) : null,
           style: TextButton.styleFrom(
             padding: EdgeInsets.zero,
             minimumSize: Size.zero,
@@ -250,6 +255,96 @@ class _DueDateDialogState extends State<_DueDateDialog> {
           child: Text(localizations.formatDecimal(day)),
         ),
       ),
+    );
+  }
+}
+
+/// A calendar with no redundant date header, and the time and repeat
+/// under it, and with [birthdays] whether it's a birthday.
+class _DueDateDialog extends StatefulWidget {
+  const _DueDateDialog({
+    required this.first,
+    this.last,
+    this.due,
+    this.repeat,
+    this.time,
+    this.birthday = false,
+    this.birthdays = false,
+    this.calendar = true,
+  });
+
+  final DateTime first;
+  final DateTime? last;
+  final DateTime? due;
+  final bool birthdays, calendar;
+  final _RepeatChoice? repeat;
+  final int? time;
+  final bool birthday;
+
+  @override
+  State<_DueDateDialog> createState() => _DueDateDialogState();
+}
+
+class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
+  late DateTime _selected;
+  late bool _birthday = widget.birthday;
+
+  void _done() => Navigator.pop<_DayChoice>(context, (
+    day: _selected,
+    repeat: _birthdayRepeat(_birthday, _repeat),
+    time: _time,
+    birthday: _birthday,
+  ));
+
+  @override
+  void initState() {
+    super.initState();
+    _time = widget.time;
+    _repeat = widget.repeat;
+    final first = DateUtils.dateOnly(widget.first);
+    final last = widget.last == null ? null : DateUtils.dateOnly(widget.last!);
+    final due = widget.due == null ? first : DateUtils.dateOnly(widget.due!);
+    _selected = due.isBefore(first) ? first : (last != null && due.isAfter(last) ? last : due);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = MaterialLocalizations.of(context);
+    return PagedDialog(
+      page: _page,
+      onConfirm: _done,
+      onBack: _back,
+      preserveButtons: false,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
+        TextButton(onPressed: _done, child: Text(localizations.okButtonLabel)),
+      ],
+      child: _page == _Page.main
+          ? SizedBox(
+              width: _MonthCalendar.width,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.calendar) ...[
+                    _MonthCalendar(
+                      first: widget.first,
+                      last: widget.last,
+                      selected: _selected,
+                      onSelected: (day) => setState(() => _selected = day),
+                    ),
+                    const SizedBox(height: 8),
+                  ] else
+                    const SizedBox(height: 4),
+                  _timeRow(),
+                  _FoldAway(folded: _birthday, child: _repeatRow()),
+                  if (widget.birthdays)
+                    _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
+                  const SizedBox(height: 4),
+                ],
+              ),
+            )
+          : _detailPage(_selected, _MonthCalendar.width),
     );
   }
 }
@@ -337,15 +432,6 @@ Future<bool?> _askWhich(BuildContext context, {required bool removing}) => showA
   ),
 );
 
-/// Opens the repeat dialog for a task first due on [start]. Null if
-/// cancelled; otherwise the choice, whose own value is null for "doesn't
-/// repeat".
-Future<({_RepeatChoice? choice})?> _pickRepeat(BuildContext context, DateTime start, _RepeatChoice? current) =>
-    showAppDialog<({_RepeatChoice? choice})>(
-      context: context,
-      builder: (_) => _RepeatDialog(start: start, current: current),
-    );
-
 /// "Every Mon, Wed until 12/12/2026".
 String _repeatLabel(_RepeatChoice choice) {
   final until = choice.until;
@@ -359,7 +445,7 @@ class _DetailRow extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final void Function(BuildContext button) onPressed;
+  final VoidCallback onPressed;
 
   /// The cross's tooltip.
   final String? clear;
@@ -372,10 +458,7 @@ class _DetailRow extends StatelessWidget {
         Expanded(
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Builder(
-              builder: (button) =>
-                  TextButton.icon(icon: Icon(icon, size: 18), label: Text(label), onPressed: () => onPressed(button)),
-            ),
+            child: TextButton.icon(icon: Icon(icon, size: 18), label: Text(label), onPressed: onPressed),
           ),
         ),
         if (onClear != null) IconButton(tooltip: clear, icon: const Icon(Icons.close_rounded), onPressed: onClear),
@@ -387,10 +470,10 @@ class _DetailRow extends StatelessWidget {
 /// A task's time: "Add a time", or its time, opening the wheel; a cross
 /// makes it all day.
 class _TimeRow extends StatelessWidget {
-  const _TimeRow({required this.time, required this.onChanged});
+  const _TimeRow({required this.time, required this.onOpen, required this.onClear});
 
   final int? time;
-  final ValueChanged<int?> onChanged;
+  final VoidCallback onOpen, onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -398,27 +481,19 @@ class _TimeRow extends StatelessWidget {
     return _DetailRow(
       icon: Icons.schedule_rounded,
       label: time == null ? 'Add a time' : clockLabel(time),
-      onPressed: (button) => showFadeMenu(
-        button,
-        width: 248,
-        above: true,
-        alignLeft: true,
-        builder: (_) => TimeWheel(initial: time ?? 9 * 60, unset: time == null, onChanged: onChanged),
-      ),
+      onPressed: onOpen,
       clear: 'All day',
-      onClear: time == null ? null : () => onChanged(null),
+      onClear: time == null ? null : onClear,
     );
   }
 }
 
-/// How a task repeats, opening the repeat dialog for one first due on
-/// [start]; a cross stops it.
+/// How a task repeats, opening its repeat; a cross stops it.
 class _RepeatRow extends StatelessWidget {
-  const _RepeatRow({required this.repeat, required this.start, required this.onChanged});
+  const _RepeatRow({required this.repeat, required this.onOpen, required this.onClear});
 
   final _RepeatChoice? repeat;
-  final DateTime start;
-  final ValueChanged<_RepeatChoice?> onChanged;
+  final VoidCallback onOpen, onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -426,12 +501,9 @@ class _RepeatRow extends StatelessWidget {
     return _DetailRow(
       icon: Icons.repeat_rounded,
       label: repeat == null ? "Doesn't repeat" : _repeatLabel(repeat),
-      onPressed: (button) async {
-        final picked = await _pickRepeat(context, start, repeat);
-        if (picked != null && context.mounted) onChanged(picked.choice);
-      },
+      onPressed: onOpen,
       clear: 'Stop repeating',
-      onClear: repeat == null ? null : () => onChanged(null),
+      onClear: repeat == null ? null : onClear,
     );
   }
 }
@@ -452,7 +524,7 @@ class _BirthdayRow extends StatelessWidget {
   Widget build(BuildContext context) => _DetailRow(
     icon: _birthdayIcon,
     label: birthday ? 'Birthday' : 'Not a birthday',
-    onPressed: (_) => onChanged(!birthday),
+    onPressed: () => onChanged(!birthday),
     clear: 'Not a birthday',
     onClear: birthday ? () => onChanged(false) : null,
   );
@@ -471,17 +543,24 @@ class _EditTaskDialog extends StatefulWidget {
   State<_EditTaskDialog> createState() => _EditTaskDialogState();
 }
 
-class _EditTaskDialogState extends State<_EditTaskDialog> {
+class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
+  static const _width = 380.0;
+
   late final _text = TextEditingController(text: widget.item.text);
   late DateTime? _due = widget.item.dueDate;
-  late _RepeatChoice? _repeat = switch (widget.repeat) {
-    final r? => (rule: r.rule, until: r.until),
-    null => null,
-  };
-  late int? _time = widget.item.dueTime;
 
   /// Kept as it is: whether it's a birthday is only set when it's added.
   late final bool _birthday = widget.item.birthday;
+
+  @override
+  void initState() {
+    super.initState();
+    _time = widget.item.dueTime;
+    _repeat = switch (widget.repeat) {
+      final r? => (rule: r.rule, until: r.until),
+      null => null,
+    };
+  }
 
   @override
   void dispose() {
@@ -504,56 +583,66 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final today = AppScope.read(context).today;
-    final dated = widget.scope == TodoScope.week || widget.scope == TodoScope.month;
     final start = widget.item.repeatDay ?? _due ?? today;
-    return ConfirmOnEnter(
+    return PagedDialog(
+      page: _page,
       onConfirm: _save,
-      child: AlertDialog(
-        backgroundColor: p.tile,
-        title: const Text('Edit task'),
-        content: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                inputFormatters: const [NoteInputFormatter()],
-                controller: _text,
-                autofocus: true,
-                minLines: 1,
-                maxLines: 4,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(labelText: 'Task'),
-                onSubmitted: (_) => _save(),
-              ),
-              if (dated) ...[
-                const SizedBox(height: 16),
-                TextButton.icon(
-                  icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                  label: Text(_due == null ? 'Pick a due date' : 'Due ${dayMonth(_due!)}/${_due!.year}'),
-                  onPressed: () async {
-                    final selected = await _pickDate(context, first: today, selected: _due);
-                    if (selected != null && mounted) setState(() => _due = selected);
-                  },
-                ),
-              ],
-              const SizedBox(height: 4),
-              _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
-              _FoldAway(
-                folded: _birthday,
-                child: _RepeatRow(
-                  repeat: _repeat,
-                  start: start.isBefore(today) ? today : start,
-                  onChanged: (repeat) => setState(() => _repeat = repeat),
-                ),
-              ),
-            ],
+      onBack: _back,
+      backgroundColor: p.tile,
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: _save, child: const Text('Save')),
+      ],
+      child: switch (_page) {
+        _Page.main => _main(today),
+        _Page.day => _SubPage(
+          title: 'Due date',
+          onBack: _back!,
+          child: _MonthCalendar(
+            first: today,
+            selected: _due ?? today,
+            onSelected: (day) => setState(() {
+              _due = day;
+              _page = _Page.main;
+            }),
           ),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: _save, child: const Text('Save')),
+        _ => _detailPage(start.isBefore(today) ? today : start, _width),
+      },
+    );
+  }
+
+  Widget _main(DateTime today) {
+    final dated = widget.scope == TodoScope.week || widget.scope == TodoScope.month;
+    return SizedBox(
+      width: _width,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Edit task', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 16),
+          TextField(
+            inputFormatters: const [NoteInputFormatter()],
+            controller: _text,
+            autofocus: true,
+            minLines: 1,
+            maxLines: 4,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(labelText: 'Task'),
+            onSubmitted: (_) => _save(),
+          ),
+          if (dated) ...[
+            const SizedBox(height: 16),
+            TextButton.icon(
+              icon: const Icon(Icons.calendar_today_outlined, size: 18),
+              label: Text(_due == null ? 'Pick a due date' : 'Due ${dayMonth(_due!)}/${_due!.year}'),
+              onPressed: () => _open(_Page.day),
+            ),
+          ],
+          const SizedBox(height: 4),
+          _timeRow(),
+          _FoldAway(folded: _birthday, child: _repeatRow()),
         ],
       ),
     );
@@ -562,19 +651,34 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
 
 /// How a task repeats: on chosen weekdays, on a date each month, on its
 /// date every so many years, or every so many days, weeks or months, with
-/// an optional last day.
-class _RepeatDialog extends StatefulWidget {
-  const _RepeatDialog({required this.start, this.current});
+/// an optional last day. It repeats as soon as this opens, and changes as
+/// it's set.
+class _RepeatPanel extends StatefulWidget {
+  const _RepeatPanel({
+    required this.start,
+    this.current,
+    required this.minWidth,
+    required this.onChanged,
+    required this.onPickUntil,
+  });
 
   /// The first day it would come round from.
   final DateTime start;
   final _RepeatChoice? current;
 
+  /// Wider when the choices need it, so every word shows in full at any
+  /// text size.
+  final double minWidth;
+  final ValueChanged<_RepeatChoice> onChanged;
+
+  /// Opens the calendar for its last day.
+  final VoidCallback onPickUntil;
+
   @override
-  State<_RepeatDialog> createState() => _RepeatDialogState();
+  State<_RepeatPanel> createState() => _RepeatPanelState();
 }
 
-class _RepeatDialogState extends State<_RepeatDialog> {
+class _RepeatPanelState extends State<_RepeatPanel> {
   late final _was = widget.current?.rule;
   late var _kind = switch (_was?.kind) {
     RepeatKind.days || RepeatKind.weeks || RepeatKind.months => RepeatKind.days,
@@ -600,7 +704,6 @@ class _RepeatDialogState extends State<_RepeatDialog> {
     final r? when r.kind == RepeatKind.yearly => r.every,
     _ => 1,
   };
-  late DateTime? _until = widget.current?.until;
 
   RepeatRule get _rule => switch (_kind) {
     RepeatKind.weekly => RepeatRule.weekly({
@@ -613,25 +716,36 @@ class _RepeatDialogState extends State<_RepeatDialog> {
     _ => RepeatRule.every(_every, weeks: _unit == RepeatKind.weeks),
   };
 
-  void _save() => Navigator.pop<({_RepeatChoice? choice})>(context, (choice: (rule: _rule, until: _until)));
+  @override
+  void initState() {
+    super.initState();
+    if (widget.current == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onChanged((rule: _rule, until: null));
+      });
+    }
+  }
+
+  void _set(VoidCallback change) {
+    setState(change);
+    widget.onChanged((rule: _rule, until: widget.current?.until));
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final label = TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, color: p.ink);
-    return ConfirmOnEnter(
-      onConfirm: _save,
-      child: AlertDialog(
-        backgroundColor: p.tile,
-        title: const Text('Repeat'),
-        // At least this wide, and wider when the choices need it, so every
-        // word shows in full at any text size.
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 360),
+    final until = widget.current?.until;
+    return IntrinsicWidth(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: widget.minWidth),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: 8),
               _Pills(
                 options: const ['Weekly', 'Monthly', 'Yearly', 'Custom'],
                 selected: switch (_kind) {
@@ -640,9 +754,8 @@ class _RepeatDialogState extends State<_RepeatDialog> {
                   RepeatKind.yearly => 2,
                   _ => 3,
                 },
-                onSelect: (i) => setState(
-                  () => _kind = [RepeatKind.weekly, RepeatKind.monthly, RepeatKind.yearly, RepeatKind.days][i],
-                ),
+                onSelect: (i) =>
+                    _set(() => _kind = [RepeatKind.weekly, RepeatKind.monthly, RepeatKind.yearly, RepeatKind.days][i]),
               ),
               const SizedBox(height: 18),
               SizedBox(
@@ -654,19 +767,19 @@ class _RepeatDialogState extends State<_RepeatDialog> {
                       bits: _days,
                       size: 30,
                       lastReason: 'It needs at least one day',
-                      onChanged: (bits) => setState(() => _days = bits),
+                      onChanged: (bits) => _set(() => _days = bits),
                     ),
                     RepeatKind.monthly => Row(
                       children: [
                         Text('On the', style: label),
-                        _Stepper(value: _date, min: 1, max: 31, onChanged: (v) => setState(() => _date = v)),
+                        _Stepper(value: _date, min: 1, max: 31, onChanged: (v) => _set(() => _date = v)),
                         Text('${ordinal(_date).substring('$_date'.length)} of each month', style: label),
                       ],
                     ),
                     RepeatKind.yearly => Row(
                       children: [
                         Text('Every', style: label),
-                        _Stepper(value: _years, min: 1, max: 99, onChanged: (v) => setState(() => _years = v)),
+                        _Stepper(value: _years, min: 1, max: 99, onChanged: (v) => _set(() => _years = v)),
                         Text(
                           '${_years == 1 ? 'year' : 'years'} on ${monthNames[widget.start.month - 1].substring(0, 3)} ${widget.start.day}',
                           style: label,
@@ -676,13 +789,13 @@ class _RepeatDialogState extends State<_RepeatDialog> {
                     _ => Row(
                       children: [
                         Text('Every', style: label),
-                        _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => setState(() => _every = v)),
+                        _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => _set(() => _every = v)),
                         const SizedBox(width: 6),
                         _Pills(
                           options: const ['days', 'weeks', 'months'],
                           selected: [RepeatKind.days, RepeatKind.weeks, RepeatKind.months].indexOf(_unit),
                           onSelect: (i) =>
-                              setState(() => _unit = [RepeatKind.days, RepeatKind.weeks, RepeatKind.months][i]),
+                              _set(() => _unit = [RepeatKind.days, RepeatKind.weeks, RepeatKind.months][i]),
                         ),
                         if (_unit == RepeatKind.months)
                           Padding(
@@ -713,34 +826,23 @@ class _RepeatDialogState extends State<_RepeatDialog> {
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
                         icon: const Icon(Icons.event_outlined, size: 18),
-                        label: Text(_until == null ? 'No end date' : 'Until ${dayMonth(_until!)}/${_until!.year}'),
-                        onPressed: () async {
-                          final picked = await _pickDate(context, first: widget.start, selected: _until);
-                          if (picked != null && mounted) setState(() => _until = picked);
-                        },
+                        label: Text(until == null ? 'No end date' : 'Until ${dayMonth(until)}/${until.year}'),
+                        onPressed: widget.onPickUntil,
                       ),
                     ),
                   ),
-                  if (_until != null)
+                  if (until != null)
                     IconButton(
                       tooltip: 'No end date',
                       icon: const Icon(Icons.close_rounded),
-                      onPressed: () => setState(() => _until = null),
+                      onPressed: () => widget.onChanged((rule: _rule, until: null)),
                     ),
                 ],
               ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
-        actions: [
-          if (widget.current != null)
-            TextButton(
-              onPressed: () => Navigator.pop<({_RepeatChoice? choice})>(context, (choice: null)),
-              child: const Text("Don't repeat"),
-            ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: _save, child: const Text('Save')),
-        ],
       ),
     );
   }

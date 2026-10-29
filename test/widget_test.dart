@@ -1645,7 +1645,7 @@ void main() {
     await tester.tap(find.text('Yearly'));
     await tester.pumpAndSettle();
     expect(find.textContaining('year on Oct 30'), findsOneWidget);
-    await tester.tap(find.text('Save'));
+    await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     expect(find.text('Every year'), findsOneWidget);
     await tester.tap(find.text('OK'));
@@ -1799,8 +1799,8 @@ void main() {
     await tester.tap(find.text('Due 27/10/2026'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24').last);
-    await tester.sendKeyEvent(LogicalKeyboardKey.numpadEnter);
     await tester.pumpAndSettle();
+    expect(find.text('Due 24/10/2026'), findsOneWidget, reason: 'a day goes back to the task');
     await tester.tap(find.widgetWithText(TextField, 'Revised task'));
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();

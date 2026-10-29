@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
@@ -231,5 +232,53 @@ void main() {
     await tester.pumpAndSettle();
     final repeat = state.repeats.single;
     expect((repeat.rule, repeat.birthday), (const RepeatRule.yearly(1), true));
+  });
+
+  testWidgets('time, repeat and its last day open in place, not in dialogs on top', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 23, 9));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(FurtherAheadCard), matching: find.byTooltip('Pick a day')));
+    await tester.pumpAndSettle();
+    final panel = find.descendant(of: find.byType(Dialog), matching: find.byType(Material)).first;
+    final top = tester.getTopLeft(panel).dy;
+
+    await tester.tap(find.text('Add a time'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.text('Clear time'), findsOneWidget);
+    expect(tester.getTopLeft(panel).dy, top, reason: 'it grows below, never moves');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget, reason: 'Escape goes back, not out');
+    expect(find.text('Add a time'), findsNothing, reason: 'opening it set a time');
+
+    await tester.tap(find.text("Doesn't repeat"));
+    await tester.pumpAndSettle();
+    final narrow = tester.getSize(panel).width;
+    await tester.tap(find.text('Custom'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('months'));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(panel).width, greaterThan(narrow), reason: 'it widens for the longer row');
+    await tester.tap(find.text('No end date'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.text('Repeat until'), findsOneWidget);
+    await tester.tap(find.text('31'));
+    await tester.pumpAndSettle();
+    expect(find.text('Until 31/12/2026'), findsNothing);
+    expect(find.textContaining('Until 31/'), findsOneWidget, reason: 'a day goes back to the repeat');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Every 2 months until'), findsOneWidget, reason: 'Enter goes back too');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing, reason: 'and on the main page, it confirms');
   });
 }
