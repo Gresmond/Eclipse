@@ -276,7 +276,13 @@ class _TodoRowState extends State<_TodoRow> {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   child: Row(
                     children: [
-                      _Check(done: done, hover: _hover, pressed: _pressed),
+                      // Matter's letters sit low in their line, so on a lone
+                      // title the box drops to meet them; a line underneath
+                      // already brings it down.
+                      Transform.translate(
+                        offset: Offset(0, item.subtasks.isEmpty && (repeat == null || item.birthday) ? 1.5 : 0),
+                        child: _Check(done: done, hover: _hover, pressed: _pressed),
+                      ),
                       const SizedBox(width: 11),
                       Expanded(
                         child: AnimatedDefaultTextStyle(
