@@ -248,6 +248,8 @@ class _TodoRowState extends State<_TodoRow> {
         widget.scope.period(item.since) != widget.scope.period(widget.day);
     // Closing up after its repeat ended, it still shows the repeat.
     final repeat = widget.leaving ? _repeat : (_repeat = state.repeatOf(item));
+    // A lone line: no subtasks or repeat under the title.
+    final lone = item.subtasks.isEmpty && (repeat == null || item.birthday);
 
     final parentRow = Appear(
       animate: widget.fadeIn,
@@ -272,6 +274,7 @@ class _TodoRowState extends State<_TodoRow> {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: HoverFill(
                 hover: _hover,
+                drop: lone ? 1.5 : 0,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   child: Row(
@@ -280,7 +283,7 @@ class _TodoRowState extends State<_TodoRow> {
                       // title the box drops to meet them; a line underneath
                       // already brings it down.
                       Transform.translate(
-                        offset: Offset(0, item.subtasks.isEmpty && (repeat == null || item.birthday) ? 1.5 : 0),
+                        offset: Offset(0, lone ? 1.5 : 0),
                         child: _Check(done: done, hover: _hover, pressed: _pressed),
                       ),
                       const SizedBox(width: 11),

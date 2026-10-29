@@ -697,6 +697,7 @@ class _AddTask extends StatefulWidget {
 class _AddTaskState extends State<_AddTask> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
+  bool _hover = false;
   int? _time;
 
   /// While the wheel is open, the time stays though the field is empty.
@@ -706,9 +707,9 @@ class _AddTaskState extends State<_AddTask> {
   void initState() {
     super.initState();
     _focus.addListener(() {
-      if (!_focus.hasFocus && !_picking && _controller.text.trim().isEmpty && _time != null) {
-        setState(() => _time = null);
-      }
+      setState(() {
+        if (!_focus.hasFocus && !_picking && _controller.text.trim().isEmpty) _time = null;
+      });
     });
   }
 
@@ -733,7 +734,7 @@ class _AddTaskState extends State<_AddTask> {
   }
 
   Future<void> _pick(BuildContext anchor) async {
-    _picking = true;
+    setState(() => _picking = true);
     final selection = _controller.selection;
     final picked = await pickTime(anchor, minutes: _time, start: _time ?? 9 * 60);
     _picking = false;
@@ -747,8 +748,10 @@ class _AddTaskState extends State<_AddTask> {
     final p = context.palette;
     final state = AppScope.read(context);
     final time = _time;
+    // Its time only once it's been clicked, or while one is set or picked.
+    final timed = widget.past == null && (_focus.hasFocus || _picking || time != null);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 4, 0, 4),
+      padding: const EdgeInsets.only(left: 18, top: 2),
       child: CallbackShortcuts(
         bindings: {
           const SingleActivator(LogicalKeyboardKey.escape): () {
@@ -756,27 +759,74 @@ class _AddTaskState extends State<_AddTask> {
             _focus.unfocus();
           },
         },
-        child: _Field(
-          controller: _controller,
-          focus: _focus,
-          leading: _TaskAction(icon: Icons.add_rounded, onPressed: () => _submit(state)),
-          // Only a time: a day's tasks don't repeat from here.
-          trailing: widget.past != null
-              ? const SizedBox.shrink()
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
+        // Tinted as a task is under the pointer, and while it's typed in.
+        child: MouseRegion(
+          cursor: SystemMouseCursors.text,
+          onEnter: (_) => setState(() => _hover = true),
+          onExit: (_) => setState(() => _hover = false),
+          // Anywhere on the line puts the cursor in, as a text box, not a
+          // button.
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (_) => _focus.requestFocus(),
+            child: HoverFill(
+              hover: _hover || _focus.hasFocus || _picking,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
                   children: [
-                    if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
-                    Builder(
-                      builder: (anchor) => _TaskAction(
-                        tooltip: time == null ? 'Add a time' : 'Change time',
-                        icon: Icons.more_time_rounded,
-                        onPressed: () => _pick(anchor),
+                    // Its buttons leave the cursor in the field; the + lines
+                    // up with the tick boxes above.
+                    TextFieldTapRegion(
+                      child: SizedBox(
+                        width: 20,
+                        height: _TaskAction.size,
+                        child: OverflowBox(
+                          maxWidth: _TaskAction.size,
+                          child: _TaskAction(icon: Icons.add_rounded, onPressed: () => _submit(state)),
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        focusNode: _focus,
+                        textCapitalization: TextCapitalization.sentences,
+                        inputFormatters: const [NoteInputFormatter()],
+                        style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.ink),
+                        cursorColor: p.accent,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          hintText: 'Add task',
+                          hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 7),
+                        ),
+                        onSubmitted: (_) => _submit(state),
+                      ),
+                    ),
+                    if (timed)
+                      TextFieldTapRegion(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
+                            Builder(
+                              builder: (anchor) => _TaskAction(
+                                tooltip: time == null ? 'Add a time' : 'Change time',
+                                icon: Icons.more_time_rounded,
+                                onPressed: () => _pick(anchor),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
-          onSubmitted: () => _submit(state),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -1287,6 +1337,7 @@ class _LaterRowState extends State<_LaterRow> {
             onExit: (_) => setState(() => _hover = false),
             child: HoverFill(
               hover: _hover,
+              drop: caption == null ? 1.5 : 0,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 child: Row(

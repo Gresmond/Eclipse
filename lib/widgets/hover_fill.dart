@@ -6,9 +6,14 @@ import '../theme/app_theme.dart';
 /// rather than its colour: easing a colour in from transparent passes
 /// through a darker shade, which flashed as the pointer crossed rows.
 class HoverFill extends StatelessWidget {
-  const HoverFill({super.key, required this.hover, required this.child});
+  const HoverFill({super.key, required this.hover, this.drop = 0, required this.child});
 
   final bool hover;
+
+  /// How far the tint sits below the row, the row keeping its place: Matter's
+  /// letters sit low in their line, so a lone line's tint drops to centre on
+  /// them, as its tick box does.
+  final double drop;
   final Widget child;
 
   @override
@@ -17,8 +22,13 @@ class HoverFill extends StatelessWidget {
     return Stack(
       // Sized by [child]; the tint just fills it.
       fit: StackFit.passthrough,
+      clipBehavior: Clip.none,
       children: [
-        Positioned.fill(
+        Positioned(
+          left: 0,
+          right: 0,
+          top: drop,
+          bottom: -drop,
           child: IgnorePointer(
             child: AnimatedOpacity(
               opacity: hover ? 1 : 0,

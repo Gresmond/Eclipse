@@ -301,10 +301,16 @@ void main() {
       findsOneWidget,
       reason: 'its look before a click',
     );
+    expect(
+      find.descendant(of: week, matching: find.byTooltip('Add a time')),
+      findsNothing,
+      reason: 'until clicked',
+    );
     final before = tester.getRect(line);
     await tester.tap(line);
     await tester.pumpAndSettle();
-    expect(tester.getRect(line), before, reason: 'clicking it only puts the cursor in');
+    final after = tester.getRect(line);
+    expect((after.top, after.height), (before.top, before.height), reason: 'clicking it only puts the cursor in');
     await tester.enterText(line, 'Call the bank');
 
     expect(find.descendant(of: week, matching: find.byTooltip('Time, repeat and birthday')), findsNothing);
