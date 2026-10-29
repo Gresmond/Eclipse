@@ -9,12 +9,14 @@ Widget dialogTransition(Animation<double> animation, Widget child) => FadeTransi
   child: child,
 );
 
+/// Clicking anywhere in the dialog, a toggle or a button that opens one of
+/// its pages, leaves the cursor in its text field.
 Future<T?> showAppDialog<T>({required BuildContext context, required WidgetBuilder builder}) {
   final navigator = Navigator.of(context, rootNavigator: true);
   return navigator.push<T>(
     _AppDialogRoute<T>(
       context: context,
-      builder: builder,
+      builder: (context) => TextFieldTapRegion(child: builder(context)),
       themes: InheritedTheme.capture(from: context, to: navigator.context),
     ),
   );

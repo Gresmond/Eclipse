@@ -9,9 +9,10 @@ import 'fade_through.dart';
 import 'rolling_number.dart';
 import 'sleep_time.dart';
 
-/// Shows a time, or [placeholder], and opens a [TimeWheel] to pick it.
-/// Opening it with no time sets the one the wheel shows, [start]. The time
-/// is set once the wheel closes, its changed digits rolling into place.
+/// Shows a time, or [placeholder], and opens a [TimeWheel] to pick it,
+/// starting from [start] when there's no time. Save (or Enter) sets it,
+/// its changed digits rolling into place; Cancel, Escape or clicking away
+/// leaves it as it was.
 class TimePill extends StatefulWidget {
   const TimePill({
     super.key,
@@ -40,20 +41,47 @@ class _TimePillState extends State<TimePill> {
   bool _hover = false;
 
   Future<void> _open() async {
-    int? picked;
+    int? picked, saved;
     await showFadeMenu(
       context,
       width: 248,
       above: true,
       alignLeft: widget.alignLeft,
-      builder: (_) => TimeWheel(
-        title: widget.title,
-        initial: widget.minutes ?? widget.start,
-        unset: widget.minutes == null,
-        onChanged: (minutes) => picked = minutes,
-      ),
+      builder: (context) {
+        void save() {
+          saved = picked;
+          Navigator.pop(context);
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TimeWheel(
+              title: widget.title,
+              initial: widget.minutes ?? widget.start,
+              unset: widget.minutes == null,
+              onChanged: (minutes) => picked = minutes,
+              onDone: save,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: OverflowBar(
+                  spacing: 8,
+                  children: [
+                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                    TextButton(onPressed: save, child: const Text('Save')),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
-    if (picked case final minutes? when minutes != widget.minutes) widget.onChanged(minutes);
+    if (saved case final minutes? when minutes != widget.minutes) widget.onChanged(minutes);
   }
 
   @override

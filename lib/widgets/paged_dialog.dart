@@ -22,6 +22,7 @@ class PagedDialog extends StatefulWidget {
     this.backgroundColor,
     this.padding = const EdgeInsets.all(24),
     this.preserveButtons = true,
+    this.onReturn,
   });
 
   /// Which page [child] is; a new one swaps it in.
@@ -43,6 +44,10 @@ class PagedDialog extends StatefulWidget {
   /// As [ConfirmOnEnter.preserveButtons].
   final bool preserveButtons;
 
+  /// Gives the keys back to the first page when it returns, as to its text
+  /// field; without it, the dialog holds them.
+  final VoidCallback? onReturn;
+
   @override
   State<PagedDialog> createState() => _PagedDialogState();
 }
@@ -55,8 +60,14 @@ class _PagedDialogState extends State<PagedDialog> {
   void didUpdateWidget(PagedDialog old) {
     super.didUpdateWidget(old);
     if (old.page == widget.page) return;
+    final onReturn = widget.onBack == null ? widget.onReturn : null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_focus.hasFocus) _focus.requestFocus();
+      if (!mounted) return;
+      if (onReturn != null) {
+        onReturn();
+      } else if (!_focus.hasFocus) {
+        _focus.requestFocus();
+      }
     });
   }
 

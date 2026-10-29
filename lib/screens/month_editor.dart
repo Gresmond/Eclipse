@@ -88,7 +88,10 @@ class _RitualEditorState extends State<_RitualEditor> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                DayToggles(bits: _addDays, onChanged: (bits) => setState(() => _addDays = bits)),
+                // Its days leave the cursor in the name.
+                TextFieldTapRegion(
+                  child: DayToggles(bits: _addDays, onChanged: (bits) => setState(() => _addDays = bits)),
+                ),
               ],
             ),
           ),
@@ -336,9 +339,11 @@ class _EditableRowState extends State<_EditableRow> {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: DayToggles(
-                    bits: widget.habit.weekdays,
-                    onChanged: (bits) => state.setHabitDays(widget.year, widget.month, widget.habit, bits),
+                  child: TextFieldTapRegion(
+                    child: DayToggles(
+                      bits: widget.habit.weekdays,
+                      onChanged: (bits) => state.setHabitDays(widget.year, widget.month, widget.habit, bits),
+                    ),
                   ),
                 ),
               ],

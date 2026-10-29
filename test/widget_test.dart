@@ -857,8 +857,8 @@ void main() {
     expect(parseClock('22:00'), 22 * 60);
     expect(parseClock(''), isNull);
     expect(clockLabel(8 * 60 + 30), '8:30 am');
-    expect(clockLabel(21 * 60), '9 pm');
-    expect(clockLabel(0), '12 am');
+    expect(clockLabel(21 * 60), '9:00 pm');
+    expect(clockLabel(0), '12:00 am');
     expect(clockLabel(12 * 60 + 5), '12:05 pm');
 
     final store = Store.memory();
@@ -1119,7 +1119,7 @@ void main() {
     await _shoot(tester, 'today');
 
     // Sleep items show their times beside their names, and no tooltip.
-    expect(find.text('11 pm'), findsOneWidget);
+    expect(find.text('11:00 pm'), findsOneWidget);
     final name = tester.getRect(find.text('Sleep Early'));
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
@@ -1161,7 +1161,7 @@ void main() {
     expect(state.habits.first.description, 'Make the bed too');
     expect(find.text('Stretch'), findsOneWidget);
 
-    expect(find.text('11 pm'), findsOneWidget, reason: 'times show beside the sleep items');
+    expect(find.text('11:00 pm'), findsOneWidget, reason: 'times show beside the sleep items');
     await tester.ensureVisible(find.text('Edit times'));
     await tester.tap(find.text('Edit times'));
     await tester.pumpAndSettle();
@@ -1171,11 +1171,12 @@ void main() {
     // Clicking a minute on the wheel turns it there.
     await tester.tap(find.text('05').hitTestable().first);
     await tester.pumpAndSettle();
-    expect(state.sleepHabits.last.minutes, 23 * 60, reason: 'the time is set once the wheel closes');
+    expect(state.sleepHabits.last.minutes, 23 * 60, reason: 'the time is set once it is saved');
     // Dragging it up a row moves on five minutes.
     await tester.drag(find.text('05').hitTestable().first, const Offset(0, -38.0 - kDragSlopDefault));
     await tester.pumpAndSettle();
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    expect(state.sleepHabits.last.minutes, 23 * 60, reason: 'only Save sets it');
+    await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(state.sleepHabits.last.minutes, 23 * 60 + 10);
     await tester.tap(find.byType(TimePill).last);
@@ -1192,6 +1193,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
+    expect(state.sleepHabits.last.minutes, 23 * 60 + 10, reason: 'Escape leaves it as it was');
     await tester.ensureVisible(find.text('Done'));
     await _shoot(tester, 'sleep_edit');
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);

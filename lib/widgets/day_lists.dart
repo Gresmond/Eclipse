@@ -533,6 +533,16 @@ class _DayHeading extends StatelessWidget {
   }
 }
 
+/// Puts the cursor back in [focus]'s field with [selection] as it was.
+/// Refocused from code, a desktop field would select all its text.
+void _refocus(FocusNode focus, TextEditingController controller, TextSelection selection) {
+  focus.requestFocus();
+  // After the focus change, which is applied as a microtask.
+  scheduleMicrotask(() {
+    if (selection.isValid && selection.end <= controller.text.length) controller.selection = selection;
+  });
+}
+
 /// [child] at a card's foot, folded away (while looking back) so it eases
 /// out and back rather than snapping.
 class _FoldAway extends StatelessWidget {
@@ -590,7 +600,7 @@ class _DatedAddState extends State<_DatedAdd> {
   }
 
   Future<_DayChoice?> _pick() async {
-    final choice = _choice;
+    final (choice, typing, selection) = (_choice, _focus.hasFocus, _controller.selection);
     final picked = await _pickDayAndRepeat(
       context,
       first: widget.first,
@@ -601,9 +611,9 @@ class _DatedAddState extends State<_DatedAdd> {
       birthday: choice?.birthday ?? false,
       birthdays: widget.birthdays,
     );
-    if (picked == null || !mounted) return null;
-    setState(() => _choice = picked);
-    _focus.requestFocus();
+    if (!mounted) return null;
+    if (picked != null) setState(() => _choice = picked);
+    if (picked != null || typing) _refocus(_focus, _controller, selection);
     return picked;
   }
 
@@ -728,7 +738,7 @@ class _AddTaskState extends State<_AddTask> {
 
   Future<void> _pick() async {
     _picking = true;
-    final choice = _choice;
+    final (choice, selection) = (_choice, _controller.selection);
     final picked = await _pickDayAndRepeat(
       context,
       first: widget.day,
@@ -741,7 +751,7 @@ class _AddTaskState extends State<_AddTask> {
     _picking = false;
     if (!mounted) return;
     if (picked != null) setState(() => _choice = picked);
-    _focus.requestFocus();
+    _refocus(_focus, _controller, selection);
   }
 
   @override
@@ -884,7 +894,8 @@ class _Field extends StatelessWidget {
         ),
         child: Row(
           children: [
-            leading,
+            // Its buttons leave the cursor in the field.
+            TextFieldTapRegion(child: leading),
             const SizedBox(width: 8),
             Expanded(
               child: TextField(
@@ -906,7 +917,10 @@ class _Field extends StatelessWidget {
               ),
             ),
             // Its buttons and labels keep to the end, the name taking the rest.
-            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 180), child: trailing),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 180),
+              child: TextFieldTapRegion(child: trailing),
+            ),
           ],
         ),
       ),

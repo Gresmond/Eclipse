@@ -1241,11 +1241,14 @@ class _AddExerciseState extends State<_AddExercise> {
             children: [
               Text('New: what does “${_text.text.trim()}” train?', style: _label(p, size: 12.5, color: p.inkMuted)),
               const SizedBox(width: 10),
-              _Chip(
-                label: 'Bodyweight',
-                colour: p.accent,
-                on: _bodyweight,
-                onTap: () => setState(() => _bodyweight = !_bodyweight),
+              // Leaves the cursor in the name.
+              TextFieldTapRegion(
+                child: _Chip(
+                  label: 'Bodyweight',
+                  colour: p.accent,
+                  on: _bodyweight,
+                  onTap: () => setState(() => _bodyweight = !_bodyweight),
+                ),
               ),
             ],
           ),

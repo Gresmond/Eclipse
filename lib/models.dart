@@ -445,11 +445,12 @@ DateTime nextDayStart(DateTime now, int startHour) {
 /// 'Midnight', '4am'.
 String hourLabel(int hour) => hour == 0 ? 'Midnight' : '${hour}am';
 
-/// A time of day as the sleep schedule shows it: "8:30 am", "9 pm".
+/// A time of day as the sleep schedule shows it, always with its minutes:
+/// "8:30 am", "9:00 pm".
 String clockLabel(int minutes) {
   final (h, m) = (minutes ~/ 60, minutes % 60);
   final hour = h % 12 == 0 ? 12 : h % 12;
-  return '$hour${m == 0 ? '' : ':${m.toString().padLeft(2, '0')}'} ${h < 12 ? 'am' : 'pm'}';
+  return '$hour:${m.toString().padLeft(2, '0')} ${h < 12 ? 'am' : 'pm'}';
 }
 
 /// A sleep item's saved time: "21:00", or a time inside a note written

@@ -329,7 +329,8 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       actions: [
         TextButton(onPressed: _cancel ?? () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
-        TextButton(onPressed: _back ?? _done, child: Text(localizations.okButtonLabel)),
+        // A time or repeat page saves what it set.
+        TextButton(onPressed: _back ?? _done, child: Text(_page == _Page.main ? localizations.okButtonLabel : 'Save')),
       ],
       child: _page == _Page.main
           ? Column(
@@ -604,6 +605,10 @@ class _EditTaskDialog extends StatefulWidget {
 
 class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
   late final _text = TextEditingController(text: widget.item.text);
+  final _textFocus = FocusNode();
+
+  /// Where the cursor was in the name when a page opened over it.
+  TextSelection _selection = const TextSelection.collapsed(offset: -1);
   late DateTime? _due = widget.item.dueDate;
 
   /// Kept as it is: whether it's a birthday is only set when it's added.
@@ -622,7 +627,14 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
   @override
   void dispose() {
     _text.dispose();
+    _textFocus.dispose();
     super.dispose();
+  }
+
+  @override
+  void _open(_Page page) {
+    if (_page == _Page.main) _selection = _text.selection;
+    super._open(page);
   }
 
   void _save() {
@@ -642,6 +654,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
     final today = AppScope.read(context).today;
     final start = widget.item.repeatDay ?? _due ?? today;
     return PagedDialog(
+      onReturn: () => _refocus(_textFocus, _text, _selection),
       page: _page,
       onConfirm: _save,
       onBack: _back,
@@ -681,6 +694,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
         TextField(
           inputFormatters: const [NoteInputFormatter()],
           controller: _text,
+          focusNode: _textFocus,
           autofocus: true,
           minLines: 1,
           maxLines: 4,
