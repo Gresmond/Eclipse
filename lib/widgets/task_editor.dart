@@ -302,7 +302,7 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
   void _done() => Navigator.pop<_DayChoice>(context, (
     day: _selected,
     repeat: _birthdayRepeat(_birthday, _repeat),
-    time: _time,
+    time: _birthday ? null : _time,
     birthday: _birthday,
   ));
 
@@ -345,7 +345,7 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
                   const SizedBox(height: 8),
                 ] else
                   const SizedBox(height: 4),
-                _timeRow(),
+                _FoldAway(folded: _birthday, child: _timeRow()),
                 _FoldAway(folded: _birthday, child: _repeatRow()),
                 if (widget.birthdays)
                   _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
@@ -520,8 +520,8 @@ class _RepeatRow extends StatelessWidget {
 _RepeatChoice? _birthdayRepeat(bool birthday, _RepeatChoice? repeat) =>
     !birthday || repeat?.rule == const RepeatRule.yearly(1) ? repeat : (rule: const RepeatRule.yearly(1), until: null);
 
-/// Whether a task is someone's birthday, which comes round every year in
-/// place of a repeat; a cross makes it not one.
+/// Whether a task is someone's birthday, which comes round every year, all
+/// day, in place of a repeat and time; a cross makes it not one.
 class _BirthdayRow extends StatelessWidget {
   const _BirthdayRow({required this.birthday, required this.onChanged});
 
@@ -580,7 +580,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
       text: _text.text,
       due: _due,
       repeat: _birthdayRepeat(_birthday, _repeat),
-      time: _time,
+      time: _birthday ? null : _time,
       birthday: _birthday,
     ));
   }
@@ -646,7 +646,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
           ),
         ],
         const SizedBox(height: 4),
-        _timeRow(),
+        _FoldAway(folded: _birthday, child: _timeRow()),
         _FoldAway(folded: _birthday, child: _repeatRow()),
         const SizedBox(height: 16),
       ],

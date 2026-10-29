@@ -6,10 +6,12 @@ import '../theme/app_theme.dart';
 import 'confirm_on_enter.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
+import 'rolling_number.dart';
 import 'sleep_time.dart';
 
 /// Shows a time, or [placeholder], and opens a [TimeWheel] to pick it.
-/// Opening it with no time sets the one the wheel shows, [start].
+/// Opening it with no time sets the one the wheel shows, [start]. The time
+/// is set once the wheel closes, its changed digits rolling into place.
 class TimePill extends StatefulWidget {
   const TimePill({
     super.key,
@@ -23,9 +25,7 @@ class TimePill extends StatefulWidget {
 
   final int? minutes;
   final int start;
-
-  /// Null when the time is cleared.
-  final ValueChanged<int?> onChanged;
+  final ValueChanged<int> onChanged;
   final String? title;
   final String placeholder;
 
@@ -39,27 +39,34 @@ class TimePill extends StatefulWidget {
 class _TimePillState extends State<TimePill> {
   bool _hover = false;
 
+  Future<void> _open() async {
+    int? picked;
+    await showFadeMenu(
+      context,
+      width: 248,
+      above: true,
+      alignLeft: widget.alignLeft,
+      builder: (_) => TimeWheel(
+        title: widget.title,
+        initial: widget.minutes ?? widget.start,
+        unset: widget.minutes == null,
+        onChanged: (minutes) => picked = minutes,
+      ),
+    );
+    if (picked case final minutes? when minutes != widget.minutes) widget.onChanged(minutes);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final minutes = widget.minutes;
+    final style = SleepName.timeStyle(p).copyWith(fontSize: 13, color: p.ink);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
-        onTap: () => showFadeMenu(
-          context,
-          width: 248,
-          above: true,
-          alignLeft: widget.alignLeft,
-          builder: (_) => TimeWheel(
-            title: widget.title,
-            initial: widget.minutes ?? widget.start,
-            unset: widget.minutes == null,
-            onChanged: widget.onChanged,
-          ),
-        ),
+        onTap: _open,
         child: AnimatedContainer(
           duration: Motion.hover,
           curve: Motion.hoverCurve,
@@ -71,13 +78,31 @@ class _TimePillState extends State<TimePill> {
           ),
           child: FadeThrough(
             duration: Motion.click,
-            child: Text(
-              minutes == null ? widget.placeholder : clockLabel(minutes),
-              key: ValueKey(minutes),
-              style: minutes == null
-                  ? TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted)
-                  : SleepName.timeStyle(p).copyWith(fontSize: 13, color: p.ink),
-            ),
+            child: minutes == null
+                ? Text(
+                    widget.placeholder,
+                    key: const ValueKey(false),
+                    style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted),
+                  )
+                // "9:05 pm", as a count's digits roll.
+                : Semantics(
+                    key: const ValueKey(true),
+                    label: clockLabel(minutes),
+                    excludeSemantics: true,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        RollingNumber(value: (minutes ~/ 60 + 11) % 12 + 1, style: style),
+                        Text(':', style: style),
+                        RollingNumber(value: minutes % 60, digits: 2, style: style),
+                        Text(' ', style: style),
+                        FadeThrough(
+                          duration: Motion.morph,
+                          child: Text(minutes < 12 * 60 ? 'am' : 'pm', key: ValueKey(minutes < 12 * 60), style: style),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
         ),
       ),
@@ -105,11 +130,9 @@ class TimeWheel extends StatefulWidget {
   /// Whether there's no time yet: opening sets [initial].
   final bool unset;
 
-  /// Null when the time is cleared.
-  final ValueChanged<int?> onChanged;
+  final ValueChanged<int> onChanged;
 
-  /// Leaves the wheel, on Enter or once the time is cleared; by default it
-  /// closes the menu it's in.
+  /// Leaves the wheel, on Enter; by default it closes the menu it's in.
   final VoidCallback? onDone;
 
   @override
@@ -225,77 +248,52 @@ class _TimeWheelState extends State<TimeWheel> {
             ],
             SizedBox(
               height: _row * _rows,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // The band the chosen time sits in.
-                  Container(
-                    height: _row,
-                    decoration: BoxDecoration(
-                      color: p.empty.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  // Rows fade out towards the wheel's top and bottom edges.
-                  ShaderMask(
-                    blendMode: BlendMode.dstIn,
-                    shaderCallback: (rect) => const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0x00000000), Color(0xFF000000), Color(0xFF000000), Color(0x00000000)],
-                      stops: [0, 0.32, 0.68, 1],
-                    ).createShader(rect),
-                    // Dragged with the mouse as well as scrolled.
-                    child: ScrollConfiguration(
-                      behavior: ScrollConfiguration.of(context)
-                          .copyWith(scrollbars: false, dragDevices: {...PointerDeviceKind.values}),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          wheel(
-                            controller: _hours,
-                            count: 12,
-                            loop: true,
-                            label: (i) => '${i == 0 ? 12 : i}',
-                            selected: _hour,
-                            onChanged: (i) => setState(() => _hour = i),
-                          ),
-                          Text(':', style: style),
-                          wheel(
-                            controller: _minutes,
-                            count: 12,
-                            loop: true,
-                            label: (i) => (i * 5).toString().padLeft(2, '0'),
-                            selected: _minute,
-                            onChanged: (i) => setState(() => _minute = i),
-                          ),
-                          const SizedBox(width: 6),
-                          wheel(
-                            controller: _halves,
-                            count: 2,
-                            loop: false,
-                            label: (i) => i == 0 ? 'am' : 'pm',
-                            selected: _pm ? 1 : 0,
-                            onChanged: (i) => setState(() => _pm = i == 1),
-                            width: 52,
-                          ),
-                        ],
+              // Rows fade out towards the wheel's top and bottom edges.
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (rect) => const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x00000000), Color(0xFF000000), Color(0xFF000000), Color(0x00000000)],
+                  stops: [0, 0.32, 0.68, 1],
+                ).createShader(rect),
+                // Dragged with the mouse as well as scrolled.
+                child: ScrollConfiguration(
+                  behavior: ScrollConfiguration.of(context)
+                      .copyWith(scrollbars: false, dragDevices: {...PointerDeviceKind.values}),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      wheel(
+                        controller: _hours,
+                        count: 12,
+                        loop: true,
+                        label: (i) => '${i == 0 ? 12 : i}',
+                        selected: _hour,
+                        onChanged: (i) => setState(() => _hour = i),
                       ),
-                    ),
+                      Text(':', style: style),
+                      wheel(
+                        controller: _minutes,
+                        count: 12,
+                        loop: true,
+                        label: (i) => (i * 5).toString().padLeft(2, '0'),
+                        selected: _minute,
+                        onChanged: (i) => setState(() => _minute = i),
+                      ),
+                      const SizedBox(width: 6),
+                      wheel(
+                        controller: _halves,
+                        count: 2,
+                        loop: false,
+                        label: (i) => i == 0 ? 'am' : 'pm',
+                        selected: _pm ? 1 : 0,
+                        onChanged: (i) => setState(() => _pm = i == 1),
+                        width: 52,
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {
-                  widget.onChanged(null);
-                  _done();
-                },
-                style: TextButton.styleFrom(foregroundColor: p.inkMuted, visualDensity: VisualDensity.compact),
-                child: Text('Clear time', style: TextStyle(fontFamily: Fonts.ui, fontSize: 12.5)),
+                ),
               ),
             ),
           ],

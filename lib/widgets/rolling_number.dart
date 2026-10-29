@@ -9,10 +9,13 @@ import '../theme/app_theme.dart';
 /// lost at the front widens or narrows its slot smoothly, so whatever sits
 /// beside the number glides rather than jumps.
 class RollingNumber extends StatefulWidget {
-  const RollingNumber({super.key, required this.value, required this.style});
+  const RollingNumber({super.key, required this.value, required this.style, this.digits = 1});
 
   final int value;
   final TextStyle style;
+
+  /// At least this many digits, leading zeros filling the rest.
+  final int digits;
 
   @override
   State<RollingNumber> createState() => _RollingNumberState();
@@ -36,7 +39,7 @@ class _RollingNumberState extends State<RollingNumber> {
 
   @override
   Widget build(BuildContext context) {
-    final digits = '${widget.value}';
+    final digits = '${widget.value}'.padLeft(widget.digits, '0');
     // Even-width figures, so a rolling digit never nudges its neighbours.
     final style = widget.style.copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
     return ClipRect(

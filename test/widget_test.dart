@@ -28,6 +28,7 @@ import 'package:eclipse/widgets/status_cell.dart';
 import 'package:eclipse/widgets/tile.dart';
 import 'package:eclipse/widgets/day_picker.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
+import 'package:eclipse/widgets/time_wheel.dart';
 
 /// Pass --dart-define=SCREENSHOT_DIR=/some/dir to save PNGs of each view.
 const _shotDir = String.fromEnvironment('SCREENSHOT_DIR');
@@ -1164,17 +1165,21 @@ void main() {
     await tester.ensureVisible(find.text('Edit times'));
     await tester.tap(find.text('Edit times'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('11 pm'));
+    await tester.tap(find.byType(TimePill).last);
     await tester.pumpAndSettle();
     await _shoot(tester, 'sleep_wheel');
     // Clicking a minute on the wheel turns it there.
     await tester.tap(find.text('05').hitTestable().first);
     await tester.pumpAndSettle();
-    expect(state.sleepHabits.last.minutes, 23 * 60 + 5);
+    expect(state.sleepHabits.last.minutes, 23 * 60, reason: 'the time is set once the wheel closes');
     // Dragging it up a row moves on five minutes.
     await tester.drag(find.text('05').hitTestable().first, const Offset(0, -38.0 - kDragSlopDefault));
     await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
     expect(state.sleepHabits.last.minutes, 23 * 60 + 10);
+    await tester.tap(find.byType(TimePill).last);
+    await tester.pumpAndSettle();
     // The hand stays while the mouse drags the wheel round.
     await mouse.moveTo(tester.getCenter(find.text('15').hitTestable().first));
     await mouse.down(tester.getCenter(find.text('15').hitTestable().first));
@@ -1185,10 +1190,8 @@ void main() {
     }
     await mouse.up();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Clear time'));
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
-    expect(state.sleepHabits.last.minutes, isNull);
-    expect(find.text('Select time'), findsOneWidget);
     await tester.ensureVisible(find.text('Done'));
     await _shoot(tester, 'sleep_edit');
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);

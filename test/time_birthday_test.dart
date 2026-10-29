@@ -211,11 +211,13 @@ void main() {
     expect(opening.toSet(), hasLength(1));
     await tester.pumpAndSettle();
 
-    // Making it a birthday folds the repeat away; it comes round every year.
+    // Making it a birthday folds the time and repeat away; it comes round
+    // every year, all day.
     expect(find.text("Doesn't repeat").hitTestable(), findsOneWidget);
     await tester.tap(find.text('Not a birthday'));
     await tester.pumpAndSettle();
     expect(find.text("Doesn't repeat").hitTestable(), findsNothing);
+    expect(find.text('Add a time').hitTestable(), findsNothing);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     final field = find.descendant(of: find.byType(FurtherAheadCard), matching: find.byType(TextField));
@@ -243,7 +245,7 @@ void main() {
     await tester.tap(find.text('Add a time'));
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget);
-    expect(find.text('Clear time'), findsOneWidget);
+    expect(find.text('Clear time'), findsNothing, reason: 'Cancel does that');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget, reason: 'Escape goes back, not out');
