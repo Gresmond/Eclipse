@@ -36,6 +36,10 @@ Future<_DayChoice?> _pickDayAndRepeat(
 /// in its place.
 enum _Page { main, day, time, repeat, until }
 
+/// How wide a task's dialog is on every page: wide enough for the repeat
+/// page's custom row.
+const _taskDialogWidth = 408.0;
+
 /// A task's time and repeat, each set on a page of its own in place of
 /// the dialog's main one, and the repeat's last day on another. They
 /// change as they're set: going back keeps what a page set, cancelling
@@ -75,22 +79,18 @@ mixin _DetailPages<T extends StatefulWidget> on State<T> {
   Widget _repeatRow() =>
       _RepeatRow(repeat: _repeat, onOpen: () => _open(_Page.repeat), onClear: () => setState(() => _repeat = null));
 
-  /// The time, repeat or last day's page, at least [width] wide, for a
-  /// task first due on [start].
-  Widget _detailPage(DateTime start, double width) {
+  /// The time, repeat or last day's page, for a task first due on [start].
+  Widget _detailPage(DateTime start) {
     final back = _back!;
     return switch (_page) {
       _Page.time => _SubPage(
         title: 'Time',
         onBack: back,
-        child: SizedBox(
-          width: width,
-          child: TimeWheel(
-            initial: _time ?? 9 * 60,
-            unset: _time == null,
-            onChanged: (time) => setState(() => _time = time),
-            onDone: back,
-          ),
+        child: TimeWheel(
+          initial: _time ?? 9 * 60,
+          unset: _time == null,
+          onChanged: (time) => setState(() => _time = time),
+          onDone: back,
         ),
       ),
       _Page.until => _SubPage(
@@ -111,7 +111,6 @@ mixin _DetailPages<T extends StatefulWidget> on State<T> {
         child: _RepeatPanel(
           start: start,
           current: _repeat,
-          minWidth: width,
           onChanged: (repeat) => setState(() => _repeat = repeat),
           onPickUntil: () => _open(_Page.until),
         ),
@@ -154,8 +153,6 @@ class _SubPage extends StatelessWidget {
 class _MonthCalendar extends StatefulWidget {
   const _MonthCalendar({required this.first, this.last, required this.selected, required this.onSelected});
 
-  static const width = 336.0;
-
   final DateTime first;
   final DateTime? last;
   final DateTime selected;
@@ -185,66 +182,63 @@ class _MonthCalendarState extends State<_MonthCalendar> {
     final leading = DateTime(_month.year, _month.month).weekday - 1;
     final days = DateUtils.getDaysInMonth(_month.year, _month.month);
     final weeks = ((leading + days) / 7).ceil();
-    return SizedBox(
-      width: _MonthCalendar.width,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(localizations.formatMonthYear(_month), style: Theme.of(context).textTheme.titleSmall),
+              ),
+            ),
+            IconButton(
+              tooltip: localizations.previousMonthTooltip,
+              onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
+              icon: const Icon(Icons.chevron_left_rounded),
+            ),
+            IconButton(
+              tooltip: localizations.nextMonthTooltip,
+              onPressed: lastMonth == null || _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
+              icon: const Icon(Icons.chevron_right_rounded),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            for (var i = 0; i < 7; i++)
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text(localizations.formatMonthYear(_month), style: Theme.of(context).textTheme.titleSmall),
-                ),
-              ),
-              IconButton(
-                tooltip: localizations.previousMonthTooltip,
-                onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
-                icon: const Icon(Icons.chevron_left_rounded),
-              ),
-              IconButton(
-                tooltip: localizations.nextMonthTooltip,
-                onPressed: lastMonth == null || _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
-                icon: const Icon(Icons.chevron_right_rounded),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              for (var i = 0; i < 7; i++)
-                Expanded(
-                  child: SizedBox(
-                    height: 36,
-                    child: Center(
-                      child: Text(
-                        localizations.narrowWeekdays[(1 + i) % 7],
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
+                child: SizedBox(
+                  height: 36,
+                  child: Center(
+                    child: Text(
+                      localizations.narrowWeekdays[(1 + i) % 7],
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
                 ),
+              ),
+          ],
+        ),
+        // Only the weeks the month has, the rows below moving with it.
+        AnimatedSize(
+          duration: Motion.morph,
+          curve: Motion.morphCurve,
+          alignment: Alignment.topCenter,
+          child: Column(
+            children: [
+              for (var row = 0; row < weeks; row++)
+                Row(
+                  children: [
+                    for (var column = 0; column < 7; column++)
+                      Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
+                  ],
+                ),
             ],
           ),
-          // Only the weeks the month has, the rows below moving with it.
-          AnimatedSize(
-            duration: Motion.morph,
-            curve: Motion.morphCurve,
-            alignment: Alignment.topCenter,
-            child: Column(
-              children: [
-                for (var row = 0; row < weeks; row++)
-                  Row(
-                    children: [
-                      for (var column = 0; column < 7; column++)
-                        Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -330,37 +324,35 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
       page: _page,
       onConfirm: _done,
       onBack: _back,
+      width: _taskDialogWidth,
       preserveButtons: false,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       actions: [
         TextButton(onPressed: _cancel ?? () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
         TextButton(onPressed: _back ?? _done, child: Text(localizations.okButtonLabel)),
       ],
       child: _page == _Page.main
-          ? SizedBox(
-              width: _MonthCalendar.width,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.calendar) ...[
-                    _MonthCalendar(
-                      first: widget.first,
-                      last: widget.last,
-                      selected: _selected,
-                      onSelected: (day) => setState(() => _selected = day),
-                    ),
-                    const SizedBox(height: 8),
-                  ] else
-                    const SizedBox(height: 4),
-                  _timeRow(),
-                  _FoldAway(folded: _birthday, child: _repeatRow()),
-                  if (widget.birthdays)
-                    _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.calendar) ...[
+                  _MonthCalendar(
+                    first: widget.first,
+                    last: widget.last,
+                    selected: _selected,
+                    onSelected: (day) => setState(() => _selected = day),
+                  ),
+                  const SizedBox(height: 8),
+                ] else
                   const SizedBox(height: 4),
-                ],
-              ),
+                _timeRow(),
+                _FoldAway(folded: _birthday, child: _repeatRow()),
+                if (widget.birthdays)
+                  _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
+                const SizedBox(height: 4),
+              ],
             )
-          : _detailPage(_selected, _MonthCalendar.width),
+          : _detailPage(_selected),
     );
   }
 }
@@ -560,8 +552,6 @@ class _EditTaskDialog extends StatefulWidget {
 }
 
 class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
-  static const _width = 380.0;
-
   late final _text = TextEditingController(text: widget.item.text);
   late DateTime? _due = widget.item.dueDate;
 
@@ -604,6 +594,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
       page: _page,
       onConfirm: _save,
       onBack: _back,
+      width: _taskDialogWidth,
       backgroundColor: p.tile,
       actions: [
         TextButton(onPressed: _cancel ?? () => Navigator.pop(context), child: const Text('Cancel')),
@@ -623,44 +614,42 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
             },
           ),
         ),
-        _ => _detailPage(start.isBefore(today) ? today : start, _width),
+        _ => _detailPage(start.isBefore(today) ? today : start),
       },
     );
   }
 
   Widget _main(DateTime today) {
     final dated = widget.scope == TodoScope.week || widget.scope == TodoScope.month;
-    return SizedBox(
-      width: _width,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Edit task', style: Theme.of(context).textTheme.headlineSmall),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Edit task', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 16),
+        TextField(
+          inputFormatters: const [NoteInputFormatter()],
+          controller: _text,
+          autofocus: true,
+          minLines: 1,
+          maxLines: 4,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(labelText: 'Task'),
+          onSubmitted: (_) => _save(),
+        ),
+        if (dated) ...[
           const SizedBox(height: 16),
-          TextField(
-            inputFormatters: const [NoteInputFormatter()],
-            controller: _text,
-            autofocus: true,
-            minLines: 1,
-            maxLines: 4,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(labelText: 'Task'),
-            onSubmitted: (_) => _save(),
+          TextButton.icon(
+            icon: const Icon(Icons.calendar_today_outlined, size: 18),
+            label: Text(_due == null ? 'Pick a due date' : 'Due ${dayMonth(_due!)}/${_due!.year}'),
+            onPressed: () => _open(_Page.day),
           ),
-          if (dated) ...[
-            const SizedBox(height: 16),
-            TextButton.icon(
-              icon: const Icon(Icons.calendar_today_outlined, size: 18),
-              label: Text(_due == null ? 'Pick a due date' : 'Due ${dayMonth(_due!)}/${_due!.year}'),
-              onPressed: () => _open(_Page.day),
-            ),
-          ],
-          const SizedBox(height: 4),
-          _timeRow(),
-          _FoldAway(folded: _birthday, child: _repeatRow()),
         ],
-      ),
+        const SizedBox(height: 4),
+        _timeRow(),
+        _FoldAway(folded: _birthday, child: _repeatRow()),
+        const SizedBox(height: 16),
+      ],
     );
   }
 }
@@ -670,21 +659,12 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
 /// an optional last day. It repeats as soon as this opens, and changes as
 /// it's set.
 class _RepeatPanel extends StatefulWidget {
-  const _RepeatPanel({
-    required this.start,
-    this.current,
-    required this.minWidth,
-    required this.onChanged,
-    required this.onPickUntil,
-  });
+  const _RepeatPanel({required this.start, this.current, required this.onChanged, required this.onPickUntil});
 
   /// The first day it would come round from.
   final DateTime start;
   final _RepeatChoice? current;
 
-  /// Wider when the choices need it, so every word shows in full at any
-  /// text size.
-  final double minWidth;
   final ValueChanged<_RepeatChoice> onChanged;
 
   /// Opens the calendar for its last day.
@@ -752,116 +732,124 @@ class _RepeatPanelState extends State<_RepeatPanel> {
     final p = context.palette;
     final label = TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, color: p.ink);
     final until = widget.current?.until;
-    return IntrinsicWidth(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minWidth: widget.minWidth),
-        child: Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          // Each row shrinks only when text too large for the dialog's one
+          // width would otherwise cut it off.
+          _ScaleDown(
+            child: _Pills(
+              options: const ['Weekly', 'Monthly', 'Yearly', 'Custom'],
+              selected: switch (_kind) {
+                RepeatKind.weekly => 0,
+                RepeatKind.monthly => 1,
+                RepeatKind.yearly => 2,
+                _ => 3,
+              },
+              onSelect: (i) =>
+                  _set(() => _kind = [RepeatKind.weekly, RepeatKind.monthly, RepeatKind.yearly, RepeatKind.days][i]),
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 40,
+            child: _ScaleDown(
+              child: switch (_kind) {
+                RepeatKind.weekly => DayToggles(
+                  bits: _days,
+                  size: 30,
+                  lastReason: 'It needs at least one day',
+                  onChanged: (bits) => _set(() => _days = bits),
+                ),
+                RepeatKind.monthly => Row(
+                  children: [
+                    Text('On the', style: label),
+                    _Stepper(value: _date, min: 1, max: 31, onChanged: (v) => _set(() => _date = v)),
+                    Text('${ordinal(_date).substring('$_date'.length)} of each month', style: label),
+                  ],
+                ),
+                RepeatKind.yearly => Row(
+                  children: [
+                    Text('Every', style: label),
+                    _Stepper(value: _years, min: 1, max: 99, onChanged: (v) => _set(() => _years = v)),
+                    Text(
+                      '${_years == 1 ? 'year' : 'years'} on ${monthNames[widget.start.month - 1].substring(0, 3)} ${widget.start.day}',
+                      style: label,
+                    ),
+                  ],
+                ),
+                _ => Row(
+                  children: [
+                    Text('Every', style: label),
+                    _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => _set(() => _every = v)),
+                    const SizedBox(width: 6),
+                    _Pills(
+                      options: const ['days', 'weeks', 'months'],
+                      selected: [RepeatKind.days, RepeatKind.weeks, RepeatKind.months].indexOf(_unit),
+                      onSelect: (i) => _set(() => _unit = [RepeatKind.days, RepeatKind.weeks, RepeatKind.months][i]),
+                    ),
+                    if (_unit == RepeatKind.months)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text('on the ${ordinal(widget.start.day)}', style: label),
+                      ),
+                  ],
+                ),
+              },
+            ),
+          ),
+          if ((_kind == RepeatKind.monthly && _date > 28) ||
+              (_kind == RepeatKind.days && _unit == RepeatKind.months && widget.start.day > 28))
+            Text(
+              'In shorter months, on the last day.',
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
+            ),
+          if (_kind == RepeatKind.yearly && widget.start.month == 2 && widget.start.day == 29)
+            Text(
+              'Only in leap years.',
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
+            ),
+          const SizedBox(height: 10),
+          Row(
             children: [
-              const SizedBox(height: 8),
-              _Pills(
-                options: const ['Weekly', 'Monthly', 'Yearly', 'Custom'],
-                selected: switch (_kind) {
-                  RepeatKind.weekly => 0,
-                  RepeatKind.monthly => 1,
-                  RepeatKind.yearly => 2,
-                  _ => 3,
-                },
-                onSelect: (i) =>
-                    _set(() => _kind = [RepeatKind.weekly, RepeatKind.monthly, RepeatKind.yearly, RepeatKind.days][i]),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                height: 40,
+              Expanded(
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: switch (_kind) {
-                    RepeatKind.weekly => DayToggles(
-                      bits: _days,
-                      size: 30,
-                      lastReason: 'It needs at least one day',
-                      onChanged: (bits) => _set(() => _days = bits),
-                    ),
-                    RepeatKind.monthly => Row(
-                      children: [
-                        Text('On the', style: label),
-                        _Stepper(value: _date, min: 1, max: 31, onChanged: (v) => _set(() => _date = v)),
-                        Text('${ordinal(_date).substring('$_date'.length)} of each month', style: label),
-                      ],
-                    ),
-                    RepeatKind.yearly => Row(
-                      children: [
-                        Text('Every', style: label),
-                        _Stepper(value: _years, min: 1, max: 99, onChanged: (v) => _set(() => _years = v)),
-                        Text(
-                          '${_years == 1 ? 'year' : 'years'} on ${monthNames[widget.start.month - 1].substring(0, 3)} ${widget.start.day}',
-                          style: label,
-                        ),
-                      ],
-                    ),
-                    _ => Row(
-                      children: [
-                        Text('Every', style: label),
-                        _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => _set(() => _every = v)),
-                        const SizedBox(width: 6),
-                        _Pills(
-                          options: const ['days', 'weeks', 'months'],
-                          selected: [RepeatKind.days, RepeatKind.weeks, RepeatKind.months].indexOf(_unit),
-                          onSelect: (i) =>
-                              _set(() => _unit = [RepeatKind.days, RepeatKind.weeks, RepeatKind.months][i]),
-                        ),
-                        if (_unit == RepeatKind.months)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: Text('on the ${ordinal(widget.start.day)}', style: label),
-                          ),
-                      ],
-                    ),
-                  },
-                ),
-              ),
-              if ((_kind == RepeatKind.monthly && _date > 28) ||
-                  (_kind == RepeatKind.days && _unit == RepeatKind.months && widget.start.day > 28))
-                Text(
-                  'In shorter months, on the last day.',
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
-                ),
-              if (_kind == RepeatKind.yearly && widget.start.month == 2 && widget.start.day == 29)
-                Text(
-                  'Only in leap years.',
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
-                ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        icon: const Icon(Icons.event_outlined, size: 18),
-                        label: Text(until == null ? 'No end date' : 'Until ${dayMonth(until)}/${until.year}'),
-                        onPressed: widget.onPickUntil,
-                      ),
-                    ),
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.event_outlined, size: 18),
+                    label: Text(until == null ? 'No end date' : 'Until ${dayMonth(until)}/${until.year}'),
+                    onPressed: widget.onPickUntil,
                   ),
-                  if (until != null)
-                    IconButton(
-                      tooltip: 'No end date',
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => widget.onChanged((rule: _rule, until: null)),
-                    ),
-                ],
+                ),
               ),
-              const SizedBox(height: 8),
+              if (until != null)
+                IconButton(
+                  tooltip: 'No end date',
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => widget.onChanged((rule: _rule, until: null)),
+                ),
             ],
           ),
-        ),
+          const SizedBox(height: 8),
+        ],
       ),
     );
   }
+}
+
+/// [child] at its own size, at the left, or smaller to fit if it's too
+/// wide.
+class _ScaleDown extends StatelessWidget {
+  const _ScaleDown({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: child);
 }
 
 /// A row of choices, one filled.

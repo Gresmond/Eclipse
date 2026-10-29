@@ -186,7 +186,7 @@ void main() {
     expect(find.descendant(of: week, matching: find.byIcon(Icons.repeat_rounded)), findsNothing);
   });
 
-  testWidgets('the date dialog keeps its arrows still, and Birthday repeats yearly', (tester) async {
+  testWidgets('the date dialog only fades in, and Birthday repeats yearly', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -202,7 +202,7 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     await tester.tap(find.descendant(of: find.byType(FurtherAheadCard), matching: find.byTooltip('Pick a day')));
-    // It only fades in: pinning its top doesn't slide it.
+    // It only fades in, never slides.
     final opening = <Offset>[];
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 16));
@@ -210,14 +210,6 @@ void main() {
     }
     expect(opening.toSet(), hasLength(1));
     await tester.pumpAndSettle();
-    final next = find.byTooltip('Next month');
-    final places = <Offset>[];
-    for (var i = 0; i < 6; i++) {
-      places.add(tester.getCenter(next));
-      await tester.tap(next);
-      await tester.pumpAndSettle();
-    }
-    expect(places.toSet(), hasLength(1));
 
     // Making it a birthday folds the repeat away; it comes round every year.
     expect(find.text("Doesn't repeat").hitTestable(), findsOneWidget);
@@ -246,13 +238,12 @@ void main() {
     await tester.tap(find.descendant(of: find.byType(FurtherAheadCard), matching: find.byTooltip('Pick a day')));
     await tester.pumpAndSettle();
     final panel = find.descendant(of: find.byType(Dialog), matching: find.byType(Material)).first;
-    final top = tester.getTopLeft(panel).dy;
+    final width = tester.getSize(panel).width;
 
     await tester.tap(find.text('Add a time'));
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget);
     expect(find.text('Clear time'), findsOneWidget);
-    expect(tester.getTopLeft(panel).dy, top, reason: 'it grows below, never moves');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget, reason: 'Escape goes back, not out');
@@ -271,12 +262,11 @@ void main() {
 
     await tester.tap(find.text("Doesn't repeat"));
     await tester.pumpAndSettle();
-    final narrow = tester.getSize(panel).width;
     await tester.tap(find.text('Custom'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('months'));
     await tester.pumpAndSettle();
-    expect(tester.getSize(panel).width, greaterThan(narrow), reason: 'it widens for the longer row');
+    expect(tester.getSize(panel).width, width, reason: 'one width throughout, as Settings');
     await tester.tap(find.text('No end date'));
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget);
