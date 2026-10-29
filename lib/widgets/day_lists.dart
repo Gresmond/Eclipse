@@ -751,7 +751,7 @@ class _AddTaskState extends State<_AddTask> {
     // Its time only once it's been clicked, or while one is set or picked.
     final timed = widget.past == null && (_focus.hasFocus || _picking || time != null);
     return Padding(
-      padding: const EdgeInsets.only(left: 18, top: 2),
+      padding: const EdgeInsets.only(left: 18, top: 2, bottom: 2),
       child: CallbackShortcuts(
         bindings: {
           const SingleActivator(LogicalKeyboardKey.escape): () {
@@ -772,7 +772,7 @@ class _AddTaskState extends State<_AddTask> {
             child: HoverFill(
               hover: _hover || _focus.hasFocus || _picking,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 child: Row(
                   children: [
                     // Its buttons leave the cursor in the field; the + lines
@@ -794,14 +794,15 @@ class _AddTaskState extends State<_AddTask> {
                         focusNode: _focus,
                         textCapitalization: TextCapitalization.sentences,
                         inputFormatters: const [NoteInputFormatter()],
-                        style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.ink),
+                        // As a task's name, so the line is a task's height.
+                        style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.35, color: p.ink),
                         cursorColor: p.accent,
                         decoration: InputDecoration(
                           isDense: true,
                           border: InputBorder.none,
                           hintText: 'Add task',
                           hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 7),
+                          contentPadding: EdgeInsets.zero,
                         ),
                         onSubmitted: (_) => _submit(state),
                       ),
