@@ -6,6 +6,7 @@ mixin _Habits on ChangeNotifier {
   Store get store;
   DateTime get today;
   bool get restWeekends;
+  void _removed(String label, List<RowsBefore> before);
 
   int habitsRevision = 0, entriesRevision = 0;
   final _monthHabits = LruCache<(int, int), List<Habit>>(24);
@@ -191,6 +192,14 @@ mixin _Habits on ChangeNotifier {
 
   void removeHabit(int year, int month, Habit h) {
     saveHabitDrafts();
+    _removed('Removed “${h.name}” from ${monthNames[month - 1]}', [
+      store.rowsBefore(
+        'month_habits',
+        ['year', 'month', 'habit_id'],
+        'year = ? AND month = ? AND habit_id = ?',
+        [year, month, h.id],
+      ),
+    ]);
     _savedList(year, month).removeWhere((x) => x.id == h.id);
     store.removeHabit(year, month, h.id);
     _habitsChanged();

@@ -20,12 +20,13 @@ part 'state/journal.dart';
 part 'state/navigation.dart';
 part 'state/settings.dart';
 part 'state/todos.dart';
+part 'state/undo.dart';
 
 /// App state backed by [Store]. Keeps habit entries and the current to-do
 /// lists in memory and writes every change straight to SQLite.
 ///
 /// Each area's state and edits are in a part of their own, in state/.
-class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Todos, _Journal {
+class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Todos, _Journal, _Undo {
   AppState(
     this.store, {
     this.backups,
@@ -235,6 +236,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     if (viewYear == today.year) viewYear = now.year;
     if (viewDay == now) viewDay = null;
     today = now;
+    _forgetRemovals();
     _previewHabits.clear();
     _streaks.clear();
     _backUp();
@@ -299,6 +301,21 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     _load();
     checkDate(); // the backup may start its days at another hour
     notifyListeners();
+  }
+
+  @override
+  void _removed(String label, List<RowsBefore> before) => _undoable(label, before);
+
+  @override
+  void _reloadAfterUndo() {
+    _monthHabits.clear();
+    _monthScores.clear();
+    _previewHabits.clear();
+    _trails.clear();
+    _streaks.clear();
+    habitsRevision++;
+    _startDay();
+    _todosChanged();
   }
 
   @override

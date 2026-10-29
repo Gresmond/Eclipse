@@ -5,7 +5,6 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import 'corner_card.dart';
 import 'fade_through.dart';
-import 'hover_fill.dart';
 
 /// A small card floating over the bottom-right corner when a newer version
 /// is out, naming it: one click updates and reopens source/Linux installs, or
@@ -79,13 +78,13 @@ class _Card extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              _Button(
+              CornerButton(
                 label: status == UpdateStatus.failed ? 'Try again' : updater.actionLabel,
                 filled: true,
                 onTap: updater.update,
               ),
               const SizedBox(width: 8),
-              _Button(label: 'Later', onTap: updater.dismiss),
+              CornerButton(label: 'Later', onTap: updater.dismiss),
             ],
           ),
         ],
@@ -137,41 +136,6 @@ class _Mark extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(shape: BoxShape.circle, color: palette.tile),
-      ),
-    );
-  }
-}
-
-class _Button extends StatelessWidget {
-  const _Button({required this.label, required this.onTap, this.filled = false});
-
-  final String label;
-  final VoidCallback onTap;
-  final bool filled;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Hoverable(
-      onTap: onTap,
-      builder: (hover) => AnimatedContainer(
-        duration: Motion.hover,
-        curve: Motion.hoverCurve,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          gradient: filled ? LinearGradient(colors: p.gradient) : null,
-          color: filled ? null : (hover ? p.empty : p.empty.withValues(alpha: 0)),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: Fonts.ui,
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: filled ? p.onAccent : p.inkMuted,
-          ),
-        ),
       ),
     );
   }

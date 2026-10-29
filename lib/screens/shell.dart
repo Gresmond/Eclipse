@@ -18,6 +18,7 @@ import '../widgets/fade_through.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/page_turn.dart';
 import '../widgets/sync_banner.dart';
+import '../widgets/undo_card.dart';
 import '../widgets/update_banner.dart';
 import '../widgets/welcome_tour.dart';
 import 'month_view.dart';
@@ -80,6 +81,7 @@ class Shell extends StatelessWidget {
               children: [
                 if (state.sync != null) SyncBanner(sync: state.sync!),
                 if (updater != null) UpdateBanner(updater: updater),
+                const UndoCardSpace(),
               ],
             ),
           ),

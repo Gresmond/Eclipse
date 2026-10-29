@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'hover_fill.dart';
 
 /// A card floating in the bottom-right corner. It slides up and fades in
 /// while [visible], and back down and out when not, still showing what it
@@ -60,6 +61,42 @@ class _CornerCardState extends State<CornerCard> with SingleTickerProviderStateM
           child: SlideTransition(
             position: _slide,
             child: FadeTransition(opacity: _curve, child: _shown),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A pill button on a corner card; [filled] in the theme's gradient.
+class CornerButton extends StatelessWidget {
+  const CornerButton({super.key, required this.label, required this.onTap, this.filled = false});
+
+  final String label;
+  final VoidCallback onTap;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Hoverable(
+      onTap: onTap,
+      builder: (hover) => AnimatedContainer(
+        duration: Motion.hover,
+        curve: Motion.hoverCurve,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          gradient: filled ? LinearGradient(colors: p.gradient) : null,
+          color: filled ? null : (hover ? p.empty : p.empty.withValues(alpha: 0)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: Fonts.ui,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: filled ? p.onAccent : p.inkMuted,
           ),
         ),
       ),

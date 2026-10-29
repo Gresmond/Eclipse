@@ -27,6 +27,11 @@ import 'time_wheel.dart';
 part 'day_lists.dart';
 part 'task_row.dart';
 part 'task_editor.dart';
+part 'further_ahead.dart';
+part 'task_add.dart';
+part 'week_card.dart';
+part 'repeat_panel.dart';
+part 'due_date_dialog.dart';
 
 class _TaskDrag {
   _TaskDrag(this.scope, this.item, this.day);

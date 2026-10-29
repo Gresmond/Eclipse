@@ -6,6 +6,7 @@ mixin _Todos on ChangeNotifier {
   Store get store;
   DateTime get today;
   void _startDay();
+  void _removed(String label, List<RowsBefore> before);
 
   int todosRevision = 0;
   final _todoDays = LruCache<String, Map<TodoScope, List<TodoItem>>>(3);
@@ -145,6 +146,12 @@ mixin _Todos on ChangeNotifier {
   void removeTodo(TodoScope scope, TodoItem item, {DateTime? day}) {
     final target = day ?? today;
     if (!canEditDay(target)) return;
+    if (item.uid case final uid?) {
+      _removed('Removed “${item.text}”', [
+        store.rowsBefore('todos', ['uid'], 'uid = ?', [uid]),
+        store.rowsBefore('todo_history', ['uid', 'day'], 'uid = ?', [uid]),
+      ]);
+    }
     if (target == today) {
       store.deleteTodo(item.id, day: today);
       todos[scope] = [
@@ -227,6 +234,12 @@ mixin _Todos on ChangeNotifier {
 
   /// Stops [repeat] coming round from [from] on.
   void endRepeat(Repeat repeat, DateTime from) {
+    const times = 'substr(uid, 1, length(?1)) = ?1';
+    _removed('Removed “${repeat.text}” and later ones', [
+      store.rowsBefore('todo_repeats', ['uid'], 'uid = ?', [repeat.uid]),
+      store.rowsBefore('todos', ['uid'], times, ['${repeat.uid}@']),
+      store.rowsBefore('todo_history', ['uid', 'day'], times, ['${repeat.uid}@']),
+    ]);
     store.endRepeat(repeat.uid, from, today);
     _reloadTodos();
     _startDay();

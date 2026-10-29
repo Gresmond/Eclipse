@@ -22,6 +22,7 @@ import 'models.dart';
 import 'screens/shell.dart';
 import 'screens/startup_error.dart';
 import 'theme/app_theme.dart';
+import 'widgets/undo_card.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -220,7 +221,7 @@ class EclipseApp extends StatelessWidget {
           // boxes and tints beside them.
           builder: (context, child) => DefaultTextHeightBehavior(
             textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
-            child: child!,
+            child: UndoLayer(child: child!),
           ),
           home: Builder(
             builder: (context) => AbsorbPointer(
