@@ -38,20 +38,36 @@ enum _Page { main, day, time, repeat, until }
 
 /// A task's time and repeat, each set on a page of its own in place of
 /// the dialog's main one, and the repeat's last day on another. They
-/// change as they're set; the dialog's own buttons keep or drop them all.
+/// change as they're set: going back keeps what a page set, cancelling
+/// it puts back what was there.
 mixin _DetailPages<T extends StatefulWidget> on State<T> {
   _Page _page = _Page.main;
   int? _time;
   _RepeatChoice? _repeat;
 
-  void _open(_Page page) => setState(() => _page = page);
+  /// What each page open over the main one found, to put back on cancel.
+  final _was = <({int? time, _RepeatChoice? repeat})>[];
 
-  /// Back to the page this one opened from; null on the main page.
-  VoidCallback? get _back => switch (_page) {
-    _Page.main => null,
-    _Page.until => () => _open(_Page.repeat),
-    _ => () => _open(_Page.main),
-  };
+  void _open(_Page page) => setState(() {
+    _was.add((time: _time, repeat: _repeat));
+    _page = page;
+  });
+
+  /// Back to the page this one opened from, keeping what it set or not.
+  void _leave({required bool keep}) => setState(() {
+    final was = _was.removeLast();
+    if (!keep) {
+      _time = was.time;
+      _repeat = was.repeat;
+    }
+    _page = _page == _Page.until ? _Page.repeat : _Page.main;
+  });
+
+  /// Back, keeping what this page set; null on the main page.
+  VoidCallback? get _back => _page == _Page.main ? null : () => _leave(keep: true);
+
+  /// Back, putting back what this page changed; null on the main page.
+  VoidCallback? get _cancel => _page == _Page.main ? null : () => _leave(keep: false);
 
   Widget _timeRow() =>
       _TimeRow(time: _time, onOpen: () => _open(_Page.time), onClear: () => setState(() => _time = null));
@@ -83,10 +99,10 @@ mixin _DetailPages<T extends StatefulWidget> on State<T> {
         child: _MonthCalendar(
           first: start,
           selected: _repeat?.until ?? start,
-          onSelected: (day) => setState(() {
+          onSelected: (day) {
             if (_repeat case final repeat?) _repeat = (rule: repeat.rule, until: day);
-            _page = _Page.repeat;
-          }),
+            _leave(keep: true);
+          },
         ),
       ),
       _ => _SubPage(
@@ -317,8 +333,8 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
       preserveButtons: false,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
-        TextButton(onPressed: _done, child: Text(localizations.okButtonLabel)),
+        TextButton(onPressed: _cancel ?? () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
+        TextButton(onPressed: _back ?? _done, child: Text(localizations.okButtonLabel)),
       ],
       child: _page == _Page.main
           ? SizedBox(
@@ -590,8 +606,8 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
       onBack: _back,
       backgroundColor: p.tile,
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        TextButton(onPressed: _save, child: const Text('Save')),
+        TextButton(onPressed: _cancel ?? () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: _back ?? _save, child: const Text('Save')),
       ],
       child: switch (_page) {
         _Page.main => _main(today),
@@ -601,10 +617,10 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
           child: _MonthCalendar(
             first: today,
             selected: _due ?? today,
-            onSelected: (day) => setState(() {
+            onSelected: (day) {
               _due = day;
-              _page = _Page.main;
-            }),
+              _leave(keep: true);
+            },
           ),
         ),
         _ => _detailPage(start.isBefore(today) ? today : start, _width),

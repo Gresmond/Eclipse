@@ -23,7 +23,7 @@ class PagedDialog extends StatefulWidget {
   });
 
   /// Which page [child] is; a new one swaps it in. Every page has a width
-  /// of its own, as the one going out isn't held to the new one's.
+  /// of its own.
   final Object page;
   final Widget child;
   final VoidCallback onConfirm;
@@ -113,14 +113,10 @@ class _PagedDialogState extends State<PagedDialog> {
                         alignment: Alignment.topCenter,
                         clipBehavior: Clip.none,
                         child: FadeThrough(
-                          // The page going out keeps its own size as it fades.
-                          layoutBuilder: (current, previous) => Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              for (final w in previous) Positioned(left: 0, top: 0, child: w),
-                              ?current,
-                            ],
-                          ),
+                          // Holds the page going out's size until it has
+                          // faded, so it's never cut off; only then does
+                          // the panel ease to the new one's.
+                          layoutBuilder: FadeThrough.sizeToEither,
                           child: KeyedSubtree(key: ValueKey(widget.page), child: widget.child),
                         ),
                       ),

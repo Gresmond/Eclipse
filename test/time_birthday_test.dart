@@ -258,6 +258,17 @@ void main() {
     expect(find.byType(Dialog), findsOneWidget, reason: 'Escape goes back, not out');
     expect(find.text('Add a time'), findsNothing, reason: 'opening it set a time');
 
+    // Cancel goes back too, but puts back what the page changed.
+    await tester.tap(find.text("Doesn't repeat"));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Monthly'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget, reason: 'Cancel goes back one step');
+    expect(find.text("Doesn't repeat"), findsOneWidget, reason: 'and undoes the repeat');
+    expect(find.text('Add a time'), findsNothing, reason: 'but not the time, kept before');
+
     await tester.tap(find.text("Doesn't repeat"));
     await tester.pumpAndSettle();
     final narrow = tester.getSize(panel).width;
@@ -274,9 +285,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Until 31/12/2026'), findsNothing);
     expect(find.textContaining('Until 31/'), findsOneWidget, reason: 'a day goes back to the repeat');
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Every 2 months until'), findsOneWidget, reason: 'Enter goes back too');
+    expect(find.textContaining('Every 2 months until'), findsOneWidget, reason: 'OK keeps it and goes back');
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsNothing, reason: 'and on the main page, it confirms');

@@ -46,14 +46,18 @@ class FadeThrough extends StatelessWidget {
   /// Every child sits in the same widgets, keyed by its own key, whether
   /// incoming or outgoing, so a child that starts fading out keeps its state
   /// rather than being built afresh for its last frames.
-  static Widget sizeToCurrent(Widget? current, List<Widget> previous) => SizedBox(
-    width: double.infinity,
-    child: Stack(
-      children: [
-        for (final p in previous) _SizeSlot(key: p.key, fade: _opacity(p), child: p),
-        if (current != null) _SizeSlot(key: current.key, child: current),
-      ],
-    ),
+  static Widget sizeToCurrent(Widget? current, List<Widget> previous) =>
+      SizedBox(width: double.infinity, child: _sizeTo(current, previous, ownWidth: false));
+
+  /// As [sizeToCurrent], but as wide as the children, not the full width:
+  /// each child has a width of its own, and keeps it after fading out.
+  static Widget sizeToEither(Widget? current, List<Widget> previous) => _sizeTo(current, previous, ownWidth: true);
+
+  static Widget _sizeTo(Widget? current, List<Widget> previous, {required bool ownWidth}) => Stack(
+    children: [
+      for (final p in previous) _SizeSlot(key: p.key, fade: _opacity(p), ownWidth: ownWidth, child: p),
+      if (current != null) _SizeSlot(key: current.key, ownWidth: ownWidth, child: current),
+    ],
   );
 
   @override
@@ -129,10 +133,14 @@ class _DeferredPageState extends State<_DeferredPage> {
 /// that has faded out fills the box without sizing it. Only the placement
 /// changes, never the widgets, so the child keeps its state throughout.
 class _SizeSlot extends StatefulWidget {
-  const _SizeSlot({super.key, this.fade, required this.child});
+  const _SizeSlot({super.key, this.fade, this.ownWidth = false, required this.child});
 
   /// The outgoing child's opacity; null for the incoming child.
   final Animation<double>? fade;
+
+  /// Whether one that has faded out keeps its own width rather than the
+  /// box's, which may be too narrow for it.
+  final bool ownWidth;
   final Widget child;
 
   @override
@@ -185,6 +193,7 @@ class _SizeSlotState extends State<_SizeSlot> {
           // being stretched across the card as it fades out.
           minWidth: widget.fade == null ? null : 0,
           minHeight: _wasGone ? 0 : null,
+          maxWidth: _wasGone && widget.ownWidth ? double.infinity : null,
           maxHeight: _wasGone ? double.infinity : null,
           fit: OverflowBoxFit.deferToChild,
           child: widget.child,
