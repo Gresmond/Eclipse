@@ -119,7 +119,7 @@ class _Card extends StatelessWidget {
       onExit: (_) => onHover(false),
       child: Container(
         height: UndoCardSpace.height,
-        constraints: const BoxConstraints(maxWidth: 360),
+        constraints: const BoxConstraints(maxWidth: 600),
         padding: const EdgeInsets.fromLTRB(18, 0, 10, 0),
         decoration: BoxDecoration(
           color: p.tile,

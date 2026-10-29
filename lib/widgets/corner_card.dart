@@ -68,7 +68,7 @@ class _CornerCardState extends State<CornerCard> with SingleTickerProviderStateM
   }
 }
 
-/// A pill button on a corner card; [filled] in the theme's gradient.
+/// A pill button on a corner card; [filled] in the theme's done colour.
 class CornerButton extends StatelessWidget {
   const CornerButton({super.key, required this.label, required this.onTap, this.filled = false});
 
@@ -87,8 +87,7 @@ class CornerButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
-          gradient: filled ? LinearGradient(colors: p.gradient) : null,
-          color: filled ? null : (hover ? p.empty : p.empty.withValues(alpha: 0)),
+          color: filled ? p.done : (hover ? p.empty : p.empty.withValues(alpha: 0)),
         ),
         child: Text(
           label,
