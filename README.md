@@ -1,3 +1,5 @@
+https://github.com/user-attachments/assets/ff330947-970a-4e2f-acd1-dac28129c2e0
+
 # Eclipse
 
 A desktop habit tracker and to-do planner, built with Flutter.
