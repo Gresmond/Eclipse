@@ -60,6 +60,9 @@ class _TodoRowState extends State<_TodoRow> {
   bool get _expanded => _opened.contains((widget.scope, widget.item.id));
   set _expanded(bool open) =>
       open ? _opened.add((widget.scope, widget.item.id)) : _opened.remove((widget.scope, widget.item.id));
+
+  /// The repeat last shown, kept while the row closes up.
+  Repeat? _repeat;
   bool _nestingOut = false;
   bool _acceptingNest = false;
   int? _incomingSubtask;
@@ -243,7 +246,8 @@ class _TodoRowState extends State<_TodoRow> {
     final carried =
         (widget.scope == TodoScope.today || widget.scope == TodoScope.tomorrow) &&
         widget.scope.period(item.since) != widget.scope.period(widget.day);
-    final repeat = state.repeatOf(item);
+    // Closing up after its repeat ended, it still shows the repeat.
+    final repeat = widget.leaving ? _repeat : (_repeat = state.repeatOf(item));
 
     final parentRow = Appear(
       animate: widget.fadeIn,
@@ -315,7 +319,7 @@ class _TodoRowState extends State<_TodoRow> {
                                         if (item.dueTime case final time?)
                                           TextSpan(
                                             text: '${clockLabel(time)}  ',
-                                            style: _timeStyle(p).copyWith(fontSize: 12.5, height: 1.35),
+                                            style: _timeStyle(p).copyWith(height: 1.35),
                                           ),
                                         TextSpan(text: item.text),
                                       ],

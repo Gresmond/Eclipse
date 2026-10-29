@@ -1008,6 +1008,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether Week ahead lists days with nothing due.
+  late bool weekEmptyDays = store.setting('weekEmptyDays') == 'shown';
+
+  void toggleWeekEmptyDays() {
+    weekEmptyDays = !weekEmptyDays;
+    store.setSetting('weekEmptyDays', weekEmptyDays ? 'shown' : 'hidden');
+    notifyListeners();
+  }
+
   // Repeating tasks
 
   List<Repeat>? _repeats;

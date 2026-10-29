@@ -214,6 +214,13 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     await tester.tap(find.descendant(of: find.byType(FurtherAheadCard), matching: find.byTooltip('Pick a day')));
+    // It only fades in: pinning its top doesn't slide it.
+    final opening = <Offset>[];
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      opening.add(tester.getCenter(find.byTooltip('Next month')));
+    }
+    expect(opening.toSet(), hasLength(1));
     await tester.pumpAndSettle();
     final next = find.byTooltip('Next month');
     final places = <Offset>[];

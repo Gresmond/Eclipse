@@ -61,11 +61,12 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Tomorrow in the week card's strip of days, which takes a dropped task
-  /// while Tomorrow has nothing due and so no heading.
-  Finder tomorrow() => find.byWidgetPredicate((w) => w.runtimeType.toString() == '_StripDay').at(1);
+  /// Tomorrow's heading in the week card, shown with nothing due while
+  /// empty days show.
+  Finder tomorrow() => find.textContaining('Tomorrow', findRichText: true).first;
 
   testWidgets('drag moves an unfinished task into an empty section', (tester) async {
+    state.toggleWeekEmptyDays();
     state.addTodo(TodoScope.today, 'Drag me');
     await showApp(tester);
     await tester.dragFrom(
@@ -82,6 +83,7 @@ void main() {
     state.addTodo(TodoScope.today, 'Finished');
     state.toggleTodo(state.todos[TodoScope.today]!.single);
     state.addTodo(TodoScope.today, 'Still open');
+    state.toggleWeekEmptyDays();
     await showApp(tester);
     final destination = tester.getCenter(tomorrow());
     final finished = tester.getCenter(find.text('Finished'));

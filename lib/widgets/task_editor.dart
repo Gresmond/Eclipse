@@ -71,6 +71,7 @@ class _DueDateDialog extends StatefulWidget {
 
 class _DueDateDialogState extends State<_DueDateDialog> {
   static const _contentPadding = EdgeInsets.fromLTRB(16, 12, 16, 0);
+  static const _inset = EdgeInsets.symmetric(horizontal: 40, vertical: 24);
   final _content = GlobalKey();
 
   /// Where the dialog opened, centred: its top stays there after, so the
@@ -127,96 +128,101 @@ class _DueDateDialogState extends State<_DueDateDialog> {
     return ConfirmOnEnter(
       onConfirm: _done,
       preserveButtons: false,
-      child: AlertDialog(
-        alignment: top == null ? null : Alignment.topCenter,
-        insetPadding: top == null ? null : EdgeInsets.fromLTRB(40, top, 40, 24),
-        contentPadding: _contentPadding,
-        content: SizedBox(
-          key: _content,
-          width: 336,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.calendar) ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: Text(
-                          localizations.formatMonthYear(_month),
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: localizations.previousMonthTooltip,
-                      onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
-                      icon: const Icon(Icons.chevron_left_rounded),
-                    ),
-                    IconButton(
-                      tooltip: localizations.nextMonthTooltip,
-                      onPressed: lastMonth == null || _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
-                      icon: const Icon(Icons.chevron_right_rounded),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    for (var i = 0; i < 7; i++)
+      // Pinned by an outer padding, not the dialog's own inset, which would
+      // slide it there: the panel only fades.
+      child: Padding(
+        padding: EdgeInsets.only(top: top == null ? 0 : top - _inset.top),
+        child: AlertDialog(
+          alignment: top == null ? null : Alignment.topCenter,
+          insetPadding: _inset,
+          contentPadding: _contentPadding,
+          content: SizedBox(
+            key: _content,
+            width: 336,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.calendar) ...[
+                  Row(
+                    children: [
                       Expanded(
-                        child: SizedBox(
-                          height: 36,
-                          child: Center(
-                            child: Text(
-                              localizations.narrowWeekdays[(1 + i) % 7],
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            localizations.formatMonthYear(_month),
+                            style: Theme.of(context).textTheme.titleSmall,
                           ),
                         ),
                       ),
-                  ],
-                ),
-                // Only the weeks the month has, the rows below moving with it.
-                AnimatedSize(
-                  duration: Motion.morph,
-                  curve: Motion.morphCurve,
-                  alignment: Alignment.topCenter,
-                  child: Column(
+                      IconButton(
+                        tooltip: localizations.previousMonthTooltip,
+                        onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
+                        icon: const Icon(Icons.chevron_left_rounded),
+                      ),
+                      IconButton(
+                        tooltip: localizations.nextMonthTooltip,
+                        onPressed: lastMonth == null || _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
+                        icon: const Icon(Icons.chevron_right_rounded),
+                      ),
+                    ],
+                  ),
+                  Row(
                     children: [
-                      for (var row = 0; row < weeks; row++)
-                        Row(
-                          children: [
-                            for (var column = 0; column < 7; column++)
-                              Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
-                          ],
+                      for (var i = 0; i < 7; i++)
+                        Expanded(
+                          child: SizedBox(
+                            height: 36,
+                            child: Center(
+                              child: Text(
+                                localizations.narrowWeekdays[(1 + i) % 7],
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ),
                         ),
                     ],
                   ),
-                ),
-              ],
-              if (widget.details) ...[
-                SizedBox(height: widget.calendar ? 8 : 4),
-                _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
-                _FoldAway(
-                  folded: _birthday,
-                  child: _RepeatRow(
-                    repeat: _repeat,
-                    start: _selected,
-                    onChanged: (repeat) => setState(() => _repeat = repeat),
+                  // Only the weeks the month has, the rows below moving with it.
+                  AnimatedSize(
+                    duration: Motion.morph,
+                    curve: Motion.morphCurve,
+                    alignment: Alignment.topCenter,
+                    child: Column(
+                      children: [
+                        for (var row = 0; row < weeks; row++)
+                          Row(
+                            children: [
+                              for (var column = 0; column < 7; column++)
+                                Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                if (widget.birthdays)
-                  _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
-                const SizedBox(height: 4),
+                ],
+                if (widget.details) ...[
+                  SizedBox(height: widget.calendar ? 8 : 4),
+                  _TimeRow(time: _time, onChanged: (time) => setState(() => _time = time)),
+                  _FoldAway(
+                    folded: _birthday,
+                    child: _RepeatRow(
+                      repeat: _repeat,
+                      start: _selected,
+                      onChanged: (repeat) => setState(() => _repeat = repeat),
+                    ),
+                  ),
+                  if (widget.birthdays)
+                    _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
+                  const SizedBox(height: 4),
+                ],
               ],
-            ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
+            TextButton(onPressed: _done, child: Text(localizations.okButtonLabel)),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
-          TextButton(onPressed: _done, child: Text(localizations.okButtonLabel)),
-        ],
       ),
     );
   }
@@ -305,11 +311,10 @@ Future<void> _removeTask(BuildContext context, TodoItem item, DateTime day, Void
   if (repeat == null) return removeOne();
   final future = await _askWhich(context, removing: true);
   if (future == null || !context.mounted) return;
-  if (future) {
-    state.endRepeat(repeat, item.repeatDay ?? day);
-  } else {
-    removeOne();
-  }
+  // This one closes up like any removed task; with [future], the times
+  // after it go too.
+  removeOne();
+  if (future) state.endRepeat(repeat, item.repeatDay ?? day);
 }
 
 /// Only this time (false) or this and every time after (true); null if

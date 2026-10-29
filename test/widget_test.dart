@@ -1533,12 +1533,18 @@ void main() {
     expect(find.descendant(of: week, matching: find.textContaining('Oct 23')), findsOneWidget);
     expect(find.descendant(of: week, matching: find.text('Nothing due')), findsOneWidget);
     expect(find.descendant(of: week, matching: find.textContaining('Tomorrow')), findsNothing);
+    // Days with nothing due show on request, and end at day 7.
+    await tester.tap(find.byTooltip('Show days with no tasks'));
+    await tester.pumpAndSettle();
     expect(
-      find.descendant(of: week, matching: find.text('29')),
+      find.descendant(of: week, matching: find.textContaining('Oct 29', findRichText: true)),
       findsOneWidget,
-      reason: 'the strip ends at day 7',
+      reason: 'the week ends at day 7',
     );
-    expect(find.descendant(of: week, matching: find.text('30')), findsNothing);
+    expect(find.descendant(of: week, matching: find.textContaining('Oct 30', findRichText: true)), findsNothing);
+    await tester.tap(find.byTooltip('Hide days with no tasks'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: week, matching: find.textContaining('Oct 29', findRichText: true)), findsNothing);
     expect(find.descendant(of: later, matching: find.text('Book flights')), findsOneWidget);
     expect(find.descendant(of: later, matching: find.textContaining('Nov 20')), findsOneWidget);
 
@@ -1653,12 +1659,13 @@ void main() {
     addTearDown(tester.view.reset);
     final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
     state.addTodo(TodoScope.today, 'Drag me');
+    state.toggleWeekEmptyDays();
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
     final week = find.byType(WeekCard);
     final from = tester.getCenter(find.text('Drag me'));
-    // An empty day takes it in the strip of days.
-    final to = tester.getCenter(find.descendant(of: week, matching: find.text('25')));
+    // An empty day, shown with empty days, takes it at its heading.
+    final to = tester.getCenter(find.descendant(of: week, matching: find.textContaining('Oct 25', findRichText: true)));
     await tester.dragFrom(from, to - from);
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.today]!.map((t) => t.text), isNot(contains('Drag me')));

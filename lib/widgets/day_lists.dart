@@ -233,7 +233,7 @@ class WeekCard extends StatefulWidget {
 class _WeekCardState extends State<WeekCard> with _NewTasks {
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay));
+    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay, s.weekEmptyDays));
     final day = state.shownDay;
     final past = state.viewDay != null;
     final planned = _Planned(state, day, past: past);
@@ -248,15 +248,30 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: TileHeader(title: 'Week ahead', caption: open == 0 && tasks.isNotEmpty ? 'All clear' : '$open open'),
+            padding: const EdgeInsets.only(right: 4),
+            child: TileHeader(
+              title: 'Week ahead',
+              caption: open == 0 && tasks.isNotEmpty ? 'All clear' : '$open open',
+              trailingAtEnd: true,
+              trailing: _ShowToggle(
+                icon: Icons.calendar_view_day_rounded,
+                what: 'days with no tasks',
+                shown: state.weekEmptyDays,
+                onPressed: state.toggleWeekEmptyDays,
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
           // Another day's week fades through as a whole.
           Expanded(
             child: FadeThrough(
               layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
-              child: _WeekList(key: ValueKey(dateKey(day)), planned: planned, added: added),
+              child: _WeekList(
+                key: ValueKey(dateKey(day)),
+                planned: planned,
+                emptyDays: state.weekEmptyDays,
+                added: added,
+              ),
             ),
           ),
           _FoldAway(
@@ -273,11 +288,12 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
   }
 }
 
-/// One day's week: the strip of days, and the days' lists under it.
+/// One day's week: the days' lists, with [emptyDays] those with none.
 class _WeekList extends StatefulWidget {
-  const _WeekList({super.key, required this.planned, required this.added});
+  const _WeekList({super.key, required this.planned, required this.emptyDays, required this.added});
 
   final _Planned planned;
+  final bool emptyDays;
 
   /// Tasks just added, which fade in.
   final Set<int> added;
@@ -287,17 +303,9 @@ class _WeekList extends StatefulWidget {
 }
 
 class _WeekListState extends State<_WeekList> with _DayMotion {
-  final _keys = List.generate(WeekCard.span + 1, (_) => GlobalKey());
-
   /// Whether a task is being dragged over each day, to light it.
   final _over = List.generate(WeekCard.span + 1, (_) => ValueNotifier(false));
   final _overBy = List.generate(WeekCard.span + 1, (_) => <Object>{});
-
-  /// The days showing, by index from the first: those with tasks.
-  List<int> _visible = const [0];
-
-  /// The day at the top of the list, which the strip marks.
-  int _top = 0;
 
   @override
   void dispose() {
@@ -305,31 +313,6 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
       over.dispose();
     }
     super.dispose();
-  }
-
-  bool _scrolled(ScrollNotification notification) {
-    final viewport = notification.context?.findRenderObject() as RenderBox?;
-    if (viewport == null || !viewport.attached) return false;
-    final edge = viewport.localToGlobal(Offset.zero).dy;
-    // The last day whose heading has reached the top.
-    var top = _visible.first;
-    for (final i in _visible) {
-      final box = _keys[i].currentContext?.findRenderObject() as RenderBox?;
-      if (box == null || !box.attached || !box.hasSize) break;
-      if (box.localToGlobal(Offset.zero).dy - edge > 24) break;
-      top = i;
-    }
-    // At the very bottom, the last day is the one being looked at.
-    final metrics = notification.metrics;
-    if (metrics.extentAfter < 1 && metrics.extentBefore > 0) top = _visible.last;
-    if (top != _top) setState(() => _top = top);
-    return false;
-  }
-
-  void _goTo(int index) {
-    final context = _keys[index].currentContext;
-    if (context == null) return;
-    Scrollable.ensureVisible(context, duration: Motion.page, curve: Motion.morphCurve);
   }
 
   DateTime _date(int i) {
@@ -379,47 +362,25 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
     final planned = widget.planned;
     final shown = [for (var i = 0; i <= WeekCard.span; i++) _shown('$i', planned.days[i])];
     _settle();
-    // Today always; another day while it has tasks, or one closing up.
-    _visible = [
+    // Today always; another day while it has tasks, or one closing up,
+    // unless empty days show too.
+    final visible = [
       for (var i = 0; i <= WeekCard.span; i++)
-        if (i == 0 || planned.days[i].isNotEmpty || _hasDeparting('$i')) i,
+        if (i == 0 || widget.emptyDays || planned.days[i].isNotEmpty || _hasDeparting('$i')) i,
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: _WeekStrip(
-            first: day,
-            today: state.today,
-            focus: _top,
-            shown: {..._visible},
-            onDay: _goTo,
-            accepts: _accepts,
-            onDrop: _drop,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Expanded(
-          child: NotificationListener<ScrollNotification>(
-            onNotification: _scrolled,
-            child: SmoothTaskScroll(
-              builder: (context, controller) => CustomScrollView(
-                controller: controller,
-                scrollCacheExtent: const ScrollCacheExtent.pixels(80),
-                slivers: [
-                  for (final i in _visible) _section(state, i, shown[i], readOnly),
-                  const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
+    return SmoothTaskScroll(
+      builder: (context, controller) => CustomScrollView(
+        controller: controller,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(80),
+        slivers: [
+          for (final i in visible) _section(state, i, shown[i], readOnly, first: i == visible.first),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+        ],
+      ),
     );
   }
 
-  Widget _section(AppState state, int i, List<_Shown> shown, bool readOnly) {
+  Widget _section(AppState state, int i, List<_Shown> shown, bool readOnly, {required bool first}) {
     final p = context.palette;
     final date = _date(i);
     final added = widget.added;
@@ -453,13 +414,10 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
         SliverToBoxAdapter(
           child: _dropTarget(
             i,
-            KeyedSubtree(
-              key: _keys[i],
-              child: _DayHeading(
-                parts: [(_shortDate(date, state.today), true), if (name != null) (name, i == 0), (weekday, false)],
-                strong: i == 0,
-                first: i == _visible.first,
-              ),
+            _DayHeading(
+              parts: [(_shortDate(date, state.today), true), if (name != null) (name, i == 0), (weekday, false)],
+              strong: i == 0,
+              first: first,
             ),
           ),
         ),
@@ -517,158 +475,6 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
         child: sliver,
       ),
       child: SliverPadding(padding: const EdgeInsets.only(right: 8), sliver: group),
-    );
-  }
-}
-
-/// The week card's days in a row, the one at the top of the list marked.
-/// Days with nothing due are dimmed, but still take a dropped task.
-class _WeekStrip extends StatelessWidget {
-  const _WeekStrip({
-    required this.first,
-    required this.today,
-    required this.focus,
-    required this.shown,
-    required this.onDay,
-    required this.accepts,
-    required this.onDrop,
-  });
-
-  final DateTime first, today;
-  final int focus;
-
-  /// The days with a section in the list.
-  final Set<int> shown;
-  final ValueChanged<int> onDay;
-  final bool Function(_TaskDrag drag, int day) accepts;
-  final void Function(_TaskDrag drag, int day) onDrop;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            for (var i = 0; i <= WeekCard.span; i++)
-              Expanded(
-                child: DragTarget<_TaskDrag>(
-                  onWillAcceptWithDetails: (details) => accepts(details.data, i),
-                  onAcceptWithDetails: (details) => onDrop(details.data, i),
-                  builder: (context, candidates, rejected) => _StripDay(
-                    day: DateTime(first.year, first.month, first.day + i),
-                    today: today,
-                    focused: i == focus,
-                    empty: !shown.contains(i),
-                    dropping: candidates.isNotEmpty,
-                    onTap: () => onDay(i),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Container(height: 1, color: p.tileBorder.withValues(alpha: 0.8)),
-      ],
-    );
-  }
-}
-
-class _StripDay extends StatefulWidget {
-  const _StripDay({
-    required this.day,
-    required this.today,
-    required this.focused,
-    required this.empty,
-    required this.dropping,
-    required this.onTap,
-  });
-
-  final DateTime day, today;
-  final bool focused;
-
-  /// Nothing due: dimmed, and nothing to jump to.
-  final bool empty;
-
-  /// A task is dragged over it.
-  final bool dropping;
-  final VoidCallback onTap;
-
-  @override
-  State<_StripDay> createState() => _StripDayState();
-}
-
-class _StripDayState extends State<_StripDay> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final isToday = widget.day == widget.today;
-    final focused = widget.focused;
-    final empty = widget.empty;
-    final dropping = widget.dropping;
-    final ink = empty && !dropping ? p.inkMuted.withValues(alpha: 0.4) : (focused ? p.ink : p.inkMuted);
-    return Tooltip(
-      message:
-          '${weekdayNames[widget.day.weekday - 1]} ${_shortDate(widget.day, widget.today)}'
-          '${empty ? ', nothing due' : ''}',
-      waitDuration: const Duration(milliseconds: 600),
-      child: MouseRegion(
-        cursor: empty ? MouseCursor.defer : SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: empty ? null : widget.onTap,
-          child: HoverFill(
-            hover: (_hover && !empty) || dropping,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Column(
-                children: [
-                  Text(
-                    weekdayNames[widget.day.weekday - 1].substring(0, 3).toUpperCase(),
-                    style: TextStyle(
-                      fontFamily: Fonts.ui,
-                      fontSize: 10,
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w700,
-                      color: empty && !dropping ? ink : (focused ? p.ink : p.inkMuted.withValues(alpha: 0.8)),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  AnimatedContainer(
-                    duration: Motion.click,
-                    curve: Motion.clickCurve,
-                    width: 28,
-                    height: 28,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: isToday ? p.today : (dropping ? p.accent.withValues(alpha: 0.18) : Colors.transparent),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: focused && !isToday ? p.inkMuted.withValues(alpha: 0.6) : Colors.transparent,
-                      ),
-                    ),
-                    child: Text(
-                      '${widget.day.day}',
-                      style: TextStyle(
-                        fontFamily: Fonts.ui,
-                        fontSize: 13,
-                        fontWeight: isToday || focused ? FontWeight.w700 : FontWeight.w500,
-                        color: isToday ? p.onToday : ink,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1109,13 +915,16 @@ class _Field extends StatelessWidget {
 /// A birthday's mark, in place of the repeat arrows in Further ahead.
 const _birthdayIcon = Icons.celebration_rounded;
 
-/// Further ahead's button that shows or hides birthdays: lit while they
-/// show.
-class _BirthdaysToggle extends StatelessWidget {
-  const _BirthdaysToggle({required this.shown, required this.onPressed});
+/// A card's button that shows or hides something: lit while it shows.
+class _ShowToggle extends StatelessWidget {
+  const _ShowToggle({required this.icon, required this.what, required this.shown, required this.onPressed});
 
   static const size = 28.0;
 
+  final IconData icon;
+
+  /// What it shows, as in "Show [what]".
+  final String what;
   final bool shown;
   final VoidCallback onPressed;
 
@@ -1123,7 +932,7 @@ class _BirthdaysToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return IconButton(
-      tooltip: shown ? 'Hide birthdays' : 'Show birthdays',
+      tooltip: shown ? 'Hide $what' : 'Show $what',
       onPressed: onPressed,
       constraints: const BoxConstraints.tightFor(width: size, height: size),
       padding: EdgeInsets.zero,
@@ -1140,7 +949,7 @@ class _BirthdaysToggle extends StatelessWidget {
         tween: ColorTween(end: shown ? p.accent : p.inkMuted.withValues(alpha: 0.45)),
         duration: Motion.click,
         curve: Motion.clickCurve,
-        builder: (context, colour, _) => Icon(_birthdayIcon, size: 16, color: colour),
+        builder: (context, colour, _) => Icon(icon, size: 16, color: colour),
       ),
     );
   }
@@ -1162,7 +971,8 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
     final day = state.shownDay;
     final past = state.viewDay != null;
     final planned = _Planned(state, day, past: past);
-    final birthdays = state.laterBirthdays;
+    // Birthdays are only known from today on, so a past day leaves them out.
+    final birthdays = state.laterBirthdays && !past;
     bool shows(_Later later) => birthdays || !(later.item?.birthday ?? later.repeat!.birthday);
     final groups = [
       for (final (date, items) in [
@@ -1190,7 +1000,20 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
               title: 'Further ahead',
               caption: '$count planned',
               trailingAtEnd: true,
-              trailing: _BirthdaysToggle(shown: birthdays, onPressed: state.toggleLaterBirthdays),
+              trailing: AnimatedOpacity(
+                opacity: past ? 0 : 1,
+                duration: Motion.morph,
+                curve: Motion.morphCurve,
+                child: IgnorePointer(
+                  ignoring: past,
+                  child: _ShowToggle(
+                    icon: _birthdayIcon,
+                    what: 'birthdays',
+                    shown: state.laterBirthdays,
+                    onPressed: state.toggleLaterBirthdays,
+                  ),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 4),
@@ -1330,7 +1153,9 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
     if (groups.isEmpty) {
       return Center(
         child: Text(
-          AppScope.read(context).laterBirthdays ? 'Nothing more than a week away' : 'Nothing but birthdays',
+          widget.birthdays || AppScope.read(context).viewDay != null
+              ? 'Nothing more than a week away'
+              : 'Nothing but birthdays',
           style: TextStyle(
             fontFamily: Fonts.body,
             fontSize: 12,
@@ -1552,10 +1377,7 @@ class _LaterRowState extends State<_LaterRow> {
                             TextSpan(
                               children: [
                                 if (item.dueTime case final time?)
-                                  TextSpan(
-                                    text: '${clockLabel(time)}  ',
-                                    style: _timeStyle(p).copyWith(fontSize: 12.5, height: 1.35),
-                                  ),
+                                  TextSpan(text: '${clockLabel(time)}  ', style: _timeStyle(p).copyWith(height: 1.35)),
                                 TextSpan(text: item.text),
                               ],
                             ),
