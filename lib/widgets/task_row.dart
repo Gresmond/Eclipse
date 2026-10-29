@@ -705,35 +705,31 @@ class _SubtaskRowState extends State<_SubtaskRow> {
                     _Check(done: done, hover: _hover, pressed: _pressed),
                     const SizedBox(width: 11),
                     Expanded(
-                      // The number sits on the text's baseline, the fonts'
-                      // differing line boxes otherwise lifting it.
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          if (widget.number case final number?)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: Text('$number.', style: _timeStyle(p).copyWith(height: 1.35)),
-                            ),
-                          Expanded(
-                            child: AnimatedDefaultTextStyle(
-                              duration: Motion.click,
-                              curve: Motion.clickCurve,
-                              style: TextStyle(
-                                fontFamily: Fonts.body,
-                                fontSize: 14,
-                                height: 1.35,
-                                color: done
-                                    ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
-                                    : p.ink,
-                                decoration: done ? TextDecoration.lineThrough : null,
-                                decorationColor: p.inkMuted.withValues(alpha: 0.45),
-                              ),
-                              child: Text(widget.text),
-                            ),
+                      child: AnimatedDefaultTextStyle(
+                        duration: Motion.click,
+                        curve: Motion.clickCurve,
+                        style: TextStyle(
+                          fontFamily: Fonts.body,
+                          fontSize: 14,
+                          height: 1.35,
+                          color: done
+                              ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
+                              : p.ink,
+                          decoration: done ? TextDecoration.lineThrough : null,
+                          decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                        ),
+                        // One paragraph, as a task's time and name, so the
+                        // number keeps the text's baseline at any scale; two
+                        // round to the pixel apart.
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              if (widget.number case final number?)
+                                TextSpan(text: '$number. ', style: _timeStyle(p).copyWith(height: 1.35)),
+                              TextSpan(text: widget.text),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                     if (!widget.readOnly)

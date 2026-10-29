@@ -134,8 +134,8 @@ void main() {
     await show(tester);
     await tester.tap(find.byTooltip('Expand subtasks'));
     await tester.pumpAndSettle();
-    final start = tester.getCenter(find.text('Step one'));
-    final below = tester.getCenter(find.text('Step two')).dy - start.dy;
+    final start = tester.getCenter(find.textContaining('Step one'));
+    final below = tester.getCenter(find.textContaining('Step two')).dy - start.dy;
     final drag = await tester.startGesture(start, kind: PointerDeviceKind.mouse);
     for (var i = 0; i < 10; i++) {
       await drag.moveBy(Offset(0, below * 1.2 / 10));
@@ -143,7 +143,7 @@ void main() {
     }
     // Shown in its new place before it's let go, and only saved when it is.
     await tester.pumpAndSettle();
-    expect(tester.getCenter(find.text('Step two')).dy, lessThan(start.dy + 4), reason: 'Step two glides up');
+    expect(tester.getCenter(find.textContaining('Step two')).dy, lessThan(start.dy + 4), reason: 'Step two glides up');
     expect(state.todos[TodoScope.tomorrow]!.single.subtasks.first.text, 'Step one');
     await drag.up();
     await tester.pumpAndSettle();
@@ -151,12 +151,8 @@ void main() {
     expect(task.subtasks.map((s) => s.text), ['Step two', 'Step one', 'Step three']);
     expect(task.numbered, isTrue);
     expect(state.todos[TodoScope.today]!.single.text, 'Research the project', reason: 'the task itself stayed');
-    expect(find.text('1.'), findsOneWidget);
-    expect(
-      tester.getCenter(find.text('1.')).dy,
-      closeTo(tester.getCenter(find.text('Step two')).dy, 2),
-      reason: 'renumbered once dropped',
-    );
+    expect(find.text('1. Step two'), findsOneWidget, reason: 'renumbered once dropped');
+    expect(find.text('2. Step one'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
