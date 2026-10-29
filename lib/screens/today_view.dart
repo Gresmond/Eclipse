@@ -177,6 +177,7 @@ class _HabitsCard extends StatelessWidget {
     BuildContext context,
     List<Habit> habits,
     BoxConstraints constraints,
+    double badge,
   ) {
     if (habits.isEmpty) return (heights: const [], cell: 32, trail: false);
     final width = constraints.maxWidth, height = constraints.maxHeight;
@@ -185,7 +186,7 @@ class _HabitsCard extends StatelessWidget {
 
     ({List<double> heights, double cell, bool trail}) layOut({required bool trail}) {
       // Everything else in a row is a fixed width; the name gets the rest.
-      final nameWidth = width - _HabitRow.fixedWidth - (trail ? _HabitRow.weekTrailWidth : 0) - cell.clamp(24, 32);
+      final nameWidth = width - _HabitRow.fixedWidth(badge) - (trail ? _HabitRow.weekTrailWidth : 0) - cell.clamp(24, 32);
       double rowFor(String name) {
         final painter = TextPainter(
           text: TextSpan(text: name, style: _HabitRow.nameStyle),
@@ -276,7 +277,11 @@ class _HabitsCard extends StatelessWidget {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final rows = _layOutRows(context, habits, constraints);
+                // Every row's badge is as wide as the longest streak's, so the
+                // badges, squares and times stay lined up down the card.
+                final streaks = state.viewDay != null ? const <int>[] : [for (final h in habits) state.currentStreak(h)];
+                final badge = _HabitRow.badgeFor(context, streaks.fold(0, max));
+                final rows = _layOutRows(context, habits, constraints, badge);
                 // Yesterday stays editable. A different month's ritual list
                 // fades through; otherwise only the marks change.
                 return IgnorePointer(
@@ -292,6 +297,7 @@ class _HabitsCard extends StatelessWidget {
                         habit: habits[i],
                         day: day,
                         cellSize: rows.cell,
+                        badgeWidth: badge,
                         weekTrail: rows.trail,
                         divider: i > 0,
                         names: times ? [for (final h in habits) h.name] : null,
@@ -355,6 +361,7 @@ class _HabitRow extends StatelessWidget {
     required this.habit,
     required this.day,
     required this.cellSize,
+    required this.badgeWidth,
     required this.weekTrail,
     required this.divider,
     this.names,
@@ -371,11 +378,36 @@ class _HabitRow extends StatelessWidget {
 
   /// Padding, gaps and the streak badge: the row less its name, week trail
   /// and square.
-  static const fixedWidth = 2 * 8.0 + 8 + 44 + 8;
+  static double fixedWidth(double badge) => 2 * 8.0 + 8 + badge + 8;
+
+  static TextStyle streakStyle(Color color) => TextStyle(
+    fontFamily: Fonts.ui,
+    fontSize: 11.5,
+    fontWeight: FontWeight.w700,
+    color: color,
+    fontFeatures: const [FontFeature.tabularFigures()],
+  );
+
+  /// The badge's slot: 44px, or wider when [streak] needs it.
+  static double badgeFor(BuildContext context, int streak) {
+    final painter = TextPainter(
+      text: TextSpan(text: '$streak', style: streakStyle(const Color(0xFF000000))),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    // Padding, flame and its gap around the count.
+    return max(44.0, (12 + 12 + 1.5 + width).ceilToDouble());
+  }
 
   final Habit habit;
   final DateTime day;
   final double cellSize;
+
+  /// The streak badge's slot, shared by the card's rows.
+  final double badgeWidth;
 
   /// Whether to show the last week's marks (the card decides, for all rows).
   final bool weekTrail;
@@ -405,6 +437,7 @@ class _HabitRow extends StatelessWidget {
                       habit: habit,
                       names: names!,
                       style: nameStyle.copyWith(color: p.ink),
+                      trailing: (weekTrail ? 10 + weekTrailWidth : 0) + 8 + badgeWidth + 8 + cellSize,
                     )
                   : Tooltip(
                       message: habit.description ?? habit.name,
@@ -429,7 +462,7 @@ class _HabitRow extends StatelessWidget {
                   ? (best > 0 ? 'Best streak: $best days' : 'No streak yet')
                   : '$streak day streak${best > streak ? '  ·  best $best' : ''}',
               child: SizedBox(
-                width: 44,
+                width: badgeWidth,
                 // A new streak count (or none) fades through with a slight pop.
                 child: FadeThrough(
                   duration: Motion.click,
@@ -449,13 +482,7 @@ class _HabitRow extends StatelessWidget {
                               const SizedBox(width: 1.5),
                               Text(
                                 '$streak',
-                                style: TextStyle(
-                                  fontFamily: Fonts.ui,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: p.accent,
-                                  fontFeatures: const [FontFeature.tabularFigures()],
-                                ),
+                                style: streakStyle(p.accent),
                               ),
                             ],
                           ),

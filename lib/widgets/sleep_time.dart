@@ -9,13 +9,17 @@ import '../theme/app_theme.dart';
 /// line up in one column, centred in the gap between the longest name and
 /// whatever follows the names (the squares).
 class SleepName extends StatelessWidget {
-  const SleepName({super.key, required this.habit, required this.names, required this.style});
+  const SleepName({super.key, required this.habit, required this.names, required this.style, this.trailing});
 
   final Habit habit;
 
   /// Every name in the list, so all rows put their times at the same place.
   final List<String> names;
   final TextStyle style;
+
+  /// The width of the row to the right of the name. When given, the times
+  /// centre on the whole row rather than in the space beside the names.
+  final double? trailing;
 
   /// Keeps the time clear of the longest name when the gap is narrow.
   static const _minGap = 14.0;
@@ -53,7 +57,10 @@ class SleepName extends StatelessWidget {
         // The widest a time can be, so the column doesn't shift between rows.
         final timeWidth = _width(context, '12:30 pm', time);
         final centre = math.min(
-          math.max((longest + width) / 2, longest + _minGap + timeWidth / 2),
+          math.max(
+            trailing != null ? (width + trailing!) / 2 : (longest + width) / 2,
+            longest + _minGap + timeWidth / 2,
+          ),
           width - timeWidth / 2,
         );
         return Stack(
