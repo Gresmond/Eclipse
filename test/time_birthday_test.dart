@@ -277,11 +277,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Until 31/12/2026'), findsNothing);
     expect(find.textContaining('Until 31/'), findsOneWidget, reason: 'a day goes back to the repeat');
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Every 2 months until'), findsOneWidget, reason: 'OK keeps it and goes back');
+    expect(find.textContaining('Every 2 months until'), findsOneWidget, reason: 'Save keeps it and goes back');
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsNothing, reason: 'and on the main page, it confirms');
+  });
+
+  testWidgets("a day's line in Week ahead is a field from the start, with only a time", (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 23, 9));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    final week = find.byType(WeekCard);
+    final line = find.descendant(of: week, matching: find.byType(TextField)).first;
+    expect(
+      find.descendant(of: line, matching: find.text('Add task')),
+      findsOneWidget,
+      reason: 'its look before a click',
+    );
+    final before = tester.getRect(line);
+    await tester.tap(line);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(line), before, reason: 'clicking it only puts the cursor in');
+    await tester.enterText(line, 'Call the bank');
+
+    expect(find.descendant(of: week, matching: find.byTooltip('Time, repeat and birthday')), findsNothing);
+    await tester.tap(find.descendant(of: week, matching: find.byTooltip('Add a time')).first);
+    await tester.pumpAndSettle();
+    expect(find.text("Doesn't repeat"), findsNothing, reason: 'only a time');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: week, matching: find.text('9:00 am')), findsOneWidget);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    final task = state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Call the bank');
+    expect(task.dueTime, 9 * 60);
   });
 }

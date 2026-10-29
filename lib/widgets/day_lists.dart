@@ -649,7 +649,10 @@ class _DatedAddState extends State<_DatedAdd> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (due != null) Text(_shortDate(due, today), style: note),
+              if (due != null)
+                Flexible(
+                  child: Text(_shortDate(due, today), maxLines: 1, overflow: TextOverflow.ellipsis, style: note),
+                ),
               if (time != null) ...[
                 const SizedBox(width: 6),
                 Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
@@ -694,22 +697,17 @@ class _AddTask extends StatefulWidget {
 class _AddTaskState extends State<_AddTask> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
-  bool _open = false;
-  bool _hover = false;
-  _DayChoice? _choice;
+  int? _time;
 
-  /// While the dialog is open, the field stays open behind it.
+  /// While the wheel is open, the time stays though the field is empty.
   bool _picking = false;
 
   @override
   void initState() {
     super.initState();
     _focus.addListener(() {
-      if (!_focus.hasFocus && !_picking && _controller.text.trim().isEmpty) {
-        setState(() {
-          _open = false;
-          _choice = null;
-        });
+      if (!_focus.hasFocus && !_picking && _controller.text.trim().isEmpty && _time != null) {
+        setState(() => _time = null);
       }
     });
   }
@@ -723,34 +721,24 @@ class _AddTaskState extends State<_AddTask> {
 
   void _submit(AppState state) {
     final text = _controller.text;
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty) return _focus.requestFocus();
     if (widget.past case final past?) {
       state.addTodo(widget.day == past ? TodoScope.today : TodoScope.tomorrow, text, day: past);
-    } else if (_choice case final choice?) {
-      _addChosen(state, text, widget.day, choice);
-      setState(() => _choice = null);
     } else {
-      _addDue(state, text, widget.day);
+      _addDue(state, text, widget.day, time: _time);
+      setState(() => _time = null);
     }
     _controller.clear();
     _focus.requestFocus();
   }
 
-  Future<void> _pick() async {
+  Future<void> _pick(BuildContext anchor) async {
     _picking = true;
-    final (choice, selection) = (_choice, _controller.selection);
-    final picked = await _pickDayAndRepeat(
-      context,
-      first: widget.day,
-      selected: widget.day,
-      repeat: choice?.repeat,
-      time: choice?.time,
-      birthday: choice?.birthday ?? false,
-      calendar: false,
-    );
+    final selection = _controller.selection;
+    final picked = await pickTime(anchor, minutes: _time, start: _time ?? 9 * 60);
     _picking = false;
     if (!mounted) return;
-    if (picked != null) setState(() => _choice = picked);
+    if (picked != null) setState(() => _time = picked);
     _refocus(_focus, _controller, selection);
   }
 
@@ -758,104 +746,39 @@ class _AddTaskState extends State<_AddTask> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.read(context);
-    if (_open) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(18, 4, 0, 4),
-        child: CallbackShortcuts(
-          bindings: {
-            const SingleActivator(LogicalKeyboardKey.escape): () {
-              _controller.clear();
-              _focus.unfocus();
-            },
+    final time = _time;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 4, 0, 4),
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.escape): () {
+            _controller.clear();
+            _focus.unfocus();
           },
-          child: _Field(
-            controller: _controller,
-            focus: _focus,
-            autofocus: true,
-            leading: Icon(Icons.add_rounded, size: 18, color: p.accent),
-            trailing: widget.past == null ? _DetailsButton(choice: _choice, onPressed: _pick) : const SizedBox.shrink(),
-            onSubmitted: () => _submit(state),
-          ),
-        ),
-      );
-    }
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => _open = true),
-        child: Padding(
-          padding: const EdgeInsets.only(left: 18, top: 2),
-          child: HoverFill(
-            hover: _hover,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-                    child: Icon(
-                      Icons.add_rounded,
-                      size: 18,
-                      color: _hover ? p.accent : p.accent.withValues(alpha: 0.75),
+        },
+        child: _Field(
+          controller: _controller,
+          focus: _focus,
+          leading: _TaskAction(icon: Icons.add_rounded, onPressed: () => _submit(state)),
+          // Only a time: a day's tasks don't repeat from here.
+          trailing: widget.past != null
+              ? const SizedBox.shrink()
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
+                    Builder(
+                      builder: (anchor) => _TaskAction(
+                        tooltip: time == null ? 'Add a time' : 'Change time',
+                        icon: Icons.more_time_rounded,
+                        onPressed: () => _pick(anchor),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 11),
-                  Text(
-                    'Add task',
-                    style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: _hover ? p.accent : p.inkMuted),
-                  ),
-                ],
-              ),
-            ),
-          ),
+                  ],
+                ),
+          onSubmitted: () => _submit(state),
         ),
       ),
-    );
-  }
-}
-
-/// The button of a field for a new task that sets its time, repeat and
-/// whether it's a birthday, showing them once set.
-class _DetailsButton extends StatelessWidget {
-  const _DetailsButton({required this.choice, required this.onPressed});
-
-  final _DayChoice? choice;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final (time, repeat, birthday) = (choice?.time, choice?.repeat, choice?.birthday == true);
-    final set = time != null || repeat != null;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (time != null)
-          Padding(
-            padding: const EdgeInsets.only(left: 6),
-            child: Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
-          ),
-        if (repeat != null)
-          Flexible(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 6),
-              child: Text(
-                birthday ? 'Birthday' : repeat.rule.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontFamily: Fonts.body, fontSize: 11, color: p.accent),
-              ),
-            ),
-          ),
-        _TaskAction(
-          tooltip: set ? 'Change time, repeat or birthday' : 'Time, repeat and birthday',
-          icon: set ? Icons.event_available_outlined : Icons.more_time_rounded,
-          onPressed: onPressed,
-        ),
-      ],
     );
   }
 }
@@ -871,14 +794,12 @@ class _Field extends StatelessWidget {
     required this.leading,
     required this.trailing,
     required this.onSubmitted,
-    this.autofocus = false,
   });
 
   final TextEditingController controller;
   final FocusNode focus;
   final Widget leading, trailing;
   final VoidCallback onSubmitted;
-  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
@@ -901,7 +822,6 @@ class _Field extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 focusNode: focus,
-                autofocus: autofocus,
                 textCapitalization: TextCapitalization.sentences,
                 inputFormatters: const [NoteInputFormatter()],
                 style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.ink),
@@ -909,7 +829,7 @@ class _Field extends StatelessWidget {
                 decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
-                  hintText: 'Add a task',
+                  hintText: 'Add task',
                   hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
                   contentPadding: const EdgeInsets.symmetric(vertical: 9),
                 ),

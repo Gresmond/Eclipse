@@ -9,6 +9,59 @@ import 'fade_through.dart';
 import 'rolling_number.dart';
 import 'sleep_time.dart';
 
+/// Opens a [TimeWheel] over [anchor] for [minutes], or [start] when there's
+/// no time, with Cancel and Save. The saved time, or null when it was
+/// cancelled, Escaped or clicked away from, or saved unchanged.
+Future<int?> pickTime(
+  BuildContext anchor, {
+  required int? minutes,
+  required int start,
+  String? title,
+  bool alignLeft = false,
+}) async {
+  int? picked, saved;
+  await showFadeMenu(
+    anchor,
+    width: 248,
+    above: true,
+    alignLeft: alignLeft,
+    builder: (context) {
+      void save() {
+        saved = picked;
+        Navigator.pop(context);
+      }
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TimeWheel(
+            title: title,
+            initial: minutes ?? start,
+            unset: minutes == null,
+            onChanged: (minutes) => picked = minutes,
+            onDone: save,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: OverflowBar(
+                spacing: 8,
+                children: [
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                  TextButton(onPressed: save, child: const Text('Save')),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+  return saved == minutes ? null : saved;
+}
+
 /// Shows a time, or [placeholder], and opens a [TimeWheel] to pick it,
 /// starting from [start] when there's no time. Save (or Enter) sets it,
 /// its changed digits rolling into place; Cancel, Escape or clicking away
@@ -41,47 +94,14 @@ class _TimePillState extends State<TimePill> {
   bool _hover = false;
 
   Future<void> _open() async {
-    int? picked, saved;
-    await showFadeMenu(
+    final minutes = await pickTime(
       context,
-      width: 248,
-      above: true,
+      minutes: widget.minutes,
+      start: widget.start,
+      title: widget.title,
       alignLeft: widget.alignLeft,
-      builder: (context) {
-        void save() {
-          saved = picked;
-          Navigator.pop(context);
-        }
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TimeWheel(
-              title: widget.title,
-              initial: widget.minutes ?? widget.start,
-              unset: widget.minutes == null,
-              onChanged: (minutes) => picked = minutes,
-              onDone: save,
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: OverflowBar(
-                  spacing: 8,
-                  children: [
-                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                    TextButton(onPressed: save, child: const Text('Save')),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        );
-      },
     );
-    if (saved case final minutes? when minutes != widget.minutes) widget.onChanged(minutes);
+    if (minutes != null) widget.onChanged(minutes);
   }
 
   @override

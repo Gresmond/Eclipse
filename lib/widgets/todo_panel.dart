@@ -42,11 +42,11 @@ class _TaskDrag {
 
 /// Identical circular pills, visible only while the individual icon is hovered.
 class _TaskAction extends StatelessWidget {
-  const _TaskAction({required this.tooltip, required this.icon, required this.onPressed});
+  const _TaskAction({this.tooltip, required this.icon, required this.onPressed});
 
   static const size = 24.0;
 
-  final String tooltip;
+  final String? tooltip;
   final IconData icon;
   final VoidCallback? onPressed;
 

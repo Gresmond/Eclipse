@@ -66,7 +66,8 @@ void main() {
     }
     state.addTodo(TodoScope.week, 'Untouched planner', dueDate: DateTime(2026, 10, 29));
     await show(tester);
-    final labels = find.byWidgetPredicate((w) => w is Text && (w.data?.startsWith('Review task ') ?? false));
+    // Task names are rich text, a time going before them.
+    final labels = find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText().startsWith('Review task '));
     expect(labels.evaluate().length, allOf(greaterThan(0), lessThan(40)));
     var rows = 0;
     debugOnRebuildDirtyWidget = (element, built) {

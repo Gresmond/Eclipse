@@ -1554,7 +1554,7 @@ void main() {
     expect(find.descendant(of: later, matching: find.textContaining('Nov 20')), findsOneWidget);
 
     // Adding for tomorrow from the box at the foot, its day picked first.
-    await tester.enterText(find.descendant(of: week, matching: find.byType(TextField)), 'Prepare tomorrow breakfast');
+    await tester.enterText(find.descendant(of: week, matching: find.byType(TextField)).last, 'Prepare tomorrow breakfast');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(find.text("Doesn't repeat"), findsOneWidget, reason: 'Enter without a day asks for one');
@@ -1987,7 +1987,7 @@ void main() {
     expect(state.viewDay, DateTime(2026, 10, 22));
     expect(find.text('THURSDAY  ·  LOOKING BACK'), findsOneWidget);
     expect(find.text('A quiet Thursday.'), findsOneWidget);
-    expect(find.text('Add a task').hitTestable(), findsNothing, reason: 'look only');
+    expect(find.text('Add task').hitTestable(), findsNothing, reason: 'look only');
     expect(find.text('22/10'), findsNothing, reason: 'it was new that day');
     expect(find.text('22 Oct'), findsWidgets, reason: 'the past day opens a tab left of Today');
     expect(tester.getCenter(find.text('22 Oct').last).dx, lessThan(tester.getCenter(find.text('Today').first).dx));
