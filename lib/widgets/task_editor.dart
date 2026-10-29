@@ -345,8 +345,10 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
                   const SizedBox(height: 8),
                 ] else
                   const SizedBox(height: 4),
-                _FoldAway(folded: _birthday, child: _timeRow()),
-                _FoldAway(folded: _birthday, child: _repeatRow()),
+                _BirthdayFold(
+                  folded: _birthday,
+                  child: Column(children: [_timeRow(), _repeatRow()]),
+                ),
                 if (widget.birthdays)
                   _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
                 const SizedBox(height: 4),
@@ -519,6 +521,55 @@ class _RepeatRow extends StatelessWidget {
 /// [repeat], or every year for a [birthday] that doesn't already.
 _RepeatChoice? _birthdayRepeat(bool birthday, _RepeatChoice? repeat) =>
     !birthday || repeat?.rule == const RepeatRule.yearly(1) ? repeat : (rule: const RepeatRule.yearly(1), until: null);
+
+/// [child] (the time and repeat) folded away for a birthday: it fades out
+/// in the first half while the rows below slide up over the whole, and
+/// back the other way.
+class _BirthdayFold extends StatefulWidget {
+  const _BirthdayFold({required this.folded, required this.child});
+
+  final bool folded;
+  final Widget child;
+
+  @override
+  State<_BirthdayFold> createState() => _BirthdayFoldState();
+}
+
+class _BirthdayFoldState extends State<_BirthdayFold> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(vsync: this, duration: Motion.morph, value: widget.folded ? 0 : 1);
+  late final _height = CurvedAnimation(parent: _controller, curve: Motion.morphCurve);
+  late final _opacity = CurvedAnimation(
+    parent: _controller,
+    curve: const Interval(0.5, 1, curve: Motion.morphCurve),
+  );
+
+  @override
+  void didUpdateWidget(_BirthdayFold old) {
+    super.didUpdateWidget(old);
+    if (widget.folded != old.folded) widget.folded ? _controller.reverse() : _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _height.dispose();
+    _opacity.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizeTransition(
+    sizeFactor: _height,
+    alignment: Alignment.topCenter,
+    child: FadeTransition(
+      opacity: _opacity,
+      child: IgnorePointer(
+        ignoring: widget.folded,
+        child: ExcludeFocus(excluding: widget.folded, child: widget.child),
+      ),
+    ),
+  );
+}
 
 /// Whether a task is someone's birthday, which comes round every year, all
 /// day, in place of a repeat and time; a cross makes it not one.
