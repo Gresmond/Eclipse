@@ -139,14 +139,13 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
     _timers.add(timer);
   }
 
-  /// [tasks], [group]'s list in order, as it's drawn now; those [inPlace]
-  /// open up where they belong. Call once per group per build, after
-  /// [_settle] for the build before.
-  List<_Shown> _shown(String group, List<_Task> tasks, {Set<Object> inPlace = const {}}) {
+  /// [tasks], [group]'s list in order, as it's drawn now. Call once per
+  /// group per build, after [_settle] for the build before.
+  List<_Shown> _shown(String group, List<_Task> tasks) {
     final ids = [for (final (_, item) in tasks) item.id];
     // Everything there when the list first shows is simply there.
     final before = _drawn[group] ?? (_started ? const <int>[] : ids);
-    final added = ids.toSet().difference(before.toSet()).difference(inPlace);
+    final added = ids.toSet().difference(before.toSet());
     if (added.isNotEmpty) {
       _arriving.addAll(added);
       _after(() => _arriving.removeAll(added));
@@ -481,7 +480,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
 
 /// A day's heading, its parts joined with dots, over a rule.
 class _DayHeading extends StatelessWidget {
-  const _DayHeading({required this.parts, this.strong = false, this.first = false});
+  const _DayHeading({required this.parts, this.strong = false, this.first = false, this.instant = false});
 
   /// The heading's parts; strong ones are full ink.
   final List<(String, bool)> parts;
@@ -492,12 +491,15 @@ class _DayHeading extends StatelessWidget {
   /// The first in its list, with less room above.
   final bool first;
 
+  /// Takes its room at once instead of easing to it.
+  final bool instant;
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     // Easing when a day comes in above it, or the one above goes.
     return AnimatedPadding(
-      duration: Motion.morph,
+      duration: instant ? Duration.zero : Motion.morph,
       curve: Motion.morphCurve,
       padding: EdgeInsets.only(top: first ? 12 : 22, bottom: 4),
       child: Column(
@@ -982,8 +984,9 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
         if (items.where(shows).toList() case final shown when shown.isNotEmpty) (date, shown),
     ];
     final count = groups.fold(0, (n, g) => n + g.$2.length);
+    // Hidden birthdays count as seen, so showing them doesn't fade them in.
     final added = _added(day, [
-      for (final (_, items) in groups)
+      for (final (_, items) in [...planned.later, (null, planned.undated)])
         for (final later in items)
           if (later.item case final item?) item.id,
     ]);
@@ -1044,8 +1047,7 @@ class _LaterList extends StatefulWidget {
 
   final List<(DateTime?, List<_Later>)> groups;
 
-  /// Whether birthdays show: shown or hidden, they open up or close up
-  /// where they belong.
+  /// Whether birthdays show: shown or hidden, they pop in or out at once.
   final bool birthdays;
 
   /// Tasks just added, which fade in.
@@ -1056,16 +1058,13 @@ class _LaterList extends StatefulWidget {
 }
 
 class _LaterListState extends State<_LaterList> with _DayMotion {
-  /// Birthdays just shown, by task id and repeat uid, and the days come
-  /// with them: they open up in place, not at the foot of their day.
-  final _showing = <Object>{};
+  /// Birthdays were just shown or hidden: this build jumps to how it is.
+  var _instant = false;
 
   /// Birthday repeats just hidden, closing up where they were.
   final _hiding = <String, ({String group, int index, Repeat repeat})>{};
 
   static String _key(DateTime? date) => date == null ? 'none' : dateKey(date);
-
-  static bool _birthday(_Later later) => later.item?.birthday ?? later.repeat!.birthday;
 
   /// A row by its day and task or repeat, so one that moves day counts as
   /// gone from where it was.
@@ -1074,21 +1073,18 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
   @override
   void didUpdateWidget(_LaterList old) {
     super.didUpdateWidget(old);
-    if (widget.birthdays && !old.birthdays) {
-      final before = {for (final (date, _) in old.groups) _key(date)};
-      final showing = {
-        for (final (date, items) in widget.groups) ...[
-          if (!before.contains(_key(date))) _key(date),
-          for (final later in items)
-            if (_birthday(later)) later.item?.id ?? later.repeat!.uid,
-        ],
-      };
-      _showing.addAll(showing);
-      _after(() => _showing.removeAll(showing));
+    // Birthdays shown or hidden pop in or out at once, as empty days do in
+    // the week: the list is simply drawn as it now is.
+    if (widget.birthdays != old.birthdays) {
+      _instant = true;
+      _drawn
+        ..clear()
+        ..addAll({
+          for (final (date, items) in widget.groups) _key(date): [for (final later in items) ?later.item?.id],
+        });
       return;
     }
-    // Whatever's gone (ticked into Today, moved, or a birthday hidden)
-    // closes up where it was.
+    // Whatever's gone (ticked into Today or moved) closes up where it was.
     final now = {
       for (final (date, items) in widget.groups)
         for (final later in items) _place(_key(date), later),
@@ -1118,6 +1114,8 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
 
   @override
   Widget build(BuildContext context) {
+    final instant = _instant;
+    _instant = false;
     final p = context.palette;
     final state = AppScope.read(context);
     final day = state.shownDay;
@@ -1148,7 +1146,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
     }
     final hidden = _hiding.keys.toSet();
     groups.sort((a, b) => a.date == null ? 1 : (b.date == null ? -1 : a.date!.compareTo(b.date!)));
-    final shown = {for (final g in groups) g.key: _shown(g.key, g.tasks, inPlace: _showing)};
+    final shown = {for (final g in groups) g.key: _shown(g.key, g.tasks)};
     _settle();
     if (groups.isEmpty) {
       return Center(
@@ -1179,9 +1177,10 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                   SliverToBoxAdapter(
                     // A day comes and goes with its last tasks.
                     child: Appear(
-                      animate: _showing.contains(g.key),
+                      animate: false,
                       shown: current.contains(g.key),
                       child: _DayHeading(
+                        instant: instant,
                         first: i == 0,
                         parts: switch (g.date) {
                           null => const [('No date', true)],
@@ -1202,7 +1201,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                       final tasks = shown[g.key]!;
                       if (index >= tasks.length) {
                         final repeat = g.repeats[index - tasks.length];
-                        final (fadeIn, leaving) = (_showing.contains(repeat.uid), hidden.contains(repeat.uid));
+                        final (fadeIn, leaving) = (false, hidden.contains(repeat.uid));
                         if (repeat.birthday) {
                           return _LaterRow(day: day, repeat: repeat, date: g.date, fadeIn: fadeIn, leaving: leaving);
                         }
@@ -1225,7 +1224,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                       }
                       final (:task, :arriving, :leaving) = tasks[index];
                       final (scope, item) = task;
-                      final fadeIn = widget.added.contains(item.id) || arriving || _showing.contains(item.id);
+                      final fadeIn = widget.added.contains(item.id) || arriving;
                       void remove() => _remove(g.key, task, () => state.removeTodo(scope, item, day: day));
                       if (item.birthday) {
                         return _LaterRow(

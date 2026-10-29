@@ -129,7 +129,7 @@ void main() {
     expect(AppState(store, clock: () => DateTime(2026, 10, 23, 9)).laterBirthdays, isFalse);
   });
 
-  testWidgets('birthdays open up and close up where they belong in Further ahead', (tester) async {
+  testWidgets('birthdays pop in and out of Further ahead at once, where they belong', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -144,38 +144,25 @@ void main() {
     await tester.pumpAndSettle();
 
     final later = find.byType(FurtherAheadCard);
-    // Opening from nothing, a row starts with no height, so counts as offstage.
-    Finder row(String text) =>
-        find.descendant(of: later, matching: find.textContaining(text, skipOffstage: false), skipOffstage: false);
+    Finder row(String text) => find.descendant(of: later, matching: find.textContaining(text));
     double top(String text) => tester.getTopLeft(row(text)).dy;
+    // Shown, they're there on the next frame, fully drawn, above Party.
     await tester.tap(find.byTooltip('Show birthdays'));
     await tester.pump();
-    // Gran opens up above Party, where she belongs, not at the foot of the
-    // day waiting to glide up; Papa's day opens with him.
-    final opacities = <double>[];
-    for (var i = 0; i < 16; i++) {
-      expect(top('Gran'), lessThanOrEqualTo(top('Party')));
-      opacities.add(
-        tester
-            .widget<FadeTransition>(
-              find.ancestor(of: row('Papa'), matching: find.byType(FadeTransition, skipOffstage: false)).first,
-            )
-            .opacity
-            .value,
-      );
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-    expect(opacities.first, lessThan(0.1));
-    await tester.pumpAndSettle();
     expect(top('Gran'), lessThan(top('Party')));
+    final heights = [tester.getSize(later).height, top('Party')];
+    for (final name in ['Gran', 'Papa']) {
+      final fades = find.ancestor(of: row(name), matching: find.byType(FadeTransition));
+      for (final fade in tester.widgetList<FadeTransition>(fades)) {
+        expect(fade.opacity.value, 1);
+      }
+    }
+    await tester.pumpAndSettle();
+    expect([tester.getSize(later).height, top('Party')], heights);
 
-    // Hidden, they close up rather than vanish.
+    // Hidden, they're gone on the next frame.
     await tester.tap(find.byTooltip('Hide birthdays'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(row('Gran'), findsOneWidget);
-    expect(row('Papa'), findsOneWidget);
-    await tester.pumpAndSettle();
     expect(row('Gran'), findsNothing);
     expect(row('Papa'), findsNothing);
     expect(row('Party'), findsOneWidget);
