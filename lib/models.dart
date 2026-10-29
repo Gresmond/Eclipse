@@ -216,7 +216,7 @@ class TodoItem {
   }
 }
 
-enum RepeatKind { weekly, days, weeks, monthly, yearly }
+enum RepeatKind { weekly, days, weeks, monthly, yearly, months }
 
 /// Whether a task's stored kind, in its `category` column, makes it a
 /// birthday. Other kinds are from before birthdays replaced categories.
@@ -226,8 +226,8 @@ bool isBirthday(Object? kind) => kind == 'birthday';
 String? birthdayKind(bool birthday) => birthday ? 'birthday' : null;
 
 /// When a repeating task comes round: on chosen weekdays, every so many
-/// days or weeks from its start, on a date each month, or on its start's
-/// date every so many years.
+/// days, weeks or months from its start, on a date each month, or on its
+/// start's date every so many years.
 class RepeatRule {
   const RepeatRule.weekly(Set<int> this.weekdays) : kind = RepeatKind.weekly, every = 1;
   const RepeatRule.every(this.every, {bool weeks = false})
@@ -235,16 +235,18 @@ class RepeatRule {
       weekdays = null;
   const RepeatRule.monthly(this.every) : kind = RepeatKind.monthly, weekdays = null;
   const RepeatRule.yearly(this.every) : kind = RepeatKind.yearly, weekdays = null;
+  const RepeatRule.months(this.every) : kind = RepeatKind.months, weekdays = null;
 
   final RepeatKind kind;
 
   /// Monday is 1.
   final Set<int>? weekdays;
 
-  /// The days, weeks or years between, or the date of the month.
+  /// The days, weeks, months or years between, or the date of the month.
   final int every;
 
-  /// 'weekly:1,3,5', 'days:2', 'weeks:2', 'monthly:15' or 'yearly:1'.
+  /// 'weekly:1,3,5', 'days:2', 'weeks:2', 'months:3', 'monthly:15' or
+  /// 'yearly:1'.
   String encode() => '${kind.name}:${kind == RepeatKind.weekly ? (weekdays!.toList()..sort()).join(',') : every}';
 
   static RepeatRule? decode(String value) {
@@ -261,6 +263,7 @@ class RepeatRule {
     return switch (kind) {
       RepeatKind.monthly => RepeatRule.monthly(n),
       RepeatKind.yearly => RepeatRule.yearly(n),
+      RepeatKind.months => RepeatRule.months(n),
       _ => RepeatRule.every(n, weeks: kind == RepeatKind.weeks),
     };
   }
@@ -281,11 +284,15 @@ class RepeatRule {
       RepeatKind.monthly => day.day == min(every, DateTime(day.year, day.month + 1, 0).day),
       // A 29 February start comes round in leap years only.
       RepeatKind.yearly => day.month == start.month && day.day == start.day && (day.year - start.year) % every == 0,
+      // On its start's date, or a shorter month's last day.
+      RepeatKind.months =>
+        ((day.year - start.year) * 12 + day.month - start.month) % every == 0 &&
+            day.day == min(start.day, DateTime(day.year, day.month + 1, 0).day),
     };
   }
 
-  /// 'Every Mon, Wed', 'Every 2 days', 'Every week', 'Monthly on the 15th',
-  /// 'Every 2 years'.
+  /// 'Every Mon, Wed', 'Every 2 days', 'Every week', 'Every 3 months',
+  /// 'Monthly on the 15th', 'Every 2 years'.
   String get label => switch (kind) {
     RepeatKind.weekly =>
       weekdays!.length == 7
@@ -295,6 +302,7 @@ class RepeatRule {
     RepeatKind.weeks => every == 1 ? 'Every week' : 'Every $every weeks',
     RepeatKind.monthly => 'Monthly on the ${ordinal(every)}',
     RepeatKind.yearly => every == 1 ? 'Every year' : 'Every $every years',
+    RepeatKind.months => every == 1 ? 'Every month' : 'Every $every months',
   };
 
   @override
@@ -338,7 +346,8 @@ class Repeat {
   bool on(DateTime day) => (until == null || !day.isAfter(until!)) && rule.on(day, start);
 
   /// The first day it comes round on or after [from], if any within a year
-  /// and a bit (a monthly 31st needs no more); a yearly one's by its years.
+  /// and a bit (a monthly 31st needs no more); a yearly one's by its years,
+  /// and every so many months by its months.
   DateTime? next(DateTime from) {
     var day = from.isBefore(start) ? start : from;
     if (rule.kind == RepeatKind.yearly) {
@@ -346,6 +355,15 @@ class Repeat {
       for (var year = start.year + ((day.year - start.year) ~/ rule.every) * rule.every; ; year += rule.every) {
         final date = DateTime(year, start.month, start.day);
         if (date.day != start.day) continue;
+        if (until != null && date.isAfter(until!)) return null;
+        if (!date.isBefore(day)) return date;
+      }
+    }
+    if (rule.kind == RepeatKind.months) {
+      // Its months from the one [day] is in, each on its date or the last day.
+      final since = (day.year - start.year) * 12 + day.month - start.month;
+      for (var month = start.month + (since ~/ rule.every) * rule.every; ; month += rule.every) {
+        final date = DateTime(start.year, month, min(start.day, DateTime(start.year, month + 1, 0).day));
         if (until != null && date.isAfter(until!)) return null;
         if (!date.isBefore(day)) return date;
       }

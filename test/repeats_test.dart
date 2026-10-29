@@ -68,6 +68,32 @@ void main() {
     expect(leap.on(DateTime(2029, 3, 1)), isFalse);
   });
 
+  test('every so many months comes round on its date, or a shorter month’s last day', () {
+    final start = DateTime(2026, 10, 15);
+    const quarterly = RepeatRule.months(3);
+    expect(quarterly.on(DateTime(2027, 1, 15), start), isTrue);
+    expect(quarterly.on(DateTime(2026, 11, 15), start), isFalse);
+    expect(quarterly.on(DateTime(2027, 1, 16), start), isFalse);
+    expect(quarterly.on(DateTime(2026, 7, 15), start), isFalse, reason: 'not before it starts');
+    expect(RepeatRule.decode(quarterly.encode()), quarterly);
+    expect(RepeatRule.decode('months:0'), isNull);
+    expect(const RepeatRule.months(1).label, 'Every month');
+    expect(quarterly.label, 'Every 3 months');
+    final rent = Repeat(uid: 'a', text: 'Rent', rule: quarterly, start: start);
+    expect(rent.next(DateTime(2026, 10, 16)), DateTime(2027, 1, 15));
+    expect(rent.next(DateTime(2030, 3, 1)), DateTime(2030, 4, 15));
+    // Two years apart is more than the day-by-day search would reach.
+    final rare = Repeat(uid: 'b', text: 'x', rule: const RepeatRule.months(24), start: start);
+    expect(rare.next(DateTime(2026, 10, 16)), DateTime(2028, 10, 15));
+    // The 31st falls on a shorter month's last day, and back on the 31st after.
+    final end = Repeat(uid: 'c', text: 'x', rule: const RepeatRule.months(1), start: DateTime(2027, 1, 31));
+    expect(end.next(DateTime(2027, 2, 1)), DateTime(2027, 2, 28));
+    expect(end.next(DateTime(2027, 3, 1)), DateTime(2027, 3, 31));
+    expect(end.on(DateTime(2027, 4, 30)), isTrue);
+    final ended = Repeat(uid: 'd', text: 'x', rule: quarterly, start: start, until: DateTime(2026, 12, 31));
+    expect(ended.next(DateTime(2026, 10, 16)), isNull);
+  });
+
   group('repeating tasks', () {
     var now = DateTime(2026, 10, 28, 9); // Wednesday
     late Store store;

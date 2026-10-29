@@ -1635,6 +1635,13 @@ void main() {
       )..layout();
       expect(size.width, greaterThanOrEqualTo(painter.width - 0.5), reason: '$pill shows in full');
     }
+    // Every so many months lands on the day's date, or a shorter month's last.
+    await tester.tap(find.text('Custom'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('months'));
+    await tester.pumpAndSettle();
+    expect(find.text('on the 30th'), findsOneWidget);
+    expect(find.text('In shorter months, on the last day.'), findsOneWidget);
     await tester.tap(find.text('Yearly'));
     await tester.pumpAndSettle();
     expect(find.textContaining('year on Oct 30'), findsOneWidget);

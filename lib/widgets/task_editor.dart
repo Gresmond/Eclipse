@@ -561,8 +561,8 @@ class _EditTaskDialogState extends State<_EditTaskDialog> {
 }
 
 /// How a task repeats: on chosen weekdays, on a date each month, on its
-/// date every so many years, or every so many days or weeks, with an
-/// optional last day.
+/// date every so many years, or every so many days, weeks or months, with
+/// an optional last day.
 class _RepeatDialog extends StatefulWidget {
   const _RepeatDialog({required this.start, this.current});
 
@@ -577,16 +577,21 @@ class _RepeatDialog extends StatefulWidget {
 class _RepeatDialogState extends State<_RepeatDialog> {
   late final _was = widget.current?.rule;
   late var _kind = switch (_was?.kind) {
-    RepeatKind.days || RepeatKind.weeks => RepeatKind.days,
+    RepeatKind.days || RepeatKind.weeks || RepeatKind.months => RepeatKind.days,
     final kind? => kind,
     null => RepeatKind.weekly,
   };
   late var _days = _was?.weekdays?.fold(0, (bits, d) => bits | weekdayBit(d)) ?? weekdayBit(widget.start.weekday);
   late var _every = switch (_was) {
-    final r? when r.kind == RepeatKind.days || r.kind == RepeatKind.weeks => r.every,
+    final r? when r.kind == RepeatKind.days || r.kind == RepeatKind.weeks || r.kind == RepeatKind.months => r.every,
     _ => 2,
   };
-  late var _weeks = _was?.kind == RepeatKind.weeks;
+
+  /// Custom's unit: days, weeks or months.
+  late var _unit = switch (_was?.kind) {
+    final kind? when kind == RepeatKind.weeks || kind == RepeatKind.months => kind,
+    _ => RepeatKind.days,
+  };
   late var _date = switch (_was) {
     final r? when r.kind == RepeatKind.monthly => r.every,
     _ => widget.start.day,
@@ -604,7 +609,8 @@ class _RepeatDialogState extends State<_RepeatDialog> {
     }),
     RepeatKind.monthly => RepeatRule.monthly(_date),
     RepeatKind.yearly => RepeatRule.yearly(_years),
-    _ => RepeatRule.every(_every, weeks: _weeks),
+    _ when _unit == RepeatKind.months => RepeatRule.months(_every),
+    _ => RepeatRule.every(_every, weeks: _unit == RepeatKind.weeks),
   };
 
   void _save() => Navigator.pop<({_RepeatChoice? choice})>(context, (choice: (rule: _rule, until: _until)));
@@ -673,16 +679,23 @@ class _RepeatDialogState extends State<_RepeatDialog> {
                         _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => setState(() => _every = v)),
                         const SizedBox(width: 6),
                         _Pills(
-                          options: const ['days', 'weeks'],
-                          selected: _weeks ? 1 : 0,
-                          onSelect: (i) => setState(() => _weeks = i == 1),
+                          options: const ['days', 'weeks', 'months'],
+                          selected: [RepeatKind.days, RepeatKind.weeks, RepeatKind.months].indexOf(_unit),
+                          onSelect: (i) =>
+                              setState(() => _unit = [RepeatKind.days, RepeatKind.weeks, RepeatKind.months][i]),
                         ),
+                        if (_unit == RepeatKind.months)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Text('on the ${ordinal(widget.start.day)}', style: label),
+                          ),
                       ],
                     ),
                   },
                 ),
               ),
-              if (_kind == RepeatKind.monthly && _date > 28)
+              if ((_kind == RepeatKind.monthly && _date > 28) ||
+                  (_kind == RepeatKind.days && _unit == RepeatKind.months && widget.start.day > 28))
                 Text(
                   'In shorter months, on the last day.',
                   style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
