@@ -248,8 +248,6 @@ class _TodoRowState extends State<_TodoRow> {
         widget.scope.period(item.since) != widget.scope.period(widget.day);
     // Closing up after its repeat ended, it still shows the repeat.
     final repeat = widget.leaving ? _repeat : (_repeat = state.repeatOf(item));
-    // A lone line: no subtasks or repeat under the title.
-    final lone = item.subtasks.isEmpty && (repeat == null || item.birthday);
 
     final parentRow = Appear(
       animate: widget.fadeIn,
@@ -274,18 +272,11 @@ class _TodoRowState extends State<_TodoRow> {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: HoverFill(
                 hover: _hover,
-                drop: lone ? 1.5 : 0,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   child: Row(
                     children: [
-                      // Matter's letters sit low in their line, so on a lone
-                      // title the box drops to meet them; a line underneath
-                      // already brings it down.
-                      Transform.translate(
-                        offset: Offset(0, lone ? 1.5 : 0),
-                        child: _Check(done: done, hover: _hover, pressed: _pressed),
-                      ),
+                      _Check(done: done, hover: _hover, pressed: _pressed),
                       const SizedBox(width: 11),
                       Expanded(
                         child: AnimatedDefaultTextStyle(
@@ -653,7 +644,7 @@ class _SubtaskDrag {
   final int index;
 }
 
-/// A subtask, laid out, tinted and ticked as a lone task row is.
+/// A subtask, laid out, tinted and ticked as a task row is.
 class _SubtaskRow extends StatefulWidget {
   const _SubtaskRow({
     required this.done,
@@ -707,15 +698,11 @@ class _SubtaskRowState extends State<_SubtaskRow> {
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: HoverFill(
               hover: _hover,
-              drop: 1.5,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 child: Row(
                   children: [
-                    Transform.translate(
-                      offset: const Offset(0, 1.5),
-                      child: _Check(done: done, hover: _hover, pressed: _pressed),
-                    ),
+                    _Check(done: done, hover: _hover, pressed: _pressed),
                     const SizedBox(width: 11),
                     Expanded(
                       // The number sits on the text's baseline, the fonts'

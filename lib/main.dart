@@ -215,6 +215,13 @@ class EclipseApp extends StatelessWidget {
           theme: themeNamed(themeName),
           themeAnimationDuration: Motion.morph,
           themeAnimationCurve: Motion.morphCurve,
+          // A line's extra height goes equally above and below it, which
+          // centres the fonts' capitals in their line, and so on the tick
+          // boxes and tints beside them.
+          builder: (context, child) => DefaultTextHeightBehavior(
+            textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
+            child: child!,
+          ),
           home: Builder(
             builder: (context) => AbsorbPointer(
               absorbing: AppScope.watch(context, (s) => s.closing).closing,

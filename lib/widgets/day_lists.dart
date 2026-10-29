@@ -410,7 +410,11 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
           child: _dropTarget(
             i,
             _DayHeading(
-              parts: [(_shortDate(date, state.today), true), if (name != null) (name, i == 0), if (name != 'Today') (weekday, false)],
+              parts: [
+                (_shortDate(date, state.today), true),
+                if (name != null) (name, i == 0),
+                if (name != 'Today') (weekday, false),
+              ],
               strong: i == 0,
               first: first,
             ),
@@ -1334,7 +1338,6 @@ class _LaterRowState extends State<_LaterRow> {
             onExit: (_) => setState(() => _hover = false),
             child: HoverFill(
               hover: _hover,
-              drop: caption == null ? 1.5 : 0,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 child: Row(
