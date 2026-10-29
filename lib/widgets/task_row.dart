@@ -717,26 +717,36 @@ class _SubtaskRowState extends State<_SubtaskRow> {
                       child: _Check(done: done, hover: _hover, pressed: _pressed),
                     ),
                     const SizedBox(width: 11),
-                    if (widget.number case final number?)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: Text('$number.', style: _timeStyle(p).copyWith(height: 1.35)),
-                      ),
                     Expanded(
-                      child: AnimatedDefaultTextStyle(
-                        duration: Motion.click,
-                        curve: Motion.clickCurve,
-                        style: TextStyle(
-                          fontFamily: Fonts.body,
-                          fontSize: 14,
-                          height: 1.35,
-                          color: done
-                              ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
-                              : p.ink,
-                          decoration: done ? TextDecoration.lineThrough : null,
-                          decorationColor: p.inkMuted.withValues(alpha: 0.45),
-                        ),
-                        child: Text(widget.text),
+                      // The number sits on the text's baseline, the fonts'
+                      // differing line boxes otherwise lifting it.
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          if (widget.number case final number?)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Text('$number.', style: _timeStyle(p).copyWith(height: 1.35)),
+                            ),
+                          Expanded(
+                            child: AnimatedDefaultTextStyle(
+                              duration: Motion.click,
+                              curve: Motion.clickCurve,
+                              style: TextStyle(
+                                fontFamily: Fonts.body,
+                                fontSize: 14,
+                                height: 1.35,
+                                color: done
+                                    ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
+                                    : p.ink,
+                                decoration: done ? TextDecoration.lineThrough : null,
+                                decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                              ),
+                              child: Text(widget.text),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     if (!widget.readOnly)
