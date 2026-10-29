@@ -16,7 +16,7 @@ import 'fade_through.dart';
 import 'hover_fill.dart';
 import 'mark.dart';
 import 'note_input.dart';
-import 'ribbons.dart';
+import 'paged_dialog.dart';
 import 'setting_rows.dart';
 import 'sleep_time.dart';
 import 'smooth_task_scroll.dart';

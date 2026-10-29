@@ -18,7 +18,6 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
-import 'ribbons.dart';
 import 'setting_rows.dart';
 import 'welcome_tour.dart';
 
@@ -266,7 +265,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                           style: TextStyle(fontFamily: Fonts.display, fontSize: 28, color: p.ink),
                         ),
                       ),
-                      Ribbons(
+                      _Ribbons(
                         labels: const ['General', 'Data'],
                         selected: _ribbon,
                         onSelect: (i) => setState(() {
@@ -932,5 +931,73 @@ class _BackupRow extends StatelessWidget {
       _ => '$days days ago',
     };
     return (title, ago);
+  }
+}
+
+/// The ribbons along the top of Settings: one pill, in the done colour like
+/// the tab bar's, glides to the chosen one.
+class _Ribbons extends StatelessWidget {
+  const _Ribbons({required this.labels, required this.selected, required this.onSelect});
+
+  final List<String> labels;
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Container(
+      width: 270,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: AnimatedAlign(
+              duration: Motion.morph,
+              curve: Motion.morphCurve,
+              alignment: Alignment(labels.length == 1 ? 0 : -1 + 2 * selected / (labels.length - 1), 0),
+              child: FractionallySizedBox(
+                widthFactor: 1 / labels.length,
+                heightFactor: 1,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(17), color: p.done),
+                ),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              for (final (i, label) in labels.indexed)
+                Expanded(
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onSelect(i),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        child: Center(
+                          child: AnimatedDefaultTextStyle(
+                            duration: Motion.morph,
+                            curve: Motion.morphCurve,
+                            style: TextStyle(
+                              fontFamily: Fonts.ui,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: i == selected ? p.onAccent : p.inkMuted,
+                            ),
+                            child: Text(label),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
