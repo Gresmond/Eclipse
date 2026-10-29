@@ -211,13 +211,13 @@ void main() {
     expect(opening.toSet(), hasLength(1));
     await tester.pumpAndSettle();
 
-    // Making it a birthday folds the time and repeat away; it comes round
+    // Making it a birthday dims the Time and Repeat ribbons; it comes round
     // every year, all day.
-    expect(find.text("Doesn't repeat").hitTestable(), findsOneWidget);
     await tester.tap(find.text('Not a birthday'));
     await tester.pumpAndSettle();
-    expect(find.text("Doesn't repeat").hitTestable(), findsNothing);
-    expect(find.text('Add a time').hitTestable(), findsNothing);
+    await tester.tap(find.text('Time'));
+    await tester.pumpAndSettle();
+    expect(find.text('All day'), findsNothing, reason: 'its ribbon is dimmed');
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     final field = find.descendant(of: find.byType(FurtherAheadCard), matching: find.byType(TextField));
@@ -228,7 +228,7 @@ void main() {
     expect((repeat.rule, repeat.birthday), (const RepeatRule.yearly(1), true));
   });
 
-  testWidgets('time, repeat and its last day open in place, not in dialogs on top', (tester) async {
+  testWidgets('time and repeat are ribbons, as Settings has, with the last day folding open', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -237,32 +237,21 @@ void main() {
     final state = AppState(store, clock: () => DateTime(2026, 10, 23, 9));
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    await tester.tap(find.descendant(of: find.byType(FurtherAheadCard), matching: find.byTooltip('Pick a day')));
+    final later = find.byType(FurtherAheadCard);
+    await tester.tap(find.descendant(of: later, matching: find.byTooltip('Pick a day')));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('30'));
     final panel = find.descendant(of: find.byType(Dialog), matching: find.byType(Material)).first;
     final width = tester.getSize(panel).width;
 
-    await tester.tap(find.text('Add a time'));
+    // All day until a time is chosen.
+    await tester.tap(find.text('Time'));
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget);
     expect(find.text('Clear time'), findsNothing, reason: 'Cancel does that');
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.tap(find.text('At a time'));
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget, reason: 'Escape goes back, not out');
-    expect(find.text('Add a time'), findsNothing, reason: 'opening it set a time');
 
-    // Cancel goes back too, but puts back what the page changed.
-    await tester.tap(find.text("Doesn't repeat"));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Monthly'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget, reason: 'Cancel goes back one step');
-    expect(find.text("Doesn't repeat"), findsOneWidget, reason: 'and undoes the repeat');
-    expect(find.text('Add a time'), findsNothing, reason: 'but not the time, kept before');
-
-    await tester.tap(find.text("Doesn't repeat"));
+    await tester.tap(find.text('Repeat'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Custom'));
     await tester.pumpAndSettle();
@@ -271,17 +260,17 @@ void main() {
     expect(tester.getSize(panel).width, width, reason: 'one width throughout, as Settings');
     await tester.tap(find.text('No end date'));
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget);
-    expect(find.text('Repeat until'), findsOneWidget);
-    await tester.tap(find.text('31'));
+    expect(find.byType(Dialog), findsOneWidget, reason: 'its calendar folds open in place');
+    await tester.tap(find.text('31').hitTestable().last);
     await tester.pumpAndSettle();
-    expect(find.text('Until 31/12/2026'), findsNothing);
-    expect(find.textContaining('Until 31/'), findsOneWidget, reason: 'a day goes back to the repeat');
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Every 2 months until'), findsOneWidget, reason: 'OK keeps it and goes back');
+    expect(find.textContaining('Until 31/'), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsNothing, reason: 'and on the main page, it confirms');
+    expect(find.byType(Dialog), findsNothing, reason: 'Enter confirms, as in Settings');
+    await tester.enterText(find.descendant(of: later, matching: find.byType(TextField)), 'Rent');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    final repeat = state.repeats.single;
+    expect((repeat.rule, repeat.time, repeat.until?.day), (const RepeatRule.months(2), 9 * 60, 31));
   });
 }

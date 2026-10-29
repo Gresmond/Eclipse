@@ -1555,7 +1555,7 @@ void main() {
     await tester.enterText(find.descendant(of: week, matching: find.byType(TextField)), 'Prepare tomorrow breakfast');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(find.text("Doesn't repeat"), findsOneWidget, reason: 'Enter without a day asks for one');
+    expect(find.text('When'), findsOneWidget, reason: 'Enter without a day asks for one');
     await tester.tap(find.text('24').last);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
@@ -1627,9 +1627,9 @@ void main() {
     expect(find.descendant(of: later, matching: find.byTooltip('Repeat')), findsNothing);
     await tester.tap(find.descendant(of: later, matching: find.byTooltip('Pick a day')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text("Doesn't repeat"));
+    await tester.tap(find.text('Repeat'));
     await tester.pumpAndSettle();
-    for (final pill in ['Weekly', 'Monthly', 'Yearly', 'Custom']) {
+    for (final pill in ['Never', 'Weekly', 'Monthly', 'Yearly', 'Custom']) {
       final size = tester.getSize(find.text(pill));
       final painter = TextPainter(
         text: TextSpan(text: pill, style: tester.widget<Text>(find.text(pill)).style),
@@ -1648,9 +1648,6 @@ void main() {
     await tester.tap(find.text('Yearly'));
     await tester.pumpAndSettle();
     expect(find.textContaining('year on Oct 30'), findsOneWidget);
-    await tester.tap(find.byTooltip('Back'));
-    await tester.pumpAndSettle();
-    expect(find.text('Every year'), findsOneWidget);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     await tester.enterText(find.descendant(of: later, matching: find.byType(TextField)), 'Renew licence');

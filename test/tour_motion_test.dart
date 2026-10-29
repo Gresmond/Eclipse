@@ -217,7 +217,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(builds['SettingsDialog'] ?? 0, 0);
-    expect(builds['_Ribbons'] ?? 0, 0);
+    expect(builds['Ribbons'] ?? 0, 0);
     expect(builds['_Card'] ?? 0, 0);
     await tester.pumpAndSettle();
     state.endTour();
