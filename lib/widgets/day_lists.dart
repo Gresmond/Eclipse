@@ -254,7 +254,7 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
               caption: open == 0 && tasks.isNotEmpty ? 'All clear' : '$open open',
               trailingAtEnd: true,
               trailing: _ShowToggle(
-                icon: Icons.calendar_view_day_rounded,
+                icon: Icons.date_range_rounded,
                 what: 'days with no tasks',
                 shown: state.weekEmptyDays,
                 onPressed: state.toggleWeekEmptyDays,
