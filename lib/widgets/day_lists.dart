@@ -410,7 +410,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
           child: _dropTarget(
             i,
             _DayHeading(
-              parts: [(_shortDate(date, state.today), true), if (name != null) (name, i == 0), (weekday, false)],
+              parts: [(_shortDate(date, state.today), true), if (name != null) (name, i == 0), if (name != 'Today') (weekday, false)],
               strong: i == 0,
               first: first,
             ),

@@ -507,13 +507,7 @@ class _TodoRowState extends State<_TodoRow> {
                                           padding: const EdgeInsets.only(right: 6),
                                           child: Text(
                                             '${index + 1}.',
-                                            style: TextStyle(
-                                              fontFamily: Fonts.body,
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: p.inkMuted,
-                                              fontFeatures: const [FontFeature.tabularFigures()],
-                                            ),
+                                            style: _timeStyle(p),
                                           ),
                                         ),
                                       Expanded(
