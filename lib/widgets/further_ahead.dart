@@ -199,7 +199,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
               : 'Nothing but birthdays',
           style: TextStyle(
             fontFamily: Fonts.body,
-            fontSize: 13,
+            fontSize: 14,
             fontWeight: FontWeight.w500,
             color: p.inkMuted.withValues(alpha: 0.7),
           ),
@@ -397,7 +397,7 @@ class _LaterRowState extends State<_LaterRow> {
             child: HoverFill(
               hover: _hover,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: Row(
                   children: [
                     SizedBox(
@@ -410,7 +410,7 @@ class _LaterRowState extends State<_LaterRow> {
                               color: p.inkMuted.withValues(alpha: 0.8),
                             ),
                     ),
-                    const SizedBox(width: 11),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -438,7 +438,7 @@ class _LaterRowState extends State<_LaterRow> {
                           if (caption != null)
                             Text(
                               caption,
-                              style: TextStyle(fontFamily: Fonts.body, fontSize: 11.5, color: p.inkMuted),
+                              style: TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted),
                             ),
                         ],
                       ),
@@ -454,7 +454,7 @@ class _LaterRowState extends State<_LaterRow> {
                           children: [
                             _TaskAction(
                               tooltip: 'Edit task',
-                              icon: Icons.edit_outlined,
+                              icon: Icons.edit_rounded,
                               onPressed: () => _editTask(context, scope, item, widget.day, make: made ? null : _make),
                             ),
                             _TaskAction(

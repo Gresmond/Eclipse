@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import '../theme/oklch.dart';
 import '../widgets/tile.dart';
 
@@ -53,7 +54,7 @@ class YearView extends StatelessWidget {
     final state = AppScope.watch(context, (s) => (s.habitsRevision, s.entriesRevision, s.today));
     final header = TextStyle(
       fontSize: 12,
-      letterSpacing: 1.4,
+      letterSpacing: 1.2,
       fontWeight: FontWeight.w500,
       color: context.palette.inkMuted,
     );
@@ -70,7 +71,7 @@ class YearView extends StatelessWidget {
       }
     }
     final sleep = state.sleepHabitsFor(year, state.isFutureMonth(year, 12) ? state.today.month : 12);
-    final empty = TextStyle(fontFamily: Fonts.body, fontSize: 16, color: context.palette.inkMuted);
+    final empty = TextStyle(fontFamily: Fonts.body, fontSize: 15, color: context.palette.inkMuted);
 
     // Cells as tall as fills the window with both cards, as on a month's
     // tab: the rest is the page's and cards' padding and borders, titles,
@@ -179,7 +180,7 @@ class _Table extends StatelessWidget {
 
   static TextStyle nameStyle(Palette p, {bool total = false}) => TextStyle(
     fontFamily: Fonts.body,
-    fontSize: 14.5,
+    fontSize: 14,
     fontWeight: total ? FontWeight.w600 : FontWeight.w500,
     color: p.ink,
   );
@@ -214,7 +215,7 @@ class _Table extends StatelessWidget {
 
     Widget row(String name, List<_Score> months, {Habit? habit, bool total = false}) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           children: [
             SizedBox(
@@ -267,7 +268,7 @@ class _Table extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: ColoredBox(
-            color: p.tileBorder.withValues(alpha: 0.7),
+            color: p.border,
             child: const SizedBox(height: 1, width: double.infinity),
           ),
         ),
@@ -298,13 +299,13 @@ class _Cell extends StatelessWidget {
         ? Color.lerp(p.missed, p.other, r * 2)!
         : Color.lerp(p.other, p.done, r * 2 - 1)!;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: AnimatedContainer(
         duration: Motion.morph,
         curve: Motion.morphCurve,
         height: height,
         alignment: Alignment.center,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), color: fill),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: fill),
         child: Text(
           r == null ? '–' : '${(r * 100).round()}%',
           style: TextStyle(

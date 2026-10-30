@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/updates.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'corner_card.dart';
 import 'fade_through.dart';
 
@@ -52,7 +53,7 @@ class _Card extends StatelessWidget {
           title,
           style: TextStyle(
             fontFamily: Fonts.display,
-            fontSize: 16.5,
+            fontSize: 18,
             fontWeight: FontWeight.w500,
             letterSpacing: -0.2,
             color: p.ink,
@@ -64,13 +65,13 @@ class _Card extends StatelessWidget {
             curlyQuotes(detail),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, height: 1.4, color: p.inkMuted),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted),
           ),
         ],
         if (status == UpdateStatus.updating || status == UpdateStatus.restarting) ...[
           const SizedBox(height: 12),
           ClipRRect(
-            borderRadius: BorderRadius.circular(2),
+            borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(minHeight: 3, color: p.done, backgroundColor: p.empty),
           ),
         ],
@@ -84,7 +85,7 @@ class _Card extends StatelessWidget {
                 onTap: updater.update,
               ),
               const SizedBox(width: 8),
-              CornerButton(label: 'Later', onTap: updater.dismiss),
+              CornerButton(label: 'Not now', onTap: updater.dismiss),
             ],
           ),
         ],
@@ -92,12 +93,12 @@ class _Card extends StatelessWidget {
     );
 
     return Container(
-      width: 360,
+      width: cornerCardWidth,
       padding: const EdgeInsets.fromLTRB(18, 16, 20, 16),
       decoration: BoxDecoration(
         color: p.tile,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.9)),
+        border: Border.all(color: p.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,7 +130,7 @@ class _Mark extends StatelessWidget {
     return Container(
       width: 30,
       height: 30,
-      padding: const EdgeInsets.all(3),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: SweepGradient(colors: [...palette.gradient, palette.gradient.first]),

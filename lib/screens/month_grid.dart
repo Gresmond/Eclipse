@@ -342,7 +342,7 @@ class _MonthScore extends StatelessWidget {
         decoration: BoxDecoration(
           color: p.empty.withValues(alpha: 0.55),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: p.tileBorder.withValues(alpha: 0.6), width: 0.8),
+          border: Border.all(color: p.borderSoft),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -365,7 +365,7 @@ class _MonthScore extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, fontWeight: FontWeight.w500, color: p.inkMuted),
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.inkMuted),
             ),
           ],
         ),
@@ -425,7 +425,7 @@ class _Column extends StatelessWidget {
           minWidth: full,
           maxWidth: full,
           fit: OverflowBoxFit.deferToChild,
-          child: Opacity(opacity: Curves.easeIn.transform(fraction.clamp(0.0, 1.0)), child: child),
+          child: Opacity(opacity: Motion.fadeInCurve.transform(fraction.clamp(0.0, 1.0)), child: child),
         ),
       ),
     );
@@ -465,7 +465,7 @@ class _ColumnsDelegate extends FlowDelegate {
         transform: Matrix4.translationValues((d - 1) * col + col / 2, height / 2, 0)
           ..scaleByDouble(scale, scale, 1, 1)
           ..translateByDouble(-size.width / 2, -size.height / 2, 0, 1),
-        opacity: Curves.easeIn.transform(fraction),
+        opacity: Motion.fadeInCurve.transform(fraction),
       );
     }
   }

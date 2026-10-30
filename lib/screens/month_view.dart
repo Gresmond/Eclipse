@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart' show OverflowBoxFit;
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import '../widgets/appear.dart';
 import '../widgets/confirm_on_enter.dart';
 import '../widgets/day_toggles.dart';
@@ -83,7 +84,7 @@ class _MonthViewState extends State<MonthView> {
         child: Center(
           child: Text(
             'No rituals yet. Add some with Edit rituals.',
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 17, color: p.inkMuted),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 18, color: p.inkMuted),
           ),
         ),
       );
@@ -91,7 +92,7 @@ class _MonthViewState extends State<MonthView> {
       body = _Grid(year: year, month: month, habits: habits, nameWidth: _nameWidth, maxCell: maxCell);
     }
 
-    final header = TextStyle(fontSize: 12, letterSpacing: 1.4, fontWeight: FontWeight.w500, color: p.inkMuted);
+    final header = TextStyle(fontSize: 12, letterSpacing: 1.2, fontWeight: FontWeight.w500, color: p.inkMuted);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
@@ -171,7 +172,7 @@ class _MonthViewState extends State<MonthView> {
         curve: Motion.morphCurve,
         child: _PillButton(
           label: editing ? 'Done' : label,
-          icon: editing ? Icons.check_rounded : Icons.edit_outlined,
+          icon: editing ? Icons.check_rounded : Icons.edit_rounded,
           filled: editing,
           onTap: onTap,
         ),
@@ -275,7 +276,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
     final height = cellSize + 5;
     final nameStyle = TextStyle(
       fontFamily: Fonts.body,
-      fontSize: 14.5,
+      fontSize: 14,
       height: 1.15,
       fontWeight: FontWeight.w500,
       color: p.ink,
@@ -376,7 +377,7 @@ class _PillButton extends StatelessWidget {
         child: AnimatedContainer(
           duration: Motion.hover,
           curve: Motion.hoverCurve,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(30),
             gradient: filled ? LinearGradient(colors: p.gradient) : null,
@@ -385,7 +386,7 @@ class _PillButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 15, color: fg),
+              Icon(icon, size: 16, color: fg),
               const SizedBox(width: 8),
               Text(
                 label,
@@ -437,8 +438,8 @@ class _DayHeader extends StatelessWidget {
               // every side with corners following the band's, on every day.
               return Container(
                 width: double.infinity,
-                margin: const EdgeInsets.symmetric(horizontal: 5),
-                padding: const EdgeInsets.symmetric(vertical: 7),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   color: p.today.withValues(alpha: t),
@@ -467,18 +468,18 @@ class _DayHeader extends StatelessWidget {
                         key: ValueKey(letter),
                         style: TextStyle(
                           fontFamily: Fonts.ui,
-                          fontSize: 11,
+                          fontSize: 12,
                           color: Color.lerp(letterFg, p.onToday, t)!.withValues(alpha: 0.8),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Text(
                       '${day.day}',
                       style: TextStyle(
                         fontFamily: Fonts.ui,
-                        fontSize: 13.5,
+                        fontSize: 14,
                         color: Color.lerp(numberFg, p.onToday, t),
                         fontWeight: FontWeight.w600,
                         fontFeatures: const [FontFeature.tabularFigures()],

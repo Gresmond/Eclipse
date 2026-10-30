@@ -273,11 +273,11 @@ class _TodoRowState extends State<_TodoRow> {
               child: HoverFill(
                 hover: _hover,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   child: Row(
                     children: [
                       _Check(done: done, hover: _hover, pressed: _pressed),
-                      const SizedBox(width: 11),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: AnimatedDefaultTextStyle(
                           duration: Motion.click,
@@ -312,7 +312,7 @@ class _TodoRowState extends State<_TodoRow> {
                                   curve: Motion.hoverCurve,
                                   decoration: BoxDecoration(
                                     color: p.accent.withValues(alpha: candidates.isEmpty ? 0 : 0.18),
-                                    borderRadius: BorderRadius.circular(6),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text.rich(
                                     TextSpan(
@@ -333,21 +333,21 @@ class _TodoRowState extends State<_TodoRow> {
                               if (item.subtasks.isNotEmpty)
                                 Text(
                                   '${item.subtasks.where((child) => child.done).length}/${item.subtasks.length} complete',
-                                  style: TextStyle(fontSize: 11.5, color: p.inkMuted, decoration: TextDecoration.none),
+                                  style: TextStyle(fontSize: 12, color: p.inkMuted, decoration: TextDecoration.none),
                                 ),
                               // A birthday looks like any other task here.
                               if (repeat != null && !item.birthday)
                                 Row(
                                   children: [
-                                    Icon(Icons.repeat_rounded, size: 11, color: p.inkMuted),
-                                    const SizedBox(width: 3),
+                                    Icon(Icons.repeat_rounded, size: 12, color: p.inkMuted),
+                                    const SizedBox(width: 4),
                                     Flexible(
                                       child: Text(
                                         repeat.rule.label,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          fontSize: 11.5,
+                                          fontSize: 12,
                                           color: p.inkMuted,
                                           decoration: TextDecoration.none,
                                         ),
@@ -362,7 +362,7 @@ class _TodoRowState extends State<_TodoRow> {
                       if (carried) ...[
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: p.missed.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(20),
@@ -370,13 +370,13 @@ class _TodoRowState extends State<_TodoRow> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.history_rounded, size: 11, color: p.missed),
-                              const SizedBox(width: 3),
+                              Icon(Icons.history_rounded, size: 12, color: p.missed),
+                              const SizedBox(width: 4),
                               Text(
                                 dayMonth(item.since),
                                 style: TextStyle(
                                   fontFamily: Fonts.ui,
-                                  fontSize: 11.5,
+                                  fontSize: 12,
                                   color: p.missed,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -410,7 +410,7 @@ class _TodoRowState extends State<_TodoRow> {
                                         ),
                                         _TaskAction(
                                           tooltip: 'Edit task',
-                                          icon: Icons.edit_outlined,
+                                          icon: Icons.edit_rounded,
                                           onPressed: () =>
                                               _editTask(context, widget.scope, item, widget.day, make: widget.make),
                                         ),
@@ -699,11 +699,11 @@ class _SubtaskRowState extends State<_SubtaskRow> {
             child: HoverFill(
               hover: _hover,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: Row(
                   children: [
                     _Check(done: done, hover: _hover, pressed: _pressed),
-                    const SizedBox(width: 11),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: AnimatedDefaultTextStyle(
                         duration: Motion.click,
@@ -752,7 +752,7 @@ class _SubtaskRowState extends State<_SubtaskRow> {
                                     children: [
                                       _TaskAction(
                                         tooltip: 'Edit subtask',
-                                        icon: Icons.edit_outlined,
+                                        icon: Icons.edit_rounded,
                                         onPressed: widget.onEdit,
                                       ),
                                       _TaskAction(

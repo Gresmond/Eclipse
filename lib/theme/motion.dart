@@ -15,6 +15,18 @@ abstract final class Motion {
   static const morph = Duration(milliseconds: 240);
   static const morphCurve = Curves.easeInOutCubic;
 
+  /// A page or month fading in under another: plain ease-in.
+  static const fadeInCurve = Curves.easeIn;
+
+  /// The progress ring's overshoot as it completes.
+  static const bounce = Interval(0.55, 1.0, curve: Curves.easeInOutSine);
+
+  /// How long hovering waits before a tooltip shows.
+  static const tooltipDelay = Duration(milliseconds: 600);
+
+  /// How long a notice (the undo card, a sync update) stays up.
+  static const notice = Duration(seconds: 6);
+
   /// Reorder overlaps the tick, rather than delaying movement until it lands.
   static const reorder = morph;
   static const scroll = Duration(milliseconds: 120);

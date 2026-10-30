@@ -300,7 +300,7 @@ class _RepeatRow extends StatelessWidget {
     final repeat = this.repeat;
     return _DetailRow(
       icon: Icons.repeat_rounded,
-      label: repeat == null ? "Doesn't repeat" : _repeatLabel(repeat),
+      label: repeat == null ? 'Doesn’t repeat' : _repeatLabel(repeat),
       onPressed: onOpen,
       clear: 'Stop repeating',
       onClear: repeat == null ? null : onClear,
@@ -494,7 +494,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
         if (dated) ...[
           const SizedBox(height: 16),
           TextButton.icon(
-            icon: const Icon(Icons.calendar_today_outlined, size: 18),
+            icon: const Icon(Icons.calendar_today_rounded, size: 18),
             label: Text(_due == null ? 'Pick a due date' : 'Due ${dayMonth(_due!)}/${_due!.year}'),
             onPressed: () => _open(_Page.day),
           ),
@@ -561,7 +561,7 @@ class _SubtaskDialogState extends State<_SubtaskDialog> {
                     Expanded(
                       child: Text(
                         'Number the subtasks',
-                        style: TextStyle(fontFamily: Fonts.ui, fontSize: 14.5, color: context.palette.ink),
+                        style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: context.palette.ink),
                       ),
                     ),
                     SettingToggle(on: _numbered),

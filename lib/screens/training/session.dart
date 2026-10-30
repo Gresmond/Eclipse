@@ -54,7 +54,7 @@ class _SessionTile extends StatelessWidget {
           if (session.isEmpty && log.exercises.isEmpty)
             Text(
               'Type an exercise, pick what it trains, then add your sets.',
-              style: _label(p, size: 13, color: p.inkMuted),
+              style: _label(p, size: 14, color: p.inkMuted),
             ),
         ],
       ),
@@ -83,7 +83,7 @@ class _ExerciseBlock extends StatelessWidget {
             width: 3,
             height: 30.0 + sets.length * 36,
             margin: const EdgeInsets.only(right: 12, top: 2),
-            decoration: BoxDecoration(color: colour, borderRadius: BorderRadius.circular(2)),
+            decoration: BoxDecoration(color: colour, borderRadius: BorderRadius.circular(4)),
           ),
           Expanded(
             child: Column(
@@ -130,7 +130,7 @@ class _ExerciseBlock extends StatelessWidget {
                     const Spacer(),
                     _IconAction(
                       icon: Icons.close_rounded,
-                      tooltip: 'Take off this session',
+                      tooltip: 'Remove this session',
                       onTap: () => log.removeFromDay(day, exercise),
                     ),
                   ],
@@ -205,7 +205,7 @@ class _SetRowState extends State<_SetRow> {
           children: [
             SizedBox(
               width: 22,
-              child: Text('${widget.index + 1}', style: _label(p, size: 13, color: p.inkMuted)),
+              child: Text('${widget.index + 1}', style: _label(p, size: 14, color: p.inkMuted)),
             ),
             if (widget.bodyweight)
               SizedBox(
@@ -226,7 +226,7 @@ class _SetRowState extends State<_SetRow> {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Text('kg', style: _label(p, size: 13.5, color: p.inkMuted)),
+                child: Text('kg', style: _label(p, size: 14, color: p.inkMuted)),
               ),
               Text('×', style: _label(p, size: 14, color: p.inkMuted)),
               const SizedBox(width: 8),
@@ -244,14 +244,14 @@ class _SetRowState extends State<_SetRow> {
             ),
             Padding(
               padding: const EdgeInsets.only(left: 6),
-              child: Text('reps', style: _label(p, size: 13.5, color: p.inkMuted)),
+              child: Text('reps', style: _label(p, size: 14, color: p.inkMuted)),
             ),
             if (s.reps > maxEstimateReps)
               Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: Text(
                   'Over $maxEstimateReps reps, so not charted',
-                  style: _label(p, size: 12.5, color: p.inkMuted),
+                  style: _label(p, size: 12, color: p.inkMuted),
                 ),
               ),
             const Spacer(),
@@ -259,7 +259,7 @@ class _SetRowState extends State<_SetRow> {
               opacity: _hover ? 1 : 0,
               duration: Motion.hover,
               curve: Motion.hoverCurve,
-              child: _IconAction(icon: Icons.remove_rounded, tooltip: 'Delete set', onTap: () => log.deleteSet(s)),
+              child: _IconAction(icon: Icons.remove_rounded, tooltip: 'Remove set', onTap: () => log.deleteSet(s)),
             ),
           ],
         ),
@@ -297,13 +297,13 @@ class _NumberBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: p.empty.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.8), width: 0.8),
+        border: Border.all(color: p.border),
       ),
       child: TextField(
         controller: controller,
         focusNode: focusNode,
         autofocus: autofocus,
-        style: _label(p, size: 14.5, weight: FontWeight.w600),
+        style: _label(p, size: 14, weight: FontWeight.w600),
         cursorColor: p.accent,
         keyboardType: TextInputType.numberWithOptions(decimal: decimal),
         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(decimal ? r'^\d{0,4}([.,]\d{0,2})?' : r'^\d{0,3}'))],
@@ -358,7 +358,7 @@ class _InlineNameState extends State<_InlineName> {
     final p = context.palette;
     final style = TextStyle(
       fontFamily: Fonts.display,
-      fontSize: 16.5,
+      fontSize: 18,
       fontWeight: FontWeight.w600,
       color: p.ink,
       letterSpacing: -0.2,
@@ -412,15 +412,15 @@ class _GroupPill extends StatelessWidget {
         child: AnimatedContainer(
           duration: Motion.hover,
           curve: Motion.hoverCurve,
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: colour.withValues(alpha: selected ? 0.2 : 0.06),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: colour.withValues(alpha: selected ? 0.6 : 0.25), width: 0.8),
+            border: Border.all(color: colour.withValues(alpha: selected ? 0.6 : 0.25)),
           ),
           child: Text(
             group.label.toUpperCase(),
-            style: _label(p, size: 11.5, weight: FontWeight.w700, color: colour).copyWith(letterSpacing: 1.1),
+            style: _label(p, size: 12, weight: FontWeight.w700, color: colour).copyWith(letterSpacing: 1.2),
           ),
         ),
       ),
@@ -501,8 +501,8 @@ class _AddExerciseState extends State<_AddExercise> {
           alignment: Alignment.centerLeft,
           decoration: BoxDecoration(
             color: p.empty.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: p.tileBorder.withValues(alpha: 0.8), width: 0.8),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: p.border),
           ),
           child: Row(
             children: [
@@ -513,12 +513,12 @@ class _AddExerciseState extends State<_AddExercise> {
                   inputFormatters: const [NoteInputFormatter()],
                   controller: _text,
                   focusNode: _focus,
-                  style: _label(p, size: 14.5),
+                  style: _label(p, size: 14),
                   cursorColor: p.accent,
                   textCapitalization: TextCapitalization.sentences,
                   decoration: InputDecoration.collapsed(
                     hintText: 'Add an exercise',
-                    hintStyle: _label(p, size: 14.5, color: p.inkMuted),
+                    hintStyle: _label(p, size: 14, color: p.inkMuted),
                   ),
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) {
@@ -544,7 +544,7 @@ class _AddExerciseState extends State<_AddExercise> {
           const SizedBox(height: 10),
           Row(
             children: [
-              Text('New: what does “${_text.text.trim()}” train?', style: _label(p, size: 13.5, color: p.inkMuted)),
+              Text('New: what does “${_text.text.trim()}” train?', style: _label(p, size: 14, color: p.inkMuted)),
               const SizedBox(width: 10),
               // Leaves the cursor in the name.
               TextFieldTapRegion(
@@ -591,15 +591,15 @@ class _Chip extends StatelessWidget {
         child: AnimatedContainer(
           duration: Motion.click,
           curve: Motion.clickCurve,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             color: colour.withValues(alpha: on ? 0.16 : 0),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: colour.withValues(alpha: on ? 0.55 : 0.3), width: 0.8),
+            border: Border.all(color: colour.withValues(alpha: on ? 0.55 : 0.3)),
           ),
           child: Text(
             label,
-            style: _label(p, size: 13.5, weight: FontWeight.w600, color: on ? p.ink : p.inkMuted),
+            style: _label(p, size: 14, weight: FontWeight.w600, color: on ? p.ink : p.inkMuted),
           ),
         ),
       ),
@@ -627,10 +627,10 @@ class _TextButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (icon != null) ...[Icon(icon, size: 15, color: p.accent), const SizedBox(width: 4)],
+              if (icon != null) ...[Icon(icon, size: 16, color: p.accent), const SizedBox(width: 4)],
               Text(
                 label,
-                style: _label(p, size: 13.5, weight: FontWeight.w600, color: p.accent),
+                style: _label(p, size: 14, weight: FontWeight.w600, color: p.accent),
               ),
             ],
           ),

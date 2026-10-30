@@ -28,7 +28,7 @@ class DayToggles extends StatelessWidget {
       children: [
         for (var weekday = 1; weekday <= 7; weekday++)
           Padding(
-            padding: const EdgeInsets.only(right: 5),
+            padding: const EdgeInsets.only(right: 4),
             child: Builder(
               builder: (context) {
                 final bit = weekdayBit(weekday);

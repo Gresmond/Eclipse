@@ -174,7 +174,7 @@ class _RenderSlidingColumn extends RenderBox
     }
     for (final row in lifted) {
       final rect = (offset + (row.parentData! as _SlideParentData).offset) & row.size;
-      final rrect = RRect.fromRectAndRadius(rect.deflate(1), const Radius.circular(10));
+      final rrect = RRect.fromRectAndRadius(rect.deflate(1), const Radius.circular(12));
       context.canvas.drawRRect(rrect, Paint()..color = _lift);
       context.paintChild(row, rect.topLeft);
     }
@@ -313,7 +313,7 @@ class _RenderGlideRow extends RenderProxyBox {
     _translation = Offset(0, y - target);
     if (_translation.dy.abs() > 0.1) {
       context.canvas.drawRRect(
-        RRect.fromRectAndRadius((offset + _translation) & size, const Radius.circular(10)),
+        RRect.fromRectAndRadius((offset + _translation) & size, const Radius.circular(12)),
         Paint()..color = color,
       );
     }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'confirm_on_enter.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
@@ -102,11 +103,11 @@ class TimePill extends StatelessWidget {
       builder: (hover) => AnimatedContainer(
         duration: Motion.hover,
         curve: Motion.hoverCurve,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           color: hover ? p.empty : p.tile.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: p.tileBorder.withValues(alpha: 0.8)),
+          border: Border.all(color: p.border),
         ),
         child: FadeThrough(
           duration: Motion.click,
@@ -204,7 +205,7 @@ class _TimeWheelState extends State<TimeWheel> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final style = SleepName.timeStyle(p).copyWith(fontSize: 20, fontWeight: FontWeight.w600, color: p.ink);
+    final style = SleepName.timeStyle(p).copyWith(fontSize: 22, fontWeight: FontWeight.w600, color: p.ink);
 
     Widget wheel({
       required FixedExtentScrollController controller,

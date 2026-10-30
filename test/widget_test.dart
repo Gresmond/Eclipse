@@ -1557,7 +1557,7 @@ void main() {
     await tester.enterText(find.descendant(of: week, matching: find.byType(TextField)).last, 'Prepare tomorrow breakfast');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(find.text("Doesn't repeat"), findsOneWidget, reason: 'Enter without a day asks for one');
+    expect(find.text('Doesn’t repeat'), findsOneWidget, reason: 'Enter without a day asks for one');
     await tester.tap(find.text('24').last);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
@@ -1629,7 +1629,7 @@ void main() {
     expect(find.descendant(of: later, matching: find.byTooltip('Repeat')), findsNothing);
     await tester.tap(find.descendant(of: later, matching: find.byTooltip('Pick a day')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text("Doesn't repeat"));
+    await tester.tap(find.text('Doesn’t repeat'));
     await tester.pumpAndSettle();
     for (final pill in ['Weekly', 'Monthly', 'Yearly', 'Custom']) {
       final size = tester.getSize(find.text(pill));
@@ -1935,7 +1935,7 @@ void main() {
     await _shoot(tester, 'update_failed');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Later'));
+    await tester.tap(find.text('Not now'));
     await tester.pumpAndSettle();
     expect(updater.status, UpdateStatus.none);
   });

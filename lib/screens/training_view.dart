@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import '../theme/oklch.dart';
 import '../training.dart';
 import '../training_log.dart';
@@ -106,7 +107,7 @@ class _Header extends StatelessWidget {
             children: [
               Text(
                 'PROGRESS',
-                style: _label(p, size: 13, weight: FontWeight.w600, color: p.inkMuted).copyWith(letterSpacing: 1.6),
+                style: _label(p, size: 14, weight: FontWeight.w600, color: p.inkMuted).copyWith(letterSpacing: 1.2),
               ),
               const SizedBox(height: 4),
               Text(
@@ -150,7 +151,7 @@ class _HistoryTile extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: days.isEmpty
-                ? Text('Sessions you log will be listed here.', style: _label(p, size: 13.5, color: p.inkMuted))
+                ? Text('Sessions you log will be listed here.', style: _label(p, size: 14, color: p.inkMuted))
                 : ListView(
                     padding: EdgeInsets.zero,
                     children: [
@@ -195,7 +196,7 @@ class _HistoryRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? p.today.withValues(alpha: 0.35) : p.empty.withValues(alpha: hover ? 0.5 : 0),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,7 +205,7 @@ class _HistoryRow extends StatelessWidget {
               width: 88,
               child: Text(
                 '${weekdayNames[d.weekday - 1].substring(0, 3)} ${_shortDate(d)}',
-                style: _label(p, size: 13.5, weight: FontWeight.w600),
+                style: _label(p, size: 14, weight: FontWeight.w600),
               ),
             ),
             Expanded(
@@ -221,8 +222,8 @@ class _HistoryRow extends StatelessWidget {
                           height: 6,
                           decoration: BoxDecoration(color: groupColour(e.group, p), shape: BoxShape.circle),
                         ),
-                        const SizedBox(width: 5),
-                        Text('${e.name} ×${sets.length}', style: _label(p, size: 13, color: p.inkMuted)),
+                        const SizedBox(width: 4),
+                        Text('${e.name} ×${sets.length}', style: _label(p, size: 14, color: p.inkMuted)),
                       ],
                     ),
                 ],

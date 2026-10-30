@@ -48,7 +48,7 @@ class _RitualEditorState extends State<_RitualEditor> {
               color: p.tile,
               elevation: 0,
               shadowColor: p.shadow.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               child: child,
             ),
             children: [
@@ -61,8 +61,8 @@ class _RitualEditorState extends State<_RitualEditor> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
             decoration: BoxDecoration(
               color: p.empty.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: p.tileBorder.withValues(alpha: 0.6)),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: p.borderSoft),
             ),
             child: Row(
               children: [
@@ -174,12 +174,12 @@ class _SleepNoteRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2.5),
+      margin: const EdgeInsets.symmetric(vertical: 2),
       padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
       decoration: BoxDecoration(
         color: p.empty.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.5)),
+        border: Border.all(color: p.borderSoft),
       ),
       child: Row(
         children: [
@@ -272,12 +272,12 @@ class _EditableRowState extends State<_EditableRow> {
     final p = context.palette;
     final state = AppScope.of(context);
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2.5),
+      margin: const EdgeInsets.symmetric(vertical: 2),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: p.empty.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.5)),
+        border: Border.all(color: p.borderSoft),
       ),
       child: Row(
         children: [
@@ -326,7 +326,7 @@ class _EditableRowState extends State<_EditableRow> {
                   maxLines: null,
                   keyboardType: TextInputType.text,
                   textInputAction: TextInputAction.done,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,

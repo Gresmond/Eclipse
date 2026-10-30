@@ -9,6 +9,7 @@ import '../data/backups.dart';
 import '../data/updates.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import '../widgets/setting_rows.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/app_dialog.dart';
@@ -144,7 +145,7 @@ class _Header extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: p.tile.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
+                  border: Border.all(color: p.border),
                 ),
                 child: AnimatedSize(
                   duration: Motion.morph,
@@ -173,7 +174,7 @@ class _Header extends StatelessWidget {
                               color: p.inkMuted.withValues(alpha: 0.8),
                             ),
                           ),
-                          const SizedBox(height: 3),
+                          const SizedBox(height: 4),
                           Text(title, style: titleStyle),
                         ],
                       ),
@@ -196,10 +197,10 @@ class _Header extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: p.tile.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
+                    border: Border.all(color: p.border),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(26),
+                    borderRadius: BorderRadius.circular(24),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       clipBehavior: Clip.none,
@@ -395,7 +396,7 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
       width: 1,
       height: 18,
       margin: const EdgeInsets.symmetric(horizontal: 6),
-      color: p.tileBorder.withValues(alpha: 0.8),
+      color: p.border,
     );
 
     return AnimatedBuilder(animation: _relabel, builder: (context, _) => _bar(p, pill, divider));
@@ -497,7 +498,7 @@ class _Tab extends StatelessWidget {
   }
 
   static TextStyle _style(FontWeight weight, Color color) =>
-      TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, fontWeight: weight, color: color, letterSpacing: 0.2);
+      TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: weight, color: color, letterSpacing: 0.2);
 
   /// Set for a tab whose label changes: the label area eases to this width
   /// while the old label fades through to the new one.
@@ -577,7 +578,7 @@ class _YearSwitcher extends StatelessWidget {
       decoration: BoxDecoration(
         color: p.tile.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
+        border: Border.all(color: p.border),
       ),
       child: Row(
         children: [
@@ -640,10 +641,10 @@ class _SettingsButton extends StatelessWidget {
         behavior: SnackBarBehavior.floating,
         width: 520,
         backgroundColor: p.ink,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         content: Text(
           'Restored $from. What you had before is saved as a backup too.',
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 14.5, color: p.tile),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.tile),
         ),
       ),
     );
@@ -667,9 +668,9 @@ class _SettingsButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: p.tile.withValues(alpha: 0.8),
               shape: BoxShape.circle,
-              border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
+              border: Border.all(color: p.border),
             ),
-            child: Icon(Icons.settings_rounded, size: 21, color: p.inkMuted),
+            child: Icon(Icons.settings_rounded, size: 22, color: p.inkMuted),
           ),
         ),
       ),
@@ -696,7 +697,7 @@ class _ThemeButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: p.tile.withValues(alpha: 0.8),
               shape: BoxShape.circle,
-              border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
+              border: Border.all(color: p.border),
             ),
             child: _Swatch(palette: p, size: 36),
           ),
@@ -746,7 +747,7 @@ class _AppearanceMenu extends StatelessWidget {
                     width: 8,
                     height: 8,
                     margin: const EdgeInsets.only(left: 4),
-                    decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(2.5)),
+                    decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(4)),
                   ),
                 SizedBox(
                   width: 32,

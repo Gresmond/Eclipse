@@ -314,7 +314,7 @@ class _DayHeading extends StatelessWidget {
             style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w700, color: p.ink),
           ),
           const SizedBox(height: 6),
-          Container(height: 1, color: p.tileBorder.withValues(alpha: 0.6)),
+          Container(height: 1, color: p.borderSoft),
         ],
       ),
     );

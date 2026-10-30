@@ -76,7 +76,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final label = TextStyle(fontFamily: Fonts.ui, fontSize: 14.5, color: p.ink);
+    final label = TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.ink);
     final until = widget.current?.until;
     return Padding(
       padding: const EdgeInsets.only(left: 8),
@@ -152,12 +152,12 @@ class _RepeatPanelState extends State<_RepeatPanel> {
               (_kind == RepeatKind.days && _unit == RepeatKind.months && widget.start.day > 28))
             Text(
               'In shorter months, on the last day.',
-              style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.inkMuted),
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.inkMuted),
             ),
           if (_kind == RepeatKind.yearly && widget.start.month == 2 && widget.start.day == 29)
             Text(
               'Only in leap years.',
-              style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.inkMuted),
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.inkMuted),
             ),
           const SizedBox(height: 10),
           Row(
@@ -166,7 +166,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
-                    icon: const Icon(Icons.event_outlined, size: 18),
+                    icon: const Icon(Icons.event_rounded, size: 18),
                     label: Text(until == null ? 'No end date' : 'Until ${dayMonth(until)}/${until.year}'),
                     onPressed: widget.onPickUntil,
                   ),
@@ -210,11 +210,11 @@ class _Pills extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Container(
-      padding: const EdgeInsets.all(3),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: p.empty.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.85)),
+        border: Border.all(color: p.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -231,7 +231,7 @@ class _Pills extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: p.done.withValues(alpha: i == selected ? 1 : 0),
-                    borderRadius: BorderRadius.circular(17),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
                     option,
@@ -276,7 +276,7 @@ class _Stepper extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: Fonts.ui,
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
               color: p.ink,
               fontFeatures: const [FontFeature.tabularFigures()],

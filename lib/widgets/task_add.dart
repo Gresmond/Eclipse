@@ -70,7 +70,7 @@ class _DatedAddState extends State<_DatedAdd> {
         focus: _focus,
         leading: _TaskAction(
           tooltip: due == null ? 'Pick a day' : 'Due ${dayMonth(due)}/${due.year}, click to change',
-          icon: due == null ? Icons.calendar_today_outlined : Icons.event_available_outlined,
+          icon: due == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
           onPressed: _pick,
         ),
         trailing: Padding(
@@ -89,7 +89,7 @@ class _DatedAddState extends State<_DatedAdd> {
               if (repeat != null) ...[
                 const SizedBox(width: 8),
                 Icon(birthday ? _birthdayIcon : Icons.repeat_rounded, size: 12, color: p.accent),
-                const SizedBox(width: 3),
+                const SizedBox(width: 4),
                 Flexible(
                   child: Text(
                     birthday ? 'Birthday' : repeat.rule.label,
@@ -201,7 +201,7 @@ class _AddTaskState extends State<_AddTask> {
             child: HoverFill(
               hover: _hover || _focus.hasFocus || _picking,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: Row(
                   children: [
                     // Its buttons leave the cursor in the field; the + lines
@@ -216,7 +216,7 @@ class _AddTaskState extends State<_AddTask> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 11),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: TextField(
                         controller: _controller,
@@ -290,7 +290,7 @@ class _Field extends StatelessWidget {
         padding: const EdgeInsets.only(left: 10, right: 4),
         decoration: BoxDecoration(
           color: p.empty.withValues(alpha: focus.hasFocus ? 0.65 : 0.45),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: focus.hasFocus ? p.accent.withValues(alpha: 0.45) : Colors.transparent),
         ),
         child: Row(
@@ -304,14 +304,14 @@ class _Field extends StatelessWidget {
                 focusNode: focus,
                 textCapitalization: TextCapitalization.sentences,
                 inputFormatters: const [NoteInputFormatter()],
-                style: TextStyle(fontFamily: Fonts.body, fontSize: 14.5, color: p.ink),
+                style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.ink),
                 cursorColor: p.accent,
                 decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
                   hintText: 'Add task',
                   hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 9),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
                 ),
                 onSubmitted: (_) => onSubmitted(),
               ),

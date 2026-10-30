@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../app_state.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'corner_card.dart';
 
 /// Over everything, dialogs too: the card naming what was just removed,
@@ -15,7 +16,7 @@ class UndoLayer extends StatefulWidget {
 
   final Widget child;
 
-  static const cardTime = Duration(seconds: 6);
+  static const cardTime = Motion.notice;
 
   @override
   State<UndoLayer> createState() => _UndoLayerState();
@@ -124,7 +125,7 @@ class _Card extends StatelessWidget {
         decoration: BoxDecoration(
           color: p.tile,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: p.tileBorder.withValues(alpha: 0.9)),
+          border: Border.all(color: p.border),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -134,7 +135,7 @@ class _Card extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontFamily: Fonts.ui, fontSize: 14.5, fontWeight: FontWeight.w500, color: p.ink),
+                style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.ink),
               ),
             ),
             const SizedBox(width: 16),

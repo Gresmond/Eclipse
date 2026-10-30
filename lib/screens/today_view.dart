@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/note_input.dart';
@@ -345,7 +346,7 @@ class _HoverHighlight extends StatelessWidget {
                     opacity: hover ? 0 : 1,
                     duration: Motion.hover,
                     curve: Motion.hoverCurve,
-                    child: ColoredBox(color: p.tileBorder.withValues(alpha: 0.5), child: const SizedBox(height: 1)),
+                    child: ColoredBox(color: p.borderSoft, child: const SizedBox(height: 1)),
                   ),
                 ),
               ),
@@ -368,7 +369,7 @@ class _HabitRow extends StatelessWidget {
     this.names,
   });
 
-  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 14.5, fontWeight: FontWeight.w500);
+  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 14, fontWeight: FontWeight.w500);
 
   /// Long names wrap onto up to this many lines before they're cut short.
   static const nameLines = 4;
@@ -383,7 +384,7 @@ class _HabitRow extends StatelessWidget {
 
   static TextStyle streakStyle(Color color) => TextStyle(
     fontFamily: Fonts.ui,
-    fontSize: 12.5,
+    fontSize: 12,
     fontWeight: FontWeight.w700,
     color: color,
     fontFeatures: const [FontFeature.tabularFigures()],
@@ -471,7 +472,7 @@ class _HabitRow extends StatelessWidget {
                   child: streak > 0
                       ? Container(
                           key: ValueKey(streak),
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: p.accent.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
@@ -480,7 +481,7 @@ class _HabitRow extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.local_fire_department_rounded, size: 12, color: p.accent),
-                              const SizedBox(width: 1.5),
+                              const SizedBox(width: 2),
                               Text(
                                 '$streak',
                                 style: streakStyle(p.accent),
@@ -548,11 +549,11 @@ class _WeekTrail extends StatelessWidget {
       duration: Motion.morph,
       curve: Motion.morphCurve,
       builder: (context, r, _) => Container(
-        margin: const EdgeInsets.only(left: 3),
+        margin: const EdgeInsets.only(left: 4),
         width: 6,
         height: 8,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(2.5),
+          borderRadius: BorderRadius.circular(4),
           color: switch (status) {
             null => Colors.transparent,
             HabitStatus.none => p.empty.withValues(alpha: 1 - 0.55 * r),

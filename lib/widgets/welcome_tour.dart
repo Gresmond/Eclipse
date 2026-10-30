@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../app_state.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'fade_through.dart';
 import 'hover_fill.dart';
 import 'settings_dialog.dart';
@@ -448,7 +449,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
                                     shadowColor: p.shadow.withValues(alpha: 0.15),
                                     surfaceTintColor: Colors.transparent,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(18),
+                                      borderRadius: BorderRadius.circular(20),
                                       side: BorderSide(color: p.tileBorder),
                                     ),
                                     clipBehavior: Clip.antiAlias,
@@ -638,7 +639,7 @@ class _Card extends StatelessWidget {
       decoration: BoxDecoration(
         color: p.tile,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.9)),
+        border: Border.all(color: p.border),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -652,9 +653,9 @@ class _Card extends StatelessWidget {
                   curve: Motion.morphCurve,
                   width: i == index ? 20 : 6,
                   height: 6,
-                  margin: const EdgeInsets.only(right: 5),
+                  margin: const EdgeInsets.only(right: 4),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(3),
+                    borderRadius: BorderRadius.circular(4),
                     color: i < index ? p.done : (i == index ? null : p.empty),
                     gradient: i == index ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
                   ),
@@ -696,7 +697,7 @@ class _StepBody extends StatelessWidget {
           step.title,
           style: TextStyle(
             fontFamily: Fonts.display,
-            fontSize: welcome ? 30 : 22,
+            fontSize: welcome ? 28 : 22,
             fontWeight: FontWeight.w600,
             letterSpacing: welcome ? -0.9 : -0.5,
             height: 1.1,
@@ -736,7 +737,7 @@ class _TextButton extends StatelessWidget {
       builder: (hover) => AnimatedContainer(
         duration: Motion.hover,
         curve: Motion.hoverCurve,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: p.empty.withValues(alpha: hover ? 0.8 : 0),
           borderRadius: BorderRadius.circular(20),
@@ -767,7 +768,7 @@ class _PillButton extends StatelessWidget {
         duration: Motion.hover,
         curve: Motion.hoverCurve,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             gradient: LinearGradient(colors: p.gradient.skip(1).toList()),

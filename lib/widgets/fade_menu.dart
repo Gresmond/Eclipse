@@ -87,7 +87,7 @@ class _FadeMenuRoute extends PopupRoute<void> {
             shadowColor: p.shadow.withValues(alpha: 0.15),
             surfaceTintColor: Colors.transparent,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(20),
               side: BorderSide(color: p.tileBorder),
             ),
             clipBehavior: Clip.antiAlias,

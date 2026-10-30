@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'app_dialog.dart';
 import 'confirm_on_enter.dart';
 import 'mark.dart';
@@ -290,7 +291,7 @@ class _SquarePainter extends CustomPainter {
   }
 
   Color _border(_Look l, double h) => l.base == null
-      ? Color.lerp(palette.tileBorder.withValues(alpha: 0.7), palette.accent.withValues(alpha: 0.35), h)!
+      ? Color.lerp(palette.border, palette.accent.withValues(alpha: 0.35), h)!
       : Colors.white.withValues(alpha: 0.18);
 
   @override
@@ -400,18 +401,18 @@ class _NoteDialogState extends State<_NoteDialog> {
       onConfirm: () => Navigator.pop(context, _controller.text),
       child: Dialog(
         backgroundColor: p.tile,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
         child: SizedBox(
-          width: 420,
+          width: 480,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
+            padding: dialogPadding,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   widget.habit.name.toUpperCase(),
-                  style: TextStyle(fontSize: 12, letterSpacing: 1.4, color: p.other, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 12, letterSpacing: 1.2, color: p.other, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -427,13 +428,13 @@ class _NoteDialogState extends State<_NoteDialog> {
                   minLines: 2,
                   // Enter saves; long notes still wrap onto more lines.
                   textInputAction: TextInputAction.done,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 16, color: p.ink),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
                   decoration: InputDecoration(
                     hintText: 'Optional note',
                     hintStyle: TextStyle(color: p.inkMuted),
                     filled: true,
                     fillColor: p.empty,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
                   onSubmitted: (v) => Navigator.pop(context, v),
                 ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'fade_through.dart';
 import 'rolling_number.dart';
 
@@ -25,7 +26,7 @@ class Tile extends StatelessWidget {
           colors: [p.tile, isDark ? p.tile : Color.lerp(p.tile, p.background, 0.14)!],
         ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.9), width: 1.0),
+        border: Border.all(color: p.border, width: 1.0),
       ),
       child: child,
     );
@@ -55,7 +56,7 @@ class TileHeader extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontFamily: Fonts.display,
-            fontSize: 19,
+            fontSize: 18,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.1,
             color: p.ink,
@@ -66,11 +67,11 @@ class TileHeader extends StatelessWidget {
       if (caption != null || (trailing != null && !trailingAtEnd)) const SizedBox(width: 8),
       if (caption != null)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: p.empty.withValues(alpha: 0.6),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: p.tileBorder.withValues(alpha: 0.6), width: 0.8),
+            border: Border.all(color: p.borderSoft),
           ),
           child: _CaptionSwap(caption: caption!),
         ),
@@ -106,7 +107,7 @@ class _CaptionParts {
 
 TextStyle _captionStyle(BuildContext context) => TextStyle(
   fontFamily: Fonts.ui,
-  fontSize: 11.5,
+  fontSize: 12,
   letterSpacing: 1.2,
   fontWeight: FontWeight.w600,
   color: context.palette.inkMuted,

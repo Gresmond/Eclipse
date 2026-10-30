@@ -41,7 +41,7 @@ class SettingSwitchRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.inkMuted),
                 ),
               ],
             ),
@@ -87,11 +87,11 @@ class _DayStartPickerState extends State<DayStartPicker> {
           const SizedBox(height: 2),
           Text(
             'Before then, ticks count for the day before.',
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.inkMuted),
+            style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.inkMuted),
           ),
           const SizedBox(height: 10),
           Container(
-            padding: const EdgeInsets.all(3),
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)),
             // One pill glides to the chosen hour, like the tab bar's.
             child: Stack(
@@ -111,7 +111,7 @@ class _DayStartPickerState extends State<DayStartPicker> {
                           heightFactor: 1,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(17),
+                              borderRadius: BorderRadius.circular(16),
                               gradient: LinearGradient(colors: p.gradient.skip(1).toList()),
                             ),
                           ),
@@ -136,7 +136,7 @@ class _DayStartPickerState extends State<DayStartPicker> {
                                   curve: Motion.morphCurve,
                                   style: TextStyle(
                                     fontFamily: Fonts.ui,
-                                    fontSize: 13.5,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                     color: hour == state.dayStartHour ? p.onAccent : p.inkMuted,
                                   ),
@@ -176,10 +176,10 @@ class SettingToggle extends StatelessWidget {
       builder: (context, t, _) => Container(
         width: 36,
         height: 22,
-        padding: const EdgeInsets.all(3),
+        padding: const EdgeInsets.all(4),
         alignment: Alignment.lerp(Alignment.centerLeft, Alignment.centerRight, t),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(colors: [for (final c in p.gradient.skip(1)) Color.lerp(p.empty, c, t)!]),
           border: Border.all(color: p.tileBorder.withValues(alpha: 1 - t)),
         ),

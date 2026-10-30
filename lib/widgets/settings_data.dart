@@ -10,7 +10,7 @@ extension on _SettingsDialogState {
       children: [
         Text(
           'Your data',
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 17, fontWeight: FontWeight.w600, color: p.ink),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 18, fontWeight: FontWeight.w600, color: p.ink),
         ),
         const SizedBox(height: 14),
         if (state.dataFolder != null) ...[_dataFolder(p, state.dataFolder!)],
@@ -46,7 +46,7 @@ extension on _SettingsDialogState {
         const SizedBox(height: 18),
         Text(
           'Restore a copy',
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 17, fontWeight: FontWeight.w600, color: p.ink),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 18, fontWeight: FontWeight.w600, color: p.ink),
         ),
         const SizedBox(height: 6),
         Text(
@@ -60,7 +60,7 @@ extension on _SettingsDialogState {
             child: Center(
               child: Text(
                 'No backups yet.',
-                style: TextStyle(fontFamily: Fonts.body, fontSize: 16, color: p.inkMuted),
+                style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted),
               ),
             ),
           )
@@ -87,7 +87,7 @@ extension on _SettingsDialogState {
           const SizedBox(height: 12),
           Text(
             curlyQuotes(_error!),
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 14.5, color: p.missed),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missed),
           ),
         ],
       ],
@@ -123,7 +123,7 @@ extension on _SettingsDialogState {
           SelectableText(
             _shortPath(data.root.path),
             maxLines: 1,
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.ink),
+            style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.ink),
           ),
           const SizedBox(height: 4),
           Text(
@@ -202,7 +202,7 @@ extension on _SettingsDialogState {
         SelectableText(
           'Signed in as ${sync.email}',
           maxLines: 1,
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.ink),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.ink),
         ),
         const SizedBox(height: 4),
         Text(
@@ -377,8 +377,8 @@ class _BackupRow extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
       decoration: BoxDecoration(
         color: confirming ? p.accent.withValues(alpha: 0.08) : p.empty.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: confirming ? p.accent.withValues(alpha: 0.35) : p.tileBorder.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: confirming ? p.accent.withValues(alpha: 0.35) : p.borderSoft),
       ),
       child: Row(
         children: [
@@ -393,7 +393,7 @@ class _BackupRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   confirming ? 'Replaces everything you have now, except journal writing.' : subtitle,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
                 ),
               ],
             ),

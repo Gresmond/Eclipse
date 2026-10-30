@@ -41,7 +41,7 @@ void main() {
     name.selection = const TextSelection.collapsed(offset: 4);
     await tester.pump();
 
-    for (final (open, back) in [('Due 27/10/2026', 'Cancel'), ('Add a time', 'Save'), ("Doesn't repeat", 'Cancel')]) {
+    for (final (open, back) in [('Due 27/10/2026', 'Cancel'), ('Add a time', 'Save'), ('Doesn’t repeat', 'Cancel')]) {
       await click(tester, find.text(open));
       await click(tester, find.text(back));
       final now = field(tester, dialog);

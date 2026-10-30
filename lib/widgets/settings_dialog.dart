@@ -16,6 +16,7 @@ import '../data/platform_files.dart';
 import '../data/sync_service.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
 import 'setting_rows.dart';
@@ -246,7 +247,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       child: Dialog(
         clipBehavior: Clip.antiAlias,
         backgroundColor: p.tile,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
         child: TourTarget(
           key: widget.tourTargetKey,
           spot: widget.tourRibbon == null ? TourSpot.settings : TourSpot.settingsPreview,
@@ -254,7 +255,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
             width: 480,
             // Scrolls when the window is too short for all of it.
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
+              padding: dialogPadding,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -434,7 +435,7 @@ extension on _SettingsDialogState {
         SelectableText(
           _shortPath(current.path),
           maxLines: 1,
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.ink),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.ink),
         ),
         const SizedBox(height: 4),
         Text(
@@ -492,7 +493,7 @@ class _Ribbons extends StatelessWidget {
     final p = context.palette;
     return Container(
       width: 270,
-      padding: const EdgeInsets.all(3),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)),
       child: Stack(
         children: [
@@ -505,7 +506,7 @@ class _Ribbons extends StatelessWidget {
                 widthFactor: 1 / labels.length,
                 heightFactor: 1,
                 child: DecoratedBox(
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(17), color: p.done),
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: p.done),
                 ),
               ),
             ),
@@ -520,14 +521,14 @@ class _Ribbons extends StatelessWidget {
                       behavior: HitTestBehavior.opaque,
                       onTap: () => onSelect(i),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
                         child: Center(
                           child: AnimatedDefaultTextStyle(
                             duration: Motion.morph,
                             curve: Motion.morphCurve,
                             style: TextStyle(
                               fontFamily: Fonts.ui,
-                              fontSize: 13.5,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: i == selected ? p.onAccent : p.inkMuted,
                             ),

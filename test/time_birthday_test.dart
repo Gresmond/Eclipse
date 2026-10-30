@@ -213,10 +213,10 @@ void main() {
 
     // Making it a birthday folds the time and repeat away; it comes round
     // every year, all day.
-    expect(find.text("Doesn't repeat").hitTestable(), findsOneWidget);
+    expect(find.text('Doesn’t repeat').hitTestable(), findsOneWidget);
     await tester.tap(find.text('Not a birthday'));
     await tester.pumpAndSettle();
-    expect(find.text("Doesn't repeat").hitTestable(), findsNothing);
+    expect(find.text('Doesn’t repeat').hitTestable(), findsNothing);
     expect(find.text('Add a time').hitTestable(), findsNothing);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
@@ -252,17 +252,17 @@ void main() {
     expect(find.text('Add a time'), findsNothing, reason: 'opening it set a time');
 
     // Cancel goes back too, but puts back what the page changed.
-    await tester.tap(find.text("Doesn't repeat"));
+    await tester.tap(find.text('Doesn’t repeat'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Monthly'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(find.byType(Dialog), findsOneWidget, reason: 'Cancel goes back one step');
-    expect(find.text("Doesn't repeat"), findsOneWidget, reason: 'and undoes the repeat');
+    expect(find.text('Doesn’t repeat'), findsOneWidget, reason: 'and undoes the repeat');
     expect(find.text('Add a time'), findsNothing, reason: 'but not the time, kept before');
 
-    await tester.tap(find.text("Doesn't repeat"));
+    await tester.tap(find.text('Doesn’t repeat'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Custom'));
     await tester.pumpAndSettle();
@@ -316,7 +316,7 @@ void main() {
     expect(find.descendant(of: week, matching: find.byTooltip('Time, repeat and birthday')), findsNothing);
     await tester.tap(find.descendant(of: week, matching: find.byTooltip('Add a time')).first);
     await tester.pumpAndSettle();
-    expect(find.text("Doesn't repeat"), findsNothing, reason: 'only a time');
+    expect(find.text('Doesn’t repeat'), findsNothing, reason: 'only a time');
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(find.descendant(of: week, matching: find.text('9:00 am')), findsOneWidget);

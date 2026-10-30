@@ -211,7 +211,7 @@ class _ChartPainter extends CustomPainter {
 
     // Grid and labels.
     final grid = Paint()
-      ..color = p.tileBorder.withValues(alpha: 0.7)
+      ..color = p.border
       ..strokeWidth = 1;
     for (var v = lo; v <= hi + step / 2; v += step) {
       final yy = y(v);
@@ -300,7 +300,7 @@ class _ChartPainter extends CustomPainter {
     final body = TextPainter(
       text: TextSpan(
         text: '${_shortDate(pt.day)}  ·  $value$change',
-        style: _label(p, size: 13, color: p.inkMuted),
+        style: _label(p, size: 14, color: p.inkMuted),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -308,7 +308,7 @@ class _ChartPainter extends CustomPainter {
     var origin = hit.at + const Offset(12, -12) - Offset(0, h);
     if (origin.dx + w > size.width) origin = Offset(hit.at.dx - 12 - w, origin.dy);
     if (origin.dy < 0) origin = Offset(origin.dx, hit.at.dy + 12);
-    final box = RRect.fromRectAndRadius(origin & Size(w, h), const Radius.circular(10));
+    final box = RRect.fromRectAndRadius(origin & Size(w, h), const Radius.circular(12));
     canvas.drawShadow(Path()..addRRect(box), p.shadow.withValues(alpha: 0.4), 6, false);
     canvas.drawRRect(box, Paint()..color = p.tile);
     canvas.drawRRect(
@@ -358,7 +358,7 @@ class _ChartPainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: _label(palette, size: 12.5, color: colour),
+        style: _label(palette, size: 12, color: colour),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -429,7 +429,7 @@ class _Legend extends StatelessWidget {
                         size: 11.5,
                         weight: FontWeight.w700,
                         color: groupColour(g, p),
-                      ).copyWith(letterSpacing: 1.1),
+                      ).copyWith(letterSpacing: 1.2),
                     ),
                   ),
                   for (final e in list)
@@ -446,7 +446,7 @@ class _Legend extends StatelessWidget {
                             painter: _DashSample(groupColour(g, p), dash[e.uid] ?? const []),
                           ),
                           const SizedBox(width: 6),
-                          Text(e.name, style: _label(p, size: 13.5)),
+                          Text(e.name, style: _label(p, size: 14)),
                         ],
                       ),
                     ),
@@ -459,7 +459,7 @@ class _Legend extends StatelessWidget {
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               'Bodyweight exercises show in the % change view.',
-              style: _label(p, size: 12.5, color: p.inkMuted),
+              style: _label(p, size: 12, color: p.inkMuted),
             ),
           ),
       ],
@@ -491,7 +491,7 @@ class _LegendItem extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => onToggle(keyName),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: AnimatedOpacity(opacity: off ? 0.35 : 1, duration: Motion.hover, curve: Motion.hoverCurve, child: child),
       ),
     ),
@@ -533,11 +533,11 @@ class _Segments extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Container(
-      padding: const EdgeInsets.all(3),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: p.empty.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.6), width: 0.8),
+        border: Border.all(color: p.borderSoft),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -558,7 +558,7 @@ class _Segments extends StatelessWidget {
                   ),
                   child: Text(
                     label,
-                    style: _label(p, size: 13, weight: FontWeight.w600, color: i == selected ? p.onAccent : p.inkMuted),
+                    style: _label(p, size: 14, weight: FontWeight.w600, color: i == selected ? p.onAccent : p.inkMuted),
                   ),
                 ),
               ),

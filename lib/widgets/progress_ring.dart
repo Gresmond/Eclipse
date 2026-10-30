@@ -33,7 +33,7 @@ class _ProgressRingState extends State<ProgressRing> with TickerProviderStateMix
   /// How strongly the done colour shows; eases out when one is unticked.
   late final _solid = AnimationController(vsync: this, duration: Motion.click);
 
-  static const _bounce = Interval(0.55, 1.0, curve: Curves.easeInOutSine);
+  static const _bounce = Motion.bounce;
 
   @override
   void initState() {

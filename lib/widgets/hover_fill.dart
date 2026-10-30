@@ -59,7 +59,7 @@ class HoverFill extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: p.empty.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),

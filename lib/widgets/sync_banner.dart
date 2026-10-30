@@ -7,6 +7,7 @@ import '../data/sync.dart';
 import '../data/sync_service.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'corner_card.dart';
 
 /// A card that floats up over the bottom-right corner for a few seconds
@@ -88,7 +89,7 @@ class _SyncBannerState extends State<SyncBanner> {
     });
     _hide?.cancel();
     // Longer when both journal texts were kept: there's more to read.
-    _hide = Timer(Duration(seconds: incoming.keptBoth.isEmpty ? 6 : 12), () {
+    _hide = Timer(incoming.keptBoth.isEmpty ? Motion.notice : Motion.notice * 2, () {
       if (mounted) setState(() => _visible = false);
     });
   }
@@ -161,12 +162,12 @@ class _Card extends StatelessWidget {
               'one after the other.';
 
     return Container(
-      width: 340,
+      width: cornerCardWidth,
       padding: const EdgeInsets.fromLTRB(18, 16, 20, 16),
       decoration: BoxDecoration(
         color: p.tile,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.9)),
+        border: Border.all(color: p.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -175,7 +176,7 @@ class _Card extends StatelessWidget {
             width: 30,
             height: 30,
             decoration: BoxDecoration(shape: BoxShape.circle, color: p.done.withValues(alpha: 0.16)),
-            child: Icon(Icons.sync_rounded, size: 17, color: p.done),
+            child: Icon(Icons.sync_rounded, size: 16, color: p.done),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -187,7 +188,7 @@ class _Card extends StatelessWidget {
                   'Updated from ${_from(incoming.from)}',
                   style: TextStyle(
                     fontFamily: Fonts.display,
-                    fontSize: 16.5,
+                    fontSize: 18,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.2,
                     color: p.ink,
@@ -196,7 +197,7 @@ class _Card extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   detail,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, height: 1.4, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted),
                 ),
               ],
             ),
@@ -219,12 +220,12 @@ class _AskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Container(
-      width: 340,
+      width: cornerCardWidth,
       padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
       decoration: BoxDecoration(
         color: p.tile,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.9)),
+        border: Border.all(color: p.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +237,7 @@ class _AskCard extends StatelessWidget {
               'Keep your journal in Drive',
               style: TextStyle(
                 fontFamily: Fonts.display,
-                fontSize: 16.5,
+                fontSize: 18,
                 fontWeight: FontWeight.w600,
                 letterSpacing: -0.2,
                 color: p.ink,
@@ -253,7 +254,7 @@ class _AskCard extends StatelessWidget {
                         'Sign in again to keep your journal in an Eclipse Journals folder in your Drive.',
               style: TextStyle(
                 fontFamily: Fonts.body,
-                fontSize: 13.5,
+                fontSize: 14,
                 height: 1.4,
                 color: error != null && !signingIn ? p.missed : p.inkMuted,
               ),
@@ -306,14 +307,14 @@ class _WaitingCard extends StatelessWidget {
         : newer
         ? 'Some changes need an update'
         : 'Some changes couldn’t be read';
-    final body = TextStyle(fontFamily: Fonts.body, fontSize: 13.5, height: 1.4, color: p.inkMuted);
+    final body = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted);
     return Container(
-      width: 340,
+      width: cornerCardWidth,
       padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
       decoration: BoxDecoration(
         color: p.tile,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.tileBorder.withValues(alpha: 0.9)),
+        border: Border.all(color: p.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -325,7 +326,7 @@ class _WaitingCard extends StatelessWidget {
               title,
               style: TextStyle(
                 fontFamily: Fonts.display,
-                fontSize: 16.5,
+                fontSize: 18,
                 fontWeight: FontWeight.w600,
                 letterSpacing: -0.2,
                 color: p.ink,

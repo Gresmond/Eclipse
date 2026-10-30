@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'palette_recipe.dart';
 import 'oklch.dart';
 import 'colour_warmth.dart';
+import 'motion.dart';
+import 'tokens.dart';
 
 export 'motion.dart';
 
@@ -324,14 +326,18 @@ ThemeData buildTheme(Palette p) {
 
   final theme = ThemeData(
     useMaterial3: true,
-    dialogTheme: const DialogThemeData(elevation: 0),
+    dialogTheme: DialogThemeData(
+      elevation: 0,
+      backgroundColor: p.tile,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
+    ),
     colorScheme: scheme,
     scaffoldBackgroundColor: p.background,
     fontFamily: Fonts.ui,
     textSelectionTheme: TextSelectionThemeData(cursorColor: p.accent, selectionColor: p.other.withValues(alpha: 0.3)),
     tooltipTheme: TooltipThemeData(
-      waitDuration: const Duration(milliseconds: 600),
-      decoration: BoxDecoration(color: p.ink, borderRadius: BorderRadius.circular(10)),
+      waitDuration: Motion.tooltipDelay,
+      decoration: BoxDecoration(color: p.ink, borderRadius: BorderRadius.circular(12)),
       textStyle: TextStyle(fontFamily: Fonts.body, color: p.tile, fontSize: 14),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     ),
