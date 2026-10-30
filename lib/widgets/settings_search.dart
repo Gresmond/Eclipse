@@ -74,7 +74,7 @@ class SettingsSearchState extends State<SettingsSearch> {
 
   void _open(SearchHit hit) {
     Navigator.pop(context);
-    _state.showFound(hit.day, hit.uid ?? dateKey(hit.day));
+    _state.showFound(hit.day, hit.target);
   }
 
   @override

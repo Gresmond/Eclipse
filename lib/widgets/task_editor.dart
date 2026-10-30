@@ -265,7 +265,8 @@ class _DetailRow extends StatelessWidget {
             child: TextButton.icon(icon: Icon(icon, size: 18), label: Text(label), onPressed: onPressed),
           ),
         ),
-        if (onClear != null) IconButton(tooltip: clear, icon: const Icon(Icons.close_rounded), onPressed: onClear),
+        // As small as the line, so it doesn't grow when the cross comes.
+        if (onClear != null) _TaskAction(tooltip: clear, icon: Icons.close_rounded, onPressed: onClear),
       ],
     );
   }

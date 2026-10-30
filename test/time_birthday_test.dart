@@ -274,15 +274,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('31'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
-    expect(find.text('Ends never'), findsOneWidget, reason: 'only a day it comes round on can end it');
+    expect(find.textContaining('Ends never'), findsOneWidget, reason: 'only a day it comes round on can end it');
     await tester.tap(find.text('30'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(find.textContaining('Every 2 months on the'), findsOneWidget);
     expect(find.textContaining('until 30 Dec'), findsOneWidget, reason: 'a right-clicked day it comes round on');
-    expect(find.text('Starts 30 Oct'), findsOneWidget, reason: 'the start stays');
+    expect(find.textContaining('Starts 30 Oct'), findsOneWidget, reason: 'the start stays');
     await tester.tap(find.text('years'));
     await tester.pumpAndSettle();
-    expect(find.text('Ends never'), findsOneWidget, reason: 'yearly never comes round on 30 Dec');
+    expect(find.textContaining('Ends never'), findsOneWidget, reason: 'yearly never comes round on 30 Dec');
     await tester.tap(find.text('months'));
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);

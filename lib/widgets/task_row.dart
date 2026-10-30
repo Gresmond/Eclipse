@@ -236,11 +236,19 @@ class _TodoRowState extends State<_TodoRow> {
     state.setTodoSubtasks(widget.scope, _real(), next, day: widget.day);
   }
 
+  /// When search last opened one of its subtasks, opening it to show it.
+  DateTime? _foundSubtask;
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.read(context);
     final item = widget.item;
+    if (AppScope.watch(context, (s) => s.found).found case final found?
+        when found.at != _foundSubtask && item.uid != null && found.target.startsWith('${item.uid}#')) {
+      _foundSubtask = found.at;
+      _expanded = true;
+    }
     final done = item.done && !widget.arriving;
     // Planned tasks are on their own day; only Today and Tomorrow carry.
     final carried =
@@ -474,24 +482,29 @@ class _TodoRowState extends State<_TodoRow> {
                           _draggableSubtask(
                             state,
                             index,
-                            Appear(
-                              animate: _incomingSubtask == index || widget.fadeIn,
-                              animateSize: false,
-                              child: _SubtaskRow(
-                                done: item.subtasks[index].done,
-                                text: item.subtasks[index].text,
-                                number: item.numbered ? index + 1 : null,
-                                readOnly: widget.readOnly,
-                                onToggle: () {
-                                  final next = [...item.subtasks];
-                                  next[index] = next[index].copyWith(done: !next[index].done);
-                                  state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
-                                },
-                                onEdit: () => _editSubtask(state, index: index),
-                                onRemove: () {
-                                  final next = [...item.subtasks]..removeAt(index);
-                                  state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
-                                },
+                            SearchGlow(
+                              target: item.uid == null ? null : '${item.uid}#$index',
+                              // After its task's brief light.
+                              delay: const Duration(milliseconds: 700),
+                              child: Appear(
+                                animate: _incomingSubtask == index || widget.fadeIn,
+                                animateSize: false,
+                                child: _SubtaskRow(
+                                  done: item.subtasks[index].done,
+                                  text: item.subtasks[index].text,
+                                  number: item.numbered ? index + 1 : null,
+                                  readOnly: widget.readOnly,
+                                  onToggle: () {
+                                    final next = [...item.subtasks];
+                                    next[index] = next[index].copyWith(done: !next[index].done);
+                                    state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
+                                  },
+                                  onEdit: () => _editSubtask(state, index: index),
+                                  onRemove: () {
+                                    final next = [...item.subtasks]..removeAt(index);
+                                    state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
+                                  },
+                                ),
                               ),
                             ),
                           ),

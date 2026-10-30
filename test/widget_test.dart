@@ -2322,4 +2322,32 @@ void main() {
     await _shoot(tester, 'settings_search_task');
     await tester.pumpAndSettle();
   });
+
+  testWidgets('a search hit in a subtask opens its task, then lights the subtask', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final store = _testStore();
+    final day = DateTime(2026, 10, 24);
+    final task = store.addTodo(TodoScope.today, day, 'Trip');
+    store.setTodoSubtasks(TodoScope.today, task, const [
+      TodoSubtask('Book flights'),
+      TodoSubtask('Renew the passport'),
+    ], day, live: true);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 24));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(state.found?.target, endsWith('#1'), reason: "the subtask's place in its task");
+    await tester.pumpAndSettle();
+    expect(find.text('Renew the passport'), findsOneWidget, reason: 'its task opened to show it');
+    expect(find.byTooltip('Collapse subtasks'), findsOneWidget, reason: 'and stays open');
+  });
 }

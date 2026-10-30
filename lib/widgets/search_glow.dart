@@ -1,14 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../theme/app_theme.dart';
 
 /// [child], lit with the done colour for a moment when search has just
-/// opened [target] (a task's uid, or a journal day's key), and scrolled to.
+/// opened [target] (a task's uid, a subtask's, or a journal day's key), and
+/// scrolled to. A task whose subtask was opened lights only briefly.
 class SearchGlow extends StatefulWidget {
-  const SearchGlow({super.key, required this.target, this.radius = 8, this.over = false, required this.child});
+  const SearchGlow({
+    super.key,
+    required this.target,
+    this.radius = 8,
+    this.over = false,
+    this.delay = Duration.zero,
+    required this.child,
+  });
 
   final String? target;
+
+  /// How long it waits before lighting: a subtask's, for its task's to go.
+  final Duration delay;
   final double radius;
 
   /// Whether the glow lies over [child], for one that's opaque (a whole
@@ -27,21 +40,33 @@ class SearchGlow extends StatefulWidget {
 class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateMixin {
   late final _glow = AnimationController(vsync: this, duration: const Duration(seconds: 4));
   DateTime? _shown;
+  Timer? _wait;
 
   @override
   void dispose() {
+    _wait?.cancel();
     _glow.dispose();
     super.dispose();
   }
 
   void _check(({String target, DateTime at})? found) {
-    if (found == null || found.target != widget.target || found.at == _shown) return;
+    final target = widget.target;
+    if (found == null || target == null || found.at == _shown) return;
+    final parent = found.target.startsWith('$target#');
+    if (found.target != target && !parent) return;
     if (DateTime.now().difference(found.at) > SearchGlow._catch) return;
     _shown = found.at;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _glow.duration = parent ? const Duration(seconds: 1) : const Duration(seconds: 4);
+    void light() {
       if (!mounted) return;
       Scrollable.ensureVisible(context, alignment: 0.3, duration: Motion.morph, curve: Motion.morphCurve);
       _glow.forward(from: 0);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _wait?.cancel();
+      _wait = widget.delay == Duration.zero ? null : Timer(widget.delay, light);
+      if (_wait == null) light();
     });
   }
 
@@ -56,7 +81,8 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
           animation: _glow,
           builder: (context, _) {
             final t = _glow.value;
-            // Up in 0.2 s, held to 2.5 s, then away over 1.5 s.
+            // Up in 0.2 s, held to 2.5 s, then away over 1.5 s; a task
+            // whose subtask was opened, in a quarter of the time.
             final alpha = !_glow.isAnimating
                 ? 0.0
                 : t < 0.05

@@ -446,16 +446,9 @@ class _DateTags extends StatelessWidget {
       fontWeight: FontWeight.w600,
       color: context.palette.inkMuted,
     );
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(starts, style: style),
-        Text('  ·  ', style: style),
-        Tooltip(
-          message: 'Right-click a marked day to end it there',
-          child: Text(ends, style: style),
-        ),
-      ],
+    return Tooltip(
+      message: 'Left-click to set a start date. Right-click to set an end date',
+      child: Text('$starts  ·  $ends', style: style),
     );
   }
 }

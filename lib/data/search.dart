@@ -3,8 +3,15 @@ import 'store.dart';
 
 /// What a search found: a day's journal entry, or a task.
 class SearchHit {
-  const SearchHit.journal(this.day, this.text) : uid = null, done = false, subtask = null;
-  const SearchHit.task(this.day, this.text, {required String this.uid, required this.done, this.subtask});
+  const SearchHit.journal(this.day, this.text) : uid = null, done = false, subtask = null, subtaskIndex = null;
+  const SearchHit.task(
+    this.day,
+    this.text, {
+    required String this.uid,
+    required this.done,
+    this.subtask,
+    this.subtaskIndex,
+  });
 
   final DateTime day;
 
@@ -18,6 +25,16 @@ class SearchHit {
   /// The subtask that matched, when the task's own name didn't.
   final String? subtask;
 
+  /// Where [subtask] is in its task's list.
+  final int? subtaskIndex;
+
+  /// What opening it lights: the task's uid, with a subtask's place after a
+  /// '#', or the journal day's key.
+  String get target => switch (uid) {
+    null => dateKey(day),
+    final uid => subtaskIndex == null ? uid : '$uid#$subtaskIndex',
+  };
+
   bool get isJournal => uid == null;
 }
 
@@ -27,7 +44,11 @@ class SearchIndex {
     : _journal = [for (final e in store.journalEntries()) (day: e.day, text: e.text, key: _fold(e.text))],
       _todos = [
         for (final t in store.searchableTodos())
-          (todo: t, key: _fold(t.text), subtasks: [for (final s in t.subtasks) (text: s.text, key: _fold(s.text))]),
+          (
+            todo: t,
+            key: _fold(t.text),
+            subtasks: [for (final (i, s) in t.subtasks.indexed) (index: i, text: s.text, key: _fold(s.text))],
+          ),
       ];
 
   final List<({String day, String text, String key})> _journal;
@@ -35,7 +56,7 @@ class SearchIndex {
     ({
       ({String uid, String day, String text, bool done, List<TodoSubtask> subtasks}) todo,
       String key,
-      List<({String text, String key})> subtasks,
+      List<({int index, String text, String key})> subtasks,
     })
   >
   _todos;
@@ -54,17 +75,23 @@ class SearchIndex {
       if (all(e.key)) hits.add((e.day, 0, SearchHit.journal(DateTime.parse(e.day), _excerpt(e.text, e.key, words))));
     }
     for (final (:todo, :key, :subtasks) in _todos) {
-      String? subtask;
+      ({int index, String text, String key})? subtask;
       if (!all(key)) {
         // A subtask holding them all, or between the name and it.
-        final match = subtasks.where((s) => words.every((w) => key.contains(w) || s.key.contains(w))).firstOrNull;
-        if (match == null) continue;
-        subtask = match.text;
+        subtask = subtasks.where((s) => words.every((w) => key.contains(w) || s.key.contains(w))).firstOrNull;
+        if (subtask == null) continue;
       }
       hits.add((
         todo.day,
         1,
-        SearchHit.task(DateTime.parse(todo.day), todo.text, uid: todo.uid, done: todo.done, subtask: subtask),
+        SearchHit.task(
+          DateTime.parse(todo.day),
+          todo.text,
+          uid: todo.uid,
+          done: todo.done,
+          subtask: subtask?.text,
+          subtaskIndex: subtask?.index,
+        ),
       ));
     }
     hits.sort((a, b) {
