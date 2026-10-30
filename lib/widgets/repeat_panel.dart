@@ -198,8 +198,8 @@ class _RepeatPanelState extends State<_RepeatPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Each row shrinks only when text too large for the dialog's one
-        // width would otherwise cut it off. The pill rows are centred; the
-        // rest lines up with the switch's text.
+        // width would otherwise cut it off. The rows are centred; the notes
+        // line up with the switch's text.
         Center(
           child: _ScaleDown(
             alignment: Alignment.center,
@@ -244,53 +244,54 @@ class _RepeatPanelState extends State<_RepeatPanel> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Monthly has nothing to choose: the summary above says which day.
+              if (_kind != RepeatKind.monthly) ...[
+                const SizedBox(height: 14),
+                SizedBox(
+                  height: 40,
+                  child: _ScaleDown(
+                    alignment: Alignment.center,
+                    child: switch (_kind) {
+                      RepeatKind.weekly => DayToggles(
+                        bits: _days,
+                        size: 30,
+                        lastReason: 'It needs at least one day',
+                        onChanged: (bits) => _set(() => _days = bits),
+                      ),
+                      _ => Row(
+                        children: [
+                          Text('Every', style: label),
+                          _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => _set(() => _every = v)),
+                          const SizedBox(width: 6),
+                          _Pills(
+                            options: const ['days', 'weeks', 'months', 'years'],
+                            selected: const [
+                              RepeatKind.days,
+                              RepeatKind.weeks,
+                              RepeatKind.months,
+                              RepeatKind.yearly,
+                            ].indexOf(_unit),
+                            onSelect: (i) => _set(
+                              () => _unit = const [
+                                RepeatKind.days,
+                                RepeatKind.weeks,
+                                RepeatKind.months,
+                                RepeatKind.yearly,
+                              ][i],
+                            ),
+                          ),
+                        ],
+                      ),
+                    },
+                  ),
+                ),
+              ],
               Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Monthly has nothing to choose: the summary above says which day.
-                    if (_kind != RepeatKind.monthly) ...[
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        height: 40,
-                        child: _ScaleDown(
-                          child: switch (_kind) {
-                            RepeatKind.weekly => DayToggles(
-                              bits: _days,
-                              size: 30,
-                              lastReason: 'It needs at least one day',
-                              onChanged: (bits) => _set(() => _days = bits),
-                            ),
-                            _ => Row(
-                              children: [
-                                Text('Every', style: label),
-                                _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => _set(() => _every = v)),
-                                const SizedBox(width: 6),
-                                _Pills(
-                                  options: const ['days', 'weeks', 'months', 'years'],
-                                  selected: const [
-                                    RepeatKind.days,
-                                    RepeatKind.weeks,
-                                    RepeatKind.months,
-                                    RepeatKind.yearly,
-                                  ].indexOf(_unit),
-                                  onSelect: (i) => _set(
-                                    () => _unit = const [
-                                      RepeatKind.days,
-                                      RepeatKind.weeks,
-                                      RepeatKind.months,
-                                      RepeatKind.yearly,
-                                    ][i],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          },
-                        ),
-                      ),
-                    ],
                     if (_kind == RepeatKind.monthly && _date > 28) const SizedBox(height: 8),
                     if ((_kind == RepeatKind.monthly && _date > 28) ||
                         (custom && _unit == RepeatKind.months && start.day > 28))
