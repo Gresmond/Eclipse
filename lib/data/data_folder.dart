@@ -4,15 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
-import 'store.dart';
-
 /// Where everything is kept: the database, its daily backups and the
 /// journal. By default the app's own folder (with the journal in
-/// Documents), or one folder you choose, such as a synced one, so the
-/// whole history can follow you to a new computer.
+/// Documents), or a folder chosen in an earlier version, which could move
+/// everything (to a synced folder, say).
 ///
-/// The choice itself lives in a small file in the app's own folder, which
-/// is never moved. So does where the journal goes, if you've picked a
+/// That choice lives in a small file in the app's own folder, which is
+/// never moved. So does where the journal goes, if you've picked a
 /// folder for it: each computer keeps its own, as paths differ.
 class DataFolder {
   DataFolder._(this.home, this.chosen, this.documents, this.journalChosen);
@@ -20,7 +18,7 @@ class DataFolder {
   /// The app's own folder: ~/.local/share/dev.nicholas.productivity_app
   final Directory home;
 
-  /// The folder you picked; null for the defaults.
+  /// The folder picked in an earlier version; null for the defaults.
   final Directory? chosen;
 
   final Directory documents;
@@ -79,21 +77,6 @@ class DataFolder {
   /// or an earlier move).
   static bool hasData(Directory folder) => File(p.join(folder.path, 'productivity.db')).existsSync();
 
-  /// Uses [folder] from the next start. Unless it already has data of its
-  /// own, everything is copied there first; the old copy stays where it
-  /// was, untouched.
-  void moveTo(Directory folder, Store store) {
-    final target = DataFolder._(home, folder, documents, journalChosen);
-    if (!hasData(folder)) {
-      folder.createSync(recursive: true);
-      _copyTree(backups, target.backups);
-      _copyTree(journal, target.journal);
-      // Last, so a half-finished copy never looks like data to use.
-      store.saveCopy(target.database);
-    }
-    _pointer(home).writeAsStringSync(folder.path);
-  }
-
   /// Mac copies up to 1.10.1 ran sandboxed, which kept everything inside
   /// ~/Library/Containers. The first unsandboxed start copies it out to
   /// [home] and [documents], unless there's data there already; the old copy
@@ -136,7 +119,7 @@ class DataFolder {
   /// Asks for a folder with the desktop's own picker; null if cancelled or
   /// there's no picker to ask with. Windows and Mac ask the app's window
   /// (Explorer's picker, Finder's panel as a sheet), so it opens in front.
-  static Future<Directory?> pick({String? start, String title = 'Keep Eclipse’s data in'}) async {
+  static Future<Directory?> pick({required String title, String? start}) async {
     final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '/';
     if (Platform.isWindows || Platform.isMacOS) {
       try {

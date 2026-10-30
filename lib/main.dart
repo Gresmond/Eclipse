@@ -12,7 +12,6 @@ import 'data/data_folder.dart';
 import 'data/dev_install.dart';
 import 'data/journal_files.dart';
 import 'data/night_light.dart';
-import 'data/restart.dart';
 import 'data/store.dart';
 import 'data/sync_service.dart';
 import 'data/system_time_zone.dart';
@@ -49,7 +48,6 @@ Future<void> main() async {
     journalFiles: JournalFiles(data.journal),
     dataFolder: data,
     sync: SyncService.load(dir, store),
-    restart: () => restartApplication(beforeRestart: () => _shutdown(state)),
   );
   state.sync?.start();
   if (state.sync?.isOn ?? false) unawaited(state.sync!.run());

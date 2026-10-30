@@ -6,10 +6,7 @@ import 'package:path/path.dart' as pth;
 import 'dart:async';
 import 'dart:io';
 
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 
 import '../app_state.dart';
 import '../data/backups.dart';
@@ -51,9 +48,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
   late int _ribbon = widget.tourRibbon ?? 0;
 
   final _search = GlobalKey<SettingsSearchState>();
-
-  /// General's height when last shown, which the other ribbons take.
-  double? _generalHeight;
 
   late List<Backup> _backups = AppScope.of(context).backups?.list() ?? [];
   Backup? _confirming;
@@ -136,37 +130,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
     });
   }
 
-  /// A folder picked to keep everything in, waiting for a yes.
-  Directory? _newFolder;
-  bool _moving = false;
-
-  Future<void> _pickFolder() async {
-    final state = AppScope.of(context);
-    final folder = await DataFolder.pick(start: state.dataFolder!.root.parent.path);
-    if (folder == null || !mounted) return;
-    setState(() {
-      _newFolder = folder.path == state.dataFolder!.root.path ? null : folder;
-      _error = null;
-    });
-  }
-
-  void _cancelMove() => setState(() => _newFolder = null);
-
-  Future<void> _move() async {
-    setState(() => _moving = true);
-    try {
-      await AppScope.of(context).useDataFolder(_newFolder!);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _moving = false;
-        _error = 'Could not use that folder: $e';
-      });
-    }
-  }
-
   /// A folder picked for the journal, waiting for a yes.
   Directory? _newJournal;
+  bool _moving = false;
+
+  /// Why the journal's last move didn't fully work, shown on its card.
+  String? _journalError;
 
   Future<void> _pickJournal() async {
     final state = AppScope.of(context);
@@ -178,7 +147,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
         : Directory(pth.join(picked.path, DataFolder.journalName));
     setState(() {
       _newJournal = folder.path == current.path ? null : folder;
-      _error = null;
+      _journalError = null;
     });
   }
 
@@ -199,7 +168,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       if (!mounted) return;
       setState(() {
         _newJournal = null;
-        _error =
+        _journalError =
             'Some entries couldn’t be moved, so they’re still in the old folder '
             '(${e.osError?.message ?? e.message}). New entries are saved in ${_shortPath(folder.path)}.';
       });
@@ -243,14 +212,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget build(BuildContext context) {
     final p = context.palette;
     return ConfirmOnEnter(
-      onConfirm:
-          _restoring ||
-              _moving ||
-              _signingIn ||
-              _confirming != null ||
-              _newFolder != null ||
-              _newJournal != null ||
-              _joining != null
+      onConfirm: _restoring || _moving || _signingIn || _confirming != null || _newJournal != null || _joining != null
           ? null
           : _ribbon == 2
           ? () => _search.currentState?.openFirst()
@@ -285,6 +247,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         onSelect: (i) => setState(() {
                           _ribbon = i;
                           _error = null;
+                          _journalError = null;
                         }),
                       ),
                     ],
@@ -299,19 +262,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
                       layoutBuilder: FadeThrough.pinTop,
                       child: KeyedSubtree(
                         key: ValueKey(_ribbon),
-                        // Data and Search take General's height, so the
-                        // dialog keeps one size from ribbon to ribbon.
-                        child: switch ((_ribbon, _generalHeight)) {
-                          (0, _) => _ReportHeight(onHeight: (h) => _generalHeight = h, child: _general(p)),
-                          (1, final h?) => SizedBox(
-                            height: h,
-                            child: _backupsAndSync(p, height: h),
-                          ),
-                          (1, null) => _backupsAndSync(p),
-                          (_, final h?) => SizedBox(
-                            height: h,
-                            child: SettingsSearch(key: _search),
-                          ),
+                        child: switch (_ribbon) {
+                          0 => _general(p),
+                          1 => _backupsAndSync(p),
                           _ => SettingsSearch(key: _search),
                         },
                       ),
@@ -338,13 +291,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
 }
 
 extension on _SettingsDialogState {
-  /// The journal's folder, then what used to sit in the appearance menu.
+  /// What used to sit in the appearance menu.
   Widget _general(Palette p) {
     final state = AppScope.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (state.journalFiles != null) ...[_journalFolder(p, state.journalFiles!.dir), const SizedBox(height: 10)],
         ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: ColoredBox(
@@ -496,9 +448,9 @@ extension on _SettingsDialogState {
             ],
           ),
         ],
-        if (_error != null && _ribbon == 0) ...[
+        if (_journalError != null) ...[
           const SizedBox(height: 8),
-          Text(curlyQuotes(_error!), style: small.copyWith(color: p.missed)),
+          Text(curlyQuotes(_journalError!), style: small.copyWith(color: p.missed)),
         ],
       ],
     );
@@ -570,30 +522,5 @@ class _Ribbons extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-/// [child], telling [onHeight] its height each time it's laid out.
-class _ReportHeight extends SingleChildRenderObjectWidget {
-  const _ReportHeight({required this.onHeight, super.child});
-
-  final ValueChanged<double> onHeight;
-
-  @override
-  RenderObject createRenderObject(BuildContext context) => _RenderReportHeight(onHeight);
-
-  @override
-  void updateRenderObject(BuildContext context, _RenderReportHeight renderObject) => renderObject.onHeight = onHeight;
-}
-
-class _RenderReportHeight extends RenderProxyBox {
-  _RenderReportHeight(this.onHeight);
-
-  ValueChanged<double> onHeight;
-
-  @override
-  void performLayout() {
-    super.performLayout();
-    onHeight(size.height);
   }
 }

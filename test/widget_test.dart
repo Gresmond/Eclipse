@@ -474,50 +474,6 @@ void main() {
     expect(DataFolder.load(home, docs).journal.path, picked.path);
   });
 
-  test('moving to a data folder copies everything there and uses it next time', () async {
-    final tmp = Directory.systemTemp.createTempSync('productivity_folder');
-    addTearDown(() => tmp.deleteSync(recursive: true));
-    final home = Directory('${tmp.path}/home')..createSync();
-    final docs = Directory('${tmp.path}/docs')..createSync();
-
-    var data = DataFolder.load(home, docs);
-    expect(data.chosen, isNull);
-    expect(data.journal.path, path.join(docs.path, 'Eclipse Journals'));
-    final store = Store.open(data.database);
-    final state = AppState(
-      store,
-      backups: Backups(data.backups),
-      journalFiles: JournalFiles(data.journal),
-      clock: () => DateTime(2026, 10, 24),
-    );
-    await state.setJournal(DateTime(2026, 10, 24), 'Written before the move.');
-
-    final drive = Directory('${tmp.path}/Google Drive/Eclipse');
-    data.moveTo(drive, store);
-    store.close();
-
-    data = DataFolder.load(home, docs);
-    expect(data.root.path, drive.path);
-    expect(File(data.database).existsSync(), isTrue);
-    expect(data.backups.listSync(), isNotEmpty);
-    expect(
-      JournalFiles(data.journal).fileFor(DateTime(2026, 10, 24)).readAsStringSync(),
-      contains('Written before the move.'),
-    );
-    final moved = Store.open(data.database);
-    expect(moved.journal('2026-10-24'), 'Written before the move.');
-
-    // A second computer pointing at the same folder uses what's there.
-    final other = DataFolder.load(Directory('${tmp.path}/home2')..createSync(), docs);
-    final fresh = _testStore();
-    other.moveTo(drive, fresh);
-    final second = Store.open(DataFolder.load(Directory('${tmp.path}/home2'), docs).database);
-    expect(second.journal('2026-10-24'), 'Written before the move.', reason: 'not overwritten');
-    moved.close();
-    second.close();
-    fresh.close();
-  });
-
   test('choosing a journal folder moves the entries there, on this computer only', () async {
     final tmp = Directory.systemTemp.createTempSync('productivity_journal');
     addTearDown(() => tmp.deleteSync(recursive: true));
@@ -1068,13 +1024,6 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Data').hitTestable());
-    await tester.pumpAndSettle();
-    // Data keeps General's height, so the backups may be scrolled to.
-    await tester.scrollUntilVisible(
-      find.text('Friday 23 October'),
-      100,
-      scrollable: find.descendant(of: find.byType(Dialog), matching: find.byType(Scrollable)).at(1),
-    );
     await tester.pumpAndSettle();
     expect(find.text('Friday 23 October'), findsOneWidget);
     expect(find.text('Yesterday'), findsWidgets);

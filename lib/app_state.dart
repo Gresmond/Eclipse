@@ -27,15 +27,8 @@ part 'state/undo.dart';
 ///
 /// Each area's state and edits are in a part of their own, in state/.
 class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Todos, _Journal, _Undo {
-  AppState(
-    this.store, {
-    this.backups,
-    this.journalFiles,
-    this.dataFolder,
-    this.sync,
-    this.restart,
-    DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now {
+  AppState(this.store, {this.backups, this.journalFiles, this.dataFolder, this.sync, DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now {
     sync?.onIncoming = _takeIncoming;
     sync?.beforeMerge = saveDrafts;
     sync?.beforeJoin = () => backups?.beforeJoining(store);
@@ -182,29 +175,6 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     if (reloadTodos) _startDay();
     checkDate();
     notifyListeners();
-  }
-
-  /// Reopens the app; null in tests.
-  final Future<void> Function()? restart;
-
-  /// Keeps everything in [folder] from now on, copying it there unless the
-  /// folder already has data, then reopens the app on it.
-  Future<void> useDataFolder(Directory folder) async {
-    saveDrafts();
-    await flushFiles();
-    await sync?.beforeQuit();
-    Future<void> copyAndRestart() async {
-      saveDrafts();
-      await flushFiles();
-      dataFolder!.moveTo(folder, store);
-      await restart?.call();
-    }
-
-    if (sync == null) {
-      await copyAndRestart();
-    } else {
-      await sync!.exclusive(copyAndRestart);
-    }
   }
 
   final DateTime Function() _clock;

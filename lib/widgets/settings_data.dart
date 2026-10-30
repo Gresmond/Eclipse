@@ -7,38 +7,12 @@ const _compactButton = ButtonStyle(
   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
 );
 
-/// The Data ribbon's sections: backups, where everything lives, and sync.
+/// The Data ribbon's sections: sync, the journal's files, and backups.
 extension on _SettingsDialogState {
-  /// Saved copies to restore, where everything lives, and sync. Given a
-  /// [height], it fits in it: the backups take what's left, scrolling,
-  /// and all of it scrolls if the rest is taller.
-  Widget _backupsAndSync(Palette p, {double? height}) {
+  /// Sync, where the journal is saved, and saved copies to restore.
+  Widget _backupsAndSync(Palette p) {
     final state = AppScope.of(context);
-    final backups = ListView.separated(
-      shrinkWrap: height == null,
-      itemCount: _backups.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 6),
-      itemBuilder: (_, i) => _BackupRow(
-        backup: _backups[i],
-        today: state.today,
-        confirming: _confirming == _backups[i],
-        restoring: _restoring && _confirming == _backups[i],
-        enabled: !_restoring,
-        onAsk: () => _ask(_backups[i]),
-        onCancel: () => _ask(null),
-        onConfirm: () => _restore(_backups[i]),
-      ),
-    );
-    final error = [
-      if (_error != null) ...[
-        const SizedBox(height: 12),
-        Text(
-          curlyQuotes(_error!),
-          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missed),
-        ),
-      ],
-    ];
-    final above = Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -46,16 +20,13 @@ extension on _SettingsDialogState {
           style: TextStyle(fontFamily: Fonts.ui, fontSize: 18, fontWeight: FontWeight.w600, color: p.ink),
         ),
         const SizedBox(height: 14),
-        if (state.dataFolder != null) ...[_dataFolder(p, state.dataFolder!)],
         if (state.sync != null) ...[
-          const SizedBox(height: 10),
           TourTarget(
             spot: TourSpot.googleSync,
             child: ListenableBuilder(listenable: state.sync!, builder: (context, _) => _sync(p, state.sync!)),
           ),
         ],
         if (state.sync == null && widget.tourRibbon != null) ...[
-          const SizedBox(height: 10),
           TourTarget(
             spot: TourSpot.googleSync,
             // A stand-in for the sync card in builds without Google sign-in,
@@ -97,6 +68,7 @@ extension on _SettingsDialogState {
             ),
           ),
         ],
+        if (state.journalFiles != null) ...[const SizedBox(height: 10), _journalFolder(p, state.journalFiles!.dir)],
         const SizedBox(height: 18),
         Text(
           'Restore a copy',
@@ -108,119 +80,43 @@ extension on _SettingsDialogState {
           style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.45, color: p.inkMuted),
         ),
         const SizedBox(height: 14),
-      ],
-    );
-    final none = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Center(
-        child: Text(
-          'No backups yet.',
-          style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted),
-        ),
-      ),
-    );
-    if (height == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          above,
-          if (_backups.isEmpty)
-            none
-          else
-            ConstrainedBox(constraints: const BoxConstraints(maxHeight: 240), child: backups),
-          ...error,
-        ],
-      );
-    }
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(child: above),
-        SliverLayoutBuilder(
-          builder: (context, constraints) {
-            // What's under the rest, but never less than about two backups.
-            final left = constraints.viewportMainAxisExtent - constraints.precedingScrollExtent;
-            return SliverToBoxAdapter(
-              child: _backups.isEmpty
-                  ? none
-                  : SizedBox(height: math.max(left - (_error == null ? 0 : 48), 112), child: backups),
-            );
-          },
-        ),
-        SliverToBoxAdapter(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: error),
-        ),
-      ],
-    );
-  }
-
-  /// Where everything lives, and a way to keep it somewhere else (a synced
-  /// folder, say) so it follows you to a new computer.
-  Widget _dataFolder(Palette p, DataFolder data) {
-    final folder = _newFolder;
-    final small = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 12, 12),
-      decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Local data',
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
-                ),
+        if (_backups.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                'No backups yet.',
+                style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted),
               ),
-              if (folder == null)
-                TextButton(
-                  style: _compactButton,
-                  onPressed: _restoring || _moving ? null : _pickFolder,
-                  child: Text('Keep it elsewhere…', style: TextStyle(color: p.accent)),
-                ),
-            ],
+            ),
+          )
+        else
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: _backups.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 6),
+              itemBuilder: (_, i) => _BackupRow(
+                backup: _backups[i],
+                today: state.today,
+                confirming: _confirming == _backups[i],
+                restoring: _restoring && _confirming == _backups[i],
+                enabled: !_restoring,
+                onAsk: () => _ask(_backups[i]),
+                onCancel: () => _ask(null),
+                onConfirm: () => _restore(_backups[i]),
+              ),
+            ),
           ),
-          SelectableText(
-            _shortPath(data.root.path),
-            maxLines: 1,
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.ink),
-          ),
-          const SizedBox(height: 4),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
           Text(
-            'Every day, ritual and to-do since you started is kept here. '
-            'Uninstalling the app leaves it in place.',
-            style: small,
+            curlyQuotes(_error!),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missed),
           ),
-          if (folder != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              DataFolder.hasData(folder)
-                  ? '${_shortPath(folder.path)} already has Eclipse data. Use it instead of what’s here? '
-                        'What’s here stays where it is. Eclipse reopens.'
-                  : 'Copy everything to ${_shortPath(folder.path)} and keep it there from now on? '
-                        'The copy here stays as a spare. Eclipse reopens. In a synced folder, have Eclipse '
-                        'open on one computer at a time.',
-              style: small.copyWith(color: p.ink),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: _moving ? null : _cancelMove,
-                  child: Text('Cancel', style: TextStyle(color: p.inkMuted)),
-                ),
-                const SizedBox(width: 4),
-                FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: p.accent, foregroundColor: p.onAccent),
-                  onPressed: _moving ? null : _move,
-                  child: Text(DataFolder.hasData(folder) ? 'Use that folder' : 'Copy and reopen'),
-                ),
-              ],
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 

@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
-import 'package:eclipse/data/data_folder.dart';
 import 'package:eclipse/data/google_drive.dart';
 import 'package:eclipse/data/http_request.dart';
 import 'package:eclipse/data/store.dart';
@@ -418,22 +417,6 @@ void main() {
     state.showMonth(10);
     expect(store.monthHabits(2026, 10).first.name, 'Read two pages');
     state.dispose();
-  });
-
-  test('data-folder changes save the current draft before copying', () async {
-    final temp = temporary();
-    final home = Directory('${temp.path}/home')..createSync();
-    final data = DataFolder.load(home, temp);
-    final store = Store.open(data.database);
-    addTearDown(store.close);
-    final state = AppState(store, dataFolder: data, clock: () => DateTime(2026, 10, 25));
-    state.draftJournal(state.today, 'Last words');
-    final target = Directory('${temp.path}/target');
-    await state.useDataFolder(target);
-    final copy = Store.open('${target.path}/productivity.db');
-    expect(copy.journal('2026-10-25'), 'Last words');
-    expect(state.hasJournalDraft(state.today), isFalse);
-    copy.close();
   });
 
   test('shutdown flushes pending typing and closes only once', () async {
