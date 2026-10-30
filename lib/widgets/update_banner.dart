@@ -53,7 +53,7 @@ class _Card extends StatelessWidget {
           style: TextStyle(
             fontFamily: Fonts.display,
             fontSize: 16.5,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w500,
             letterSpacing: -0.2,
             color: p.ink,
           ),
