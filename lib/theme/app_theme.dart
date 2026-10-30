@@ -9,7 +9,7 @@ export 'motion.dart';
 /// Font families registered in pubspec.yaml.
 abstract final class Fonts {
   /// Page titles, card headings and big numbers.
-  static const display = 'Saans';
+  static const display = 'Greed';
 
   /// To-dos, ritual names, labels.
   static const body = 'Matter';

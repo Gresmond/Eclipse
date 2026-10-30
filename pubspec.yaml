@@ -37,13 +37,13 @@ flutter:
           weight: 700
     - family: Greed
       fonts:
-        - asset: assets/fonts/greed/GreedStandard-TRIAL-Regular.otf
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-Light.otf
           weight: 400
-        - asset: assets/fonts/greed/GreedStandard-TRIAL-Medium.otf
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-Regular.otf
           weight: 500
-        - asset: assets/fonts/greed/GreedStandard-TRIAL-SemiBold.otf
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-Medium.otf
           weight: 600
-        - asset: assets/fonts/greed/GreedStandard-TRIAL-Bold.otf
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-SemiBold.otf
           weight: 700
     - family: Gellix
       fonts:
