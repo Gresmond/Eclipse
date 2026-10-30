@@ -80,7 +80,7 @@ class _ProgressRingState extends State<ProgressRing> with TickerProviderStateMix
             ),
             TextSpan(
               text: '/${widget.total}',
-              style: TextStyle(fontSize: size * 0.14, color: p.inkMuted),
+              style: TextStyle(fontSize: size * 0.2, color: p.inkMuted),
             ),
           ],
         ),
