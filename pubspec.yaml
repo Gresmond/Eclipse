@@ -25,6 +25,16 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   fonts:
+    - family: Saans
+      fonts:
+        - asset: assets/fonts/saans/Saans-TRIAL-Regular.otf
+          weight: 400
+        - asset: assets/fonts/saans/Saans-TRIAL-Medium.otf
+          weight: 500
+        - asset: assets/fonts/saans/Saans-TRIAL-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/saans/Saans-TRIAL-Bold.otf
+          weight: 700
     - family: Greed
       fonts:
         - asset: assets/fonts/greed/GreedStandard-TRIAL-Regular.otf
