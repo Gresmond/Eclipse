@@ -57,6 +57,22 @@ mixin _Navigation on ChangeNotifier {
     notifyListeners();
   }
 
+  /// The last search, kept while the app runs: Settings' Search opens on
+  /// it again, selected, so typing starts a new one.
+  String lastSearch = '';
+
+  /// What search last opened, a task's uid or a journal day's key, and
+  /// when: it lights up briefly where it's shown.
+  ({String target, DateTime at})? found;
+
+  /// Opens [day] in the Today view (today's own for today or later), and
+  /// lights [target] there.
+  void showFound(DateTime day, String target) {
+    if (showingTraining) toggleTraining();
+    found = (target: target, at: DateTime.now());
+    showDay(day);
+  }
+
   /// Opens the record of [viewYear]: every month's percentages at once.
   void showYear() {
     saveHabitDrafts();

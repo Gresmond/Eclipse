@@ -1554,7 +1554,10 @@ void main() {
     expect(find.descendant(of: later, matching: find.textContaining('Nov 20')), findsOneWidget);
 
     // Adding for tomorrow from the box at the foot, its day picked first.
-    await tester.enterText(find.descendant(of: week, matching: find.byType(TextField)).last, 'Prepare tomorrow breakfast');
+    await tester.enterText(
+      find.descendant(of: week, matching: find.byType(TextField)).last,
+      'Prepare tomorrow breakfast',
+    );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(find.text('Doesn’t repeat'), findsOneWidget, reason: 'Enter without a day asks for one');
@@ -2269,6 +2272,12 @@ void main() {
     await tester.tap(find.text('Data').hitTestable());
     await tester.pumpAndSettle();
     await sweep('Settings, Backups and sync');
+    // Opens on the last search, so no typing leaves touch handles about.
+    state.lastSearch = 'dentist';
+    await tester.tap(find.text('Search').hitTestable());
+    await tester.pumpAndSettle();
+    expect(find.textContaining('TASK'), findsWidgets);
+    await sweep('Settings, Search');
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Appearance'));
@@ -2295,5 +2304,55 @@ void main() {
     await sweep('Welcome tour');
 
     expect(missing, isEmpty);
+  });
+
+  testWidgets('Settings search finds an old task and opens its day', (tester) async {
+    await _loadFonts();
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final store = _testStore();
+    store.addTodo(TodoScope.today, DateTime(2026, 10, 12), 'Renew the passport', done: true);
+    store.setJournal('2026-10-15', 'Posted the passport form today, finally.');
+    final state = AppState(store, clock: () => DateTime(2026, 10, 24));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    expect(find.text('Find any task or journal entry, from any day.'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('JOURNAL'), findsOneWidget);
+    expect(find.textContaining('TASK'), findsOneWidget);
+    await _shoot(tester, 'settings_search');
+
+    // Enter opens the newest: the journal entry.
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(state.viewDay, DateTime(2026, 10, 15));
+    expect(state.found?.target, '2026-10-15');
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await _shoot(tester, 'settings_search_found');
+    await tester.pumpAndSettle();
+    expect(find.text('Settings'), findsNothing);
+
+    // Search opens on the last one again; a click opens that result.
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Renew the'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(state.viewDay, DateTime(2026, 10, 12));
+    await _shoot(tester, 'settings_search_task');
+    await tester.pumpAndSettle();
   });
 }

@@ -20,6 +20,7 @@ import '../theme/tokens.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
 import 'setting_rows.dart';
+import 'settings_search.dart';
 import 'welcome_tour.dart';
 
 part 'settings_data.dart';
@@ -28,7 +29,7 @@ part 'settings_data.dart';
 Widget settingsTransition(BuildContext context, Animation<double> animation, Widget child) =>
     dialogTransition(animation, child);
 
-/// Settings, in two ribbons: General, and Data. Restoring a
+/// Settings, in three ribbons: General, Data, and Search. Restoring a
 /// backup asks first, inline on its row. Pops with the restored [Backup],
 /// or nothing.
 class SettingsDialog extends StatefulWidget {
@@ -43,8 +44,10 @@ class SettingsDialog extends StatefulWidget {
 }
 
 class _SettingsDialogState extends State<SettingsDialog> {
-  /// 0 for General, 1 for Data. Always opens on General.
+  /// 0 for General, 1 for Data, 2 for Search. Always opens on General.
   late int _ribbon = widget.tourRibbon ?? 0;
+
+  final _search = GlobalKey<SettingsSearchState>();
 
   late List<Backup> _backups = AppScope.of(context).backups?.list() ?? [];
   Backup? _confirming;
@@ -243,6 +246,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
               _newJournal != null ||
               _joining != null
           ? null
+          : _ribbon == 2
+          ? () => _search.currentState?.openFirst()
           : () => Navigator.pop(context),
       child: Dialog(
         clipBehavior: Clip.antiAlias,
@@ -269,7 +274,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         ),
                       ),
                       _Ribbons(
-                        labels: const ['General', 'Data'],
+                        labels: const ['General', 'Data', 'Search'],
                         selected: _ribbon,
                         onSelect: (i) => setState(() {
                           _ribbon = i;
@@ -288,7 +293,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
                       layoutBuilder: FadeThrough.pinTop,
                       child: KeyedSubtree(
                         key: ValueKey(_ribbon),
-                        child: _ribbon == 0 ? _general(p) : _backupsAndSync(p),
+                        child: switch (_ribbon) {
+                          0 => _general(p),
+                          1 => _backupsAndSync(p),
+                          _ => SettingsSearch(key: _search),
+                        },
                       ),
                     ),
                   ),

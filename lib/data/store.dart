@@ -489,6 +489,24 @@ class Store {
       .select('SELECT day, text FROM journal WHERE day > ? ORDER BY day LIMIT ?', [after ?? '', limit ?? -1])
       .map((r) => (day: r['day'] as String, text: curlyQuotes(r['text'] as String)));
 
+  /// Every task kept, ticked or not, on the day it's on, for search.
+  Iterable<({String uid, String day, String text, bool done, List<TodoSubtask> subtasks})> searchableTodos() =>
+      _db.select('SELECT uid, scope, period, text, done, due_date, since, subtasks FROM todos').map((r) {
+        final period = r['period'] as String;
+        final day = switch (r['scope']) {
+          'today' => period,
+          'tomorrow' => dateKey(DateTime.parse(period).copyWith(day: DateTime.parse(period).day + 1)),
+          _ => (r['due_date'] as String?) ?? (r['since'] as String),
+        };
+        return (
+          uid: r['uid'] as String,
+          day: day.substring(0, 10),
+          text: curlyQuotes(r['text'] as String),
+          done: r['done'] == 1,
+          subtasks: TodoSubtask.decode(r['subtasks'] as String?),
+        );
+      });
+
   String journal(String day) {
     final r = _db.select('SELECT text FROM journal WHERE day = ?', [day]);
     return r.isEmpty ? '' : curlyQuotes(r.first['text'] as String);

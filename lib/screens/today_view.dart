@@ -12,6 +12,7 @@ import '../widgets/hover_fill.dart';
 import '../widgets/note_input.dart';
 import '../widgets/progress_ring.dart';
 import '../widgets/ritual_name.dart';
+import '../widgets/search_glow.dart';
 import '../widgets/sleep_time.dart';
 import '../widgets/status_cell.dart';
 import '../widgets/tile.dart';
@@ -187,7 +188,8 @@ class _HabitsCard extends StatelessWidget {
 
     ({List<double> heights, double cell, bool trail}) layOut({required bool trail}) {
       // Everything else in a row is a fixed width; the name gets the rest.
-      final nameWidth = width - _HabitRow.fixedWidth(badge) - (trail ? _HabitRow.weekTrailWidth : 0) - cell.clamp(24, 32);
+      final nameWidth =
+          width - _HabitRow.fixedWidth(badge) - (trail ? _HabitRow.weekTrailWidth : 0) - cell.clamp(24, 32);
       double rowFor(String name) {
         final painter = TextPainter(
           text: TextSpan(text: name, style: _HabitRow.nameStyle),
@@ -281,7 +283,9 @@ class _HabitsCard extends StatelessWidget {
               builder: (context, constraints) {
                 // Every row's badge is as wide as the longest streak's, so the
                 // badges, squares and times stay lined up down the card.
-                final streaks = state.viewDay != null ? const <int>[] : [for (final h in habits) state.currentStreak(h)];
+                final streaks = state.viewDay != null
+                    ? const <int>[]
+                    : [for (final h in habits) state.currentStreak(h)];
                 final badge = _HabitRow.badgeFor(context, streaks.fold(0, max));
                 final rows = _layOutRows(context, habits, constraints, badge);
                 // Yesterday stays editable. A different month's ritual list
@@ -482,10 +486,7 @@ class _HabitRow extends StatelessWidget {
                             children: [
                               Icon(Icons.local_fire_department_rounded, size: 12, color: p.accent),
                               const SizedBox(width: 2),
-                              Text(
-                                '$streak',
-                                style: streakStyle(p.accent),
-                              ),
+                              Text('$streak', style: streakStyle(p.accent)),
                             ],
                           ),
                         )
@@ -588,9 +589,14 @@ class _JournalCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Expanded(
-            child: FadeThrough(
-              layoutBuilder: FadeThrough.fill,
-              child: _JournalText(key: ValueKey(dateKey(day))),
+            child: SearchGlow(
+              target: dateKey(day),
+              radius: 12,
+              bleed: 8,
+              child: FadeThrough(
+                layoutBuilder: FadeThrough.fill,
+                child: _JournalText(key: ValueKey(dateKey(day))),
+              ),
             ),
           ),
         ],

@@ -18,6 +18,7 @@ import 'hover_fill.dart';
 import 'mark.dart';
 import 'note_input.dart';
 import 'paged_dialog.dart';
+import 'search_glow.dart';
 import 'setting_rows.dart';
 import 'sleep_time.dart';
 import 'smooth_task_scroll.dart';
@@ -122,16 +123,19 @@ class TaskRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.read(context);
-    return _TodoRow(
-      scope: scope,
-      item: item,
-      day: day,
-      readOnly: readOnly,
-      fadeIn: fadeIn,
-      arriving: arriving,
-      leaving: leaving,
-      onRemove: onRemove ?? () => state.removeTodo(scope, item, day: day),
-      make: make,
+    return SearchGlow(
+      target: item.uid,
+      child: _TodoRow(
+        scope: scope,
+        item: item,
+        day: day,
+        readOnly: readOnly,
+        fadeIn: fadeIn,
+        arriving: arriving,
+        leaving: leaving,
+        onRemove: onRemove ?? () => state.removeTodo(scope, item, day: day),
+        make: make,
+      ),
     );
   }
 }
