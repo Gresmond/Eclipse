@@ -316,9 +316,9 @@ class _RepeatRow extends StatelessWidget {
 _RepeatChoice? _birthdayRepeat(bool birthday, _RepeatChoice? repeat) =>
     !birthday || repeat?.rule == const RepeatRule.yearly(1) ? repeat : (rule: const RepeatRule.yearly(1), until: null);
 
-/// [child] (the time and repeat) folded away for a birthday: it fades out
-/// in the first half while the rows below slide up over the whole, and
-/// back the other way.
+/// [child] (the time, or the repeat's options) folded away for a
+/// birthday: it fades out in the first half while the rows below slide up
+/// over the whole, and back the other way.
 class _BirthdayFold extends StatefulWidget {
   const _BirthdayFold({required this.folded, required this.child});
 
@@ -362,24 +362,6 @@ class _BirthdayFoldState extends State<_BirthdayFold> with SingleTickerProviderS
         child: ExcludeFocus(excluding: widget.folded, child: widget.child),
       ),
     ),
-  );
-}
-
-/// Whether a task is someone's birthday, which comes round every year, all
-/// day, in place of a repeat and time; a cross makes it not one.
-class _BirthdayRow extends StatelessWidget {
-  const _BirthdayRow({required this.birthday, required this.onChanged});
-
-  final bool birthday;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) => _DetailRow(
-    icon: _birthdayIcon,
-    label: birthday ? 'Birthday' : 'Not a birthday',
-    onPressed: () => onChanged(!birthday),
-    clear: 'Not a birthday',
-    onClear: birthday ? () => onChanged(false) : null,
   );
 }
 

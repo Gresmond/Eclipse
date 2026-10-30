@@ -91,8 +91,10 @@ extension on _SettingsDialogState {
             ),
           )
         else
+          // Three days show; the rest scroll. A row is its padding and its
+          // two lines of text.
           ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 240),
+            constraints: BoxConstraints(maxHeight: 3 * (20 + MediaQuery.textScalerOf(context).scale(50)) + 2 * 6),
             child: ListView.separated(
               shrinkWrap: true,
               itemCount: _backups.length,

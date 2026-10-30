@@ -6,14 +6,19 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_menu.dart';
+import 'fade_through.dart';
 
-/// Settings' Search ribbon: every task and journal entry, any day, found as
-/// you type. A result opens its day and lights it there.
+/// The search bar atop Settings' General ribbon: every task and journal
+/// entry, any day, found as you type. Typing fades [settings] away for the
+/// results; a result opens its day and lights it there.
 class SettingsSearch extends StatefulWidget {
-  const SettingsSearch({super.key});
+  const SettingsSearch({super.key, required this.settings});
+
+  /// General's settings, under the bar while it's empty.
+  final Widget settings;
 
   /// The results' box keeps one height, so the dialog doesn't jump as you
-  /// type: this tall, or what's left of the height it's given.
+  /// type.
   static const height = 420.0;
 
   /// Results drawn at most; more words narrow it.
@@ -24,8 +29,7 @@ class SettingsSearch extends StatefulWidget {
 }
 
 class SettingsSearchState extends State<SettingsSearch> {
-  late final _controller = TextEditingController(text: _state.lastSearch)
-    ..selection = TextSelection(baseOffset: 0, extentOffset: _state.lastSearch.length);
+  final _controller = TextEditingController();
   late final _state = AppScope.read(context);
   final _focus = FocusNode();
   late final SearchIndex _index;
@@ -37,7 +41,6 @@ class SettingsSearchState extends State<SettingsSearch> {
     super.initState();
     _state.saveDrafts();
     _index = SearchIndex(_state.store);
-    _search(_controller.text);
   }
 
   @override
@@ -48,7 +51,6 @@ class SettingsSearchState extends State<SettingsSearch> {
   }
 
   void _search(String query) {
-    _state.lastSearch = query;
     setState(() {
       _words = SearchIndex.words(query);
       _hits = _index.search(query);
@@ -61,6 +63,9 @@ class SettingsSearchState extends State<SettingsSearch> {
     _search('');
     _focus.requestFocus();
   }
+
+  /// Whether anything's typed, so the results show in place of the settings.
+  bool get searching => _controller.text.isNotEmpty;
 
   /// Opens the first result, for Enter.
   void openFirst() {
@@ -75,103 +80,105 @@ class SettingsSearchState extends State<SettingsSearch> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return LayoutBuilder(
-      builder: (context, constraints) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: 44,
-            padding: const EdgeInsets.only(left: 16, right: 8),
-            decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focus,
-                    autofocus: true,
-                    onChanged: _search,
-                    cursorColor: p.ink,
-                    style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      border: InputBorder.none,
-                      hintText: 'Search tasks and journal',
-                      hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
-                      contentPadding: EdgeInsets.zero,
+    // The results as built: fading out after a clear, they keep showing
+    // what they showed.
+    final hits = _hits, words = _words;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          height: 44,
+          padding: const EdgeInsets.only(left: 16, right: 8),
+          decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focus,
+                  autofocus: true,
+                  onChanged: _search,
+                  cursorColor: p.ink,
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: 'Search tasks and journal',
+                    hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+              if (_controller.text.isNotEmpty)
+                TextFieldTapRegion(
+                  child: IconButton(
+                    tooltip: 'Clear',
+                    onPressed: _clear,
+                    constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                    padding: EdgeInsets.zero,
+                    style: ButtonStyle(
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      minimumSize: const WidgetStatePropertyAll(Size(28, 28)),
+                      shape: const WidgetStatePropertyAll(CircleBorder()),
+                      backgroundColor: WidgetStateProperty.resolveWith(
+                        (states) =>
+                            states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+                      ),
+                      overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+                    ),
+                    icon: Icon(Icons.close_rounded, size: 16, color: p.inkMuted),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        FadeThrough(
+          layoutBuilder: FadeThrough.pinTop,
+          child: !searching
+              ? KeyedSubtree(key: const ValueKey('settings'), child: widget.settings)
+              : SizedBox(
+                  key: const ValueKey('results'),
+                  height: SettingsSearch.height,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: ColoredBox(
+                      color: p.empty.withValues(alpha: 0.45),
+                      child: words.isEmpty
+                          ? _message(p, 'Find any task or journal entry, from any day.')
+                          : hits.isEmpty
+                          ? _message(p, curlyQuotes('Nothing matches "${_controller.text.trim()}".'))
+                          : ScrollConfiguration(
+                              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                              child: ListView.separated(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                itemCount:
+                                    hits.length.clamp(0, SettingsSearch.shown) +
+                                    (hits.length > SettingsSearch.shown ? 1 : 0),
+                                separatorBuilder: (_, _) => const FadeMenuDivider(),
+                                itemBuilder: (context, i) => i == SettingsSearch.shown
+                                    ? Padding(
+                                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                                        child: Text(
+                                          'Showing the newest ${SettingsSearch.shown} of ${hits.length}. Add a word to narrow it.',
+                                          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                                        ),
+                                      )
+                                    : _HitRow(
+                                        hit: hits[i],
+                                        words: words,
+                                        today: _state.today,
+                                        onTap: () => _open(hits[i]),
+                                      ),
+                              ),
+                            ),
                     ),
                   ),
                 ),
-                if (_controller.text.isNotEmpty)
-                  TextFieldTapRegion(
-                    child: IconButton(
-                      tooltip: 'Clear',
-                      onPressed: _clear,
-                      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-                      padding: EdgeInsets.zero,
-                      style: ButtonStyle(
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        minimumSize: const WidgetStatePropertyAll(Size(28, 28)),
-                        shape: const WidgetStatePropertyAll(CircleBorder()),
-                        backgroundColor: WidgetStateProperty.resolveWith(
-                          (states) => states.contains(WidgetState.hovered)
-                              ? p.empty.withValues(alpha: 0.8)
-                              : Colors.transparent,
-                        ),
-                        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-                      ),
-                      icon: Icon(Icons.close_rounded, size: 16, color: p.inkMuted),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          _sized(
-            constraints.hasBoundedHeight,
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: ColoredBox(
-                color: p.empty.withValues(alpha: 0.45),
-                child: _words.isEmpty
-                    ? _message(p, 'Find any task or journal entry, from any day.')
-                    : _hits.isEmpty
-                    ? _message(p, curlyQuotes('Nothing matches "${_controller.text.trim()}".'))
-                    : ScrollConfiguration(
-                        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                        child: ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          itemCount:
-                              _hits.length.clamp(0, SettingsSearch.shown) +
-                              (_hits.length > SettingsSearch.shown ? 1 : 0),
-                          separatorBuilder: (_, _) => const FadeMenuDivider(),
-                          itemBuilder: (context, i) => i == SettingsSearch.shown
-                              ? Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                                  child: Text(
-                                    'Showing the newest ${SettingsSearch.shown} of ${_hits.length}. Add a word to narrow it.',
-                                    style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
-                                  ),
-                                )
-                              : _HitRow(
-                                  hit: _hits[i],
-                                  words: _words,
-                                  today: _state.today,
-                                  onTap: () => _open(_hits[i]),
-                                ),
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
-
-  /// [results] in the height left, given one, or at [SettingsSearch.height].
-  Widget _sized(bool bounded, Widget results) =>
-      bounded ? Expanded(child: results) : SizedBox(height: SettingsSearch.height, child: results);
 
   Widget _message(Palette p, String text) => Center(
     child: Padding(

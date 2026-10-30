@@ -208,16 +208,40 @@ class _SettingsDialogState extends State<SettingsDialog> {
     }
   }
 
+  /// Where the panel's top first landed, centred, kept from then on.
+  double? _top;
+
+  final _panel = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final panel = _panel.currentContext?.findRenderObject();
+      final area = context.findRenderObject();
+      if (!mounted || panel is! RenderBox || area is! RenderBox) return;
+      setState(() => _top = panel.localToGlobal(Offset.zero, ancestor: area).dy);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     return ConfirmOnEnter(
       onConfirm: _restoring || _moving || _signingIn || _confirming != null || _newJournal != null || _joining != null
           ? null
-          : _ribbon == 2
-          ? () => _search.currentState?.openFirst()
-          : () => Navigator.pop(context),
+          // Opens the first result while searching, else closes.
+          : () => switch (_search.currentState) {
+              final search? when _ribbon == 0 && search.searching => search.openFirst(),
+              _ => Navigator.pop(context),
+            },
       child: Dialog(
+        // Opens centred, then keeps its top there, so it grows and shrinks
+        // from the bottom.
+        alignment: _top == null ? null : Alignment.topCenter,
+        insetPadding: _top == null ? null : EdgeInsets.fromLTRB(40, _top!, 40, 24),
+        // Anchoring must not move it at all.
+        insetAnimationDuration: Duration.zero,
         clipBehavior: Clip.antiAlias,
         backgroundColor: p.tile,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
@@ -225,6 +249,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
           key: widget.tourTargetKey,
           spot: widget.tourRibbon == null ? TourSpot.settings : TourSpot.settingsPreview,
           child: SizedBox(
+            key: _panel,
             width: 480,
             // Scrolls when the window is too short for all of it.
             child: SingleChildScrollView(
@@ -242,7 +267,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         ),
                       ),
                       _Ribbons(
-                        labels: const ['General', 'Data', 'Search'],
+                        labels: const ['General', 'Data'],
                         selected: _ribbon,
                         onSelect: (i) => setState(() {
                           _ribbon = i;
@@ -262,11 +287,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                       layoutBuilder: FadeThrough.pinTop,
                       child: KeyedSubtree(
                         key: ValueKey(_ribbon),
-                        child: switch (_ribbon) {
-                          0 => _general(p),
-                          1 => _backupsAndSync(p),
-                          _ => SettingsSearch(key: _search),
-                        },
+                        child: _ribbon == 0 ? SettingsSearch(key: _search, settings: _general(p)) : _backupsAndSync(p),
                       ),
                     ),
                   ),

@@ -83,6 +83,7 @@ void main() {
     );
 
     final settingsGuide = tester.getTopLeft(guide);
+    final settingsHole = maskHole();
     final guidePositions = [settingsGuide];
     await tester.tap(find.text('Next'));
     await tester.pump();
@@ -99,7 +100,8 @@ void main() {
     }
     await tester.pump(); // Paint the final post-layout measurement.
     final resizedGuide = tester.getTopLeft(guide);
-    expect(resizedGuide, isNot(settingsGuide));
+    expect(maskHole().top, settingsHole.top, reason: 'Settings keeps its top, growing downwards');
+    expect(maskHole().height, isNot(settingsHole.height));
     for (var frame = 1; frame < guidePositions.length; frame++) {
       expect(
         (guidePositions[frame] - guidePositions[frame - 1]).distance,

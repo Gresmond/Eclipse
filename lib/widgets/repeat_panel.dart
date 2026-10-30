@@ -2,8 +2,9 @@ part of 'todo_panel.dart';
 
 /// A task's day on a calendar, with its time and how it repeats under it.
 /// Repeat is a switch: on, it opens weekly (on chosen weekdays), monthly
-/// (on the calendar day's date) or custom (every so many days, weeks,
-/// months or years from the calendar day). The calendar then marks every
+/// (on the calendar day's date), custom (every so many days, weeks,
+/// months or years from the calendar day) or, where offered, a birthday,
+/// which folds the rest and the time away. The calendar then marks every
 /// day it comes round, and sets either its first day or its last, as the
 /// Starts and Ends chips choose. It changes as it's set.
 class _RepeatPanel extends StatefulWidget {
@@ -15,8 +16,8 @@ class _RepeatPanel extends StatefulWidget {
     required this.repeat,
     required this.onRepeat,
     this.time,
-    this.folded = false,
     this.birthday,
+    this.onBirthday,
     this.startsOn = false,
   });
 
@@ -34,11 +35,9 @@ class _RepeatPanel extends StatefulWidget {
   /// The time's row, between the calendar and the repeat.
   final Widget? time;
 
-  /// Whether the time and repeat are folded away, for a birthday.
-  final bool folded;
-
-  /// The birthday's row, under the repeat.
-  final Widget? birthday;
+  /// Whether it's a birthday; null where birthdays aren't offered.
+  final bool? birthday;
+  final ValueChanged<bool>? onBirthday;
 
   /// Whether it repeats as soon as this opens.
   final bool startsOn;
@@ -103,9 +102,13 @@ class _RepeatPanelState extends State<_RepeatPanel> {
     widget.onRepeat((rule: _rule, until: widget.repeat?.until));
   }
 
+  bool get _birthday => widget.birthday ?? false;
+
   void _toggle() {
     _ends = false;
-    widget.repeat == null ? _set(() {}) : widget.onRepeat(null);
+    if (widget.repeat == null && !_birthday) return _set(() {});
+    widget.onRepeat(null);
+    if (_birthday) widget.onBirthday!(false);
   }
 
   /// A tapped day: the start, moving monthly's date and a lone weekday
@@ -130,7 +133,8 @@ class _RepeatPanelState extends State<_RepeatPanel> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final repeat = widget.folded ? null : widget.repeat;
+    final repeat = _birthday ? null : widget.repeat;
+    final on = widget.repeat != null || _birthday;
     final start = widget.start, until = repeat?.until;
     final ends = _ends && repeat != null;
     return Column(
@@ -148,28 +152,23 @@ class _RepeatPanelState extends State<_RepeatPanel> {
           onSelected: _tap,
         ),
         const SizedBox(height: 8),
-        _BirthdayFold(
-          folded: widget.folded,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ?widget.time,
-              _RepeatSwitch(on: widget.repeat != null, summary: _summary(widget.repeat), onTap: _toggle),
-              _Unfold(
-                open: widget.repeat != null,
-                child: Padding(padding: const EdgeInsets.fromLTRB(12, 6, 0, 8), child: _options(p)),
-              ),
-            ],
-          ),
+        if (widget.time case final time?) _BirthdayFold(folded: _birthday, child: time),
+        _RepeatSwitch(
+          on: on,
+          label: on ? (_birthday ? 'Birthday' : _summary(widget.repeat)) : 'Repeat',
+          onTap: _toggle,
         ),
-        ?widget.birthday,
+        _Unfold(
+          open: on,
+          child: Padding(padding: const EdgeInsets.fromLTRB(0, 6, 0, 8), child: _options(p)),
+        ),
       ],
     );
   }
 
   /// "Every 2 weeks on Friday, until 3 Dec".
   String _summary(_RepeatChoice? choice) {
-    if (choice == null) return 'Doesn’t repeat';
+    if (choice == null) return 'Repeat';
     final start = widget.start;
     final rule = choice.rule;
     final weekday = weekdayNames[start.weekday - 1];
@@ -199,116 +198,168 @@ class _RepeatPanelState extends State<_RepeatPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Each row shrinks only when text too large for the dialog's one
-        // width would otherwise cut it off.
-        _ScaleDown(
-          child: _Pills(
-            options: const ['Weekly', 'Monthly', 'Custom'],
-            selected: switch (_kind) {
-              RepeatKind.weekly => 0,
-              RepeatKind.monthly => 1,
-              _ => 2,
-            },
-            onSelect: (i) => _set(() {
-              _kind = [RepeatKind.weekly, RepeatKind.monthly, RepeatKind.days][i];
-              _date = start.day;
-            }),
-          ),
-        ),
-        const SizedBox(height: 14),
-        SizedBox(
-          height: 40,
+        // width would otherwise cut it off. The pill rows are centred; the
+        // rest lines up with the switch's text.
+        Center(
           child: _ScaleDown(
-            child: switch (_kind) {
-              RepeatKind.weekly => DayToggles(
-                bits: _days,
-                size: 30,
-                lastReason: 'It needs at least one day',
-                onChanged: (bits) => _set(() => _days = bits),
-              ),
-              RepeatKind.monthly => Text('On the ${ordinal(_date)} of each month', style: label),
-              _ => Row(
-                children: [
-                  Text('Every', style: label),
-                  _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => _set(() => _every = v)),
-                  const SizedBox(width: 6),
-                  _Pills(
-                    options: const ['days', 'weeks', 'months', 'years'],
-                    selected: const [
-                      RepeatKind.days,
-                      RepeatKind.weeks,
-                      RepeatKind.months,
-                      RepeatKind.yearly,
-                    ].indexOf(_unit),
-                    onSelect: (i) => _set(
-                      () => _unit = const [RepeatKind.days, RepeatKind.weeks, RepeatKind.months, RepeatKind.yearly][i],
-                    ),
-                  ),
-                ],
-              ),
-            },
-          ),
-        ),
-        if (custom && _unit != RepeatKind.days)
-          Text(switch (_unit) {
-            RepeatKind.weeks => 'On ${weekdayNames[start.weekday - 1]}',
-            RepeatKind.months => 'On the ${ordinal(start.day)}',
-            _ => 'On ${start.day} ${monthNames[start.month - 1]}',
-          }, style: label),
-        if ((_kind == RepeatKind.monthly && _date > 28) || (custom && _unit == RepeatKind.months && start.day > 28))
-          Text('In shorter months, on the last day.', style: note),
-        if (custom && _unit == RepeatKind.yearly && start.month == 2 && start.day == 29)
-          Text('Only in leap years.', style: note),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Flexible(
-              child: _ScaleDown(
-                child: _Pills(
-                  options: [
-                    'Starts ${start.day} ${monthNames[start.month - 1].substring(0, 3)}',
-                    until == null ? 'Ends never' : 'Ends ${until.day} ${monthNames[until.month - 1].substring(0, 3)}',
-                  ],
-                  selected: _ends ? 1 : 0,
-                  onSelect: (i) => setState(() => _ends = i == 1),
-                ),
-              ),
-            ),
-            if (until != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: _TaskAction(
-                  tooltip: 'No end date',
-                  icon: Icons.close_rounded,
-                  onPressed: () {
-                    setState(() => _ends = false);
-                    widget.onRepeat((rule: _rule, until: null));
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Pills(
+                  options: const ['Weekly', 'Monthly', 'Custom'],
+                  selected: _birthday
+                      ? -1
+                      : switch (_kind) {
+                          RepeatKind.weekly => 0,
+                          RepeatKind.monthly => 1,
+                          _ => 2,
+                        },
+                  onSelect: (i) {
+                    if (_birthday) widget.onBirthday!(false);
+                    _set(() {
+                      _kind = [RepeatKind.weekly, RepeatKind.monthly, RepeatKind.days][i];
+                      _date = start.day;
+                    });
                   },
                 ),
-              ),
-          ],
-        ),
-        if (_ends)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text('Pick its last day on the calendar.', style: note),
+                if (widget.birthday != null) ...[
+                  const SizedBox(width: 8),
+                  _Pills(
+                    options: const ['Birthday'],
+                    selected: _birthday ? 0 : -1,
+                    onSelect: (_) => setState(() {
+                      _ends = false;
+                      widget.onBirthday!(true);
+                    }),
+                  ),
+                ],
+              ],
+            ),
           ),
+        ),
+        _BirthdayFold(
+          folded: _birthday,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Monthly has nothing to choose: the summary above says which day.
+                    if (_kind != RepeatKind.monthly) ...[
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        height: 40,
+                        child: _ScaleDown(
+                          child: switch (_kind) {
+                            RepeatKind.weekly => DayToggles(
+                              bits: _days,
+                              size: 30,
+                              lastReason: 'It needs at least one day',
+                              onChanged: (bits) => _set(() => _days = bits),
+                            ),
+                            _ => Row(
+                              children: [
+                                Text('Every', style: label),
+                                _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => _set(() => _every = v)),
+                                const SizedBox(width: 6),
+                                _Pills(
+                                  options: const ['days', 'weeks', 'months', 'years'],
+                                  selected: const [
+                                    RepeatKind.days,
+                                    RepeatKind.weeks,
+                                    RepeatKind.months,
+                                    RepeatKind.yearly,
+                                  ].indexOf(_unit),
+                                  onSelect: (i) => _set(
+                                    () => _unit = const [
+                                      RepeatKind.days,
+                                      RepeatKind.weeks,
+                                      RepeatKind.months,
+                                      RepeatKind.yearly,
+                                    ][i],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          },
+                        ),
+                      ),
+                    ],
+                    if (_kind == RepeatKind.monthly && _date > 28) const SizedBox(height: 8),
+                    if ((_kind == RepeatKind.monthly && _date > 28) ||
+                        (custom && _unit == RepeatKind.months && start.day > 28))
+                      Text('In shorter months, on the last day.', style: note),
+                    if (custom && _unit == RepeatKind.yearly && start.month == 2 && start.day == 29)
+                      Text('Only in leap years.', style: note),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: _ScaleDown(
+                      alignment: Alignment.center,
+                      child: _Pills(
+                        options: [
+                          'Starts ${start.day} ${monthNames[start.month - 1].substring(0, 3)}',
+                          until == null
+                              ? 'Ends never'
+                              : 'Ends ${until.day} ${monthNames[until.month - 1].substring(0, 3)}',
+                        ],
+                        selected: _ends ? 1 : 0,
+                        onSelect: (i) => setState(() => _ends = i == 1),
+                      ),
+                    ),
+                  ),
+                  if (until != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: _TaskAction(
+                        tooltip: 'No end date',
+                        icon: Icons.close_rounded,
+                        onPressed: () {
+                          setState(() => _ends = false);
+                          widget.onRepeat((rule: _rule, until: null));
+                        },
+                      ),
+                    ),
+                ],
+              ),
+              if (_ends)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 12),
+                  child: Text('Pick its last day on the calendar.', style: note),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
 }
 
-/// "Repeat", with how it repeats under it, and a switch.
+/// "Repeat", or once on how it repeats, in the time row's accent text
+/// button look, and a switch.
 class _RepeatSwitch extends StatelessWidget {
-  const _RepeatSwitch({required this.on, required this.summary, required this.onTap});
+  const _RepeatSwitch({required this.on, required this.label, required this.onTap});
 
   final bool on;
-  final String summary;
+  final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Hoverable(
       onTap: onTap,
       builder: (hover) => AnimatedContainer(
@@ -324,25 +375,16 @@ class _RepeatSwitch extends StatelessWidget {
             Icon(Icons.repeat_rounded, size: 18, color: colors.primary),
             const SizedBox(width: 8),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Repeat',
-                    style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
-                  ),
-                  FadeThrough(
-                    duration: Motion.click,
-                    layoutBuilder: FadeThrough.pinTopLeft,
-                    child: Text(
-                      summary,
-                      key: ValueKey(summary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
-                    ),
-                  ),
-                ],
+              child: FadeThrough(
+                duration: Motion.click,
+                layoutBuilder: FadeThrough.pinTopLeft,
+                child: Text(
+                  label,
+                  key: ValueKey(label),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge?.copyWith(color: colors.primary),
+                ),
               ),
             ),
             SettingToggle(on: on),
@@ -398,12 +440,13 @@ class _UnfoldState extends State<_Unfold> with SingleTickerProviderStateMixin {
 /// [child] at its own size, at the left, or smaller to fit if it's too
 /// wide.
 class _ScaleDown extends StatelessWidget {
-  const _ScaleDown({required this.child});
+  const _ScaleDown({required this.child, this.alignment = Alignment.centerLeft});
 
   final Widget child;
+  final Alignment alignment;
 
   @override
-  Widget build(BuildContext context) => FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: child);
+  Widget build(BuildContext context) => FittedBox(fit: BoxFit.scaleDown, alignment: alignment, child: child);
 }
 
 /// A row of choices, one filled.

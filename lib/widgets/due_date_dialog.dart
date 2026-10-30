@@ -221,10 +221,8 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
         repeat: _repeat,
         onRepeat: (repeat) => setState(() => _repeat = repeat),
         time: _timeRow(),
-        folded: _birthday,
-        birthday: widget.birthdays
-            ? _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday))
-            : null,
+        birthday: widget.birthdays ? _birthday : null,
+        onBirthday: (birthday) => setState(() => _birthday = birthday),
       ),
     );
   }

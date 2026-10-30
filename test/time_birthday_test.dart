@@ -198,7 +198,9 @@ void main() {
     // Only a task further ahead can be a birthday.
     await tester.tap(find.descendant(of: find.byType(WeekCard), matching: find.byTooltip('Pick a day')));
     await tester.pumpAndSettle();
-    expect(find.text('Not a birthday'), findsNothing);
+    await tester.tap(find.text('Repeat'));
+    await tester.pumpAndSettle();
+    expect(find.text('Birthday'), findsNothing);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     await tester.tap(find.descendant(of: find.byType(FurtherAheadCard), matching: find.byTooltip('Pick a day')));
@@ -211,12 +213,15 @@ void main() {
     expect(opening.toSet(), hasLength(1));
     await tester.pumpAndSettle();
 
-    // Making it a birthday folds the time and repeat away; it comes round
-    // every year, all day.
-    expect(find.text('Doesn’t repeat').hitTestable(), findsOneWidget);
-    await tester.tap(find.text('Not a birthday'));
+    // Birthday, among the repeat's choices, folds the time and the rest of
+    // the repeat away; it comes round every year, all day.
+    await tester.tap(find.text('Repeat'));
     await tester.pumpAndSettle();
-    expect(find.text('Doesn’t repeat').hitTestable(), findsNothing);
+    expect(find.textContaining('Starts').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('Birthday'));
+    await tester.pumpAndSettle();
+    expect(find.text('Birthday'), findsNWidgets(2), reason: 'the pill, and the switch says so');
+    expect(find.textContaining('Starts').hitTestable(), findsNothing);
     expect(find.text('Add a time').hitTestable(), findsNothing);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
@@ -308,7 +313,7 @@ void main() {
     expect(find.descendant(of: week, matching: find.byTooltip('Time, repeat and birthday')), findsNothing);
     await tester.tap(find.descendant(of: week, matching: find.byTooltip('Add a time')).first);
     await tester.pumpAndSettle();
-    expect(find.text('Doesn’t repeat'), findsNothing, reason: 'only a time');
+    expect(find.text('Repeat'), findsNothing, reason: 'only a time');
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(find.descendant(of: week, matching: find.text('9:00 am')), findsOneWidget);

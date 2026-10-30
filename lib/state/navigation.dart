@@ -57,10 +57,6 @@ mixin _Navigation on ChangeNotifier {
     notifyListeners();
   }
 
-  /// The last search, kept while the app runs: Settings' Search opens on
-  /// it again, selected, so typing starts a new one.
-  String lastSearch = '';
-
   /// What search last opened, a task's uid or a journal day's key, and
   /// when: it lights up briefly where it's shown.
   ({String target, DateTime at})? found;

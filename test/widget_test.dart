@@ -1516,7 +1516,7 @@ void main() {
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(find.text('Doesn’t repeat'), findsOneWidget, reason: 'Enter without a day asks for one');
+    expect(find.text('Repeat'), findsOneWidget, reason: 'Enter without a day asks for one');
     await tester.tap(find.text('24').last);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
@@ -1588,9 +1588,9 @@ void main() {
     expect(find.descendant(of: later, matching: find.byTooltip('Repeat')), findsNothing);
     await tester.tap(find.descendant(of: later, matching: find.byTooltip('Pick a day')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Doesn’t repeat'));
+    await tester.tap(find.text('Repeat'));
     await tester.pumpAndSettle();
-    for (final pill in ['Weekly', 'Monthly', 'Yearly', 'Custom']) {
+    for (final pill in ['Weekly', 'Monthly', 'Custom', 'Birthday']) {
       final size = tester.getSize(find.text(pill));
       final painter = TextPainter(
         text: TextSpan(text: pill, style: tester.widget<Text>(find.text(pill)).style),
@@ -1599,19 +1599,21 @@ void main() {
       )..layout();
       expect(size.width, greaterThanOrEqualTo(painter.width - 0.5), reason: '$pill shows in full');
     }
-    // Every so many months lands on the day's date, or a shorter month's last.
+    // Every so many months lands on the day's date, or a shorter month's
+    // last; the summary alone says which day.
     await tester.tap(find.text('Custom'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('months'));
     await tester.pumpAndSettle();
-    expect(find.text('on the 30th'), findsOneWidget);
+    expect(find.text('Every 2 months on the 30th'), findsOneWidget);
+    expect(find.text('On the 30th'), findsNothing);
     expect(find.text('In shorter months, on the last day.'), findsOneWidget);
-    await tester.tap(find.text('Yearly'));
+    await tester.tap(find.text('years'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('year on Oct 30'), findsOneWidget);
-    await tester.tap(find.byTooltip('Back'));
+    expect(find.text('On 30 October'), findsNothing);
+    await tester.tap(find.byTooltip('Fewer'));
     await tester.pumpAndSettle();
-    expect(find.text('Every year'), findsOneWidget);
+    expect(find.text('Every year on 30 Oct'), findsOneWidget);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     await tester.enterText(find.descendant(of: later, matching: find.byType(TextField)), 'Renew licence');
@@ -2200,6 +2202,9 @@ void main() {
       for (final element in tappable.evaluate().toList()) {
         final box = element.renderObject! as RenderBox;
         if (!box.attached) continue;
+        // A text field's selection handles come from the test's touch taps;
+        // a mouse never shows them.
+        if (element.findAncestorWidgetOfExactType<CompositedTransformFollower>() != null) continue;
         await mouse.moveTo(box.localToGlobal(box.size.center(Offset.zero)));
         await tester.pump();
         final cursor = RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1);
@@ -2228,12 +2233,12 @@ void main() {
     await tester.tap(find.text('Data').hitTestable());
     await tester.pumpAndSettle();
     await sweep('Settings, Backups and sync');
-    // Opens on the last search, so no typing leaves touch handles about.
-    state.lastSearch = 'dentist';
-    await tester.tap(find.text('Search').hitTestable());
+    await tester.tap(find.text('General').hitTestable());
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'dentist');
     await tester.pumpAndSettle();
     expect(find.textContaining('TASK'), findsWidgets);
-    await sweep('Settings, Search');
+    await sweep('Settings, search results');
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Appearance'));
@@ -2277,17 +2282,16 @@ void main() {
 
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Search'));
-    await tester.pumpAndSettle();
-    expect(find.text('Find any task or journal entry, from any day.'), findsOneWidget);
+    expect(find.text('Weekends as rest days'), findsOneWidget, reason: 'General under an empty search');
     await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
     await tester.pumpAndSettle();
+    expect(find.text('Weekends as rest days'), findsNothing, reason: 'typing swaps the settings for results');
     expect(find.textContaining('JOURNAL'), findsOneWidget);
     expect(find.textContaining('TASK'), findsOneWidget);
     await _shoot(tester, 'settings_search');
     await tester.tap(find.byTooltip('Clear'));
     await tester.pumpAndSettle();
-    expect(find.text('Find any task or journal entry, from any day.'), findsOneWidget);
+    expect(find.text('Weekends as rest days'), findsOneWidget, reason: 'clearing brings them back');
     expect(find.byTooltip('Clear'), findsNothing, reason: 'only shown with something to clear');
     await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
     await tester.pumpAndSettle();
@@ -2304,10 +2308,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Settings'), findsNothing);
 
-    // Search opens on the last one again; a click opens that result.
+    // Settings opens with an empty search again; a click opens a result.
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Search'));
+    expect(find.text('Weekends as rest days'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'renew');
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Renew the'));
     for (var i = 0; i < 6; i++) {
