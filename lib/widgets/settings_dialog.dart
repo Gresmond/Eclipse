@@ -403,7 +403,7 @@ extension on _SettingsDialogState {
               )
             else
               Padding(
-                padding: EdgeInsets.fromLTRB(16, inDrive ? 2 : 14, 12, 12),
+                padding: EdgeInsets.fromLTRB(16, inDrive ? 2 : 8, 12, 12),
                 child: _journalFolderBody(p, current, folder, small),
               ),
           ],
@@ -427,6 +427,7 @@ extension on _SettingsDialogState {
             ),
             if (folder == null)
               TextButton(
+                style: _compactButton,
                 onPressed: _pickJournal,
                 child: Text('Change…', style: TextStyle(color: p.accent)),
               ),

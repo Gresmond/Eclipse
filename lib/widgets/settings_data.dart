@@ -1,5 +1,12 @@
 part of 'settings_dialog.dart';
 
+/// A card's text buttons: as tall as the line of text beside them, so a
+/// card's title sits as far from its top as a switch row's does.
+const _compactButton = ButtonStyle(
+  visualDensity: VisualDensity.compact,
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+);
+
 /// The Data ribbon's sections: backups, where everything lives, and sync.
 extension on _SettingsDialogState {
   /// Saved copies to restore, where everything lives, and sync.
@@ -100,7 +107,7 @@ extension on _SettingsDialogState {
     final folder = _newFolder;
     final small = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted);
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 12),
       decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -115,6 +122,7 @@ extension on _SettingsDialogState {
               ),
               if (folder == null)
                 TextButton(
+                  style: _compactButton,
                   onPressed: _restoring || _moving ? null : _pickFolder,
                   child: Text('Keep it elsewhere…', style: TextStyle(color: p.accent)),
                 ),
@@ -182,6 +190,7 @@ extension on _SettingsDialogState {
             child: Text(label),
           )
         : TextButton(
+            style: _compactButton,
             onPressed: onTap,
             child: Text(label, style: TextStyle(color: onTap == null ? p.inkMuted : p.accent)),
           );
@@ -307,7 +316,7 @@ extension on _SettingsDialogState {
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 12),
       decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
