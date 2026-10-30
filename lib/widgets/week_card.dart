@@ -44,7 +44,7 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
               ),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           // Another day's week fades through as a whole.
           Expanded(
             child: FadeThrough(

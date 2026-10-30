@@ -62,7 +62,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
               ),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Expanded(
             child: FadeThrough(
               layoutBuilder: FadeThrough.fill,
