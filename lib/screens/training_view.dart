@@ -42,14 +42,14 @@ class TrainingView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: const [
                   Expanded(flex: 11, child: _ChartTile()),
-                  SizedBox(height: 16),
+                  SizedBox(height: 20),
                   Expanded(
                     flex: 9,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Expanded(flex: 3, child: _SessionTile()),
-                        SizedBox(width: 16),
+                        SizedBox(width: 20),
                         Expanded(flex: 2, child: _HistoryTile()),
                       ],
                     ),
@@ -107,7 +107,13 @@ class _Header extends StatelessWidget {
             children: [
               Text(
                 'PROGRESS',
-                style: _label(p, size: 14, weight: FontWeight.w600, color: p.inkMuted).copyWith(letterSpacing: 1.2),
+                style: TextStyle(
+                  fontFamily: Fonts.ui,
+                  fontSize: 12,
+                  letterSpacing: 2.2,
+                  fontWeight: FontWeight.w700,
+                  color: p.inkMuted.withValues(alpha: 0.8),
+                ),
               ),
               const SizedBox(height: 4),
               Text(

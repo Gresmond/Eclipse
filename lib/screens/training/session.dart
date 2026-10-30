@@ -91,43 +91,49 @@ class _ExerciseBlock extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Flexible(
-                      child: _InlineName(
-                        name: exercise.name,
-                        onRename: (name) => log.updateExercise(exercise, name: name),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Builder(
-                      builder: (anchor) => _GroupPill(
-                        group: exercise.group,
-                        onTap: () => showFadeMenu(
-                          anchor,
-                          alignLeft: true,
-                          width: 220,
-                          builder: (menu) => _GroupMenu(
-                            selected: exercise.group,
-                            onPick: (g) {
-                              Navigator.pop(menu);
-                              log.updateExercise(exercise, group: g);
-                            },
+                    // The name and group take what the remove button leaves.
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: _InlineName(
+                              name: exercise.name,
+                              onRename: (name) => log.updateExercise(exercise, name: name),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          Builder(
+                            builder: (anchor) => _GroupPill(
+                              group: exercise.group,
+                              onTap: () => showFadeMenu(
+                                anchor,
+                                alignLeft: true,
+                                width: 220,
+                                builder: (menu) => _GroupMenu(
+                                  selected: exercise.group,
+                                  onPick: (g) {
+                                    Navigator.pop(menu);
+                                    log.updateExercise(exercise, group: g);
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (exercise.bodyweight) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              'BODYWEIGHT',
+                              style: _label(
+                                p,
+                                size: 12,
+                                weight: FontWeight.w600,
+                                color: p.inkMuted,
+                              ).copyWith(letterSpacing: 1.2),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (exercise.bodyweight) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        'BODYWEIGHT',
-                        style: _label(
-                          p,
-                          size: 11,
-                          weight: FontWeight.w600,
-                          color: p.inkMuted,
-                        ).copyWith(letterSpacing: 1),
-                      ),
-                    ],
-                    const Spacer(),
                     _IconAction(
                       icon: Icons.close_rounded,
                       tooltip: 'Remove this session',

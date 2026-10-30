@@ -259,7 +259,10 @@ class _Table extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               flex: 2,
-              child: Center(child: Text(year == state.today.year ? 'YEAR TO DATE' : 'YEAR', style: label)),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Center(child: Text(year == state.today.year ? 'YEAR TO DATE' : 'YEAR', style: label)),
+              ),
             ),
           ],
         ),
@@ -299,7 +302,8 @@ class _Cell extends StatelessWidget {
         ? Color.lerp(p.missed, p.other, r * 2)!
         : Color.lerp(p.other, p.done, r * 2 - 1)!;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      // The year's total ends flush with the rule beneath it.
+      padding: EdgeInsets.only(left: 4, right: strong ? 0 : 4),
       child: AnimatedContainer(
         duration: Motion.morph,
         curve: Motion.morphCurve,

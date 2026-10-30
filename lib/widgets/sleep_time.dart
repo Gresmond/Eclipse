@@ -63,25 +63,26 @@ class SleepName extends StatelessWidget {
           ),
           width - timeWidth / 2,
         );
-        return Stack(
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(habit.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
-            ),
-            if (minutes != null)
-              Positioned(
-                left: centre - timeWidth / 2 - 8,
+        final name = Text(habit.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+        if (minutes == null) return Align(alignment: Alignment.centerLeft, child: name);
+        // One row, so the name and time share a baseline. A name that would
+        // run into its time gives way with an ellipsis.
+        final nameWidth = math.max(0.0, centre - timeWidth / 2 - 8);
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              SizedBox(width: nameWidth, child: name),
+              // Right-aligned, so am and pm line up down the column.
+              SizedBox(
                 width: timeWidth + 8,
-                top: 0,
-                bottom: 0,
-                // Right-aligned, so am and pm line up down the column.
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(clockLabel(minutes), maxLines: 1, style: time),
-                ),
+                child: Text(clockLabel(minutes), maxLines: 1, textAlign: TextAlign.right, style: time),
               ),
-          ],
+            ],
+          ),
         );
       },
     );

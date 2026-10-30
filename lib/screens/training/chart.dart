@@ -168,7 +168,7 @@ class _ChartPainter extends CustomPainter {
   final Offset? pointer;
   final Palette palette;
 
-  static const _left = 52.0, _bottom = 26.0, _top = 6.0, _right = 12.0;
+  static const _left = 52.0, _bottom = 26.0, _top = 6.0, _right = 20.0;
 
   double _value(_Series s, TrainingPoint pt) => percent ? (pt.value / s.points.first.value - 1) * 100 : pt.value;
 
@@ -426,7 +426,7 @@ class _Legend extends StatelessWidget {
                       g.label.toUpperCase(),
                       style: _label(
                         p,
-                        size: 11.5,
+                        size: 12,
                         weight: FontWeight.w700,
                         color: groupColour(g, p),
                       ).copyWith(letterSpacing: 1.2),
