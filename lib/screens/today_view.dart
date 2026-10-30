@@ -244,11 +244,12 @@ class _HabitsCard extends StatelessWidget {
         : '';
 
     return Tile(
-      padding: const EdgeInsets.fromLTRB(24, 22, 20, 12),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(

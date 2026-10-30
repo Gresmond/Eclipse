@@ -75,12 +75,17 @@ class TileHeader extends StatelessWidget {
           child: _CaptionSwap(caption: caption!),
         ),
     ];
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        if (trailingAtEnd) Expanded(child: Row(children: lead)) else ...lead,
-        ?trailing,
-      ],
+    // Every header is as tall as one with a button, so its title sits the same
+    // distance from the card's corner whatever else is in the row.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 30),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (trailingAtEnd) Expanded(child: Row(children: lead)) else ...lead,
+          ?trailing,
+        ],
+      ),
     );
   }
 }
