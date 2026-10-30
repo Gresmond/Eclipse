@@ -384,6 +384,8 @@ class _TodoRowState extends State<_TodoRow> {
                             ],
                           ),
                         ),
+                        // As far from the buttons as they are from the row's right edge.
+                        if (!widget.readOnly) const SizedBox(width: 8),
                       ],
                       if (!widget.readOnly)
                         IgnorePointer(
