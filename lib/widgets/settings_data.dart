@@ -32,19 +32,37 @@ extension on _SettingsDialogState {
           const SizedBox(height: 10),
           TourTarget(
             spot: TourSpot.googleSync,
+            // A stand-in for the sync card in builds without Google sign-in,
+            // worded and styled as the real one.
             child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: p.empty, borderRadius: BorderRadius.circular(16)),
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 8, 12, 12),
+              decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Google sync'),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Sign in with the same Google account on each computer to keep your tasks, rituals and journal in sync.',
+                  Text(
+                    'Sync',
+                    style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
+                  ),
+                  Text(
+                    'Keep everything the same on your other computers: sign in with the same Google account on each. '
+                    'Eclipse keeps its data in a hidden folder in your Google Drive, with a copy of your journal in '
+                    'an Eclipse Journals folder, and can’t see anything else there.',
+                    style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted),
                   ),
                   const SizedBox(height: 8),
-                  FilledButton(onPressed: null, child: const Text('Connect Google')),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        disabledBackgroundColor: p.done.withValues(alpha: 0.45),
+                        disabledForegroundColor: p.onAccent.withValues(alpha: 0.8),
+                      ),
+                      onPressed: null,
+                      child: const Text('Sign in with Google'),
+                    ),
+                  ),
                 ],
               ),
             ),

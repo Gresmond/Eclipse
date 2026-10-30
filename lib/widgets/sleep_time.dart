@@ -64,10 +64,10 @@ class SleepName extends StatelessWidget {
           width - timeWidth / 2,
         );
         final name = Text(habit.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
-        if (minutes == null) return Align(alignment: Alignment.centerLeft, child: name);
-        // One row, so the name and time share a baseline. A name that would
-        // run into its time gives way with an ellipsis.
+        // One row, so the name and time share a baseline. When the longest
+        // name would run into the times, every row drops its time instead.
         final nameWidth = math.max(0.0, centre - timeWidth / 2 - 8);
+        if (minutes == null || nameWidth < longest) return Align(alignment: Alignment.centerLeft, child: name);
         return Align(
           alignment: Alignment.centerLeft,
           child: Row(

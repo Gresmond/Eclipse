@@ -90,7 +90,7 @@ class YearView extends StatelessWidget {
       for (final h in sleep) name(h.name),
       name('Whole schedule', total: true),
     ];
-    final chrome = 32 + 20 + (rituals.isEmpty ? title + 48 + _line(context, empty) : table) + table + names.length * 6;
+    final chrome = 32 + 20 + (rituals.isEmpty ? title + 48 + _line(context, empty) : table) + table + names.length * 8;
     final cell = _fill(height - chrome, names);
 
     return SingleChildScrollView(

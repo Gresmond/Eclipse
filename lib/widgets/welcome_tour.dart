@@ -185,7 +185,7 @@ List<_Step> _steps(AppState state) => [
   ),
   const _Step(
     'Google sync',
-    'Connect to Google to sync your Eclipse data across all of your devices.',
+    'Sign in with Google to sync your Eclipse data across all of your devices.',
     TourSpot.googleSync,
     1,
   ),
