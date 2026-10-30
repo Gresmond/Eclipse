@@ -27,34 +27,41 @@ class SettingSwitchRow extends StatelessWidget {
       height: 62,
       grows: true,
       onTap: onTap,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w500, color: p.ink),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.inkMuted),
-                ),
-              ],
+      // Centred as a whole in a tall row; inside it the switch sits on the
+      // title's line, whatever the subtitle's length.
+      child: Center(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    strutStyle: const StrutStyle(fontSize: 15, height: _titleLine / 15, forceStrutHeight: true),
+                    style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w500, color: p.ink),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.inkMuted),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          SettingToggle(on: on),
-        ],
+            const SizedBox(width: 12),
+            SettingToggle(on: on),
+          ],
+        ),
       ),
     );
   }
+
+  /// The title's line is as tall as the switch, so the two share a centre.
+  static const _titleLine = 22.0;
 }
 
-/// Picks the hour a new day starts. Picking just moves the highlight.
 class DayStartPicker extends StatefulWidget {
   const DayStartPicker({super.key});
 
