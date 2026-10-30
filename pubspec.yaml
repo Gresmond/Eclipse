@@ -25,6 +25,16 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   fonts:
+    - family: Greed
+      fonts:
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-Regular.otf
+          weight: 400
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-Medium.otf
+          weight: 500
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/greed/GreedStandard-TRIAL-Bold.otf
+          weight: 700
     - family: Gellix
       fonts:
         - asset: assets/fonts/gellix/Gellix-TRIAL-Regular.otf

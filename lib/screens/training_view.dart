@@ -115,7 +115,7 @@ class _Header extends StatelessWidget {
                   fontFamily: Fonts.display,
                   fontSize: 38,
                   fontWeight: FontWeight.w600,
-                  letterSpacing: -1.3,
+                  letterSpacing: -0.6,
                   height: 1.05,
                   color: p.ink,
                 ),
