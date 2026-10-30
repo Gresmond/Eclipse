@@ -115,10 +115,13 @@ class _FadeMenuRoute extends PopupRoute<void> {
 
 /// A row in a [showFadeMenu] panel, shaded on hover.
 class FadeMenuRow extends StatelessWidget {
-  const FadeMenuRow({super.key, required this.onTap, required this.height, required this.child});
+  const FadeMenuRow({super.key, required this.onTap, required this.height, required this.child, this.grows = false});
 
   final VoidCallback onTap;
   final double height;
+
+  /// Treats [height] as a minimum, so a row with wrapped text gets taller.
+  final bool grows;
   final Widget child;
 
   @override
@@ -130,8 +133,9 @@ class FadeMenuRow extends StatelessWidget {
       builder: (hover) => AnimatedContainer(
         duration: Motion.hover,
         curve: Motion.hoverCurve,
-        height: height,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: grows ? null : height,
+        constraints: grows ? BoxConstraints(minHeight: height) : null,
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: grows ? 10 : 0),
         color: p.empty.withValues(alpha: hover ? 0.6 : 0),
         child: child,
       ),

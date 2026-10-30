@@ -25,6 +25,7 @@ class SettingSwitchRow extends StatelessWidget {
     final p = context.palette;
     return FadeMenuRow(
       height: 62,
+      grows: true,
       onTap: onTap,
       child: Row(
         children: [
