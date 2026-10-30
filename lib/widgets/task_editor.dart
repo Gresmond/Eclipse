@@ -6,8 +6,7 @@ typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, bool birt
 
 /// A new task's day from [first] on (to [last], if given), opening on
 /// [selected], with its time and repeat set under the calendar, and with
-/// [birthdays] whether it's a birthday. Without [calendar], [selected] is
-/// the day and only those are asked.
+/// [birthdays] whether it's a birthday.
 Future<_DayChoice?> _pickDayAndRepeat(
   BuildContext context, {
   required DateTime first,
@@ -17,7 +16,6 @@ Future<_DayChoice?> _pickDayAndRepeat(
   int? time,
   bool birthday = false,
   bool birthdays = false,
-  bool calendar = true,
 }) => showAppDialog<_DayChoice>(
   context: context,
   builder: (_) => _DueDateDialog(
@@ -28,43 +26,45 @@ Future<_DayChoice?> _pickDayAndRepeat(
     time: time,
     birthday: birthday,
     birthdays: birthdays,
-    calendar: calendar,
   ),
 );
 
-/// What a task's dialog shows: its own page, or one of the task's details
-/// in its place.
-enum _Page { main, day, time, repeat, until }
+/// What a task's dialog shows: its own page, or its due day or repeat in
+/// its place.
+enum _Page { main, day, repeat }
 
 /// How wide a task's dialog is on every page: wide enough for the repeat
 /// page's custom row.
 const _taskDialogWidth = 408.0;
 
-/// A task's time and repeat, each set on a page of its own in place of
-/// the dialog's main one, and the repeat's last day on another. They
-/// change as they're set: going back keeps what a page set, cancelling
-/// it puts back what was there.
+/// A task's time, set on a wheel over its row, and its repeat, set with
+/// the calendar on a page of its own in place of the dialog's main one.
+/// The repeat changes as it's set: going back keeps it, cancelling puts
+/// back what was there.
 mixin _DetailPages<T extends StatefulWidget> on State<T> {
   _Page _page = _Page.main;
   int? _time;
   _RepeatChoice? _repeat;
 
+  /// The day a repeat set on its page comes round from.
+  DateTime? _repeatStart;
+
   /// What each page open over the main one found, to put back on cancel.
-  final _was = <({int? time, _RepeatChoice? repeat})>[];
+  final _was = <({_RepeatChoice? repeat, DateTime? start})>[];
 
   void _open(_Page page) => setState(() {
-    _was.add((time: _time, repeat: _repeat));
+    _was.add((repeat: _repeat, start: _repeatStart));
     _page = page;
   });
 
-  /// Back to the page this one opened from, keeping what it set or not.
+  /// Back to the main page, keeping what this one set or not.
   void _leave({required bool keep}) => setState(() {
     final was = _was.removeLast();
     if (!keep) {
-      _time = was.time;
       _repeat = was.repeat;
+      _repeatStart = was.start;
     }
-    _page = _page == _Page.until ? _Page.repeat : _Page.main;
+    _page = _Page.main;
   });
 
   /// Back, keeping what this page set; null on the main page.
@@ -73,50 +73,34 @@ mixin _DetailPages<T extends StatefulWidget> on State<T> {
   /// Back, putting back what this page changed; null on the main page.
   VoidCallback? get _cancel => _page == _Page.main ? null : () => _leave(keep: false);
 
-  Widget _timeRow() =>
-      _TimeRow(time: _time, onOpen: () => _open(_Page.time), onClear: () => setState(() => _time = null));
+  /// Opens the wheel over the row, as the sleep schedule's times do.
+  Widget _timeRow() => Builder(
+    builder: (anchor) => _TimeRow(
+      time: _time,
+      onOpen: () async {
+        final picked = await pickTime(anchor, minutes: _time, start: 9 * 60, alignLeft: true);
+        if (picked != null && mounted) setState(() => _time = picked);
+      },
+      onClear: () => setState(() => _time = null),
+    ),
+  );
 
   Widget _repeatRow() =>
       _RepeatRow(repeat: _repeat, onOpen: () => _open(_Page.repeat), onClear: () => setState(() => _repeat = null));
 
-  /// The time, repeat or last day's page, for a task first due on [start].
-  Widget _detailPage(DateTime start) {
-    final back = _back!;
-    return switch (_page) {
-      _Page.time => _SubPage(
-        title: 'Time',
-        onBack: back,
-        child: TimeWheel(
-          initial: _time ?? 9 * 60,
-          unset: _time == null,
-          onChanged: (time) => setState(() => _time = time),
-          onDone: back,
-        ),
-      ),
-      _Page.until => _SubPage(
-        title: 'Repeat until',
-        onBack: back,
-        child: _MonthCalendar(
-          first: start,
-          selected: _repeat?.until ?? start,
-          onSelected: (day) {
-            if (_repeat case final repeat?) _repeat = (rule: repeat.rule, until: day);
-            _leave(keep: true);
-          },
-        ),
-      ),
-      _ => _SubPage(
-        title: 'Repeat',
-        onBack: back,
-        child: _RepeatPanel(
-          start: start,
-          current: _repeat,
-          onChanged: (repeat) => setState(() => _repeat = repeat),
-          onPickUntil: () => _open(_Page.until),
-        ),
-      ),
-    };
-  }
+  /// The repeat's page: the calendar from [first] on, its start [start].
+  Widget _repeatPage(DateTime first, DateTime start) => _SubPage(
+    title: 'Repeat',
+    onBack: _back!,
+    child: _RepeatPanel(
+      first: first,
+      start: _repeatStart ?? start,
+      onStart: (day) => setState(() => _repeatStart = day),
+      repeat: _repeat,
+      onRepeat: (repeat) => setState(() => _repeat = repeat),
+      startsOn: true,
+    ),
+  );
 }
 
 /// One of a dialog's pages in place of its main one: a back arrow and
@@ -151,8 +135,9 @@ class _SubPage extends StatelessWidget {
 /// round on.
 typedef _RepeatChoice = ({RepeatRule rule, DateTime? until});
 
-/// What the editor saved; [repeat] null when it doesn't repeat.
-typedef _TaskEdit = ({String text, DateTime? due, _RepeatChoice? repeat, int? time, bool birthday});
+/// What the editor saved; [repeat] null when it doesn't repeat, and
+/// [start] the day it comes round from when that was moved.
+typedef _TaskEdit = ({String text, DateTime? due, _RepeatChoice? repeat, DateTime? start, int? time, bool birthday});
 
 /// Edits [item], asking whether a change to a repeating task's name is
 /// for that time only or every time from it on. A new rule always is.
@@ -177,13 +162,32 @@ Future<void> _editTask(
     if (choice == null) {
       state.editTodo(scope, item, result.text, result.due, day: day, time: time, birthday: birthday);
     } else {
-      state.makeRepeating(scope, item, result.text, choice.rule, until: choice.until, time: time, birthday: birthday);
+      state.makeRepeating(
+        scope,
+        item,
+        result.text,
+        choice.rule,
+        start: result.start,
+        until: choice.until,
+        time: time,
+        birthday: birthday,
+      );
     }
     return;
   }
   final from = item.repeatDay ?? day;
-  if (choice?.rule != repeat.rule || choice?.until != repeat.until) {
-    state.changeRepeat(repeat, from, result.text, choice?.rule, until: choice?.until, time: time, birthday: birthday);
+  final moved = choice != null && result.start != null && result.start != from;
+  if (choice?.rule != repeat.rule || choice?.until != repeat.until || moved) {
+    state.changeRepeat(
+      repeat,
+      from,
+      result.text,
+      choice?.rule,
+      start: moved ? result.start : null,
+      until: choice?.until,
+      time: time,
+      birthday: birthday,
+    );
     return;
   }
   final renamed = result.text.trim() != item.text || (time, birthday) != (item.dueTime, item.birthday);
@@ -432,6 +436,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
       text: _text.text,
       due: _due,
       repeat: _birthdayRepeat(_birthday, _repeat),
+      start: _repeatStart,
       time: _birthday ? null : _time,
       birthday: _birthday,
     ));
@@ -467,7 +472,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
             },
           ),
         ),
-        _ => _detailPage(start.isBefore(today) ? today : start),
+        _ => _repeatPage(today, start.isBefore(today) ? today : start),
       },
     );
   }

@@ -43,7 +43,8 @@ void main() {
 
     for (final (open, back) in [('Due 27/10/2026', 'Cancel'), ('Add a time', 'Save'), ('Doesn’t repeat', 'Cancel')]) {
       await click(tester, find.text(open));
-      await click(tester, find.text(back));
+      // The time's Save is on its wheel, over the dialog's own.
+      await click(tester, find.text(back).last);
       final now = field(tester, dialog);
       expect(now.widget.focusNode.hasFocus, isTrue, reason: 'back from $open, the cursor is in the name');
       expect(now.widget.controller.selection, const TextSelection.collapsed(offset: 4), reason: 'where it was');

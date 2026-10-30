@@ -1069,6 +1069,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Data').hitTestable());
     await tester.pumpAndSettle();
+    // Data keeps General's height, so the backups may be scrolled to.
+    await tester.scrollUntilVisible(
+      find.text('Friday 23 October'),
+      100,
+      scrollable: find.descendant(of: find.byType(Dialog), matching: find.byType(Scrollable)).at(1),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Friday 23 October'), findsOneWidget);
     expect(find.text('Yesterday'), findsWidgets);
     await _shoot(tester, 'backups');

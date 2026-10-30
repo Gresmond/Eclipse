@@ -6,13 +6,14 @@ import '../theme/app_theme.dart';
 /// [child], lit with the done colour for a moment when search has just
 /// opened [target] (a task's uid, or a journal day's key), and scrolled to.
 class SearchGlow extends StatefulWidget {
-  const SearchGlow({super.key, required this.target, this.radius = 8, this.bleed = 0, required this.child});
+  const SearchGlow({super.key, required this.target, this.radius = 8, this.over = false, required this.child});
 
   final String? target;
   final double radius;
 
-  /// How far the glow reaches past [child] on every side.
-  final double bleed;
+  /// Whether the glow lies over [child], for one that's opaque (a whole
+  /// tile), rather than under it.
+  final bool over;
   final Widget child;
 
   /// How long after opening a newly built [SearchGlow] still lights, so
@@ -49,41 +50,34 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
     final state = AppScope.watch(context, (s) => s.found);
     _check(state.found);
     final p = context.palette;
-    final bleed = -widget.bleed;
+    final glow = Positioned.fill(
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _glow,
+          builder: (context, _) {
+            final t = _glow.value;
+            // Up in 0.2 s, held to 2.5 s, then away over 1.5 s.
+            final alpha = !_glow.isAnimating
+                ? 0.0
+                : t < 0.05
+                ? t / 0.05
+                : t < 0.625
+                ? 1.0
+                : 1 - Curves.easeInOut.transform((t - 0.625) / 0.375);
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(widget.radius),
+                color: p.done.withValues(alpha: 0.2 * alpha),
+              ),
+            );
+          },
+        ),
+      ),
+    );
     return Stack(
       clipBehavior: Clip.none,
       fit: StackFit.passthrough,
-      children: [
-        Positioned(
-          left: bleed,
-          top: bleed,
-          right: bleed,
-          bottom: bleed,
-          child: IgnorePointer(
-            child: AnimatedBuilder(
-              animation: _glow,
-              builder: (context, _) {
-                final t = _glow.value;
-                // Up in 0.2 s, held to 2.5 s, then away over 1.5 s.
-                final alpha = !_glow.isAnimating
-                    ? 0.0
-                    : t < 0.05
-                    ? t / 0.05
-                    : t < 0.625
-                    ? 1.0
-                    : 1 - Curves.easeInOut.transform((t - 0.625) / 0.375);
-                return DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(widget.radius),
-                    color: p.done.withValues(alpha: 0.2 * alpha),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-        widget.child,
-      ],
+      children: widget.over ? [widget.child, glow] : [glow, widget.child],
     );
   }
 }

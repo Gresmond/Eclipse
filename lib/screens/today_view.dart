@@ -576,30 +576,31 @@ class _JournalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => (s.shownDay, s.journalFileProblem, s.journalFiles?.dir.path));
     final day = state.shownDay;
-    return Tile(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TileHeader(
-            title: 'Journal',
-            trailing: state.journalFiles == null
-                ? null
-                : _OpenFolderButton(state.journalFiles!.fileFor(day), problem: state.journalFileProblem),
-          ),
-          const SizedBox(height: 6),
-          Expanded(
-            child: SearchGlow(
-              target: dateKey(day),
-              radius: 12,
-              bleed: 8,
+    // The whole tile lights when search opens the day's entry.
+    return SearchGlow(
+      target: dateKey(day),
+      radius: 24,
+      over: true,
+      child: Tile(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TileHeader(
+              title: 'Journal',
+              trailing: state.journalFiles == null
+                  ? null
+                  : _OpenFolderButton(state.journalFiles!.fileFor(day), problem: state.journalFileProblem),
+            ),
+            const SizedBox(height: 6),
+            Expanded(
               child: FadeThrough(
                 layoutBuilder: FadeThrough.fill,
                 child: _JournalText(key: ValueKey(dateKey(day))),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

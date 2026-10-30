@@ -6,7 +6,10 @@ import 'package:path/path.dart' as pth;
 import 'dart:async';
 import 'dart:io';
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../app_state.dart';
 import '../data/backups.dart';
@@ -48,6 +51,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
   late int _ribbon = widget.tourRibbon ?? 0;
 
   final _search = GlobalKey<SettingsSearchState>();
+
+  /// General's height when last shown, which the other ribbons take.
+  double? _generalHeight;
 
   late List<Backup> _backups = AppScope.of(context).backups?.list() ?? [];
   Backup? _confirming;
@@ -293,9 +299,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
                       layoutBuilder: FadeThrough.pinTop,
                       child: KeyedSubtree(
                         key: ValueKey(_ribbon),
-                        child: switch (_ribbon) {
-                          0 => _general(p),
-                          1 => _backupsAndSync(p),
+                        // Data and Search take General's height, so the
+                        // dialog keeps one size from ribbon to ribbon.
+                        child: switch ((_ribbon, _generalHeight)) {
+                          (0, _) => _ReportHeight(onHeight: (h) => _generalHeight = h, child: _general(p)),
+                          (1, final h?) => SizedBox(
+                            height: h,
+                            child: _backupsAndSync(p, height: h),
+                          ),
+                          (1, null) => _backupsAndSync(p),
+                          (_, final h?) => SizedBox(
+                            height: h,
+                            child: SettingsSearch(key: _search),
+                          ),
                           _ => SettingsSearch(key: _search),
                         },
                       ),
@@ -554,5 +570,30 @@ class _Ribbons extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// [child], telling [onHeight] its height each time it's laid out.
+class _ReportHeight extends SingleChildRenderObjectWidget {
+  const _ReportHeight({required this.onHeight, super.child});
+
+  final ValueChanged<double> onHeight;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderReportHeight(onHeight);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderReportHeight renderObject) => renderObject.onHeight = onHeight;
+}
+
+class _RenderReportHeight extends RenderProxyBox {
+  _RenderReportHeight(this.onHeight);
+
+  ValueChanged<double> onHeight;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    onHeight(size.height);
   }
 }

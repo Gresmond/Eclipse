@@ -228,7 +228,7 @@ void main() {
     expect((repeat.rule, repeat.birthday), (const RepeatRule.yearly(1), true));
   });
 
-  testWidgets('time, repeat and its last day open in place, not in dialogs on top', (tester) async {
+  testWidgets('the time opens on a wheel, and the repeat unfolds under the calendar', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -244,45 +244,37 @@ void main() {
 
     await tester.tap(find.text('Add a time'));
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget);
-    expect(find.text('Clear time'), findsNothing, reason: 'Cancel does that');
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    expect(find.byType(Dialog), findsOneWidget, reason: 'a wheel over the row, not a dialog on top');
+    await tester.tap(find.text('Save').last);
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget, reason: 'Escape goes back, not out');
-    expect(find.text('Add a time'), findsNothing, reason: 'opening it set a time');
+    expect(find.text('9:00 am'), findsOneWidget);
+    expect(find.byTooltip('Next month'), findsOneWidget, reason: 'the calendar stays');
 
-    // Cancel goes back too, but puts back what the page changed.
-    await tester.tap(find.text('Doesn’t repeat'));
+    await tester.tap(find.text('Repeat'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Monthly'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget, reason: 'Cancel goes back one step');
-    expect(find.text('Doesn’t repeat'), findsOneWidget, reason: 'and undoes the repeat');
-    expect(find.text('Add a time'), findsNothing, reason: 'but not the time, kept before');
+    expect(find.textContaining('Monthly on the'), findsOneWidget);
+    expect(find.byTooltip('Next month'), findsOneWidget, reason: 'still the calendar');
 
-    await tester.tap(find.text('Doesn’t repeat'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Custom'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('months'));
     await tester.pumpAndSettle();
     expect(tester.getSize(panel).width, width, reason: 'one width throughout, as Settings');
-    await tester.tap(find.text('No end date'));
+    await tester.tap(find.text('Ends never'));
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsOneWidget);
-    expect(find.text('Repeat until'), findsOneWidget);
+    await tester.tap(find.byTooltip('Next month'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Next month'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('31'));
     await tester.pumpAndSettle();
-    expect(find.text('Until 31/12/2026'), findsNothing);
-    expect(find.textContaining('Until 31/'), findsOneWidget, reason: 'a day goes back to the repeat');
-    await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Every 2 months until'), findsOneWidget, reason: 'Save keeps it and goes back');
+    expect(find.textContaining('Every 2 months on the'), findsOneWidget);
+    expect(find.textContaining('until 31 Dec'), findsOneWidget, reason: 'a calendar day with Ends chosen');
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(find.byType(Dialog), findsNothing, reason: 'and on the main page, it confirms');
+    expect(find.byType(Dialog), findsNothing, reason: 'Enter confirms');
   });
 
   testWidgets("a day's line in Week ahead is a field from the start, with only a time", (tester) async {

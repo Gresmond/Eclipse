@@ -202,20 +202,22 @@ mixin _Todos on ChangeNotifier {
     _todosChanged();
   }
 
-  /// Makes [item] repeat from its day (or today) on, in place of it.
+  /// Makes [item] repeat from [start], or its day (or today), on, in place
+  /// of it.
   void makeRepeating(
     TodoScope scope,
     TodoItem item,
     String text,
     RepeatRule rule, {
+    DateTime? start,
     DateTime? until,
     int? time,
     bool birthday = false,
   }) {
-    final due = item.dueDate;
-    final start = due == null || due.isBefore(today) ? today : dateOnly(due);
+    final day = start ?? item.dueDate;
+    final first = day == null || day.isBefore(today) ? today : dateOnly(day);
     store.transaction(() {
-      store.addRepeat(normaliseNote(text.trim()), rule, start, until: until, time: time, birthday: birthday);
+      store.addRepeat(normaliseNote(text.trim()), rule, first, until: until, time: time, birthday: birthday);
       store.deleteTodo(item.id, day: today);
     });
     _reloadTodos();
@@ -246,19 +248,24 @@ mixin _Todos on ChangeNotifier {
     _todosChanged();
   }
 
-  /// [repeat] from [from] on, as a new repeat by [rule]; or, without one,
+  /// [repeat] from [from] on, as a new repeat by [rule] (from [start], when
+  /// given); or, without one,
   /// no more after [from], whose to-do stays.
   void changeRepeat(
     Repeat repeat,
     DateTime from,
     String text,
     RepeatRule? rule, {
+    DateTime? start,
     DateTime? until,
     int? time,
     bool birthday = false,
   }) {
     if (text.trim().isEmpty) return;
     final value = normaliseNote(text.trim());
+    // A new start ends the old rule there, if it's sooner.
+    final first = start ?? from;
+    final end = first.isBefore(from) ? first : from;
     store.transaction(() {
       if (rule == null) {
         store.endRepeat(repeat.uid, DateTime(from.year, from.month, from.day + 1), today);
@@ -266,8 +273,15 @@ mixin _Todos on ChangeNotifier {
           store.renameRepeat(repeat.uid, value, from, today, time: time, birthday: birthday);
         }
       } else {
-        store.endRepeat(repeat.uid, from, today);
-        store.addRepeat(value, rule, from.isBefore(today) ? today : from, until: until, time: time, birthday: birthday);
+        store.endRepeat(repeat.uid, end, today);
+        store.addRepeat(
+          value,
+          rule,
+          first.isBefore(today) ? today : first,
+          until: until,
+          time: time,
+          birthday: birthday,
+        );
       }
     });
     _reloadTodos();

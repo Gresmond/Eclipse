@@ -9,10 +9,36 @@ const _compactButton = ButtonStyle(
 
 /// The Data ribbon's sections: backups, where everything lives, and sync.
 extension on _SettingsDialogState {
-  /// Saved copies to restore, where everything lives, and sync.
-  Widget _backupsAndSync(Palette p) {
+  /// Saved copies to restore, where everything lives, and sync. Given a
+  /// [height], it fits in it: the backups take what's left, scrolling,
+  /// and all of it scrolls if the rest is taller.
+  Widget _backupsAndSync(Palette p, {double? height}) {
     final state = AppScope.of(context);
-    return Column(
+    final backups = ListView.separated(
+      shrinkWrap: height == null,
+      itemCount: _backups.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
+      itemBuilder: (_, i) => _BackupRow(
+        backup: _backups[i],
+        today: state.today,
+        confirming: _confirming == _backups[i],
+        restoring: _restoring && _confirming == _backups[i],
+        enabled: !_restoring,
+        onAsk: () => _ask(_backups[i]),
+        onCancel: () => _ask(null),
+        onConfirm: () => _restore(_backups[i]),
+      ),
+    );
+    final error = [
+      if (_error != null) ...[
+        const SizedBox(height: 12),
+        Text(
+          curlyQuotes(_error!),
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missed),
+        ),
+      ],
+    ];
+    final above = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -37,7 +63,10 @@ extension on _SettingsDialogState {
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(16, 8, 12, 12),
-              decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
+              decoration: BoxDecoration(
+                color: p.empty.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -79,42 +108,47 @@ extension on _SettingsDialogState {
           style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.45, color: p.inkMuted),
         ),
         const SizedBox(height: 14),
-        if (_backups.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: Text(
-                'No backups yet.',
-                style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted),
-              ),
-            ),
-          )
-        else
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 240),
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: _backups.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 6),
-              itemBuilder: (_, i) => _BackupRow(
-                backup: _backups[i],
-                today: state.today,
-                confirming: _confirming == _backups[i],
-                restoring: _restoring && _confirming == _backups[i],
-                enabled: !_restoring,
-                onAsk: () => _ask(_backups[i]),
-                onCancel: () => _ask(null),
-                onConfirm: () => _restore(_backups[i]),
-              ),
-            ),
-          ),
-        if (_error != null) ...[
-          const SizedBox(height: 12),
-          Text(
-            curlyQuotes(_error!),
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missed),
-          ),
+      ],
+    );
+    final none = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(
+        child: Text(
+          'No backups yet.',
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted),
+        ),
+      ),
+    );
+    if (height == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          above,
+          if (_backups.isEmpty)
+            none
+          else
+            ConstrainedBox(constraints: const BoxConstraints(maxHeight: 240), child: backups),
+          ...error,
         ],
+      );
+    }
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: above),
+        SliverLayoutBuilder(
+          builder: (context, constraints) {
+            // What's under the rest, but never less than about two backups.
+            final left = constraints.viewportMainAxisExtent - constraints.precedingScrollExtent;
+            return SliverToBoxAdapter(
+              child: _backups.isEmpty
+                  ? none
+                  : SizedBox(height: math.max(left - (_error == null ? 0 : 48), 112), child: backups),
+            );
+          },
+        ),
+        SliverToBoxAdapter(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: error),
+        ),
       ],
     );
   }

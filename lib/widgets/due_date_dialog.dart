@@ -2,13 +2,23 @@ part of 'todo_panel.dart';
 
 /// A month of days from [first] on (to [last], if given), with arrows to
 /// the months either side; weeks start on Monday, as everywhere else in
-/// the app.
+/// the app. A repeat's [end] is shaded, and [marked] days (the ones it
+/// comes round on) have a dot.
 class _MonthCalendar extends StatefulWidget {
-  const _MonthCalendar({required this.first, this.last, required this.selected, required this.onSelected});
+  const _MonthCalendar({
+    required this.first,
+    this.last,
+    required this.selected,
+    this.end,
+    this.marked,
+    required this.onSelected,
+  });
 
   final DateTime first;
   final DateTime? last;
   final DateTime selected;
+  final DateTime? end;
+  final bool Function(DateTime day)? marked;
   final ValueChanged<DateTime> onSelected;
 
   @override
@@ -100,7 +110,9 @@ class _MonthCalendarState extends State<_MonthCalendar> {
     final date = DateTime(_month.year, _month.month, day);
     final enabled = !date.isBefore(_first) && (_last == null || !date.isAfter(_last!));
     final selected = DateUtils.isSameDay(date, widget.selected);
+    final end = !selected && widget.end != null && DateUtils.isSameDay(date, widget.end);
     final today = DateUtils.isSameDay(date, AppScope.read(context).today);
+    final marked = !selected && (widget.marked?.call(date) ?? false);
     return SizedBox(
       height: 42,
       child: Semantics(
@@ -112,10 +124,29 @@ class _MonthCalendarState extends State<_MonthCalendar> {
             padding: EdgeInsets.zero,
             minimumSize: Size.zero,
             shape: CircleBorder(side: today && !selected ? BorderSide(color: colors.primary) : BorderSide.none),
-            backgroundColor: selected ? colors.primary : null,
+            backgroundColor: selected
+                ? colors.primary
+                : end
+                ? colors.primary.withValues(alpha: 0.28)
+                : null,
             foregroundColor: selected ? colors.onPrimary : colors.onSurface,
           ),
-          child: Text(localizations.formatDecimal(day)),
+          child: Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              Text(localizations.formatDecimal(day)),
+              if (marked)
+                Positioned(
+                  bottom: -7,
+                  child: Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(color: colors.primary, shape: BoxShape.circle),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -133,13 +164,12 @@ class _DueDateDialog extends StatefulWidget {
     this.time,
     this.birthday = false,
     this.birthdays = false,
-    this.calendar = true,
   });
 
   final DateTime first;
   final DateTime? last;
   final DateTime? due;
-  final bool birthdays, calendar;
+  final bool birthdays;
   final _RepeatChoice? repeat;
   final int? time;
   final bool birthday;
@@ -176,39 +206,26 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
     return PagedDialog(
       page: _page,
       onConfirm: _done,
-      onBack: _back,
       width: _taskDialogWidth,
       preserveButtons: false,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       actions: [
-        TextButton(onPressed: _cancel ?? () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
-        // A time or repeat page saves what it set.
-        TextButton(onPressed: _back ?? _done, child: Text(_page == _Page.main ? localizations.okButtonLabel : 'Save')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
+        TextButton(onPressed: _done, child: Text(localizations.okButtonLabel)),
       ],
-      child: _page == _Page.main
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (widget.calendar) ...[
-                  _MonthCalendar(
-                    first: widget.first,
-                    last: widget.last,
-                    selected: _selected,
-                    onSelected: (day) => setState(() => _selected = day),
-                  ),
-                  const SizedBox(height: 8),
-                ] else
-                  const SizedBox(height: 4),
-                _BirthdayFold(
-                  folded: _birthday,
-                  child: Column(children: [_timeRow(), _repeatRow()]),
-                ),
-                if (widget.birthdays)
-                  _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday)),
-                const SizedBox(height: 4),
-              ],
-            )
-          : _detailPage(_selected),
+      child: _RepeatPanel(
+        first: widget.first,
+        last: widget.last,
+        start: _selected,
+        onStart: (day) => setState(() => _selected = day),
+        repeat: _repeat,
+        onRepeat: (repeat) => setState(() => _repeat = repeat),
+        time: _timeRow(),
+        folded: _birthday,
+        birthday: widget.birthdays
+            ? _BirthdayRow(birthday: _birthday, onChanged: (birthday) => setState(() => _birthday = birthday))
+            : null,
+      ),
     );
   }
 }

@@ -12,7 +12,8 @@ import 'fade_menu.dart';
 class SettingsSearch extends StatefulWidget {
   const SettingsSearch({super.key});
 
-  /// The results' box keeps one height, so the dialog doesn't jump as you type.
+  /// The results' box keeps one height, so the dialog doesn't jump as you
+  /// type: this tall, or what's left of the height it's given.
   static const height = 420.0;
 
   /// Results drawn at most; more words narrow it.
@@ -74,92 +75,103 @@ class SettingsSearchState extends State<SettingsSearch> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          height: 44,
-          padding: const EdgeInsets.only(left: 14, right: 8),
-          decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
-          child: Row(
-            children: [
-              Icon(Icons.search_rounded, size: 18, color: p.inkMuted),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _focus,
-                  autofocus: true,
-                  onChanged: _search,
-                  cursorColor: p.ink,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    hintText: 'Search tasks and journal',
-                    hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
-                    contentPadding: EdgeInsets.zero,
+    return LayoutBuilder(
+      builder: (context, constraints) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: 44,
+            padding: const EdgeInsets.only(left: 16, right: 8),
+            decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focus,
+                    autofocus: true,
+                    onChanged: _search,
+                    cursorColor: p.ink,
+                    style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      hintText: 'Search tasks and journal',
+                      hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
                 ),
-              ),
-              if (_controller.text.isNotEmpty)
-                TextFieldTapRegion(
-                  child: IconButton(
-                    tooltip: 'Clear',
-                    onPressed: _clear,
-                    constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-                    padding: EdgeInsets.zero,
-                    style: ButtonStyle(
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      minimumSize: const WidgetStatePropertyAll(Size(28, 28)),
-                      shape: const WidgetStatePropertyAll(CircleBorder()),
-                      backgroundColor: WidgetStateProperty.resolveWith(
-                        (states) =>
-                            states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+                if (_controller.text.isNotEmpty)
+                  TextFieldTapRegion(
+                    child: IconButton(
+                      tooltip: 'Clear',
+                      onPressed: _clear,
+                      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                      padding: EdgeInsets.zero,
+                      style: ButtonStyle(
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        minimumSize: const WidgetStatePropertyAll(Size(28, 28)),
+                        shape: const WidgetStatePropertyAll(CircleBorder()),
+                        backgroundColor: WidgetStateProperty.resolveWith(
+                          (states) => states.contains(WidgetState.hovered)
+                              ? p.empty.withValues(alpha: 0.8)
+                              : Colors.transparent,
+                        ),
+                        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
                       ),
-                      overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+                      icon: Icon(Icons.close_rounded, size: 16, color: p.inkMuted),
                     ),
-                    icon: Icon(Icons.close_rounded, size: 16, color: p.inkMuted),
                   ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: SettingsSearch.height,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: ColoredBox(
-              color: p.empty.withValues(alpha: 0.45),
-              child: _words.isEmpty
-                  ? _message(p, 'Find any task or journal entry, from any day.')
-                  : _hits.isEmpty
-                  ? _message(p, curlyQuotes('Nothing matches "${_controller.text.trim()}".'))
-                  : ScrollConfiguration(
-                      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        itemCount:
-                            _hits.length.clamp(0, SettingsSearch.shown) + (_hits.length > SettingsSearch.shown ? 1 : 0),
-                        separatorBuilder: (_, _) => const FadeMenuDivider(),
-                        itemBuilder: (context, i) => i == SettingsSearch.shown
-                            ? Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                                child: Text(
-                                  'Showing the newest ${SettingsSearch.shown} of ${_hits.length}. Add a word to narrow it.',
-                                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
-                                ),
-                              )
-                            : _HitRow(hit: _hits[i], words: _words, today: _state.today, onTap: () => _open(_hits[i])),
-                      ),
-                    ),
+              ],
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 10),
+          _sized(
+            constraints.hasBoundedHeight,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: ColoredBox(
+                color: p.empty.withValues(alpha: 0.45),
+                child: _words.isEmpty
+                    ? _message(p, 'Find any task or journal entry, from any day.')
+                    : _hits.isEmpty
+                    ? _message(p, curlyQuotes('Nothing matches "${_controller.text.trim()}".'))
+                    : ScrollConfiguration(
+                        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                        child: ListView.separated(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          itemCount:
+                              _hits.length.clamp(0, SettingsSearch.shown) +
+                              (_hits.length > SettingsSearch.shown ? 1 : 0),
+                          separatorBuilder: (_, _) => const FadeMenuDivider(),
+                          itemBuilder: (context, i) => i == SettingsSearch.shown
+                              ? Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                                  child: Text(
+                                    'Showing the newest ${SettingsSearch.shown} of ${_hits.length}. Add a word to narrow it.',
+                                    style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                                  ),
+                                )
+                              : _HitRow(
+                                  hit: _hits[i],
+                                  words: _words,
+                                  today: _state.today,
+                                  onTap: () => _open(_hits[i]),
+                                ),
+                        ),
+                      ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
+
+  /// [results] in the height left, given one, or at [SettingsSearch.height].
+  Widget _sized(bool bounded, Widget results) =>
+      bounded ? Expanded(child: results) : SizedBox(height: SettingsSearch.height, child: results);
 
   Widget _message(Palette p, String text) => Center(
     child: Padding(
