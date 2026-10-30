@@ -5,8 +5,8 @@ part of 'todo_panel.dart';
 /// (on the calendar day's date), custom (every so many days, weeks,
 /// months or years from the calendar day) or, where offered, a birthday,
 /// which folds the rest and the time away. The calendar then marks every
-/// day it comes round, and sets either its first day or its last, as the
-/// Starts and Ends chips choose. It changes as it's set.
+/// day it comes round; a click sets its first day and a right-click on a
+/// marked day its last. It changes as it's set.
 class _RepeatPanel extends StatefulWidget {
   const _RepeatPanel({
     required this.first,
@@ -71,9 +71,6 @@ class _RepeatPanelState extends State<_RepeatPanel> {
     _ => widget.start.day,
   };
 
-  /// Whether the calendar sets the last day rather than the first.
-  var _ends = false;
-
   RepeatRule get _rule => switch (_kind) {
     RepeatKind.weekly => RepeatRule.weekly({
       for (var d = 1; d <= 7; d++)
@@ -99,27 +96,25 @@ class _RepeatPanelState extends State<_RepeatPanel> {
 
   void _set(VoidCallback change) {
     setState(change);
-    widget.onRepeat((rule: _rule, until: widget.repeat?.until));
+    widget.onRepeat((rule: _rule, until: _kept(widget.repeat?.until, _rule, widget.start)));
   }
+
+  /// [until], if it's still a day [rule] comes round on after [start].
+  static DateTime? _kept(DateTime? until, RepeatRule rule, DateTime start) =>
+      until != null && until.isAfter(start) && rule.on(until, start) ? until : null;
 
   bool get _birthday => widget.birthday ?? false;
 
   void _toggle() {
-    _ends = false;
     if (widget.repeat == null && !_birthday) return _set(() {});
     widget.onRepeat(null);
     if (_birthday) widget.onBirthday!(false);
   }
 
   /// A tapped day: the start, moving monthly's date and a lone weekday
-  /// with it, or with Ends chosen, the last day.
+  /// with it.
   void _tap(DateTime day) {
     final repeat = widget.repeat;
-    if (_ends && repeat != null) {
-      setState(() => _ends = false);
-      widget.onRepeat((rule: repeat.rule, until: day));
-      return;
-    }
     final was = widget.start;
     final until = repeat?.until;
     widget.onStart(day);
@@ -127,8 +122,11 @@ class _RepeatPanelState extends State<_RepeatPanel> {
       _date = day.day;
       if (_days == weekdayBit(was.weekday)) _days = weekdayBit(day.weekday);
     });
-    if (repeat != null) widget.onRepeat((rule: _rule, until: until != null && until.isBefore(day) ? null : until));
+    if (repeat != null) widget.onRepeat((rule: _rule, until: _kept(until, _rule, day)));
   }
+
+  /// A right-clicked day, one it comes round on: the last.
+  void _end(DateTime day) => widget.onRepeat((rule: widget.repeat!.rule, until: day));
 
   @override
   Widget build(BuildContext context) {
@@ -136,20 +134,20 @@ class _RepeatPanelState extends State<_RepeatPanel> {
     final repeat = _birthday ? null : widget.repeat;
     final on = widget.repeat != null || _birthday;
     final start = widget.start, until = repeat?.until;
-    final ends = _ends && repeat != null;
+    bool comesRound(DateTime day) => day.isAfter(start) && repeat!.rule.on(day, start);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _MonthCalendar(
-          first: ends ? start : widget.first,
-          last: ends ? null : widget.last,
+          first: widget.first,
+          last: widget.last,
           selected: start,
           end: until,
-          marked: repeat == null
-              ? null
-              : (day) => day.isAfter(start) && (until == null || !day.isAfter(until)) && repeat.rule.on(day, start),
+          marked: repeat == null ? null : (day) => comesRound(day) && (until == null || !day.isAfter(until)),
           onSelected: _tap,
+          endable: repeat == null ? null : comesRound,
+          onEnd: repeat == null ? null : _end,
         ),
         const SizedBox(height: 8),
         if (widget.time case final time?) _BirthdayFold(folded: _birthday, child: time),
@@ -228,10 +226,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                   _Pills(
                     options: const ['Birthday'],
                     selected: _birthday ? 0 : -1,
-                    onSelect: (_) => setState(() {
-                      _ends = false;
-                      widget.onBirthday!(true);
-                    }),
+                    onSelect: (_) => widget.onBirthday!(true),
                   ),
                 ],
               ],
@@ -308,15 +303,11 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                   Flexible(
                     child: _ScaleDown(
                       alignment: Alignment.center,
-                      child: _Pills(
-                        options: [
-                          'Starts ${start.day} ${monthNames[start.month - 1].substring(0, 3)}',
-                          until == null
-                              ? 'Ends never'
-                              : 'Ends ${until.day} ${monthNames[until.month - 1].substring(0, 3)}',
-                        ],
-                        selected: _ends ? 1 : 0,
-                        onSelect: (i) => setState(() => _ends = i == 1),
+                      child: _DateTags(
+                        starts: 'Starts ${start.day} ${monthNames[start.month - 1].substring(0, 3)}',
+                        ends: until == null
+                            ? 'Ends never'
+                            : 'Ends ${until.day} ${monthNames[until.month - 1].substring(0, 3)}',
                       ),
                     ),
                   ),
@@ -326,19 +317,11 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                       child: _TaskAction(
                         tooltip: 'No end date',
                         icon: Icons.close_rounded,
-                        onPressed: () {
-                          setState(() => _ends = false);
-                          widget.onRepeat((rule: _rule, until: null));
-                        },
+                        onPressed: () => widget.onRepeat((rule: _rule, until: null)),
                       ),
                     ),
                 ],
               ),
-              if (_ends)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6, left: 12),
-                  child: Text('Pick its last day on the calendar.', style: note),
-                ),
             ],
           ),
         ),
@@ -377,7 +360,6 @@ class _RepeatSwitch extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: FadeThrough(
-                duration: Motion.click,
                 layoutBuilder: FadeThrough.pinTopLeft,
                 child: Text(
                   label,
@@ -448,6 +430,34 @@ class _ScaleDown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => FittedBox(fit: BoxFit.scaleDown, alignment: alignment, child: child);
+}
+
+/// When it starts and ends, to read, not to press: the calendar sets them.
+class _DateTags extends StatelessWidget {
+  const _DateTags({required this.starts, required this.ends});
+
+  final String starts, ends;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontFamily: Fonts.ui,
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      color: context.palette.inkMuted,
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(starts, style: style),
+        Text('  ·  ', style: style),
+        Tooltip(
+          message: 'Right-click a marked day to end it there',
+          child: Text(ends, style: style),
+        ),
+      ],
+    );
+  }
 }
 
 /// A row of choices, one filled.
@@ -586,7 +596,14 @@ class _StepperState extends State<_Stepper> {
               color: p.ink,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
-            decoration: const InputDecoration(isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero),
+            textAlignVertical: TextAlignVertical.center,
+            // The cursor's room on the right, matched on the left, so the
+            // number sits in the middle.
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.only(left: 2),
+            ),
           ),
         ),
         _TaskAction(

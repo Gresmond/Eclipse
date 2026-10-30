@@ -3,7 +3,8 @@ part of 'todo_panel.dart';
 /// A month of days from [first] on (to [last], if given), with arrows to
 /// the months either side; weeks start on Monday, as everywhere else in
 /// the app. A repeat's [end] is shaded, and [marked] days (the ones it
-/// comes round on) have a dot.
+/// comes round on) have a dot. Right-clicking a day [endable] says sets
+/// it as the end, past [last] too.
 class _MonthCalendar extends StatefulWidget {
   const _MonthCalendar({
     required this.first,
@@ -12,6 +13,8 @@ class _MonthCalendar extends StatefulWidget {
     this.end,
     this.marked,
     required this.onSelected,
+    this.endable,
+    this.onEnd,
   });
 
   final DateTime first;
@@ -20,6 +23,8 @@ class _MonthCalendar extends StatefulWidget {
   final DateTime? end;
   final bool Function(DateTime day)? marked;
   final ValueChanged<DateTime> onSelected;
+  final bool Function(DateTime day)? endable;
+  final ValueChanged<DateTime>? onEnd;
 
   @override
   State<_MonthCalendar> createState() => _MonthCalendarState();
@@ -31,6 +36,8 @@ class _MonthCalendarState extends State<_MonthCalendar> {
   DateTime get _first => DateUtils.dateOnly(widget.first);
   DateTime? get _last => widget.last == null ? null : DateUtils.dateOnly(widget.last!);
 
+  bool _endable(DateTime day) => widget.onEnd != null && (widget.endable?.call(day) ?? false);
+
   void _moveMonth(int offset) {
     setState(() => _month = DateTime(_month.year, _month.month + offset));
   }
@@ -40,7 +47,8 @@ class _MonthCalendarState extends State<_MonthCalendar> {
     final localizations = MaterialLocalizations.of(context);
     final colors = Theme.of(context).colorScheme;
     final firstMonth = DateTime(_first.year, _first.month);
-    final last = _last;
+    // An end can be any number of months on.
+    final last = widget.onEnd == null ? _last : null;
     final lastMonth = last == null ? null : DateTime(last.year, last.month);
     final leading = DateTime(_month.year, _month.month).weekday - 1;
     final days = DateUtils.getDaysInMonth(_month.year, _month.month);
@@ -113,39 +121,46 @@ class _MonthCalendarState extends State<_MonthCalendar> {
     final end = !selected && widget.end != null && DateUtils.isSameDay(date, widget.end);
     final today = DateUtils.isSameDay(date, AppScope.read(context).today);
     final marked = !selected && (widget.marked?.call(date) ?? false);
+    final endable = _endable(date);
     return SizedBox(
       height: 42,
-      child: Semantics(
-        selected: selected,
-        label: localizations.formatFullDate(date),
-        child: TextButton(
-          onPressed: enabled ? () => widget.onSelected(date) : null,
-          style: TextButton.styleFrom(
-            padding: EdgeInsets.zero,
-            minimumSize: Size.zero,
-            shape: CircleBorder(side: today && !selected ? BorderSide(color: colors.primary) : BorderSide.none),
-            backgroundColor: selected
-                ? colors.primary
-                : end
-                ? colors.primary.withValues(alpha: 0.28)
-                : null,
-            foregroundColor: selected ? colors.onPrimary : colors.onSurface,
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              Text(localizations.formatDecimal(day)),
-              if (marked)
-                Positioned(
-                  bottom: -7,
-                  child: Container(
-                    width: 4,
-                    height: 4,
-                    decoration: BoxDecoration(color: colors.primary, shape: BoxShape.circle),
-                  ),
-                ),
-            ],
+      child: GestureDetector(
+        onSecondaryTap: endable ? () => widget.onEnd!(date) : null,
+        child: MouseRegion(
+          cursor: enabled || endable ? SystemMouseCursors.click : MouseCursor.defer,
+          child: Semantics(
+            selected: selected,
+            label: localizations.formatFullDate(date),
+            child: TextButton(
+              onPressed: enabled ? () => widget.onSelected(date) : null,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                shape: CircleBorder(side: today && !selected ? BorderSide(color: colors.primary) : BorderSide.none),
+                backgroundColor: selected
+                    ? colors.primary
+                    : end
+                    ? colors.primary.withValues(alpha: 0.28)
+                    : null,
+                foregroundColor: selected ? colors.onPrimary : colors.onSurface,
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  Text(localizations.formatDecimal(day)),
+                  if (marked)
+                    Positioned(
+                      bottom: -7,
+                      child: Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(color: colors.primary, shape: BoxShape.circle),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
