@@ -411,7 +411,7 @@ class _NoteDialogState extends State<_NoteDialog> {
               children: [
                 Text(
                   widget.habit.name.toUpperCase(),
-                  style: TextStyle(fontSize: 11, letterSpacing: 1.4, color: p.other, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 12, letterSpacing: 1.4, color: p.other, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -427,7 +427,7 @@ class _NoteDialogState extends State<_NoteDialog> {
                   minLines: 2,
                   // Enter saves; long notes still wrap onto more lines.
                   textInputAction: TextInputAction.done,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 16, color: p.ink),
                   decoration: InputDecoration(
                     hintText: 'Optional note',
                     hintStyle: TextStyle(color: p.inkMuted),

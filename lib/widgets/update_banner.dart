@@ -52,7 +52,7 @@ class _Card extends StatelessWidget {
           title,
           style: TextStyle(
             fontFamily: Fonts.display,
-            fontSize: 15.5,
+            fontSize: 16.5,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.2,
             color: p.ink,
@@ -64,7 +64,7 @@ class _Card extends StatelessWidget {
             curlyQuotes(detail),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 12.5, height: 1.4, color: p.inkMuted),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, height: 1.4, color: p.inkMuted),
           ),
         ],
         if (status == UpdateStatus.updating || status == UpdateStatus.restarting) ...[

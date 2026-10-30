@@ -54,7 +54,7 @@ class _SessionTile extends StatelessWidget {
           if (session.isEmpty && log.exercises.isEmpty)
             Text(
               'Type an exercise, pick what it trains, then add your sets.',
-              style: _label(p, size: 12, color: p.inkMuted),
+              style: _label(p, size: 13, color: p.inkMuted),
             ),
         ],
       ),
@@ -121,7 +121,7 @@ class _ExerciseBlock extends StatelessWidget {
                         'BODYWEIGHT',
                         style: _label(
                           p,
-                          size: 10,
+                          size: 11,
                           weight: FontWeight.w600,
                           color: p.inkMuted,
                         ).copyWith(letterSpacing: 1),
@@ -205,12 +205,12 @@ class _SetRowState extends State<_SetRow> {
           children: [
             SizedBox(
               width: 22,
-              child: Text('${widget.index + 1}', style: _label(p, size: 12, color: p.inkMuted)),
+              child: Text('${widget.index + 1}', style: _label(p, size: 13, color: p.inkMuted)),
             ),
             if (widget.bodyweight)
               SizedBox(
                 width: 108,
-                child: Text('Bodyweight', style: _label(p, size: 13, color: p.inkMuted)),
+                child: Text('Bodyweight', style: _label(p, size: 14, color: p.inkMuted)),
               )
             else ...[
               _NumberBox(
@@ -226,9 +226,9 @@ class _SetRowState extends State<_SetRow> {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Text('kg', style: _label(p, size: 12.5, color: p.inkMuted)),
+                child: Text('kg', style: _label(p, size: 13.5, color: p.inkMuted)),
               ),
-              Text('×', style: _label(p, size: 13, color: p.inkMuted)),
+              Text('×', style: _label(p, size: 14, color: p.inkMuted)),
               const SizedBox(width: 8),
             ],
             _NumberBox(
@@ -244,14 +244,14 @@ class _SetRowState extends State<_SetRow> {
             ),
             Padding(
               padding: const EdgeInsets.only(left: 6),
-              child: Text('reps', style: _label(p, size: 12.5, color: p.inkMuted)),
+              child: Text('reps', style: _label(p, size: 13.5, color: p.inkMuted)),
             ),
             if (s.reps > maxEstimateReps)
               Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: Text(
                   'Over $maxEstimateReps reps, so not charted',
-                  style: _label(p, size: 11.5, color: p.inkMuted),
+                  style: _label(p, size: 12.5, color: p.inkMuted),
                 ),
               ),
             const Spacer(),
@@ -303,7 +303,7 @@ class _NumberBox extends StatelessWidget {
         controller: controller,
         focusNode: focusNode,
         autofocus: autofocus,
-        style: _label(p, size: 13.5, weight: FontWeight.w600),
+        style: _label(p, size: 14.5, weight: FontWeight.w600),
         cursorColor: p.accent,
         keyboardType: TextInputType.numberWithOptions(decimal: decimal),
         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(decimal ? r'^\d{0,4}([.,]\d{0,2})?' : r'^\d{0,3}'))],
@@ -358,7 +358,7 @@ class _InlineNameState extends State<_InlineName> {
     final p = context.palette;
     final style = TextStyle(
       fontFamily: Fonts.display,
-      fontSize: 15.5,
+      fontSize: 16.5,
       fontWeight: FontWeight.w600,
       color: p.ink,
       letterSpacing: -0.2,
@@ -420,7 +420,7 @@ class _GroupPill extends StatelessWidget {
           ),
           child: Text(
             group.label.toUpperCase(),
-            style: _label(p, size: 10.5, weight: FontWeight.w700, color: colour).copyWith(letterSpacing: 1.1),
+            style: _label(p, size: 11.5, weight: FontWeight.w700, color: colour).copyWith(letterSpacing: 1.1),
           ),
         ),
       ),
@@ -513,12 +513,12 @@ class _AddExerciseState extends State<_AddExercise> {
                   inputFormatters: const [NoteInputFormatter()],
                   controller: _text,
                   focusNode: _focus,
-                  style: _label(p, size: 13.5),
+                  style: _label(p, size: 14.5),
                   cursorColor: p.accent,
                   textCapitalization: TextCapitalization.sentences,
                   decoration: InputDecoration.collapsed(
                     hintText: 'Add an exercise',
-                    hintStyle: _label(p, size: 13.5, color: p.inkMuted),
+                    hintStyle: _label(p, size: 14.5, color: p.inkMuted),
                   ),
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) {
@@ -544,7 +544,7 @@ class _AddExerciseState extends State<_AddExercise> {
           const SizedBox(height: 10),
           Row(
             children: [
-              Text('New: what does “${_text.text.trim()}” train?', style: _label(p, size: 12.5, color: p.inkMuted)),
+              Text('New: what does “${_text.text.trim()}” train?', style: _label(p, size: 13.5, color: p.inkMuted)),
               const SizedBox(width: 10),
               // Leaves the cursor in the name.
               TextFieldTapRegion(
@@ -599,7 +599,7 @@ class _Chip extends StatelessWidget {
           ),
           child: Text(
             label,
-            style: _label(p, size: 12.5, weight: FontWeight.w600, color: on ? p.ink : p.inkMuted),
+            style: _label(p, size: 13.5, weight: FontWeight.w600, color: on ? p.ink : p.inkMuted),
           ),
         ),
       ),
@@ -630,7 +630,7 @@ class _TextButton extends StatelessWidget {
               if (icon != null) ...[Icon(icon, size: 15, color: p.accent), const SizedBox(width: 4)],
               Text(
                 label,
-                style: _label(p, size: 12.5, weight: FontWeight.w600, color: p.accent),
+                style: _label(p, size: 13.5, weight: FontWeight.w600, color: p.accent),
               ),
             ],
           ),

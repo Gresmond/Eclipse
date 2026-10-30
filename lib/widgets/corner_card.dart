@@ -93,7 +93,7 @@ class CornerButton extends StatelessWidget {
           label,
           style: TextStyle(
             fontFamily: Fonts.ui,
-            fontSize: 12.5,
+            fontSize: 13.5,
             fontWeight: FontWeight.w600,
             color: filled ? p.onAccent : p.inkMuted,
           ),

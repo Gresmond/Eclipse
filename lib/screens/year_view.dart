@@ -52,7 +52,7 @@ class YearView extends StatelessWidget {
   Widget _build(BuildContext context, double height) {
     final state = AppScope.watch(context, (s) => (s.habitsRevision, s.entriesRevision, s.today));
     final header = TextStyle(
-      fontSize: 11,
+      fontSize: 12,
       letterSpacing: 1.4,
       fontWeight: FontWeight.w500,
       color: context.palette.inkMuted,
@@ -70,7 +70,7 @@ class YearView extends StatelessWidget {
       }
     }
     final sleep = state.sleepHabitsFor(year, state.isFutureMonth(year, 12) ? state.today.month : 12);
-    final empty = TextStyle(fontFamily: Fonts.body, fontSize: 15, color: context.palette.inkMuted);
+    final empty = TextStyle(fontFamily: Fonts.body, fontSize: 16, color: context.palette.inkMuted);
 
     // Cells as tall as fills the window with both cards, as on a month's
     // tab: the rest is the page's and cards' padding and borders, titles,
@@ -179,13 +179,13 @@ class _Table extends StatelessWidget {
 
   static TextStyle nameStyle(Palette p, {bool total = false}) => TextStyle(
     fontFamily: Fonts.body,
-    fontSize: 13.5,
+    fontSize: 14.5,
     fontWeight: total ? FontWeight.w600 : FontWeight.w500,
     color: p.ink,
   );
 
   static TextStyle labelStyle(Palette p) =>
-      TextStyle(fontFamily: Fonts.ui, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.6, color: p.inkMuted);
+      TextStyle(fontFamily: Fonts.ui, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.6, color: p.inkMuted);
 
   @override
   Widget build(BuildContext context) {
@@ -309,7 +309,7 @@ class _Cell extends StatelessWidget {
           r == null ? '–' : '${(r * 100).round()}%',
           style: TextStyle(
             fontFamily: Fonts.ui,
-            fontSize: strong ? 14 : 12.5,
+            fontSize: strong ? 15 : 13.5,
             fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
             color: r == null
                 ? p.inkMuted.withValues(alpha: future ? 0.25 : 0.5)

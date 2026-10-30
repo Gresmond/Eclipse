@@ -322,7 +322,7 @@ ThemeData buildTheme(Palette p) {
     brightness: p.brightness,
   ).copyWith(surface: p.tile, primary: p.accent, onSurface: p.ink);
 
-  return ThemeData(
+  final theme = ThemeData(
     useMaterial3: true,
     dialogTheme: const DialogThemeData(elevation: 0),
     colorScheme: scheme,
@@ -332,7 +332,7 @@ ThemeData buildTheme(Palette p) {
     tooltipTheme: TooltipThemeData(
       waitDuration: const Duration(milliseconds: 600),
       decoration: BoxDecoration(color: p.ink, borderRadius: BorderRadius.circular(10)),
-      textStyle: TextStyle(fontFamily: Fonts.body, color: p.tile, fontSize: 13),
+      textStyle: TextStyle(fontFamily: Fonts.body, color: p.tile, fontSize: 14),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     ),
     // Flutter's buttons keep the arrow on desktop; everything clickable
@@ -343,6 +343,22 @@ ThemeData buildTheme(Palette p) {
     outlinedButtonTheme: const OutlinedButtonThemeData(style: _clickable),
     elevatedButtonTheme: const ElevatedButtonThemeData(style: _clickable),
     extensions: [p],
+  );
+  // Body-sized Material text reads one point larger; headlines keep their size.
+  // Sizes live in the typography geometry; ThemeData's own textTheme has none.
+  final g = theme.typography.englishLike;
+  TextStyle up(TextStyle? s) => TextStyle(fontSize: s!.fontSize! + 1);
+  return theme.copyWith(
+    textTheme: theme.textTheme.merge(TextTheme(
+      titleMedium: up(g.titleMedium),
+      titleSmall: up(g.titleSmall),
+      bodyLarge: up(g.bodyLarge),
+      bodyMedium: up(g.bodyMedium),
+      bodySmall: up(g.bodySmall),
+      labelLarge: up(g.labelLarge),
+      labelMedium: up(g.labelMedium),
+      labelSmall: up(g.labelSmall),
+    )),
   );
 }
 

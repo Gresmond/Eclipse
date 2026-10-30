@@ -35,7 +35,7 @@ class _MonthViewState extends State<MonthView> {
 
   /// The page's height not taken by the two grids' rows: the page's and
   /// cards' padding, their headers, day headers and percentages.
-  static const _chrome = 500.0;
+  static const _chrome = 507.0;
 
   bool _editing = false;
   bool _editingSleep = false;
@@ -83,7 +83,7 @@ class _MonthViewState extends State<MonthView> {
         child: Center(
           child: Text(
             'No rituals yet. Add some with Edit rituals.',
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 16, color: p.inkMuted),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 17, color: p.inkMuted),
           ),
         ),
       );
@@ -91,7 +91,7 @@ class _MonthViewState extends State<MonthView> {
       body = _Grid(year: year, month: month, habits: habits, nameWidth: _nameWidth, maxCell: maxCell);
     }
 
-    final header = TextStyle(fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w500, color: p.inkMuted);
+    final header = TextStyle(fontSize: 12, letterSpacing: 1.4, fontWeight: FontWeight.w500, color: p.inkMuted);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
@@ -275,7 +275,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
     final height = cellSize + 5;
     final nameStyle = TextStyle(
       fontFamily: Fonts.body,
-      fontSize: 13.5,
+      fontSize: 14.5,
       height: 1.15,
       fontWeight: FontWeight.w500,
       color: p.ink,
@@ -303,7 +303,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                           width: widget.nameWidth - 16,
                           child: RitualName(
                             habit: widget.habit,
-                            maxLines: widget.laidOut + 5 >= 2 * 13.5 * 1.15 + 2 ? 2 : 1,
+                            maxLines: widget.laidOut + 5 >= 2 * 14.5 * 1.15 + 2 ? 2 : 1,
                             style: nameStyle,
                           ),
                         ),
@@ -389,7 +389,7 @@ class _PillButton extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 label,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: fg),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: fg),
               ),
             ],
           ),
@@ -467,7 +467,7 @@ class _DayHeader extends StatelessWidget {
                         key: ValueKey(letter),
                         style: TextStyle(
                           fontFamily: Fonts.ui,
-                          fontSize: 10,
+                          fontSize: 11,
                           color: Color.lerp(letterFg, p.onToday, t)!.withValues(alpha: 0.8),
                           fontWeight: FontWeight.w600,
                         ),
@@ -478,7 +478,7 @@ class _DayHeader extends StatelessWidget {
                       '${day.day}',
                       style: TextStyle(
                         fontFamily: Fonts.ui,
-                        fontSize: 12.5,
+                        fontSize: 13.5,
                         color: Color.lerp(numberFg, p.onToday, t),
                         fontWeight: FontWeight.w600,
                         fontFeatures: const [FontFeature.tabularFigures()],

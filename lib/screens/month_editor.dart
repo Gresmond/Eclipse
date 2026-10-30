@@ -73,7 +73,7 @@ class _RitualEditorState extends State<_RitualEditor> {
                     inputFormatters: const [NoteInputFormatter()],
                     controller: _add,
                     focusNode: _addFocus,
-                    style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.ink),
+                    style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
                     decoration: InputDecoration(
                       border: InputBorder.none,
                       hintText: 'Add a ritual to ${monthNames[month - 1]}',
@@ -99,7 +99,7 @@ class _RitualEditorState extends State<_RitualEditor> {
           Text(
             'Changes apply to ${monthNames[month - 1]} only. '
             'Each new month starts as a copy of the one before.',
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
           ),
         ],
       ),
@@ -186,7 +186,7 @@ class _SleepNoteRow extends StatelessWidget {
           Expanded(
             child: Text(
               habit.name,
-              style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.ink),
+              style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
             ),
           ),
           _TimeButton(year: year, month: month, habit: habit),
@@ -312,7 +312,7 @@ class _EditableRowState extends State<_EditableRow> {
                     inputFormatters: const [NoteInputFormatter()],
                     controller: _controller,
                     focusNode: _nameFocus,
-                    style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.ink),
+                    style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
                     decoration: const InputDecoration(border: InputBorder.none, isDense: true),
                     onSubmitted: (_) => widget.onDone(),
                     onChanged: (v) => state.draftHabitName(widget.year, widget.month, widget.habit, v),
@@ -326,7 +326,7 @@ class _EditableRowState extends State<_EditableRow> {
                   maxLines: null,
                   keyboardType: TextInputType.text,
                   textInputAction: TextInputAction.done,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 12.5, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.inkMuted),
                   decoration: InputDecoration(
                     border: InputBorder.none,
                     isDense: true,

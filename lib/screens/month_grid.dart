@@ -365,7 +365,7 @@ class _MonthScore extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               label,
-              style: TextStyle(fontFamily: Fonts.ui, fontSize: 12.5, fontWeight: FontWeight.w500, color: p.inkMuted),
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, fontWeight: FontWeight.w500, color: p.inkMuted),
             ),
           ],
         ),

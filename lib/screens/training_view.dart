@@ -86,7 +86,7 @@ String _kg(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStri
 
 String _shortDate(DateTime d) => '${d.day} ${monthNames[d.month - 1].substring(0, 3)}';
 
-TextStyle _label(Palette p, {double size = 13, FontWeight weight = FontWeight.w500, Color? color}) =>
+TextStyle _label(Palette p, {double size = 14, FontWeight weight = FontWeight.w500, Color? color}) =>
     TextStyle(fontFamily: Fonts.ui, fontSize: size, fontWeight: weight, color: color ?? p.ink, height: 1.25);
 
 class _Header extends StatelessWidget {
@@ -106,7 +106,7 @@ class _Header extends StatelessWidget {
             children: [
               Text(
                 'PROGRESS',
-                style: _label(p, size: 12, weight: FontWeight.w600, color: p.inkMuted).copyWith(letterSpacing: 1.6),
+                style: _label(p, size: 13, weight: FontWeight.w600, color: p.inkMuted).copyWith(letterSpacing: 1.6),
               ),
               const SizedBox(height: 4),
               Text(
@@ -150,7 +150,7 @@ class _HistoryTile extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: days.isEmpty
-                ? Text('Sessions you log will be listed here.', style: _label(p, size: 12.5, color: p.inkMuted))
+                ? Text('Sessions you log will be listed here.', style: _label(p, size: 13.5, color: p.inkMuted))
                 : ListView(
                     padding: EdgeInsets.zero,
                     children: [
@@ -204,7 +204,7 @@ class _HistoryRow extends StatelessWidget {
               width: 88,
               child: Text(
                 '${weekdayNames[d.weekday - 1].substring(0, 3)} ${_shortDate(d)}',
-                style: _label(p, size: 12.5, weight: FontWeight.w600),
+                style: _label(p, size: 13.5, weight: FontWeight.w600),
               ),
             ),
             Expanded(
@@ -222,7 +222,7 @@ class _HistoryRow extends StatelessWidget {
                           decoration: BoxDecoration(color: groupColour(e.group, p), shape: BoxShape.circle),
                         ),
                         const SizedBox(width: 5),
-                        Text('${e.name} ×${sets.length}', style: _label(p, size: 12, color: p.inkMuted)),
+                        Text('${e.name} ×${sets.length}', style: _label(p, size: 13, color: p.inkMuted)),
                       ],
                     ),
                 ],

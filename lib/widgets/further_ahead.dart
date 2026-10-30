@@ -199,7 +199,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
               : 'Nothing but birthdays',
           style: TextStyle(
             fontFamily: Fonts.body,
-            fontSize: 12,
+            fontSize: 13,
             fontWeight: FontWeight.w500,
             color: p.inkMuted.withValues(alpha: 0.7),
           ),
@@ -427,7 +427,7 @@ class _LaterRowState extends State<_LaterRow> {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontFamily: Fonts.body,
-                              fontSize: 14,
+                              fontSize: 15,
                               height: 1.35,
                               color: item.done
                                   ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
@@ -438,7 +438,7 @@ class _LaterRowState extends State<_LaterRow> {
                           if (caption != null)
                             Text(
                               caption,
-                              style: TextStyle(fontFamily: Fonts.body, fontSize: 10.5, color: p.inkMuted),
+                              style: TextStyle(fontFamily: Fonts.body, fontSize: 11.5, color: p.inkMuted),
                             ),
                         ],
                       ),

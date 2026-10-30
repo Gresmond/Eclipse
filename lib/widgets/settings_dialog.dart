@@ -349,7 +349,7 @@ extension on _SettingsDialogState {
                           'Show the welcome tour',
                           style: TextStyle(
                             fontFamily: Fonts.ui,
-                            fontSize: 14,
+                            fontSize: 15,
                             fontWeight: FontWeight.w500,
                             color: p.ink,
                           ),
@@ -372,7 +372,7 @@ extension on _SettingsDialogState {
   Widget _journalFolder(Palette p, Directory current) {
     final state = AppScope.of(context);
     final folder = _newJournal;
-    final small = TextStyle(fontFamily: Fonts.body, fontSize: 13, height: 1.45, color: p.inkMuted);
+    final small = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted);
     final inDrive = state.journalInDrive;
     final off = inDrive && !state.keepsJournalFiles;
     return ClipRRect(
@@ -421,7 +421,7 @@ extension on _SettingsDialogState {
             Expanded(
               child: Text(
                 'Journal folder',
-                style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
+                style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
               ),
             ),
             if (folder == null)
@@ -434,7 +434,7 @@ extension on _SettingsDialogState {
         SelectableText(
           _shortPath(current.path),
           maxLines: 1,
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.ink),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.ink),
         ),
         const SizedBox(height: 4),
         Text(
@@ -527,7 +527,7 @@ class _Ribbons extends StatelessWidget {
                             curve: Motion.morphCurve,
                             style: TextStyle(
                               fontFamily: Fonts.ui,
-                              fontSize: 12.5,
+                              fontSize: 13.5,
                               fontWeight: FontWeight.w600,
                               color: i == selected ? p.onAccent : p.inkMuted,
                             ),

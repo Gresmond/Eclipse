@@ -76,7 +76,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final label = TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, color: p.ink);
+    final label = TextStyle(fontFamily: Fonts.ui, fontSize: 14.5, color: p.ink);
     final until = widget.current?.until;
     return Padding(
       padding: const EdgeInsets.only(left: 8),
@@ -152,12 +152,12 @@ class _RepeatPanelState extends State<_RepeatPanel> {
               (_kind == RepeatKind.days && _unit == RepeatKind.months && widget.start.day > 28))
             Text(
               'In shorter months, on the last day.',
-              style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.inkMuted),
             ),
           if (_kind == RepeatKind.yearly && widget.start.month == 2 && widget.start.day == 29)
             Text(
               'Only in leap years.',
-              style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.inkMuted),
             ),
           const SizedBox(height: 10),
           Row(
@@ -237,7 +237,7 @@ class _Pills extends StatelessWidget {
                     option,
                     style: TextStyle(
                       fontFamily: Fonts.ui,
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: i == selected ? p.onAccent : p.inkMuted,
                     ),
@@ -276,7 +276,7 @@ class _Stepper extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: Fonts.ui,
-              fontSize: 15,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
               color: p.ink,
               fontFeatures: const [FontFeature.tabularFigures()],

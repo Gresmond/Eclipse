@@ -10,7 +10,7 @@ extension on _SettingsDialogState {
       children: [
         Text(
           'Your data',
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 16, fontWeight: FontWeight.w600, color: p.ink),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 17, fontWeight: FontWeight.w600, color: p.ink),
         ),
         const SizedBox(height: 14),
         if (state.dataFolder != null) ...[_dataFolder(p, state.dataFolder!)],
@@ -46,12 +46,12 @@ extension on _SettingsDialogState {
         const SizedBox(height: 18),
         Text(
           'Restore a copy',
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 16, fontWeight: FontWeight.w600, color: p.ink),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 17, fontWeight: FontWeight.w600, color: p.ink),
         ),
         const SizedBox(height: 6),
         Text(
           'A copy of everything is saved each day you use the app, and the last 30 are kept.',
-          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted),
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.45, color: p.inkMuted),
         ),
         const SizedBox(height: 14),
         if (_backups.isEmpty)
@@ -60,7 +60,7 @@ extension on _SettingsDialogState {
             child: Center(
               child: Text(
                 'No backups yet.',
-                style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted),
+                style: TextStyle(fontFamily: Fonts.body, fontSize: 16, color: p.inkMuted),
               ),
             ),
           )
@@ -87,7 +87,7 @@ extension on _SettingsDialogState {
           const SizedBox(height: 12),
           Text(
             curlyQuotes(_error!),
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.missed),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 14.5, color: p.missed),
           ),
         ],
       ],
@@ -98,7 +98,7 @@ extension on _SettingsDialogState {
   /// folder, say) so it follows you to a new computer.
   Widget _dataFolder(Palette p, DataFolder data) {
     final folder = _newFolder;
-    final small = TextStyle(fontFamily: Fonts.body, fontSize: 13, height: 1.45, color: p.inkMuted);
+    final small = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
       decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
@@ -110,7 +110,7 @@ extension on _SettingsDialogState {
               Expanded(
                 child: Text(
                   'Local data',
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
+                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
                 ),
               ),
               if (folder == null)
@@ -123,7 +123,7 @@ extension on _SettingsDialogState {
           SelectableText(
             _shortPath(data.root.path),
             maxLines: 1,
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.ink),
+            style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.ink),
           ),
           const SizedBox(height: 4),
           Text(
@@ -167,7 +167,7 @@ extension on _SettingsDialogState {
   /// Keeping everything the same on your other computers, through a
   /// hidden folder in Google Drive.
   Widget _sync(Palette p, SyncService sync) {
-    final small = TextStyle(fontFamily: Fonts.body, fontSize: 13, height: 1.45, color: p.inkMuted);
+    final small = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted);
 
     // Saying yes to sync wears the tick's colour, even before it can be pressed.
     Widget button(String label, VoidCallback? onTap, {bool filled = false}) => filled
@@ -202,7 +202,7 @@ extension on _SettingsDialogState {
         SelectableText(
           'Signed in as ${sync.email}',
           maxLines: 1,
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.ink),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.ink),
         ),
         const SizedBox(height: 4),
         Text(
@@ -317,7 +317,7 @@ extension on _SettingsDialogState {
               Expanded(
                 child: Text(
                   'Sync',
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
+                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
                 ),
               ),
               ?action,
@@ -388,12 +388,12 @@ class _BackupRow extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
+                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   confirming ? 'Replaces everything you have now, except journal writing.' : subtitle,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 12.5, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.inkMuted),
                 ),
               ],
             ),

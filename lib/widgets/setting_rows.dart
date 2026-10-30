@@ -24,7 +24,7 @@ class SettingSwitchRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return FadeMenuRow(
-      height: 60,
+      height: 62,
       onTap: onTap,
       child: Row(
         children: [
@@ -35,12 +35,12 @@ class SettingSwitchRow extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.ink),
+                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w500, color: p.ink),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.inkMuted),
                 ),
               ],
             ),
@@ -81,12 +81,12 @@ class _DayStartPickerState extends State<DayStartPicker> {
         children: [
           Text(
             'New day starts at',
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.ink),
+            style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w500, color: p.ink),
           ),
           const SizedBox(height: 2),
           Text(
             'Before then, ticks count for the day before.',
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
+            style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, color: p.inkMuted),
           ),
           const SizedBox(height: 10),
           Container(
@@ -135,7 +135,7 @@ class _DayStartPickerState extends State<DayStartPicker> {
                                   curve: Motion.morphCurve,
                                   style: TextStyle(
                                     fontFamily: Fonts.ui,
-                                    fontSize: 12.5,
+                                    fontSize: 13.5,
                                     fontWeight: FontWeight.w600,
                                     color: hour == state.dayStartHour ? p.onAccent : p.inkMuted,
                                   ),

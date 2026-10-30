@@ -706,7 +706,7 @@ class _StepBody extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           step.body,
-          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.5, color: p.inkMuted),
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.5, color: p.inkMuted),
         ),
         const SizedBox(height: 22),
         Row(
@@ -743,7 +743,7 @@ class _TextButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, fontWeight: FontWeight.w600, color: p.inkMuted),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.inkMuted),
         ),
       ),
     );
@@ -774,7 +774,7 @@ class _PillButton extends StatelessWidget {
           ),
           child: Text(
             label,
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, fontWeight: FontWeight.w600, color: p.onAccent),
+            style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.onAccent),
           ),
         ),
       ),

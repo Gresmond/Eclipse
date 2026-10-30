@@ -96,7 +96,7 @@ class TimePill extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final minutes = this.minutes;
-    final style = SleepName.timeStyle(p).copyWith(fontSize: 13, color: p.ink);
+    final style = SleepName.timeStyle(p).copyWith(fontSize: 14, color: p.ink);
     return Hoverable(
       onTap: () => _open(context),
       builder: (hover) => AnimatedContainer(
@@ -114,7 +114,7 @@ class TimePill extends StatelessWidget {
               ? Text(
                   placeholder,
                   key: const ValueKey(false),
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
                 )
               // "9:05 pm", as a count's digits roll.
               : Semantics(
@@ -204,7 +204,7 @@ class _TimeWheelState extends State<TimeWheel> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final style = SleepName.timeStyle(p).copyWith(fontSize: 19, fontWeight: FontWeight.w600, color: p.ink);
+    final style = SleepName.timeStyle(p).copyWith(fontSize: 20, fontWeight: FontWeight.w600, color: p.ink);
 
     Widget wheel({
       required FixedExtentScrollController controller,
@@ -273,7 +273,7 @@ class _TimeWheelState extends State<TimeWheel> {
             if (title != null) ...[
               Text(
                 title,
-                style: TextStyle(fontFamily: Fonts.ui, fontSize: 13, fontWeight: FontWeight.w600, color: p.inkMuted),
+                style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.inkMuted),
               ),
               const SizedBox(height: 10),
             ],

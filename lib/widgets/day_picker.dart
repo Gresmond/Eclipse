@@ -50,7 +50,7 @@ class _DayPickerState extends State<DayPicker> {
               Expanded(
                 child: Text(
                   '${monthNames[_month.month - 1]} ${_month.year}',
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
+                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
                 ),
               ),
               arrow(Icons.chevron_left_rounded, atFirst ? null : () => _shift(-1)),
@@ -67,7 +67,7 @@ class _DayPickerState extends State<DayPicker> {
                       name[0],
                       style: TextStyle(
                         fontFamily: Fonts.ui,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.6,
                         color: p.inkMuted.withValues(alpha: 0.7),
@@ -152,7 +152,7 @@ class _PickerDay extends StatelessWidget {
             '$day',
             style: TextStyle(
               fontFamily: Fonts.ui,
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: selected || isToday ? FontWeight.w600 : FontWeight.w500,
               color: fg,
               fontFeatures: const [FontFeature.tabularFigures()],

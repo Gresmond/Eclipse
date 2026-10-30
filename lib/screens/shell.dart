@@ -167,7 +167,7 @@ class _Header extends StatelessWidget {
                             kicker.toUpperCase(),
                             style: TextStyle(
                               fontFamily: Fonts.ui,
-                              fontSize: 11,
+                              fontSize: 12,
                               letterSpacing: 2.2,
                               fontWeight: FontWeight.w700,
                               color: p.inkMuted.withValues(alpha: 0.8),
@@ -497,7 +497,7 @@ class _Tab extends StatelessWidget {
   }
 
   static TextStyle _style(FontWeight weight, Color color) =>
-      TextStyle(fontFamily: Fonts.ui, fontSize: 12.5, fontWeight: weight, color: color, letterSpacing: 0.2);
+      TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, fontWeight: weight, color: color, letterSpacing: 0.2);
 
   /// Set for a tab whose label changes: the label area eases to this width
   /// while the old label fades through to the new one.
@@ -597,7 +597,7 @@ class _YearSwitcher extends StatelessWidget {
             '$year',
             style: TextStyle(
               fontFamily: Fonts.ui,
-              fontSize: 14,
+              fontSize: 15,
               fontWeight: FontWeight.w600,
               color: p.ink,
               letterSpacing: 0.5,
@@ -643,7 +643,7 @@ class _SettingsButton extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         content: Text(
           'Restored $from. What you had before is saved as a backup too.',
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, color: p.tile),
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 14.5, color: p.tile),
         ),
       ),
     );
@@ -735,7 +735,7 @@ class _AppearanceMenu extends StatelessWidget {
                     option.name,
                     style: TextStyle(
                       fontFamily: Fonts.ui,
-                      fontSize: 14,
+                      fontSize: 15,
                       fontWeight: option.name == p.name ? FontWeight.w600 : FontWeight.w500,
                       color: p.ink,
                     ),

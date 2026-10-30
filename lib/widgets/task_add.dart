@@ -62,7 +62,7 @@ class _DatedAddState extends State<_DatedAdd> {
     final p = context.palette;
     final today = AppScope.read(context).today;
     final due = _choice?.day, repeat = _choice?.repeat, time = _choice?.time, birthday = _choice?.birthday == true;
-    final note = TextStyle(fontFamily: Fonts.body, fontSize: 11, color: p.inkMuted);
+    final note = TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted);
     return Padding(
       padding: const EdgeInsets.only(top: 6, right: 6),
       child: _Field(
@@ -84,7 +84,7 @@ class _DatedAddState extends State<_DatedAdd> {
                 ),
               if (time != null) ...[
                 const SizedBox(width: 6),
-                Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
+                Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 12)),
               ],
               if (repeat != null) ...[
                 const SizedBox(width: 8),
@@ -224,7 +224,7 @@ class _AddTaskState extends State<_AddTask> {
                         textCapitalization: TextCapitalization.sentences,
                         inputFormatters: const [NoteInputFormatter()],
                         // As a task's name, so the line is a task's height.
-                        style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.35, color: p.ink),
+                        style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink),
                         cursorColor: p.accent,
                         decoration: InputDecoration(
                           isDense: true,
@@ -241,7 +241,7 @@ class _AddTaskState extends State<_AddTask> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 11)),
+                            if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 12)),
                             Builder(
                               builder: (anchor) => _TaskAction(
                                 tooltip: time == null ? 'Add a time' : 'Change time',
@@ -304,7 +304,7 @@ class _Field extends StatelessWidget {
                 focusNode: focus,
                 textCapitalization: TextCapitalization.sentences,
                 inputFormatters: const [NoteInputFormatter()],
-                style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, color: p.ink),
+                style: TextStyle(fontFamily: Fonts.body, fontSize: 14.5, color: p.ink),
                 cursorColor: p.accent,
                 decoration: InputDecoration(
                   isDense: true,

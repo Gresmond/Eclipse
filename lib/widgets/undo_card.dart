@@ -134,7 +134,7 @@ class _Card extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, fontWeight: FontWeight.w500, color: p.ink),
+                style: TextStyle(fontFamily: Fonts.ui, fontSize: 14.5, fontWeight: FontWeight.w500, color: p.ink),
               ),
             ),
             const SizedBox(width: 16),

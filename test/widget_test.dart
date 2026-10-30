@@ -1933,6 +1933,7 @@ void main() {
       ..notifyListeners();
     await tester.pump(const Duration(milliseconds: 600));
     await _shoot(tester, 'update_failed');
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Later'));
     await tester.pumpAndSettle();

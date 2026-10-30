@@ -300,7 +300,7 @@ class _ChartPainter extends CustomPainter {
     final body = TextPainter(
       text: TextSpan(
         text: '${_shortDate(pt.day)}  ·  $value$change',
-        style: _label(p, size: 12, color: p.inkMuted),
+        style: _label(p, size: 13, color: p.inkMuted),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -358,7 +358,7 @@ class _ChartPainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: _label(palette, size: 11.5, color: colour),
+        style: _label(palette, size: 12.5, color: colour),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -426,7 +426,7 @@ class _Legend extends StatelessWidget {
                       g.label.toUpperCase(),
                       style: _label(
                         p,
-                        size: 10.5,
+                        size: 11.5,
                         weight: FontWeight.w700,
                         color: groupColour(g, p),
                       ).copyWith(letterSpacing: 1.1),
@@ -446,7 +446,7 @@ class _Legend extends StatelessWidget {
                             painter: _DashSample(groupColour(g, p), dash[e.uid] ?? const []),
                           ),
                           const SizedBox(width: 6),
-                          Text(e.name, style: _label(p, size: 12.5)),
+                          Text(e.name, style: _label(p, size: 13.5)),
                         ],
                       ),
                     ),
@@ -459,7 +459,7 @@ class _Legend extends StatelessWidget {
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               'Bodyweight exercises show in the % change view.',
-              style: _label(p, size: 11.5, color: p.inkMuted),
+              style: _label(p, size: 12.5, color: p.inkMuted),
             ),
           ),
       ],
@@ -558,7 +558,7 @@ class _Segments extends StatelessWidget {
                   ),
                   child: Text(
                     label,
-                    style: _label(p, size: 12, weight: FontWeight.w600, color: i == selected ? p.onAccent : p.inkMuted),
+                    style: _label(p, size: 13, weight: FontWeight.w600, color: i == selected ? p.onAccent : p.inkMuted),
                   ),
                 ),
               ),

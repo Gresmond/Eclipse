@@ -27,7 +27,7 @@ class SleepName extends StatelessWidget {
   /// A little under the body text's size, as a task's due time.
   static TextStyle timeStyle(Palette p) => TextStyle(
     fontFamily: Fonts.time,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: FontWeight.w500,
     color: p.inkMuted.withValues(alpha: 0.7),
     fontFeatures: const [FontFeature.tabularFigures()],

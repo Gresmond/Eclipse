@@ -561,7 +561,7 @@ class _SubtaskDialogState extends State<_SubtaskDialog> {
                     Expanded(
                       child: Text(
                         'Number the subtasks',
-                        style: TextStyle(fontFamily: Fonts.ui, fontSize: 13.5, color: context.palette.ink),
+                        style: TextStyle(fontFamily: Fonts.ui, fontSize: 14.5, color: context.palette.ink),
                       ),
                     ),
                     SettingToggle(on: _numbered),

@@ -187,7 +187,7 @@ class _Card extends StatelessWidget {
                   'Updated from ${_from(incoming.from)}',
                   style: TextStyle(
                     fontFamily: Fonts.display,
-                    fontSize: 15.5,
+                    fontSize: 16.5,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.2,
                     color: p.ink,
@@ -196,7 +196,7 @@ class _Card extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   detail,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 12.5, height: 1.4, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 13.5, height: 1.4, color: p.inkMuted),
                 ),
               ],
             ),
@@ -236,7 +236,7 @@ class _AskCard extends StatelessWidget {
               'Keep your journal in Drive',
               style: TextStyle(
                 fontFamily: Fonts.display,
-                fontSize: 15.5,
+                fontSize: 16.5,
                 fontWeight: FontWeight.w600,
                 letterSpacing: -0.2,
                 color: p.ink,
@@ -253,7 +253,7 @@ class _AskCard extends StatelessWidget {
                         'Sign in again to keep your journal in an Eclipse Journals folder in your Drive.',
               style: TextStyle(
                 fontFamily: Fonts.body,
-                fontSize: 12.5,
+                fontSize: 13.5,
                 height: 1.4,
                 color: error != null && !signingIn ? p.missed : p.inkMuted,
               ),
@@ -306,7 +306,7 @@ class _WaitingCard extends StatelessWidget {
         : newer
         ? 'Some changes need an update'
         : 'Some changes couldn’t be read';
-    final body = TextStyle(fontFamily: Fonts.body, fontSize: 12.5, height: 1.4, color: p.inkMuted);
+    final body = TextStyle(fontFamily: Fonts.body, fontSize: 13.5, height: 1.4, color: p.inkMuted);
     return Container(
       width: 340,
       padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
@@ -325,7 +325,7 @@ class _WaitingCard extends StatelessWidget {
               title,
               style: TextStyle(
                 fontFamily: Fonts.display,
-                fontSize: 15.5,
+                fontSize: 16.5,
                 fontWeight: FontWeight.w600,
                 letterSpacing: -0.2,
                 color: p.ink,

@@ -197,7 +197,7 @@ class _TodoRowState extends State<_TodoRow> {
             padding: const EdgeInsets.all(10),
             child: Text(
               child.text,
-              style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.ink),
+              style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
             ),
           ),
         ),
@@ -284,7 +284,7 @@ class _TodoRowState extends State<_TodoRow> {
                           curve: Motion.clickCurve,
                           style: TextStyle(
                             fontFamily: Fonts.body,
-                            fontSize: 14,
+                            fontSize: 15,
                             height: 1.35,
                             color: done
                                 ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
@@ -333,7 +333,7 @@ class _TodoRowState extends State<_TodoRow> {
                               if (item.subtasks.isNotEmpty)
                                 Text(
                                   '${item.subtasks.where((child) => child.done).length}/${item.subtasks.length} complete',
-                                  style: TextStyle(fontSize: 10.5, color: p.inkMuted, decoration: TextDecoration.none),
+                                  style: TextStyle(fontSize: 11.5, color: p.inkMuted, decoration: TextDecoration.none),
                                 ),
                               // A birthday looks like any other task here.
                               if (repeat != null && !item.birthday)
@@ -347,7 +347,7 @@ class _TodoRowState extends State<_TodoRow> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          fontSize: 10.5,
+                                          fontSize: 11.5,
                                           color: p.inkMuted,
                                           decoration: TextDecoration.none,
                                         ),
@@ -376,7 +376,7 @@ class _TodoRowState extends State<_TodoRow> {
                                 dayMonth(item.since),
                                 style: TextStyle(
                                   fontFamily: Fonts.ui,
-                                  fontSize: 10.5,
+                                  fontSize: 11.5,
                                   color: p.missed,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -537,7 +537,7 @@ class _TodoRowState extends State<_TodoRow> {
           padding: const EdgeInsets.all(12),
           child: Text(
             item.text,
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.ink),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
           ),
         ),
       ),
@@ -710,7 +710,7 @@ class _SubtaskRowState extends State<_SubtaskRow> {
                         curve: Motion.clickCurve,
                         style: TextStyle(
                           fontFamily: Fonts.body,
-                          fontSize: 14,
+                          fontSize: 15,
                           height: 1.35,
                           color: done
                               ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)

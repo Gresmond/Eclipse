@@ -55,7 +55,7 @@ class TileHeader extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontFamily: Fonts.display,
-            fontSize: 18,
+            fontSize: 19,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.4,
             color: p.ink,
@@ -101,7 +101,7 @@ class _CaptionParts {
 
 TextStyle _captionStyle(BuildContext context) => TextStyle(
   fontFamily: Fonts.ui,
-  fontSize: 10.5,
+  fontSize: 11.5,
   letterSpacing: 1.2,
   fontWeight: FontWeight.w600,
   color: context.palette.inkMuted,

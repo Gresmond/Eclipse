@@ -264,7 +264,7 @@ class _HabitsCard extends StatelessWidget {
                       child: Text(
                         subtitle,
                         key: ValueKey(subtitle),
-                        style: TextStyle(fontFamily: Fonts.body, fontSize: 13, color: p.inkMuted),
+                        style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
                       ),
                     ),
                   ],
@@ -367,10 +367,10 @@ class _HabitRow extends StatelessWidget {
     this.names,
   });
 
-  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 13.5, fontWeight: FontWeight.w500);
+  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 14.5, fontWeight: FontWeight.w500);
 
   /// Long names wrap onto up to this many lines before they're cut short.
-  static const nameLines = 3;
+  static const nameLines = 4;
 
   /// Rows at least this wide show the last week's marks.
   static const weekTrailFrom = 240.0;
@@ -382,7 +382,7 @@ class _HabitRow extends StatelessWidget {
 
   static TextStyle streakStyle(Color color) => TextStyle(
     fontFamily: Fonts.ui,
-    fontSize: 11.5,
+    fontSize: 12.5,
     fontWeight: FontWeight.w700,
     color: color,
     fontFeatures: const [FontFeature.tabularFigures()],
@@ -492,7 +492,7 @@ class _HabitRow extends StatelessWidget {
                       : Text(
                           '–',
                           key: const ValueKey(0),
-                          style: TextStyle(fontSize: 13, color: p.inkMuted.withValues(alpha: 0.4)),
+                          style: TextStyle(fontSize: 14, color: p.inkMuted.withValues(alpha: 0.4)),
                         ),
                 ),
               ),
@@ -669,11 +669,11 @@ class _JournalTextState extends State<_JournalText> {
       expands: true,
       maxLines: null,
       textAlignVertical: TextAlignVertical.top,
-      style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.35, color: p.ink),
+      style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink),
       decoration: InputDecoration(
         border: InputBorder.none,
         hintText: _past ? 'Nothing written this day.' : null,
-        hintStyle: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted.withValues(alpha: 0.6)),
+        hintStyle: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted.withValues(alpha: 0.6)),
       ),
       onChanged: _changed,
     );
