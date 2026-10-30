@@ -208,22 +208,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
     }
   }
 
-  /// Where the panel's top first landed, centred, kept from then on.
-  double? _top;
-
-  final _panel = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final panel = _panel.currentContext?.findRenderObject();
-      final area = context.findRenderObject();
-      if (!mounted || panel is! RenderBox || area is! RenderBox) return;
-      setState(() => _top = panel.localToGlobal(Offset.zero, ancestor: area).dy);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
@@ -236,12 +220,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
               _ => Navigator.pop(context),
             },
       child: Dialog(
-        // Opens centred, then keeps its top there, so it grows and shrinks
-        // from the bottom.
-        alignment: _top == null ? null : Alignment.topCenter,
-        insetPadding: _top == null ? null : EdgeInsets.fromLTRB(40, _top!, 40, 24),
-        // Anchoring must not move it at all.
-        insetAnimationDuration: Duration.zero,
         clipBehavior: Clip.antiAlias,
         backgroundColor: p.tile,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
@@ -249,7 +227,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
           key: widget.tourTargetKey,
           spot: widget.tourRibbon == null ? TourSpot.settings : TourSpot.settingsPreview,
           child: SizedBox(
-            key: _panel,
             width: 480,
             // Scrolls when the window is too short for all of it.
             child: SingleChildScrollView(
