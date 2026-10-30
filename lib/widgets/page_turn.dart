@@ -66,16 +66,26 @@ class _PageTurnState extends State<PageTurn> with TickerProviderStateMixin {
                 key: _backKey,
                 child: IgnorePointer(ignoring: moving, child: widget.back),
               ),
-            if (!atBack)
-              KeyedSubtree(
-                key: _frontKey,
+            // Stays mounted (hidden) behind the back, so turning back to it
+            // doesn't rebuild the page and its measured tab pill.
+            KeyedSubtree(
+              key: _frontKey,
+              child: Visibility(
+                visible: !atBack,
+                maintainState: true,
                 child: AnimatedBuilder(
                   animation: _turn,
                   child: IgnorePointer(ignoring: moving, child: widget.front),
-                  builder: (context, child) =>
-                      moving ? ClipPath(clipper: _KeptClipper(_Fold.turning(size, _turn.value)), child: child) : child!,
+                  // Always wrapped, so starting the turn doesn't reparent (and
+                  // rebuild) the page: the tab pill would vanish for a frame.
+                  builder: (context, child) => ClipPath(
+                    clipper: moving ? _KeptClipper(_Fold.turning(size, _turn.value)) : null,
+                    clipBehavior: moving ? Clip.antiAlias : Clip.none,
+                    child: child,
+                  ),
                 ),
               ),
+            ),
             // The fold itself, and the shadows either side of it.
             Positioned.fill(
               child: IgnorePointer(
