@@ -26,6 +26,7 @@ class SettingsSearchState extends State<SettingsSearch> {
   late final _controller = TextEditingController(text: _state.lastSearch)
     ..selection = TextSelection(baseOffset: 0, extentOffset: _state.lastSearch.length);
   late final _state = AppScope.read(context);
+  final _focus = FocusNode();
   late final SearchIndex _index;
   List<SearchHit> _hits = const [];
   List<String> _words = const [];
@@ -41,6 +42,7 @@ class SettingsSearchState extends State<SettingsSearch> {
   @override
   void dispose() {
     _controller.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -50,6 +52,13 @@ class SettingsSearchState extends State<SettingsSearch> {
       _words = SearchIndex.words(query);
       _hits = _index.search(query);
     });
+  }
+
+  /// Empties the field, keeping it focused to type again.
+  void _clear() {
+    _controller.clear();
+    _search('');
+    _focus.requestFocus();
   }
 
   /// Opens the first result, for Enter.
@@ -70,7 +79,7 @@ class SettingsSearchState extends State<SettingsSearch> {
       children: [
         Container(
           height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.only(left: 14, right: 8),
           decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
           child: Row(
             children: [
@@ -79,6 +88,7 @@ class SettingsSearchState extends State<SettingsSearch> {
               Expanded(
                 child: TextField(
                   controller: _controller,
+                  focusNode: _focus,
                   autofocus: true,
                   onChanged: _search,
                   cursorColor: p.ink,
@@ -92,6 +102,26 @@ class SettingsSearchState extends State<SettingsSearch> {
                   ),
                 ),
               ),
+              if (_controller.text.isNotEmpty)
+                TextFieldTapRegion(
+                  child: IconButton(
+                    tooltip: 'Clear',
+                    onPressed: _clear,
+                    constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                    padding: EdgeInsets.zero,
+                    style: ButtonStyle(
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      minimumSize: const WidgetStatePropertyAll(Size(28, 28)),
+                      shape: const WidgetStatePropertyAll(CircleBorder()),
+                      backgroundColor: WidgetStateProperty.resolveWith(
+                        (states) =>
+                            states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+                      ),
+                      overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+                    ),
+                    icon: Icon(Icons.close_rounded, size: 16, color: p.inkMuted),
+                  ),
+                ),
             ],
           ),
         ),

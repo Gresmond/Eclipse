@@ -2329,6 +2329,12 @@ void main() {
     expect(find.textContaining('JOURNAL'), findsOneWidget);
     expect(find.textContaining('TASK'), findsOneWidget);
     await _shoot(tester, 'settings_search');
+    await tester.tap(find.byTooltip('Clear'));
+    await tester.pumpAndSettle();
+    expect(find.text('Find any task or journal entry, from any day.'), findsOneWidget);
+    expect(find.byTooltip('Clear'), findsNothing, reason: 'only shown with something to clear');
+    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
+    await tester.pumpAndSettle();
 
     // Enter opens the newest: the journal entry.
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);

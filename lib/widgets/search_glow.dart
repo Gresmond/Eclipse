@@ -24,7 +24,7 @@ class SearchGlow extends StatefulWidget {
 }
 
 class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateMixin {
-  late final _glow = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+  late final _glow = AnimationController(vsync: this, duration: const Duration(seconds: 4));
   DateTime? _shown;
 
   @override
@@ -64,14 +64,14 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
               animation: _glow,
               builder: (context, _) {
                 final t = _glow.value;
-                // Up quickly, held, then away slowly.
+                // Up in 0.2 s, held to 2.5 s, then away over 1.5 s.
                 final alpha = !_glow.isAnimating
                     ? 0.0
-                    : t < 0.1
-                    ? t / 0.1
-                    : t < 0.35
+                    : t < 0.05
+                    ? t / 0.05
+                    : t < 0.625
                     ? 1.0
-                    : 1 - Curves.easeInOut.transform((t - 0.35) / 0.65);
+                    : 1 - Curves.easeInOut.transform((t - 0.625) / 0.375);
                 return DecoratedBox(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.radius),
