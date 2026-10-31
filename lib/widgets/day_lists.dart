@@ -102,6 +102,15 @@ mixin _NewTasks<T extends StatefulWidget> on State<T> {
   }
 }
 
+/// What [task] can be dragged into order among in its day's list: the
+/// open tasks of its own list and group, due the same day and at no time.
+/// Null for one that keeps its place.
+Object? _orderKey(_Task task) {
+  final (scope, item) = task;
+  if (item.done || item.id < 0 || item.dueTime != null || item.birthday) return null;
+  return (scope, todoGroup(item), item.dueDate);
+}
+
 /// A task as a day's list draws it: [arriving] from another day, or
 /// [leaving] once removed.
 typedef _Shown = ({_Task task, bool arriving, bool leaving});
@@ -117,6 +126,11 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
   final _arriving = <int>{};
   final _timers = <Timer>{};
   final _departing = <int, ({String group, int index, _Task task})>{};
+
+  /// While a task is dragged among its day's others: the day's group and
+  /// the order they're shown in. Each group's tasks as last given.
+  ({String group, List<int> ids})? _ordering;
+  final _given = <String, List<_Task>>{};
 
   @override
   void dispose() {
@@ -138,6 +152,7 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
   /// [tasks], [group]'s list in order, as it's drawn now. Call once per
   /// group per build, after [_settle] for the build before.
   List<_Shown> _shown(String group, List<_Task> tasks) {
+    tasks = _given[group] = _inOrder(group, tasks);
     final ids = [for (final (_, item) in tasks) item.id];
     // Everything there when the list first shows is simply there.
     final before = _drawn[group] ?? (_started ? const <int>[] : ids);
@@ -158,6 +173,54 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
     }
     _drawn[group] = [for (final s in shown) s.task.$2.id];
     return shown;
+  }
+
+  /// [tasks] with those being dragged into order as they're shown.
+  List<_Task> _inOrder(String group, List<_Task> tasks) {
+    final ordering = _ordering;
+    if (ordering == null || ordering.group != group) return tasks;
+    final byId = {for (final t in tasks) t.$2.id: t};
+    final queue = [for (final id in ordering.ids) ?byId[id]];
+    final moving = {for (final t in queue) t.$2.id};
+    var next = 0;
+    return [for (final t in tasks) moving.contains(t.$2.id) ? queue[next++] : t];
+  }
+
+  /// For [group]'s rows: its open tasks glide aside as one is dragged over
+  /// them, and it's kept where it's let go.
+  TaskOrder _order(String group) {
+    final list = (this, group);
+    void clear() {
+      if (_ordering?.group == group) setState(() => _ordering = null);
+    }
+
+    return TaskOrder._(
+      list: list,
+      canPlace: (drag, next) {
+        final key = _orderKey((drag.scope, drag.item));
+        return drag.list == list && drag.item.id != next.$2.id && key != null && key == _orderKey(next);
+      },
+      place: (drag, next, {required after}) {
+        final key = _orderKey((drag.scope, drag.item));
+        final shown = [
+          for (final t in _given[group] ?? const <_Task>[])
+            if (_orderKey(t) == key) t.$2.id,
+        ];
+        final ids = [...shown]..remove(drag.item.id);
+        final at = ids.indexOf(next.$2.id);
+        if (at < 0) return;
+        ids.insert(after ? at + 1 : at, drag.item.id);
+        if (!listEquals(ids, shown)) setState(() => _ordering = (group: group, ids: ids));
+      },
+      keep: () {
+        final ordering = _ordering;
+        if (ordering == null || ordering.group != group) return;
+        final byId = {for (final t in _given[group] ?? const <_Task>[]) t.$2.id: t.$2};
+        AppScope.read(context).orderTodos([for (final id in ordering.ids) ?byId[id]]);
+        clear();
+      },
+      discard: clear,
+    );
   }
 
   /// After a build: every group is now drawn, so later ones are new.
@@ -181,13 +244,13 @@ String _shortDate(DateTime day, DateTime today) =>
     '${monthNames[day.month - 1].substring(0, 3)} ${day.day}${day.year != today.year ? ' ${day.year}' : ''}';
 
 /// Adds [text] as a task due on [day], in the list it belongs to now.
-void _addDue(AppState state, String text, DateTime day, {int? time, bool birthday = false}) {
+void _addDue(AppState state, String text, DateTime day, {int? time, bool birthday = false, int reminders = 0}) {
   final today = state.today;
   final days = daysBetween(today, day);
   if (days <= 0) {
-    state.addTodo(TodoScope.today, text, time: time, birthday: birthday);
+    state.addTodo(TodoScope.today, text, time: time, birthday: birthday, reminders: reminders);
   } else if (days == 1) {
-    state.addTodo(TodoScope.tomorrow, text, time: time, birthday: birthday);
+    state.addTodo(TodoScope.tomorrow, text, time: time, birthday: birthday, reminders: reminders);
   } else {
     // Due later this week files under This week, anything after under
     // This month; both move into Tomorrow and Today as the day nears.
@@ -198,16 +261,17 @@ void _addDue(AppState state, String text, DateTime day, {int? time, bool birthda
       dueDate: day,
       time: time,
       birthday: birthday,
+      reminders: reminders,
     );
   }
 }
 
 /// Adds [text] on [day] as [choice] says: a task, or a repeating one.
 void _addChosen(AppState state, String text, DateTime day, _DayChoice choice) {
-  final (time, birthday) = (choice.time, choice.birthday);
+  final (time, birthday, reminders) = (choice.time, choice.birthday, choice.reminders);
   if (choice.repeat case final repeat?) {
-    state.addRepeat(text, repeat.rule, day, until: repeat.until, time: time, birthday: birthday);
+    state.addRepeat(text, repeat.rule, day, until: repeat.until, time: time, birthday: birthday, reminders: reminders);
   } else {
-    _addDue(state, text, day, time: time, birthday: birthday);
+    _addDue(state, text, day, time: time, birthday: birthday, reminders: reminders);
   }
 }

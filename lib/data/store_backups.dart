@@ -97,7 +97,7 @@ extension StoreBackups on Store {
       'habit_months': 'year, month',
       'month_habits': 'year, month, habit_id, name, position, note, added_on, days',
       'entries': 'day, habit_id, status, note',
-      'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category',
+      'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category, position, reminders',
       'todo_history': 'uid, day, snapshot',
       'journal': 'day, text',
       'sleep_habits': 'item, habit_id',
@@ -105,7 +105,7 @@ extension StoreBackups on Store {
       'settings': 'key, value',
       'exercises': 'uid, name, muscle, bodyweight',
       'training_sets': 'uid, day, exercise, position, weight, reps',
-      'todo_repeats': 'uid, text, rule, start, until, time, category',
+      'todo_repeats': 'uid, text, rule, start, until, time, category, reminders',
       'sync_reg': 'kind, rowkey, field, value, ts, origin, vv, journal_versions, seq',
       'sync_dirty': 'kind, rowkey, at',
       'sync_seen': 'file, stamp',
@@ -119,7 +119,9 @@ extension StoreBackups on Store {
         _db.select('SELECT 1 FROM habits WHERE uid IS NULL LIMIT 1').isNotEmpty ||
         _db
             .select(
-              "SELECT 1 FROM todos WHERE uid IS NULL OR scope NOT IN ('today', 'tomorrow', 'week', 'month') OR done NOT IN (0, 1) LIMIT 1",
+              "SELECT 1 FROM todos WHERE uid IS NULL OR scope NOT IN ('today', 'tomorrow', 'week', 'month') OR done NOT IN (0, 1) "
+              "OR (position IS NOT NULL AND typeof(position) != 'integer') "
+              "OR (reminders IS NOT NULL AND (typeof(reminders) != 'integer' OR reminders NOT BETWEEN 0 AND 15)) LIMIT 1",
             )
             .isNotEmpty ||
         _db.select('SELECT 1 FROM sleep_habits').length != SleepItem.values.length ||

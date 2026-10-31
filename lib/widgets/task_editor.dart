@@ -1,8 +1,8 @@
 part of 'todo_panel.dart';
 
-/// A day, how a task first due on it repeats, its time and whether it's a
-/// birthday.
-typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, bool birthday});
+/// A day, how a task first due on it repeats, its time, whether it's a
+/// birthday and its reminders.
+typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, bool birthday, int reminders});
 
 /// A new task's day from [first] on (to [last], if given), opening on
 /// [selected], with its time and repeat set under the calendar, and with
@@ -16,6 +16,7 @@ Future<_DayChoice?> _pickDayAndRepeat(
   int? time,
   bool birthday = false,
   bool birthdays = false,
+  int reminders = 0,
 }) => showAppDialog<_DayChoice>(
   context: context,
   builder: (_) => _DueDateDialog(
@@ -26,6 +27,7 @@ Future<_DayChoice?> _pickDayAndRepeat(
     time: time,
     birthday: birthday,
     birthdays: birthdays,
+    reminders: reminders,
   ),
 );
 
@@ -45,6 +47,9 @@ mixin _DetailPages<T extends StatefulWidget> on State<T> {
   _Page _page = _Page.main;
   int? _time;
   _RepeatChoice? _repeat;
+
+  /// Its reminders as chosen; what it gives is [Reminder.allowed] of them.
+  int _notify = 0;
 
   /// The day a repeat set on its page comes round from.
   DateTime? _repeatStart;
@@ -84,6 +89,15 @@ mixin _DetailPages<T extends StatefulWidget> on State<T> {
       onClear: () => setState(() => _time = null),
     ),
   );
+
+  /// Its reminders, under the time: shown once it has one, or is a
+  /// [birthday].
+  Widget _notifyRow({required bool birthday}) =>
+      _NotifyRow(bits: _notify, time: _time, birthday: birthday, onChanged: (bits) => setState(() => _notify = bits));
+
+  /// The reminders it gives, as saved.
+  int _reminders({required bool birthday}) =>
+      Reminder.allowed(_notify, birthday: birthday, time: birthday ? null : _time);
 
   Widget _repeatRow() =>
       _RepeatRow(repeat: _repeat, onOpen: () => _open(_Page.repeat), onClear: () => setState(() => _repeat = null));
@@ -137,7 +151,15 @@ typedef _RepeatChoice = ({RepeatRule rule, DateTime? until});
 
 /// What the editor saved; [repeat] null when it doesn't repeat, and
 /// [start] the day it comes round from when that was moved.
-typedef _TaskEdit = ({String text, DateTime? due, _RepeatChoice? repeat, DateTime? start, int? time, bool birthday});
+typedef _TaskEdit = ({
+  String text,
+  DateTime? due,
+  _RepeatChoice? repeat,
+  DateTime? start,
+  int? time,
+  bool birthday,
+  int reminders,
+});
 
 /// Edits [item], asking whether a change to a repeating task's name is
 /// for that time only or every time from it on. A new rule always is.
@@ -157,10 +179,19 @@ Future<void> _editTask(
   );
   if (result == null || !context.mounted) return;
   final choice = result.repeat;
-  final (time, birthday) = (result.time, result.birthday);
+  final (time, birthday, reminders) = (result.time, result.birthday, result.reminders);
   if (repeat == null) {
     if (choice == null) {
-      state.editTodo(scope, item, result.text, result.due, day: day, time: time, birthday: birthday);
+      state.editTodo(
+        scope,
+        item,
+        result.text,
+        result.due,
+        day: day,
+        time: time,
+        birthday: birthday,
+        reminders: reminders,
+      );
     } else {
       state.makeRepeating(
         scope,
@@ -171,6 +202,7 @@ Future<void> _editTask(
         until: choice.until,
         time: time,
         birthday: birthday,
+        reminders: reminders,
       );
     }
     return;
@@ -187,16 +219,27 @@ Future<void> _editTask(
       until: choice?.until,
       time: time,
       birthday: birthday,
+      reminders: reminders,
     );
     return;
   }
-  final renamed = result.text.trim() != item.text || (time, birthday) != (item.dueTime, item.birthday);
+  final renamed =
+      result.text.trim() != item.text || (time, birthday, reminders) != (item.dueTime, item.birthday, item.reminders);
   if (!renamed && result.due == item.dueDate) return;
   final future = renamed ? await _askWhich(context, removing: false) : false;
   if (future == null || !context.mounted) return;
-  if (future) state.renameRepeat(repeat, result.text, from, time: time, birthday: birthday);
+  if (future) state.renameRepeat(repeat, result.text, from, time: time, birthday: birthday, reminders: reminders);
   if (!future || result.due != item.dueDate) {
-    state.editTodo(scope, make?.call() ?? item, result.text, result.due, day: day, time: time, birthday: birthday);
+    state.editTodo(
+      scope,
+      make?.call() ?? item,
+      result.text,
+      result.due,
+      day: day,
+      time: time,
+      birthday: birthday,
+      reminders: reminders,
+    );
   }
 }
 
@@ -394,6 +437,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
   void initState() {
     super.initState();
     _time = widget.item.dueTime;
+    _notify = widget.item.reminders;
     _repeat = switch (widget.repeat) {
       final r? => (rule: r.rule, until: r.until),
       null => null,
@@ -422,6 +466,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
       start: _repeatStart,
       time: _birthday ? null : _time,
       birthday: _birthday,
+      reminders: _reminders(birthday: _birthday),
     ));
   }
 
@@ -489,6 +534,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
         ],
         const SizedBox(height: 4),
         _FoldAway(folded: _birthday, child: _timeRow()),
+        _notifyRow(birthday: _birthday),
         _FoldAway(folded: _birthday, child: _repeatRow()),
         const SizedBox(height: 16),
       ],

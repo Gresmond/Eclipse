@@ -238,6 +238,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
                 arriving: arriving,
                 leaving: leaving,
                 onRemove: () => _remove('$i', task, () => state.removeTodo(scope, item, day: state.shownDay)),
+                order: _order('$i'),
               ),
             );
           },

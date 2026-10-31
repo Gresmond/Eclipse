@@ -42,9 +42,39 @@ class _TaskDrag {
   Future<void> Function()? fadeForNesting;
   VoidCallback? restoreAfterNesting;
   bool nesting = false;
+
+  /// Where the pointer took hold of the row, from its top left.
+  Offset grab = Offset.zero;
+
+  /// The day's list it was picked up from ([TaskOrder._list]), if it can be
+  /// put in order there.
+  Object? list;
   final TodoScope scope;
   final TodoItem item;
   final DateTime day;
+}
+
+/// A day's list, for dragging its open tasks into order among the others
+/// of their group: each of its rows has one.
+class TaskOrder {
+  const TaskOrder._({
+    required this._list,
+    required this._canPlace,
+    required this._place,
+    required this._keep,
+    required this._discard,
+  });
+
+  final Object _list;
+
+  /// Whether a drag can go next to a task.
+  final bool Function(_TaskDrag drag, _Task next) _canPlace;
+
+  /// Shows a drag just before a task, or after it.
+  final void Function(_TaskDrag drag, _Task next, {required bool after}) _place;
+
+  /// Keeps the order shown, or puts it back as it was.
+  final VoidCallback _keep, _discard;
 }
 
 /// Identical circular pills, visible only while the individual icon is hovered.
@@ -94,6 +124,7 @@ class TaskRow extends StatelessWidget {
     this.leaving = false,
     this.onRemove,
     this.make,
+    this.order,
   });
 
   final TodoScope scope;
@@ -102,6 +133,9 @@ class TaskRow extends StatelessWidget {
   /// Makes [item], a time of a repeat not made yet, the first time it's
   /// ticked or changed.
   final TodoItem Function()? make;
+
+  /// Its day's list, when its tasks can be dragged into order.
+  final TaskOrder? order;
 
   /// The day whose lists it's from: today, or a past day looked back on.
   final DateTime day;
@@ -135,6 +169,7 @@ class TaskRow extends StatelessWidget {
         leaving: leaving,
         onRemove: onRemove ?? () => state.removeTodo(scope, item, day: day),
         make: make,
+        order: order,
       ),
     );
   }

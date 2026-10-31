@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -18,6 +19,7 @@ part 'app_scope.dart';
 part 'state/habits.dart';
 part 'state/journal.dart';
 part 'state/navigation.dart';
+part 'state/reminders.dart';
 part 'state/settings.dart';
 part 'state/todos.dart';
 part 'state/undo.dart';
@@ -26,9 +28,17 @@ part 'state/undo.dart';
 /// lists in memory and writes every change straight to SQLite.
 ///
 /// Each area's state and edits are in a part of their own, in state/.
-class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Todos, _Journal, _Undo {
-  AppState(this.store, {this.backups, this.journalFiles, this.dataFolder, this.sync, DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now {
+class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Todos, _Journal, _Undo, _Reminders {
+  AppState(
+    this.store, {
+    this.backups,
+    this.journalFiles,
+    this.dataFolder,
+    this.sync,
+    this.notifier,
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now {
+    notifier?.onOpen = openReminder;
     sync?.onIncoming = _takeIncoming;
     sync?.beforeMerge = saveDrafts;
     sync?.beforeJoin = () => backups?.beforeJoining(store);
@@ -54,6 +64,10 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
 
   @override
   final Store store;
+
+  /// Null where nothing is shown outside the app (tests).
+  @override
+  final ReminderNotifier? notifier;
   @override
   bool closing = false;
   @override
@@ -177,6 +191,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     notifyListeners();
   }
 
+  @override
   final DateTime Function() _clock;
 
   /// The day ticks, to-dos and the journal count towards: the calendar
@@ -275,6 +290,9 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
 
   @override
   void _removed(String label, List<RowsBefore> before) => _undoable(label, before);
+
+  @override
+  void _quietReminders(bool Function(String uid) which) => _settleReminders(which);
 
   @override
   void _reloadAfterUndo() {

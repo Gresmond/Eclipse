@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import UserNotifications
 
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
@@ -36,8 +37,16 @@ class MainFlutterWindow: NSWindow {
       self.pickFolder(title: arguments?["title"] as? String, start: arguments?["start"] as? String, result: result)
     }
 
+    reminders = ReminderNotifications(
+      channel: FlutterMethodChannel(
+        name: "eclipse/notifications", binaryMessenger: flutterViewController.engine.binaryMessenger),
+      window: self)
+
     super.awakeFromNib()
   }
+
+  // Shows the app's reminders in Notification Centre.
+  private var reminders: ReminderNotifications?
 
   // The app asks for a folder over this.
   private var folders: FlutterMethodChannel?
@@ -57,5 +66,66 @@ class MainFlutterWindow: NSWindow {
     panel.beginSheetModal(for: self) { response in
       result(response == .OK ? panel.url?.path : nil)
     }
+  }
+}
+
+// Reminders as notifications from Notification Centre, asked permission for
+// the first time one is shown. Clicking one brings the window up and tells the
+// app which task it was for; they show while Eclipse is in front too.
+class ReminderNotifications: NSObject, UNUserNotificationCenterDelegate {
+  private let channel: FlutterMethodChannel
+  private weak var window: NSWindow?
+
+  init(channel: FlutterMethodChannel, window: NSWindow) {
+    self.channel = channel
+    self.window = window
+    super.init()
+    UNUserNotificationCenter.current().delegate = self
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "show", let self, let arguments = call.arguments as? [String: Any] else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self.show(
+        key: arguments["key"] as? String ?? "",
+        title: arguments["title"] as? String ?? "",
+        body: arguments["body"] as? String ?? "")
+      result(nil)
+    }
+  }
+
+  private func show(key: String, title: String, body: String) {
+    let center = UNUserNotificationCenter.current()
+    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+      guard granted else { return }
+      let content = UNMutableNotificationContent()
+      content.title = title
+      content.body = body
+      content.sound = .default
+      content.userInfo = ["key": key]
+      center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+  }
+
+  func userNotificationCenter(
+    _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    completionHandler([.banner, .sound])
+  }
+
+  func userNotificationCenter(
+    _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
+    let key = response.notification.request.content.userInfo["key"] as? String
+    DispatchQueue.main.async {
+      NSApp.activate(ignoringOtherApps: true)
+      self.window?.makeKeyAndOrderFront(nil)
+      if let key {
+        self.channel.invokeMethod("clicked", arguments: ["key": key])
+      }
+    }
+    completionHandler()
   }
 }

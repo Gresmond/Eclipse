@@ -18,6 +18,7 @@ import '../widgets/fade_menu.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/page_turn.dart';
+import '../widgets/reminder_cards.dart';
 import '../widgets/sync_banner.dart';
 import '../widgets/undo_card.dart';
 import '../widgets/update_banner.dart';
@@ -82,6 +83,7 @@ class Shell extends StatelessWidget {
               children: [
                 if (state.sync != null) SyncBanner(sync: state.sync!),
                 if (updater != null) UpdateBanner(updater: updater),
+                const ReminderCards(),
                 const UndoCardSpace(),
               ],
             ),
@@ -392,12 +394,7 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
     final p = context.palette;
     WidgetsBinding.instance.addPostFrameCallback(_measure);
     final pill = _pill;
-    final divider = Container(
-      width: 1,
-      height: 18,
-      margin: const EdgeInsets.symmetric(horizontal: 6),
-      color: p.border,
-    );
+    final divider = Container(width: 1, height: 18, margin: const EdgeInsets.symmetric(horizontal: 6), color: p.border);
 
     return AnimatedBuilder(animation: _relabel, builder: (context, _) => _bar(p, pill, divider));
   }

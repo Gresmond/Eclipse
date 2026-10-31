@@ -16,6 +16,7 @@ class _RepeatPanel extends StatefulWidget {
     required this.repeat,
     required this.onRepeat,
     this.time,
+    this.notify,
     this.birthday,
     this.onBirthday,
     this.startsOn = false,
@@ -34,6 +35,9 @@ class _RepeatPanel extends StatefulWidget {
 
   /// The time's row, between the calendar and the repeat.
   final Widget? time;
+
+  /// Its reminders, under the time.
+  final Widget? notify;
 
   /// Whether it's a birthday; null where birthdays aren't offered.
   final bool? birthday;
@@ -151,6 +155,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
         ),
         const SizedBox(height: 8),
         if (widget.time case final time?) _BirthdayFold(folded: _birthday, child: time),
+        ?widget.notify,
         _RepeatSwitch(
           on: on,
           label: on ? (_birthday ? 'Birthday' : _summary(widget.repeat)) : 'Repeat',
@@ -333,11 +338,12 @@ class _RepeatPanelState extends State<_RepeatPanel> {
 /// "Repeat", or once on how it repeats, in the time row's accent text
 /// button look, and a switch.
 class _RepeatSwitch extends StatelessWidget {
-  const _RepeatSwitch({required this.on, required this.label, required this.onTap});
+  const _RepeatSwitch({required this.on, required this.label, required this.onTap, this.icon = Icons.repeat_rounded});
 
   final bool on;
   final String label;
   final VoidCallback onTap;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -359,7 +365,7 @@ class _RepeatSwitch extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.repeat_rounded, size: 18, color: colors.primary),
+            Icon(icon, size: 18, color: colors.primary),
             const SizedBox(width: 8),
             Expanded(
               child: FadeThrough(
@@ -456,13 +462,16 @@ class _DateTags extends StatelessWidget {
   }
 }
 
-/// A row of choices, one filled.
+/// A row of choices, one filled, or with [chosen] any of them.
 class _Pills extends StatelessWidget {
-  const _Pills({required this.options, required this.selected, required this.onSelect});
+  const _Pills({required this.options, this.selected = -1, this.chosen, required this.onSelect});
 
   final List<String> options;
   final int selected;
+  final Set<int>? chosen;
   final ValueChanged<int> onSelect;
+
+  bool _on(int i) => chosen?.contains(i) ?? i == selected;
 
   @override
   Widget build(BuildContext context) {
@@ -488,7 +497,7 @@ class _Pills extends StatelessWidget {
                   curve: Motion.clickCurve,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: p.done.withValues(alpha: i == selected ? 1 : 0),
+                    color: p.done.withValues(alpha: _on(i) ? 1 : 0),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
@@ -497,7 +506,7 @@ class _Pills extends StatelessWidget {
                       fontFamily: Fonts.ui,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: i == selected ? p.onAccent : p.inkMuted,
+                      color: _on(i) ? p.onAccent : p.inkMuted,
                     ),
                   ),
                 ),
@@ -608,6 +617,91 @@ class _StepperState extends State<_Stepper> {
           onPressed: value < widget.max ? () => _step(value + 1) : null,
         ),
       ],
+    );
+  }
+}
+
+/// A task's reminders, once it has a time or is a birthday: a switch
+/// named for what's on, and, on, the times before to choose any of; at
+/// least one stays chosen. Switched on, it's 15 minutes before (a
+/// birthday: on the day).
+class _NotifyRow extends StatelessWidget {
+  const _NotifyRow({required this.bits, required this.time, required this.birthday, required this.onChanged});
+
+  /// As chosen, before [Reminder.allowed] keeps what this task can give.
+  final int bits;
+  final int? time;
+  final bool birthday;
+  final ValueChanged<int> onChanged;
+
+  static String _chip(Reminder r, bool birthday) => switch (r) {
+    Reminder.dayBefore => birthday ? 'Day before' : '1 day',
+    Reminder.hourBefore => '1 hour',
+    Reminder.quarterBefore => '15 min',
+    Reminder.onTheDay => 'On the day',
+  };
+
+  /// 'Notify 1 day and 15 min before', 'Notify the day before and on the
+  /// day, at 9 am'.
+  static String _label(List<Reminder> on, bool birthday) {
+    if (on.isEmpty) return 'Notify';
+    if (birthday) {
+      final days = [for (final r in on) r == Reminder.dayBefore ? 'the day before' : 'on the day'].join(' and ');
+      return 'Notify $days, at ${Reminder.birthdayHour} am';
+    }
+    final times = [for (final r in on) _chip(r, false)];
+    final joined = times.length == 1
+        ? times.single
+        : '${times.sublist(0, times.length - 1).join(', ')} and ${times.last}';
+    return 'Notify $joined before';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final offered = birthday ? Reminder.forBirthday : Reminder.timed;
+    final shows = birthday || time != null;
+    final kept = Reminder.allowed(bits, birthday: birthday, time: time);
+    final on = Reminder.of(kept);
+    return _Unfold(
+      open: shows,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _RepeatSwitch(
+            on: kept != 0,
+            label: _label(on, birthday),
+            icon: Icons.notifications_rounded,
+            onTap: () => onChanged(
+              kept != 0 ? bits & ~kept : bits | (birthday ? Reminder.onTheDay : Reminder.quarterBefore).bit,
+            ),
+          ),
+          _Unfold(
+            open: kept != 0,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 6, 0, 8),
+              child: Center(
+                child: _ScaleDown(
+                  alignment: Alignment.center,
+                  child: _Pills(
+                    options: [for (final r in offered) _chip(r, birthday)],
+                    chosen: {
+                      for (final (i, r) in offered.indexed)
+                        if (kept & r.bit != 0) i,
+                    },
+                    onSelect: (i) {
+                      final bit = offered[i].bit;
+                      // The last one chosen stays: the switch turns them off.
+                      if (kept == bit) return;
+                      onChanged(bits ^ bit);
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

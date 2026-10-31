@@ -14,6 +14,7 @@ import 'data/journal_files.dart';
 import 'data/night_light.dart';
 import 'data/store.dart';
 import 'data/sync_service.dart';
+import 'data/system_notifications.dart';
 import 'data/system_time_zone.dart';
 import 'data/updates.dart';
 import 'data/windows_night_light.dart';
@@ -48,6 +49,7 @@ Future<void> main() async {
     journalFiles: JournalFiles(data.journal),
     dataFolder: data,
     sync: SyncService.load(dir, store),
+    notifier: SystemNotifications(),
   );
   state.sync?.start();
   if (state.sync?.isOn ?? false) unawaited(state.sync!.run());
@@ -56,6 +58,7 @@ Future<void> main() async {
   if (state.firstRun) state.startTour();
   _watchDate(state);
   _watchNightLight(state);
+  _watchReminders(state);
 
   // Installed by linux/install.sh: watches its folder for newer commits.
   // Packaged installs ask GitHub for a newer release.
@@ -179,6 +182,29 @@ void _watchNightLight(AppState state) {
   unawaited(check());
   Timer.periodic(const Duration(seconds: 5), (_) => check());
   AppLifecycleListener(onResume: check, onShow: check);
+}
+
+/// Sends tasks' reminders as they come due: looked for every few seconds,
+/// since timers stand still while the computer sleeps, and whenever the
+/// window comes back. Cards show only while the window is open.
+void _watchReminders(AppState state) {
+  void check() {
+    if (!state.closing) state.checkReminders();
+  }
+
+  Timer.periodic(const Duration(seconds: 10), (_) => check());
+  AppLifecycleListener(
+    onShow: () {
+      state.windowOpen = true;
+      check();
+    },
+    onHide: () => state.windowOpen = false,
+    onResume: check,
+  );
+  // Started hidden (at login), it shows nothing in the window yet.
+  state.windowOpen = WidgetsBinding.instance.lifecycleState != AppLifecycleState.hidden;
+  WidgetsBinding.instance.addPostFrameCallback((_) => check());
+  check();
 }
 
 class _DarkModeObserver with WidgetsBindingObserver {

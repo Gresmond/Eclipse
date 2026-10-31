@@ -291,6 +291,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                         fadeIn: fadeIn,
                         leaving: leaving,
                         onRemove: remove,
+                        order: _order(g.key),
                       );
                     },
                   ),

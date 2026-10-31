@@ -126,7 +126,13 @@ class _SleepEditor extends StatelessWidget {
     // Stand-ins, never seen, that take the grid's header and score heights.
     Widget spacer(Widget child) => IgnorePointer(
       child: ExcludeSemantics(
-        child: Visibility(visible: false, maintainSize: true, maintainAnimation: true, maintainState: true, child: child),
+        child: Visibility(
+          visible: false,
+          maintainSize: true,
+          maintainAnimation: true,
+          maintainState: true,
+          child: child,
+        ),
       ),
     );
     return LayoutBuilder(
@@ -137,12 +143,7 @@ class _SleepEditor extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              spacer(
-                SizedBox(
-                  width: 40,
-                  child: _DayHeader(day: DateTime(year, month), isToday: false, rest: false),
-                ),
-              ),
+              spacer(SizedBox(width: 40, child: _DayHeader(day: DateTime(year, month), isToday: false, rest: false))),
               const SizedBox(height: 10),
               for (final h in state.sleepHabitsFor(year, month))
                 ConstrainedBox(

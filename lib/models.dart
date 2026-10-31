@@ -152,6 +152,8 @@ class TodoItem {
     this.doneAt,
     this.uid,
     this.subtasks = const [],
+    this.position,
+    this.reminders = 0,
   });
 
   final int id;
@@ -168,6 +170,9 @@ class TodoItem {
   /// It's someone's birthday: it comes round every year, and Further ahead
   /// can hide it.
   bool birthday;
+
+  /// Which reminders it gives, as [Reminder] bits; 0 for none.
+  int reminders;
   String text;
   bool done;
 
@@ -182,6 +187,10 @@ class TodoItem {
   /// How many times this item has rolled over unfinished.
   int carried;
 
+  /// Where it was dragged to among its day's open tasks of its group (see
+  /// [todoGroup]); null if it hasn't been, after those that have.
+  int? position;
+
   /// The repeating task it's an occurrence of, if any: an occurrence's uid
   /// is its repeat's, '@', and its day, so every computer makes the same one.
   String? get repeatUid => uid?.contains('@') == true ? uid!.substring(0, uid!.indexOf('@')) : null;
@@ -190,7 +199,7 @@ class TodoItem {
   DateTime? get repeatDay => repeatUid == null ? null : DateTime.tryParse(uid!.substring(uid!.indexOf('@') + 1));
 
   bool sameContent(TodoItem other) {
-    if ((id, text, done, doneAt, carried, since, dueDate, dueTime, birthday, uid) !=
+    if ((id, text, done, doneAt, carried, since, dueDate, dueTime, birthday, uid, position, reminders) !=
             (
               other.id,
               other.text,
@@ -202,6 +211,8 @@ class TodoItem {
               other.dueTime,
               other.birthday,
               other.uid,
+              other.position,
+              other.reminders,
             ) ||
         subtasks.length != other.subtasks.length) {
       return false;
@@ -224,6 +235,52 @@ bool isBirthday(Object? kind) => kind == 'birthday';
 
 /// A birthday's stored kind.
 String? birthdayKind(bool birthday) => birthday ? 'birthday' : null;
+
+/// A reminder a task gives, as its bit in [TodoItem.reminders]. A timed
+/// task offers the first three; a birthday, which has no time, the day
+/// before and on the day, both at [birthdayHour].
+enum Reminder {
+  dayBefore(1),
+  hourBefore(2),
+  quarterBefore(4),
+  onTheDay(8);
+
+  const Reminder(this.bit);
+
+  final int bit;
+
+  static const timed = [dayBefore, hourBefore, quarterBefore];
+  static const forBirthday = [dayBefore, onTheDay];
+
+  /// When a birthday's reminders go off.
+  static const birthdayHour = 9;
+
+  /// Those [bits] holds, in order.
+  static List<Reminder> of(int bits) => [
+    for (final r in values)
+      if (bits & r.bit != 0) r,
+  ];
+
+  /// What of [bits] a task can give: a [birthday]'s two, or a timed one's
+  /// three, or none without a [time].
+  static int allowed(int bits, {required bool birthday, int? time}) =>
+      bits &
+      (birthday
+          ? dayBefore.bit | onTheDay.bit
+          : (time == null ? 0 : dayBefore.bit | hourBefore.bit | quarterBefore.bit));
+
+  /// When it goes off for a task on [day] at [time] (a birthday: none).
+  DateTime at(DateTime day, int? time) {
+    final (y, m, d) = (day.year, day.month, day.day);
+    if (time == null) return DateTime(y, m, this == dayBefore ? d - 1 : d, birthdayHour);
+    return switch (this) {
+      dayBefore => DateTime(y, m, d - 1, 0, time),
+      hourBefore => DateTime(y, m, d, 0, time).subtract(const Duration(hours: 1)),
+      quarterBefore => DateTime(y, m, d, 0, time).subtract(const Duration(minutes: 15)),
+      onTheDay => DateTime(y, m, d, 0, time),
+    };
+  }
+}
 
 /// When a repeating task comes round: on chosen weekdays, every so many
 /// days, weeks or months from its start, on a date each month, or on its
@@ -325,6 +382,7 @@ class Repeat {
     this.until,
     this.time,
     this.birthday = false,
+    this.reminders = 0,
   });
 
   final String uid;
@@ -335,6 +393,9 @@ class Repeat {
 
   /// It's someone's birthday, as [TodoItem.birthday]; it repeats yearly.
   final bool birthday;
+
+  /// The reminders each one gives, as [TodoItem.reminders].
+  final int reminders;
   final RepeatRule rule;
   final DateTime start;
   final DateTime? until;
@@ -481,20 +542,24 @@ const monthNames = [
 
 const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-/// Stable priority ordering, preserving insertion order within equal groups.
-/// Ticked items follow the same groups below the open ones, each group in
-/// the order they were ticked (due dates first by date).
+/// A task's group in its list: open ones with subtasks, then those with a
+/// day, then the rest; ticked ones after, in the same groups.
+int todoGroup(TodoItem t) =>
+    (t.done ? 3 : 0) +
+    (t.subtasks.isNotEmpty
+        ? 0
+        : t.dueDate != null
+        ? 1
+        : 2);
+
+/// Stable priority ordering. Open items within a group go where they were
+/// dragged to, then in insertion order. Ticked items follow the same groups
+/// below the open ones, each group in the order they were ticked (due dates
+/// first by date).
 List<TodoItem> sortTodos(Iterable<TodoItem> todos) {
   final indexed = todos.indexed.toList();
-  int group(TodoItem t) =>
-      (t.done ? 3 : 0) +
-      (t.subtasks.isNotEmpty
-          ? 0
-          : t.dueDate != null
-          ? 1
-          : 2);
   indexed.sort((a, b) {
-    final priority = group(a.$2).compareTo(group(b.$2));
+    final priority = todoGroup(a.$2).compareTo(todoGroup(b.$2));
     if (priority != 0) return priority;
     if (a.$2.dueDate != null && b.$2.dueDate != null) {
       final due = a.$2.dueDate!.compareTo(b.$2.dueDate!);
@@ -505,6 +570,11 @@ List<TodoItem> sortTodos(Iterable<TodoItem> todos) {
       final (x, y) = (a.$2.doneAt, b.$2.doneAt);
       final ticked = x == null ? (y == null ? 0 : -1) : (y == null ? 1 : x.compareTo(y));
       if (ticked != 0) return ticked;
+    } else {
+      // Where they were dragged to; those never dragged after, as added.
+      final (x, y) = (a.$2.position, b.$2.position);
+      final placed = x == null ? (y == null ? 0 : 1) : (y == null ? -1 : x.compareTo(y));
+      if (placed != 0) return placed;
     }
     return a.$1.compareTo(b.$1);
   });

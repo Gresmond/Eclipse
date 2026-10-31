@@ -137,6 +137,24 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
+  notifications_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "eclipse/notifications",
+          &flutter::StandardMethodCodec::GetInstance());
+  notifications_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        if (call.method_name() != "show") {
+          result->NotImplemented();
+          return;
+        }
+        ShowReminder(StringArgument(call.arguments(), "key"),
+                     StringArgument(call.arguments(), "title"),
+                     StringArgument(call.arguments(), "body"));
+        result->Success();
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -157,6 +175,7 @@ void FlutterWindow::OnDestroy() {
   }
   lifecycle_ = nullptr;
   folders_ = nullptr;
+  notifications_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -182,6 +201,16 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
           break;
         case WM_CONTEXTMENU:
           ShowTrayMenu(GET_X_LPARAM(wparam), GET_Y_LPARAM(wparam));
+          break;
+        case NIN_BALLOONUSERCLICK:
+          if (!reminder_key_.empty() && notifications_) {
+            ShowAndFocus();
+            notifications_->InvokeMethod(
+                "clicked", std::make_unique<flutter::EncodableValue>(
+                               flutter::EncodableMap{
+                                   {flutter::EncodableValue("key"),
+                                    flutter::EncodableValue(reminder_key_)}}));
+          }
           break;
       }
       return 0;
@@ -275,6 +304,7 @@ void FlutterWindow::ShowTrayHintOnce() {
       shown != 0) {
     return;
   }
+  reminder_key_.clear();
   NOTIFYICONDATA hint = tray_;
   hint.uFlags = NIF_INFO;
   hint.dwInfoFlags = NIIF_NONE;
@@ -286,6 +316,24 @@ void FlutterWindow::ShowTrayHintOnce() {
   shown = 1;
   RegSetKeyValue(HKEY_CURRENT_USER, kSettingsKey, kTrayHintValue, REG_DWORD,
                  &shown, sizeof(shown));
+}
+
+void FlutterWindow::ShowReminder(const std::string& key,
+                                 const std::string& title,
+                                 const std::string& body) {
+  reminder_key_ = key;
+  NOTIFYICONDATA toast = tray_;
+  toast.uFlags = NIF_INFO;
+  toast.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON;
+  // Loaded once and kept, as the shell may draw it after this returns.
+  static const HICON large_icon = static_cast<HICON>(LoadImage(
+      GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APP_ICON), IMAGE_ICON,
+      GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0));
+  toast.hBalloonIcon = large_icon;
+  // Cut short where Windows' fields end.
+  wcsncpy_s(toast.szInfoTitle, Utf16FromUtf8(title).c_str(), _TRUNCATE);
+  wcsncpy_s(toast.szInfo, Utf16FromUtf8(body).c_str(), _TRUNCATE);
+  Shell_NotifyIcon(NIM_MODIFY, &toast);
 }
 
 // Shown and focused: the click hides it. Otherwise (hidden, minimised, or

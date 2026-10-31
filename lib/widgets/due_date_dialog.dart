@@ -179,6 +179,7 @@ class _DueDateDialog extends StatefulWidget {
     this.time,
     this.birthday = false,
     this.birthdays = false,
+    this.reminders = 0,
   });
 
   final DateTime first;
@@ -188,6 +189,7 @@ class _DueDateDialog extends StatefulWidget {
   final _RepeatChoice? repeat;
   final int? time;
   final bool birthday;
+  final int reminders;
 
   @override
   State<_DueDateDialog> createState() => _DueDateDialogState();
@@ -202,12 +204,14 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
     repeat: _birthdayRepeat(_birthday, _repeat),
     time: _birthday ? null : _time,
     birthday: _birthday,
+    reminders: _reminders(birthday: _birthday),
   ));
 
   @override
   void initState() {
     super.initState();
     _time = widget.time;
+    _notify = widget.reminders;
     _repeat = widget.repeat;
     final first = DateUtils.dateOnly(widget.first);
     final last = widget.last == null ? null : DateUtils.dateOnly(widget.last!);
@@ -236,6 +240,7 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
         repeat: _repeat,
         onRepeat: (repeat) => setState(() => _repeat = repeat),
         time: _timeRow(),
+        notify: _notifyRow(birthday: _birthday),
         birthday: widget.birthdays ? _birthday : null,
         onBirthday: (birthday) => setState(() => _birthday = birthday),
       ),

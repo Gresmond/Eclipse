@@ -15,10 +15,12 @@ class _TodoRow extends StatefulWidget {
     this.leaving = false,
     required this.onRemove,
     this.make,
+    this.order,
   });
 
   final TodoScope scope;
   final TodoItem item;
+  final TaskOrder? order;
 
   /// Makes [item], a time of a repeat not made yet, the first time it's
   /// ticked or changed.
@@ -65,6 +67,12 @@ class _TodoRowState extends State<_TodoRow> {
   Repeat? _repeat;
   bool _nestingOut = false;
   bool _acceptingNest = false;
+
+  /// A dragged task is over the middle of the row, to nest in it.
+  bool _nestOver = false;
+
+  /// The row a dragged task is over, without its subtasks.
+  BuildContext? _zones;
   int? _incomingSubtask;
   Timer? _incomingTimer;
   Timer? _collapseTimer;
@@ -78,6 +86,57 @@ class _TodoRowState extends State<_TodoRow> {
 
   void _restoreAfterNesting() {
     if (mounted) setState(() => _nestingOut = false);
+  }
+
+  bool _nests(AppState state, _TaskDrag drag) =>
+      !widget.readOnly &&
+      widget.make == null &&
+      !_acceptingNest &&
+      !drag.nesting &&
+      widget.day == state.today &&
+      drag.day == state.today &&
+      drag.item.id != widget.item.id &&
+      !drag.item.done &&
+      drag.item.subtasks.isEmpty;
+
+  void _setNestOver(bool over) {
+    if (over != _nestOver) setState(() => _nestOver = over);
+  }
+
+  /// A task dragged over the row nests in it from the middle, or goes
+  /// before or after it from the top or bottom where it can be put in
+  /// order; one that can't nests from all of it.
+  Widget _dropZones(AppState state, Widget child) {
+    final order = widget.order;
+    final task = (widget.scope, widget.item);
+    bool places(_TaskDrag drag) => order != null && order._canPlace(drag, task);
+    return DragTarget<_TaskDrag>(
+      onWillAcceptWithDetails: (details) => _nests(state, details.data) || places(details.data),
+      onMove: (details) {
+        final drag = details.data;
+        final box = _zones?.findRenderObject();
+        if (box is! RenderBox || !box.hasSize || box.size.height == 0) return;
+        final y = box.globalToLocal(details.offset + drag.grab).dy / box.size.height;
+        final nests = _nests(state, drag), placed = places(drag);
+        final edge = !placed ? 0.0 : (nests ? 0.3 : 0.5);
+        if (nests && y >= edge && y <= 1 - edge) return _setNestOver(true);
+        _setNestOver(false);
+        if (placed) order!._place(drag, task, after: y > 0.5);
+      },
+      onLeave: (_) => _setNestOver(false),
+      onAcceptWithDetails: (details) {
+        if (_nestOver) {
+          _setNestOver(false);
+          _nest(state, details.data);
+        } else if (places(details.data)) {
+          order!._keep();
+        }
+      },
+      builder: (context, _, _) {
+        _zones = context;
+        return child;
+      },
+    );
   }
 
   Future<void> _nest(AppState state, _TaskDrag drag) async {
@@ -303,39 +362,26 @@ class _TodoRowState extends State<_TodoRow> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              DragTarget<_TaskDrag>(
-                                onWillAcceptWithDetails: (details) =>
-                                    !widget.readOnly &&
-                                    widget.make == null &&
-                                    !_acceptingNest &&
-                                    !details.data.nesting &&
-                                    widget.day == state.today &&
-                                    details.data.day == state.today &&
-                                    details.data.item.id != item.id &&
-                                    !details.data.item.done &&
-                                    details.data.item.subtasks.isEmpty,
-                                onAcceptWithDetails: (details) => _nest(state, details.data),
-                                builder: (context, candidates, rejected) => AnimatedContainer(
-                                  duration: Motion.hover,
-                                  curve: Motion.hoverCurve,
-                                  decoration: BoxDecoration(
-                                    color: p.accent.withValues(alpha: candidates.isEmpty ? 0 : 0.18),
-                                    borderRadius: BorderRadius.circular(8),
+                              AnimatedContainer(
+                                duration: Motion.hover,
+                                curve: Motion.hoverCurve,
+                                decoration: BoxDecoration(
+                                  color: p.accent.withValues(alpha: _nestOver ? 0.18 : 0),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text.rich(
+                                  TextSpan(
+                                    children: [
+                                      if (item.dueTime case final time?)
+                                        TextSpan(
+                                          text: '${clockLabel(time)}  ',
+                                          style: _timeStyle(p).copyWith(height: 1.35),
+                                        ),
+                                      TextSpan(text: item.text),
+                                    ],
                                   ),
-                                  child: Text.rich(
-                                    TextSpan(
-                                      children: [
-                                        if (item.dueTime case final time?)
-                                          TextSpan(
-                                            text: '${clockLabel(time)}  ',
-                                            style: _timeStyle(p).copyWith(height: 1.35),
-                                          ),
-                                        TextSpan(text: item.text),
-                                      ],
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               if (item.subtasks.isNotEmpty)
@@ -446,25 +492,28 @@ class _TodoRowState extends State<_TodoRow> {
     final row = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Padding(padding: const EdgeInsets.only(left: 18), child: parentRow),
-            if (item.subtasks.isNotEmpty)
-              // Centred on the checkbox, which is centred in its row.
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: _TaskAction(
-                    tooltip: _expanded ? 'Collapse subtasks' : 'Expand subtasks',
-                    icon: _expanded ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
-                    onPressed: () => setState(() => _expanded = !_expanded),
+        _dropZones(
+          state,
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Padding(padding: const EdgeInsets.only(left: 18), child: parentRow),
+              if (item.subtasks.isNotEmpty)
+                // Centred on the checkbox, which is centred in its row.
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: _TaskAction(
+                      tooltip: _expanded ? 'Collapse subtasks' : 'Expand subtasks',
+                      icon: _expanded ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
+                      onPressed: () => setState(() => _expanded = !_expanded),
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
         ClipRect(
           child: AnimatedSize(
@@ -526,22 +575,29 @@ class _TodoRowState extends State<_TodoRow> {
         !_nestingOut;
     final drag = _TaskDrag(widget.scope, item, widget.day)
       ..fadeForNesting = _fadeForNesting
-      ..restoreAfterNesting = _restoreAfterNesting;
+      ..restoreAfterNesting = _restoreAfterNesting
+      ..list = widget.order?._list;
     return Draggable<_TaskDrag>(
       data: drag,
+      dragAnchorStrategy: (draggable, context, position) =>
+          drag.grab = childDragAnchorStrategy(draggable, context, position),
       onDragStarted: () {
         _activeDrag = drag;
         SmoothTaskScroll.dragPosition.value = Offset.zero;
       },
       onDragUpdate: (details) => SmoothTaskScroll.dragPosition.value = details.globalPosition,
       onDragEnd: (_) => SmoothTaskScroll.dragPosition.value = null,
+      // Let go anywhere but on another task or day, it stays where it was
+      // last shown among its day's tasks.
       onDraggableCanceled: (_, _) {
         SmoothTaskScroll.dragPosition.value = null;
         _activeDrag?.onFinished?.call();
+        widget.order?._keep();
       },
       onDragCompleted: () {
         SmoothTaskScroll.dragPosition.value = null;
         _activeDrag?.onFinished?.call();
+        widget.order?._discard();
       },
       maxSimultaneousDrags: canDrag ? 1 : 0,
       feedback: Material(

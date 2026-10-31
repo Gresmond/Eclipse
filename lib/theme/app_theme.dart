@@ -355,16 +355,18 @@ ThemeData buildTheme(Palette p) {
   final g = theme.typography.englishLike;
   TextStyle up(TextStyle? s) => TextStyle(fontSize: s!.fontSize! + 1);
   return theme.copyWith(
-    textTheme: theme.textTheme.merge(TextTheme(
-      titleMedium: up(g.titleMedium),
-      titleSmall: up(g.titleSmall),
-      bodyLarge: up(g.bodyLarge),
-      bodyMedium: up(g.bodyMedium),
-      bodySmall: up(g.bodySmall),
-      labelLarge: up(g.labelLarge),
-      labelMedium: up(g.labelMedium),
-      labelSmall: up(g.labelSmall),
-    )),
+    textTheme: theme.textTheme.merge(
+      TextTheme(
+        titleMedium: up(g.titleMedium),
+        titleSmall: up(g.titleSmall),
+        bodyLarge: up(g.bodyLarge),
+        bodyMedium: up(g.bodyMedium),
+        bodySmall: up(g.bodySmall),
+        labelLarge: up(g.labelLarge),
+        labelMedium: up(g.labelMedium),
+        labelSmall: up(g.labelSmall),
+      ),
+    ),
   );
 }
 

@@ -2177,8 +2177,20 @@ void main() {
     final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
     state.addTodo(TodoScope.today, 'Tick this off');
     state.addTodo(TodoScope.week, 'Book dentist');
+    // A reminder's card in the corner.
+    final call = state.store.addTodo(TodoScope.today, DateTime(2026, 10, 23), 'Call the bank');
+    state.store.editTodo(
+      call.id,
+      call.text,
+      null,
+      DateTime(2026, 10, 23),
+      time: 10,
+      reminders: Reminder.quarterBefore.bit,
+    );
+    state.checkReminders();
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
+    expect(find.text('In 10 min, at 12:10 am'), findsOneWidget);
 
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse, pointer: 1);
     addTearDown(mouse.removePointer);

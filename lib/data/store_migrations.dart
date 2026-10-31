@@ -477,6 +477,28 @@ extension on Store {
         _db.execute('PRAGMA user_version = 29');
       });
     }
+    if (version < 30) {
+      transaction(() {
+        // Where an open task was dragged to among its day's others: they
+        // sort by it within their group; null for none, after the rest.
+        if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'position')) {
+          _db.execute('ALTER TABLE todos ADD COLUMN position INTEGER');
+        }
+        _db.execute('PRAGMA user_version = 30');
+      });
+    }
+    if (version < 31) {
+      transaction(() {
+        // Which reminders a task gives, as Reminder bits; a repeat gives
+        // its times them.
+        for (final table in ['todos', 'todo_repeats']) {
+          if (!_db.select('PRAGMA table_info($table)').any((r) => r['name'] == 'reminders')) {
+            _db.execute('ALTER TABLE $table ADD COLUMN reminders INTEGER');
+          }
+        }
+        _db.execute('PRAGMA user_version = 31');
+      });
+    }
 
     if (version >= 1 && version < Store.schemaVersion) upgradedFrom = version;
     // Versions before 25 changed synced rows where the sync triggers

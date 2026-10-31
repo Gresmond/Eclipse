@@ -7,6 +7,11 @@ mixin _Todos on ChangeNotifier {
   DateTime get today;
   void _startDay();
   void _removed(String label, List<RowsBefore> before);
+  void _quietReminders(bool Function(String uid) which);
+
+  /// Whether a uid is one of repeat [uid]'s times.
+  static bool Function(String) _timesOf(String uid) =>
+      (other) => other.startsWith('$uid@');
 
   int todosRevision = 0;
   final _todoDays = LruCache<String, Map<TodoScope, List<TodoItem>>>(3);
@@ -37,15 +42,24 @@ mixin _Todos on ChangeNotifier {
     }
   }
 
-  void addTodo(TodoScope scope, String text, {DateTime? day, DateTime? dueDate, int? time, bool birthday = false}) {
+  void addTodo(
+    TodoScope scope,
+    String text, {
+    DateTime? day,
+    DateTime? dueDate,
+    int? time,
+    bool birthday = false,
+    int reminders = 0,
+  }) {
     final target = day ?? today;
     if (text.trim().isEmpty || !canEditDay(target)) return;
     final value = normaliseNote(text.trim());
     if (target == today) {
       final item = store.addTodo(scope, today, value);
       todos[scope] = [...todos[scope]!, item];
-      if (dueDate != null || time != null || birthday) {
-        store.editTodo(item.id, value, dueDate, today, time: time, birthday: birthday);
+      if (dueDate != null || time != null || birthday || reminders != 0) {
+        store.editTodo(item.id, value, dueDate, today, time: time, birthday: birthday, reminders: reminders);
+        _quietReminders((uid) => uid == item.uid);
         store.promoteDueTodos(today, earliest: today);
         store.rollTomorrowToToday(dateKey(today));
         _reloadTodos();
@@ -84,7 +98,8 @@ mixin _Todos on ChangeNotifier {
     _todosChanged();
   }
 
-  /// Without a [time], it has none; not a [birthday] unless set.
+  /// Without a [time], it has none; not a [birthday] unless set, and no
+  /// [reminders].
   void editTodo(
     TodoScope scope,
     TodoItem item,
@@ -93,12 +108,14 @@ mixin _Todos on ChangeNotifier {
     DateTime? day,
     int? time,
     bool birthday = false,
+    int reminders = 0,
   }) {
     final target = day ?? today;
     if (!canEditDay(target) || text.trim().isEmpty) return;
     final value = normaliseNote(text.trim());
     if (target == today) {
-      store.editTodo(item.id, value, dueDate, today, time: time, birthday: birthday);
+      store.editTodo(item.id, value, dueDate, today, time: time, birthday: birthday, reminders: reminders);
+      _quietReminders((uid) => uid == item.uid);
       store.promoteDueTodos(today, earliest: today);
       store.rollTomorrowToToday(dateKey(today));
       _reloadTodos();
@@ -116,6 +133,13 @@ mixin _Todos on ChangeNotifier {
     _reloadTodos();
     _todosChanged();
     return true;
+  }
+
+  /// Puts [items], open tasks of one of today's day lists, in this order.
+  void orderTodos(List<TodoItem> items) {
+    store.setTodoPositions([for (final item in items) item.id], today);
+    _reloadTodos();
+    _todosChanged();
   }
 
   void moveTodo(TodoScope source, TodoItem item, TodoScope destination) {
@@ -195,10 +219,27 @@ mixin _Todos on ChangeNotifier {
     return item;
   }
 
-  void addRepeat(String text, RepeatRule rule, DateTime start, {DateTime? until, int? time, bool birthday = false}) {
+  void addRepeat(
+    String text,
+    RepeatRule rule,
+    DateTime start, {
+    DateTime? until,
+    int? time,
+    bool birthday = false,
+    int reminders = 0,
+  }) {
     if (text.trim().isEmpty) return;
-    store.addRepeat(normaliseNote(text.trim()), rule, start, until: until, time: time, birthday: birthday);
+    final repeat = store.addRepeat(
+      normaliseNote(text.trim()),
+      rule,
+      start,
+      until: until,
+      time: time,
+      birthday: birthday,
+      reminders: reminders,
+    );
     _startDay();
+    _quietReminders(_timesOf(repeat.uid));
     _todosChanged();
   }
 
@@ -213,24 +254,45 @@ mixin _Todos on ChangeNotifier {
     DateTime? until,
     int? time,
     bool birthday = false,
+    int reminders = 0,
   }) {
     final day = start ?? item.dueDate;
     final first = day == null || day.isBefore(today) ? today : dateOnly(day);
-    store.transaction(() {
-      store.addRepeat(normaliseNote(text.trim()), rule, first, until: until, time: time, birthday: birthday);
+    final repeat = store.transaction(() {
+      final repeat = store.addRepeat(
+        normaliseNote(text.trim()),
+        rule,
+        first,
+        until: until,
+        time: time,
+        birthday: birthday,
+        reminders: reminders,
+      );
       store.deleteTodo(item.id, day: today);
+      return repeat;
     });
     _reloadTodos();
     _startDay();
+    _quietReminders(_timesOf(repeat.uid));
     _todosChanged();
   }
 
-  /// Renames [repeat] from [from] on, and sets its time and whether it's a birthday.
-  void renameRepeat(Repeat repeat, String text, DateTime from, {int? time, bool birthday = false}) {
+  /// Renames [repeat] from [from] on, and sets its time, whether it's a
+  /// birthday and its reminders.
+  void renameRepeat(Repeat repeat, String text, DateTime from, {int? time, bool birthday = false, int reminders = 0}) {
     if (text.trim().isEmpty) return;
-    store.renameRepeat(repeat.uid, normaliseNote(text.trim()), from, today, time: time, birthday: birthday);
+    store.renameRepeat(
+      repeat.uid,
+      normaliseNote(text.trim()),
+      from,
+      today,
+      time: time,
+      birthday: birthday,
+      reminders: reminders,
+    );
     _repeats = null;
     _reloadTodos();
+    _quietReminders(_timesOf(repeat.uid));
     _todosChanged();
   }
 
@@ -260,32 +322,38 @@ mixin _Todos on ChangeNotifier {
     DateTime? until,
     int? time,
     bool birthday = false,
+    int reminders = 0,
   }) {
     if (text.trim().isEmpty) return;
     final value = normaliseNote(text.trim());
     // A new start ends the old rule there, if it's sooner.
     final first = start ?? from;
     final end = first.isBefore(from) ? first : from;
-    store.transaction(() {
+    final changed = store.transaction(() {
       if (rule == null) {
         store.endRepeat(repeat.uid, DateTime(from.year, from.month, from.day + 1), today);
-        if ((value, time, birthday) != (repeat.text, repeat.time, repeat.birthday)) {
-          store.renameRepeat(repeat.uid, value, from, today, time: time, birthday: birthday);
+        if ((value, time, birthday, reminders) != (repeat.text, repeat.time, repeat.birthday, repeat.reminders)) {
+          store.renameRepeat(repeat.uid, value, from, today, time: time, birthday: birthday, reminders: reminders);
         }
+        return repeat.uid;
       } else {
         store.endRepeat(repeat.uid, end, today);
-        store.addRepeat(
-          value,
-          rule,
-          first.isBefore(today) ? today : first,
-          until: until,
-          time: time,
-          birthday: birthday,
-        );
+        return store
+            .addRepeat(
+              value,
+              rule,
+              first.isBefore(today) ? today : first,
+              until: until,
+              time: time,
+              birthday: birthday,
+              reminders: reminders,
+            )
+            .uid;
       }
     });
     _reloadTodos();
     _startDay();
+    _quietReminders(_timesOf(changed));
     _todosChanged();
   }
 }

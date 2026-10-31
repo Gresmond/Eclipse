@@ -37,6 +37,9 @@ class FlutterWindow : public Win32Window {
   void AddTrayIcon();
   void ShowTrayMenu(int x, int y);
   void ShowTrayHintOnce();
+  // A reminder, as a toast from the notification-area icon.
+  void ShowReminder(const std::string& key, const std::string& title,
+                    const std::string& body);
   void ToggleWindow();
   void ShowAndFocus();
 
@@ -51,6 +54,14 @@ class FlutterWindow : public Win32Window {
 
   // The app asks for a folder over this.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> folders_;
+
+  // Reminders come over this, and a click on one goes back.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      notifications_;
+
+  // The task the toast showing is for; empty for the tray hint. Windows
+  // shows one at a time from an icon.
+  std::string reminder_key_;
 
   NOTIFYICONDATA tray_{};
   bool quitting_ = false;
