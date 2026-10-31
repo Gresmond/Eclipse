@@ -24,7 +24,8 @@ class _MonthCalendar extends StatefulWidget {
   final bool Function(DateTime day)? marked;
   final ValueChanged<DateTime> onSelected;
   final bool Function(DateTime day)? endable;
-  final ValueChanged<DateTime>? onEnd;
+  /// A right-clicked day: the last, or on the last, null for no end.
+  final ValueChanged<DateTime?>? onEnd;
 
   @override
   State<_MonthCalendar> createState() => _MonthCalendarState();
@@ -125,9 +126,13 @@ class _MonthCalendarState extends State<_MonthCalendar> {
     return SizedBox(
       height: 42,
       child: GestureDetector(
-        onSecondaryTap: endable ? () => widget.onEnd!(date) : null,
+        onSecondaryTap: end && widget.onEnd != null
+            ? () => widget.onEnd!(null)
+            : endable
+            ? () => widget.onEnd!(date)
+            : null,
         child: MouseRegion(
-          cursor: enabled || endable ? SystemMouseCursors.click : MouseCursor.defer,
+          cursor: enabled || endable || end ? SystemMouseCursors.click : MouseCursor.defer,
           child: Semantics(
             selected: selected,
             label: localizations.formatFullDate(date),

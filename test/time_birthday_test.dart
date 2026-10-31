@@ -196,14 +196,6 @@ void main() {
     final state = AppState(store, clock: () => DateTime(2026, 10, 23, 9));
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    // Only a task further ahead can be a birthday.
-    await tester.tap(find.descendant(of: find.byType(WeekCard), matching: find.byTooltip('Pick a day')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Repeat'));
-    await tester.pumpAndSettle();
-    expect(find.text('Birthday'), findsNothing);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
     await tester.tap(find.descendant(of: find.byType(FurtherAheadCard), matching: find.byTooltip('Pick a day')));
     // It only fades in, never slides.
     final opening = <Offset>[];
@@ -228,6 +220,31 @@ void main() {
     await tester.pumpAndSettle();
     final field = find.descendant(of: find.byType(FurtherAheadCard), matching: find.byType(TextField));
     await tester.enterText(field, 'Gran');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    final repeat = state.repeats.single;
+    expect((repeat.rule, repeat.birthday), (const RepeatRule.yearly(1), true));
+  });
+
+  testWidgets("Week ahead's day can be a birthday too", (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 23, 9));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    final week = find.byType(WeekCard);
+    await tester.tap(find.descendant(of: week, matching: find.byTooltip('Pick a day')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Repeat'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Birthday'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.descendant(of: week, matching: find.byType(TextField)).last, 'Gran');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     final repeat = state.repeats.single;
@@ -280,6 +297,12 @@ void main() {
     expect(find.textContaining('Every 2 months on the'), findsOneWidget);
     expect(find.textContaining('until 30 Dec'), findsOneWidget, reason: 'a right-clicked day it comes round on');
     expect(find.textContaining('Starts 30 Oct'), findsOneWidget, reason: 'the start stays');
+    await tester.tap(find.text('30'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Ends never'), findsOneWidget, reason: 'the end right-clicked again: no end');
+    await tester.tap(find.text('30'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('until 30 Dec'), findsOneWidget);
     await tester.tap(find.text('years'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Ends never'), findsOneWidget, reason: 'yearly never comes round on 30 Dec');

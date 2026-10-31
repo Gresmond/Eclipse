@@ -62,6 +62,7 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
             child: _DatedAdd(
               first: today,
               last: DateTime(today.year, today.month, today.day + WeekCard.span),
+              birthdays: true,
               onAdd: (text, choice) => _addChosen(state, text, choice.day, choice),
             ),
           ),

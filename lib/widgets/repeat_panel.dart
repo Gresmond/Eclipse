@@ -129,8 +129,9 @@ class _RepeatPanelState extends State<_RepeatPanel> {
     if (repeat != null) widget.onRepeat((rule: _rule, until: _kept(until, _rule, day)));
   }
 
-  /// A right-clicked day, one it comes round on: the last.
-  void _end(DateTime day) => widget.onRepeat((rule: widget.repeat!.rule, until: day));
+  /// A right-clicked day, one it comes round on: the last; the last
+  /// again: no end.
+  void _end(DateTime? day) => widget.onRepeat((rule: widget.repeat!.rule, until: day));
 
   @override
   Widget build(BuildContext context) {
@@ -576,6 +577,9 @@ class _StepperState extends State<_Stepper> {
           width: 36,
           height: 30,
           margin: const EdgeInsets.symmetric(horizontal: 2),
+          // The cursor's room on the right, matched on the left, so the
+          // number sits in the middle.
+          padding: const EdgeInsets.only(left: 2),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: p.empty.withValues(alpha: 0.5),
@@ -601,14 +605,9 @@ class _StepperState extends State<_Stepper> {
               color: p.ink,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
-            textAlignVertical: TextAlignVertical.center,
-            // The cursor's room on the right, matched on the left, so the
-            // number sits in the middle.
-            decoration: const InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.only(left: 2),
-            ),
+            // No decorator: on desktop its compact density pushed the
+            // number below the middle. The box centres the line instead.
+            decoration: null,
           ),
         ),
         _TaskAction(
