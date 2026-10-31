@@ -531,6 +531,8 @@ class _Stepper extends StatefulWidget {
 }
 
 class _StepperState extends State<_Stepper> {
+  static const _cursorWidth = 2.0;
+
   late final _text = TextEditingController(text: '${widget.value}');
   final _focus = FocusNode();
 
@@ -577,9 +579,9 @@ class _StepperState extends State<_Stepper> {
           width: 36,
           height: 30,
           margin: const EdgeInsets.symmetric(horizontal: 2),
-          // The cursor's room on the right, matched on the left, so the
-          // number sits in the middle.
-          padding: const EdgeInsets.only(left: 2),
+          // A field keeps the cursor's width and a 1px gap free on its
+          // right; the same on the left puts the number in the middle.
+          padding: const EdgeInsets.only(left: _cursorWidth + 1),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: p.empty.withValues(alpha: 0.5),
@@ -593,6 +595,7 @@ class _StepperState extends State<_Stepper> {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(2)],
             cursorColor: p.ink,
+            cursorWidth: _cursorWidth,
             onTap: () => _text.selection = TextSelection(baseOffset: 0, extentOffset: _text.text.length),
             onChanged: (text) {
               final n = int.tryParse(text);
@@ -603,6 +606,8 @@ class _StepperState extends State<_Stepper> {
               fontSize: 15,
               fontWeight: FontWeight.w700,
               color: p.ink,
+              // The theme's spacing trails the last digit.
+              letterSpacing: 0,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
             // No decorator: on desktop its compact density pushed the
