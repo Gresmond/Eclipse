@@ -75,6 +75,14 @@ class _Reg {
   static final _monthKey = RegExp(r'^\d{4}-\d{1,2}$');
   static bool _day(String s) => DateTime.tryParse(s) != null;
   static final _clock = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
+  static bool _scope(String s) => TodoScope.values.any((scope) => scope.name == s);
+
+  /// A task as it stood on a day: what looking back at that day reads.
+  static void _snapshot(String s) {
+    final json = jsonDecode(s) as Map;
+    if (!_scope(json['scope'] as String) || json['text'] is! String) throw const FormatException('Not a task');
+    TodoSubtask.decode(json['subtasks'] as String?);
+  }
 
   /// Whether this version can write it into its row: a key of the kind's
   /// shape, and a value it can take. What this version doesn't keep is only
@@ -94,7 +102,13 @@ class _Reg {
     if (!key || !kept.containsKey(field)) return key;
     return switch ((kind, field)) {
       (_, SyncEngine._present) || ('habit_month', 'initialized') => v is bool,
-      ('entry', 'status') => v == null || v is int,
+      ('entry', 'status') => v == null || v is int && v >= 0 && v < HabitStatus.values.length,
+      ('todo', 'scope') || ('todo', 'return_scope') => v == null || v is String && _scope(v),
+      ('todo', 'since') => v == null || v is String && _day(v),
+      ('todo', 'done') => v == null || v == 0 || v == 1,
+      ('todo', 'subtasks') || ('todo_repeat', 'subtasks') => readsAs(v, TodoSubtask.decode),
+      ('month_habit', 'days') => readsAs(v, decodeDays),
+      ('todo_history', 'snapshot') => readsAs(v, _snapshot),
       ('journal', 'text') => v is String,
       ('setting', 'value') || ('sleep_note', 'note') || ('todo_history', 'snapshot') => v == null || v is String,
       ('todo_repeat', 'rule') => v is String && RepeatRule.decode(v) != null,

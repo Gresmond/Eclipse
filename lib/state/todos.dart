@@ -125,11 +125,25 @@ mixin _Todos on ChangeNotifier {
     _todosChanged();
   }
 
-  bool nestTodo(TodoScope sourceScope, TodoItem source, TodoScope targetScope, TodoItem target) {
+  /// Makes [source] a step of [target]; with [future], of every time after
+  /// it too, when [target] is a repeat's.
+  bool nestTodo(TodoScope sourceScope, TodoItem source, TodoScope targetScope, TodoItem target, {bool future = false}) {
     final from = todos[sourceScope]!.where((item) => item.id == source.id).firstOrNull;
     final into = todos[targetScope]!.where((item) => item.id == target.id).firstOrNull;
     if (from == null || into == null || from.id == into.id || from.done || from.subtasks.isNotEmpty) return false;
-    store.nestTodo(targetScope, from, into, today);
+    final repeat = future ? repeatOf(into) : null;
+    store.transaction(() {
+      store.nestTodo(targetScope, from, into, today);
+      if (repeat != null) {
+        store.setRepeatSubtasks(
+          repeat.uid,
+          [...into.subtasks, TodoSubtask(from.text, numbered: into.numbered)],
+          into.repeatDay ?? today,
+          today,
+        );
+      }
+    });
+    if (repeat != null) _repeats = null;
     _reloadTodos();
     _todosChanged();
     return true;
@@ -244,7 +258,8 @@ mixin _Todos on ChangeNotifier {
   }
 
   /// Makes [item] repeat from [start], or its day (or today), on, in place
-  /// of it.
+  /// of it. Its checklist goes with it: every time starts with the steps
+  /// unticked, and the first keeps the ticks it had.
   void makeRepeating(
     TodoScope scope,
     TodoItem item,
@@ -267,8 +282,13 @@ mixin _Todos on ChangeNotifier {
         time: time,
         birthday: birthday,
         reminders: reminders,
+        subtasks: item.subtasks,
       );
       store.deleteTodo(item.id, day: today);
+      final ticked = item.subtasks.any((child) => child.done) ? repeat.next(first) : null;
+      if (ticked case final day?) {
+        store.setTodoSubtasks(TodoScope.month, store.makeOccurrence(repeat, day), item.subtasks, today, live: true);
+      }
       return repeat;
     });
     _reloadTodos();
@@ -293,6 +313,20 @@ mixin _Todos on ChangeNotifier {
     _repeats = null;
     _reloadTodos();
     _quietReminders(_timesOf(repeat.uid));
+    _todosChanged();
+  }
+
+  /// Gives [item], a time of [repeat], the checklist [children], and every
+  /// time of it after this one too.
+  void setRepeatSubtasks(TodoScope scope, TodoItem item, Repeat repeat, List<TodoSubtask> children, {DateTime? day}) {
+    final target = day ?? today;
+    if (!canEditDay(target)) return;
+    store.transaction(() {
+      store.setRepeatSubtasks(repeat.uid, children, item.repeatDay ?? target, today);
+      store.setTodoSubtasks(scope, item, children, target, live: target == today);
+    });
+    _repeats = null;
+    _reloadTodos();
     _todosChanged();
   }
 
@@ -347,6 +381,7 @@ mixin _Todos on ChangeNotifier {
               time: time,
               birthday: birthday,
               reminders: reminders,
+              subtasks: repeat.subtasks,
             )
             .uid;
       }

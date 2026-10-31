@@ -499,6 +499,15 @@ extension on Store {
         _db.execute('PRAGMA user_version = 31');
       });
     }
+    if (version < 32) {
+      transaction(() {
+        // The checklist a repeat's times start with, as todos.subtasks.
+        if (!_db.select('PRAGMA table_info(todo_repeats)').any((r) => r['name'] == 'subtasks')) {
+          _db.execute('ALTER TABLE todo_repeats ADD COLUMN subtasks TEXT');
+        }
+        _db.execute('PRAGMA user_version = 32');
+      });
+    }
 
     if (version >= 1 && version < Store.schemaVersion) upgradedFrom = version;
     // Versions before 25 changed synced rows where the sync triggers

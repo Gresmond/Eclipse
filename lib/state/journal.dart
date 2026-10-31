@@ -49,11 +49,15 @@ mixin _Journal on ChangeNotifier {
 
   /// Writes every entry out again, and removes the files of days that were
   /// emptied meanwhile.
-  Future<void> _rewriteStaleJournal() async {
+  Future<void> _rewriteStaleJournal() => _rewriting ??= _rewriteStale().whenComplete(() => _rewriting = null);
+  Future<void>? _rewriting;
+
+  Future<void> _rewriteStale() async {
     final files = journalFiles;
     if (files == null || store.setting('journalFilesStale') != '1') return;
     try {
       final days = <String>{};
+      var written = true;
       String? after;
       while (true) {
         if (closing || _disposed || !_savesFiles) return;
@@ -61,14 +65,15 @@ mixin _Journal on ChangeNotifier {
         if (batch.isEmpty) break;
         for (final e in batch) {
           days.add(e.day);
-          await _writeJournalFile(DateTime.parse(e.day), e.text);
+          written &= await _writeJournalFile(DateTime.parse(e.day), e.text);
         }
         after = batch.last.day;
       }
       for (final day in await files.days()) {
-        if (!days.contains(dateKey(day))) await _writeJournalFile(day, '');
+        if (!days.contains(dateKey(day))) written &= await _writeJournalFile(day, '');
       }
-      if (_savesFiles) store.setSetting('journalFilesStale', '0');
+      // Only once every file is right: one that failed is tried again.
+      if (_savesFiles && written) store.setSetting('journalFilesStale', '0');
     } catch (e) {
       debugPrint('Rewriting journal files failed: $e');
     }
@@ -151,14 +156,15 @@ mixin _Journal on ChangeNotifier {
   /// null while they are.
   String? journalFileProblem;
 
-  /// Copies a day's entry to its file. A failure only means the copy is
-  /// behind: the database still has it, and the next save tries again.
-  Future<void> _writeJournalFile(DateTime day, String text) async {
+  /// Copies a day's entry to its file; false if it couldn't. A failure only
+  /// means the copy is behind: the database still has it, and the files are
+  /// all written again after the next save that works, or the next start.
+  Future<bool> _writeJournalFile(DateTime day, String text) async {
     final files = journalFiles;
-    if (files == null) return;
+    if (files == null) return true;
     if (!savesJournalFiles) {
       store.setSetting('journalFilesStale', '1');
-      return;
+      return false;
     }
     String? problem;
     try {
@@ -171,10 +177,18 @@ mixin _Journal on ChangeNotifier {
                 'Allow it in System Settings, Privacy & Security, Files and Folders.'
           : "The journal’s files couldn’t be saved (${e.osError?.message ?? e.message}).";
     }
+    if (_disposed) return problem == null;
+    if (problem != null) {
+      store.setSetting('journalFilesStale', '1');
+    } else if (store.setting('journalFilesStale') == '1') {
+      unawaited(_rewriteStaleJournal());
+    }
     problem = problem == null ? null : curlyQuotes(problem);
-    if (_disposed || problem == journalFileProblem) return;
-    journalFileProblem = problem;
-    notifyListeners();
+    if (problem != journalFileProblem) {
+      journalFileProblem = problem;
+      notifyListeners();
+    }
+    return problem == null;
   }
 
   /// Once: writes entries from before the journal moved to documents out as

@@ -29,11 +29,13 @@ extension StoreBackups on Store {
       staged._validate();
       _prepareRestore(staged);
       staged._validate();
+      staged._readAll();
       final original = sqlite3.openInMemory();
       try {
         await _db.backup(original, nPage: -1).drain<void>();
         try {
           await staged.raw.backup(_db, nPage: -1).drain<void>();
+          _readAll();
         } catch (_) {
           await original.backup(_db, nPage: -1).drain<void>();
           rethrow;
@@ -91,6 +93,31 @@ extension StoreBackups on Store {
     target.markAllChanged();
   }
 
+  /// Reads everything back the way the app does, so a value only its
+  /// readers would choke on fails here rather than after the swap.
+  void _readAll() {
+    for (final r in _db.select('SELECT year, month FROM habit_months UNION SELECT year, month FROM month_habits')) {
+      final (year, month) = (r['year'] as int, r['month'] as int);
+      monthHabits(year, month);
+      sleepHabits(year, month);
+      entriesInMonth(year, month).toList();
+      monthScores(year, month);
+    }
+    final now = DateTime.now();
+    for (final r in _db.select('SELECT DISTINCT habit_id FROM entries')) {
+      streaks(r['habit_id'] as int, now, restWeekends: false);
+    }
+    for (final r in _db.select('SELECT DISTINCT scope, period FROM todos')) {
+      todos(TodoScope.values.byName(r['scope'] as String), r['period'] as String);
+    }
+    for (final r in _db.select('SELECT DISTINCT day FROM todo_history')) {
+      todoListsOn(DateTime.parse(r['day'] as String));
+    }
+    repeats();
+    journalEntries().toList();
+    searchableTodos().toList();
+  }
+
   void _validate() {
     const columns = {
       'habits': 'id, uid',
@@ -105,7 +132,7 @@ extension StoreBackups on Store {
       'settings': 'key, value',
       'exercises': 'uid, name, muscle, bodyweight',
       'training_sets': 'uid, day, exercise, position, weight, reps',
-      'todo_repeats': 'uid, text, rule, start, until, time, category, reminders',
+      'todo_repeats': 'uid, text, rule, start, until, time, category, reminders, subtasks',
       'sync_reg': 'kind, rowkey, field, value, ts, origin, vv, journal_versions, seq',
       'sync_dirty': 'kind, rowkey, at',
       'sync_seen': 'file, stamp',
@@ -147,7 +174,10 @@ extension StoreBackups on Store {
     for (final r in _db.select('SELECT due_time AS time FROM todos UNION SELECT time FROM todo_repeats')) {
       if (!_validTime(r['time'])) throw StateError('Backup contains an invalid time');
     }
-    for (final r in _db.select('SELECT subtasks FROM todos')) {
+    for (final r in _db.select('SELECT days FROM month_habits')) {
+      if (!readsAs(r['days'], decodeDays)) throw StateError('Backup contains invalid ritual days');
+    }
+    for (final r in _db.select('SELECT subtasks FROM todos UNION SELECT subtasks FROM todo_repeats')) {
       if (!_validSubtasks(r['subtasks'])) throw StateError('Backup contains invalid subtasks');
     }
     for (final r in _db.select('SELECT day, snapshot FROM todo_history')) {

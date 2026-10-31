@@ -36,17 +36,65 @@ class SyncService extends ChangeNotifier {
   }) {
     final file = File(p.join(home.path, 'sync.json'));
     var config = <String, dynamic>{};
+    var damaged = false;
     try {
-      if (file.existsSync()) config = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-    } on FormatException {
-      // A damaged file: set up again.
+      if (file.existsSync()) {
+        final json = jsonDecode(file.readAsStringSync());
+        if (json is Map<String, dynamic>) {
+          config = json;
+          final bad = [
+            for (final MapEntry(:key, :value) in config.entries)
+              if (!_fits(key, value)) key,
+          ];
+          damaged = bad.isNotEmpty;
+          bad.forEach(config.remove);
+        } else {
+          damaged = true;
+        }
+      }
+    } on Object {
+      // A damaged or unreadable file: set up again.
+      damaged = true;
+    }
+    if (damaged) {
+      // Kept for a look, as it's overwritten on the next save.
+      try {
+        file.copySync('${file.path}.damaged');
+      } on FileSystemException {
+        // Nothing to keep.
+      }
     }
     if (config['machine'] is! String) {
       final random = Random.secure();
       config['machine'] = List.generate(8, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
     }
-    return SyncService._(home, store, config, connect ?? AppDataFolder.new, signIn ?? signInWithGoogle);
+    final service = SyncService._(home, store, config, connect ?? AppDataFolder.new, signIn ?? signInWithGoogle);
+    if (damaged) service.error = 'Sync’s settings were damaged. Sign in again if sync is off.';
+    return service;
   }
+
+  /// Whether [value] is what sync.json's [key] holds; one that isn't is
+  /// dropped, as if never set.
+  static bool _fits(String key, Object? value) => switch (key) {
+    'machine' ||
+    'email' ||
+    'accountEmail' ||
+    'accountId' ||
+    'refresh' ||
+    'journalFolder' ||
+    'journalChecked' => value is String,
+    'clock' || 'pushed' => value is int,
+    'journalDrive' || 'journalFill' => value is bool,
+    'down' ||
+    'up' ||
+    'ids' ||
+    'names' ||
+    'journalYears' => value is Map<String, dynamic> && value.values.every((v) => v is String),
+    'journalUp' =>
+      value is Map<String, dynamic> &&
+          value.values.every((v) => v is List && v.length == 2 && v.every((s) => s is String)),
+    _ => true,
+  };
 
   final Directory home;
   final Store store;
@@ -282,9 +330,28 @@ class SyncService extends ChangeNotifier {
     beforeMerge?.call();
     if (join) {
       beforeJoin?.call();
-      final days = engine.clearForJoining(); // not inside ?.call, which would skip it
+      // Nothing here goes until the others' history is all taken in: a file
+      // this version can't read leaves this computer as it was.
+      late final List<String> days;
+      final Incoming incoming;
+      try {
+        incoming = store.transaction(() {
+          days = engine.clearForJoining();
+          final incoming = folder.read(engine);
+          if (folder.newer.isNotEmpty) {
+            throw const DriveError('This account’s data needs a newer version of Eclipse. Update Eclipse, then join.');
+          }
+          if (folder.unread.isNotEmpty) {
+            throw const DriveError('Some of this account’s data couldn’t be read, so nothing here was changed.');
+          }
+          return incoming;
+        });
+      } catch (_) {
+        engine.forgetCounts();
+        rethrow;
+      }
       onClear?.call(days);
-      _deliver(folder.read(engine));
+      _deliver(incoming);
     } else {
       if (switching) engine.forgetSync();
       // Back with history already shared: only edits go up, never what the
@@ -369,6 +436,7 @@ class SyncService extends ChangeNotifier {
       final file = File(
         p.join(folder.dir.path, who, copies[f.name]! > 1 ? '${p.basenameWithoutExtension(day)}~${f.id}.json' : day),
       );
+      if (!p.isWithin(folder.dir.path, file.path)) continue;
       if (who == machine) {
         if (mine[f.name] == null || f.id == ids[f.name]) mine[f.name] = f.id;
         if (await file.exists()) continue;
@@ -428,12 +496,14 @@ class SyncService extends ChangeNotifier {
   }
 
   /// A file in Drive's name, like a1b2c3d4e5f6a7b8_2026-10-24.json, as the
-  /// computer it's from and the file it is there.
+  /// computer it's from and the file it is there; null for any other name,
+  /// so none can reach outside the sync folder.
   static (String, String)? _split(String name) {
-    final i = name.indexOf('_');
-    if (i <= 0 || !name.endsWith('.json')) return null;
-    return (name.substring(0, i), name.substring(i + 1));
+    final match = _fileName.firstMatch(name);
+    return match == null ? null : (match[1]!, match[2]!);
   }
+
+  static final _fileName = RegExp(r'^([A-Za-z0-9-]+)_(\d{4}-\d{2}-\d{2}\.json)$');
 
   // Each round
 

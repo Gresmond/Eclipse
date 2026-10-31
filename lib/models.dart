@@ -65,6 +65,19 @@ List<(DateTime?, int)> decodeDays(String? value) => value == null
           (change[0] == null ? null : DateTime.parse(change[0] as String), change[1] as int),
       ];
 
+/// Whether [value], a stored or synced column, is null or a string that
+/// [read] takes without throwing: the readers decide what's valid.
+bool readsAs(Object? value, void Function(String) read) {
+  if (value == null) return true;
+  if (value is! String) return false;
+  try {
+    read(value);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 /// [days] with [bits] from [from] on (from the start of the month when
 /// null), replacing any change made the same day, and with no change that
 /// leaves the days as they were.
@@ -383,10 +396,14 @@ class Repeat {
     this.time,
     this.birthday = false,
     this.reminders = 0,
+    this.subtasks = const [],
   });
 
   final String uid;
   final String text;
+
+  /// The checklist each time starts with, none ticked.
+  final List<TodoSubtask> subtasks;
 
   /// The time of day each one is at, as [TodoItem.dueTime].
   final int? time;
@@ -402,11 +419,16 @@ class Repeat {
 
   bool on(DateTime day) => (until == null || !day.isAfter(until!)) && rule.on(day, start);
 
-  /// The first day it comes round on or after [from], if any within a year
-  /// and a bit (a monthly 31st needs no more); a yearly one's by its years,
-  /// and every so many months by its months.
+  /// The first day it comes round on or after [from], if any: every so many
+  /// days or weeks, years or months by counting them, the others within a
+  /// year and a bit (a monthly 31st needs no more).
   DateTime? next(DateTime from) {
     var day = from.isBefore(start) ? start : from;
+    if (rule.kind == RepeatKind.days || rule.kind == RepeatKind.weeks) {
+      final gap = rule.kind == RepeatKind.weeks ? 7 * rule.every : rule.every;
+      final date = DateTime(start.year, start.month, start.day + (daysBetween(start, day) + gap - 1) ~/ gap * gap);
+      return until != null && date.isAfter(until!) ? null : date;
+    }
     if (rule.kind == RepeatKind.yearly) {
       // Its years from the one [day] is in, until one has its date.
       for (var year = start.year + ((day.year - start.year) ~/ rule.every) * rule.every; ; year += rule.every) {

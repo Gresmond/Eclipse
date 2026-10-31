@@ -79,7 +79,9 @@ class Backups {
 
   /// Replaces the database with [backup], keeping what was there as the
   /// before-restore copy so the restore itself can be undone.
-  Future<void> restore(Store store, Backup backup) async {
+  /// [check] runs once it's in; if it throws, what was there before goes
+  /// back.
+  Future<void> restore(Store store, Backup backup, {void Function()? check}) async {
     dir.createSync(recursive: true);
     final before = File(p.join(dir.path, _beforeRestore));
     // Restoring the before-restore copy: read it aside so saving over it is safe.
@@ -89,6 +91,12 @@ class Backups {
       // Written beside the old one and renamed over it, so it's kept until replaced.
       store.saveCopy(before.path);
       await store.restoreFrom(source.path);
+      try {
+        check?.call();
+      } catch (_) {
+        await store.restoreFrom(before.path);
+        rethrow;
+      }
     } finally {
       if (source.path != backup.file.path) source.deleteSync();
     }

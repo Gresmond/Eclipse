@@ -624,6 +624,7 @@ extension StoreTodos on Store {
           time: parseClock(r['time'] as String? ?? ''),
           birthday: isBirthday(r['category']),
           reminders: _bits(r['reminders']),
+          subtasks: TodoSubtask.decode(r['subtasks'] as String?),
         ),
   ];
 
@@ -635,6 +636,7 @@ extension StoreTodos on Store {
     int? time,
     bool birthday = false,
     int reminders = 0,
+    List<TodoSubtask> subtasks = const [],
   }) {
     final repeat = Repeat(
       uid: _newUid(),
@@ -645,15 +647,18 @@ extension StoreTodos on Store {
       time: time,
       birthday: birthday,
       reminders: reminders,
+      subtasks: _unticked(subtasks),
     );
     saveRepeat(repeat);
     return repeat;
   }
 
   void saveRepeat(Repeat r) => _db.execute(
-    'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category, reminders) VALUES (?, ?, ?, ?, ?, ?, ?, ?) '
+    'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category, reminders, subtasks) '
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
     'ON CONFLICT (uid) DO UPDATE SET text = excluded.text, rule = excluded.rule, start = excluded.start, '
-    'until = excluded.until, time = excluded.time, category = excluded.category, reminders = excluded.reminders',
+    'until = excluded.until, time = excluded.time, category = excluded.category, reminders = excluded.reminders, '
+    'subtasks = excluded.subtasks',
     [
       r.uid,
       r.text,
@@ -663,8 +668,35 @@ extension StoreTodos on Store {
       r.time == null ? null : clockKey(r.time!),
       birthdayKind(r.birthday),
       _stored(r.reminders),
+      r.subtasks.isEmpty ? null : TodoSubtask.encode(r.subtasks),
     ],
   );
+
+  static List<TodoSubtask> _unticked(List<TodoSubtask> children) => [
+    for (final child in children) child.copyWith(done: false),
+  ];
+
+  /// Gives repeat [uid] the checklist [children], unticked, and the open
+  /// to-dos it has made for after [from] too; a step they already had keeps
+  /// its tick.
+  void setRepeatSubtasks(String uid, List<TodoSubtask> children, DateTime from, DateTime today) {
+    final template = _unticked(children);
+    transaction(() {
+      _db.execute('UPDATE todo_repeats SET subtasks = ? WHERE uid = ?', [
+        template.isEmpty ? null : TodoSubtask.encode(template),
+        uid,
+      ]);
+      for (final r in _openOccurrences(uid, DateTime(from.year, from.month, from.day + 1))) {
+        final had = {
+          for (final child in TodoSubtask.decode(r['subtasks'] as String?))
+            if (child.done) child.text,
+        };
+        final next = [for (final child in template) child.copyWith(done: had.contains(child.text))];
+        _db.execute('UPDATE todos SET subtasks = ? WHERE id = ?', [TodoSubtask.encode(next), r['id']]);
+        _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [r['id']]), today);
+      }
+    });
+  }
 
   /// The open to-dos of repeat [uid] for [from] on.
   List<Row> _openOccurrences(String uid, DateTime from) => [
@@ -765,8 +797,8 @@ extension StoreTodos on Store {
   });
 
   void _makeOccurrence(Repeat repeat, DateTime day) => _db.execute(
-    'INSERT INTO todos (uid, scope, period, text, since, due_date, due_time, category, reminders) '
-    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO todos (uid, scope, period, text, since, due_date, due_time, category, reminders, subtasks) '
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       '${repeat.uid}@${dateKey(day)}',
       TodoScope.month.name,
@@ -777,6 +809,7 @@ extension StoreTodos on Store {
       repeat.time == null ? null : clockKey(repeat.time!),
       birthdayKind(repeat.birthday),
       _stored(repeat.reminders),
+      TodoSubtask.encode(repeat.subtasks),
     ],
   );
 

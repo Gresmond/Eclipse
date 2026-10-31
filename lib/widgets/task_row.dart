@@ -173,7 +173,10 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
       await drag.fadeForNesting?.call();
       final target = state.todos[widget.scope]!.where((task) => task.id == widget.item.id).firstOrNull;
       final index = target?.subtasks.length;
-      nested = state.nestTodo(drag.scope, drag.item, widget.scope, widget.item);
+      if (!mounted) return;
+      final future = state.repeatOf(widget.item) == null ? false : await _askWhich(context, removing: false);
+      if (future == null || !mounted) return;
+      nested = state.nestTodo(drag.scope, drag.item, widget.scope, widget.item, future: future);
       if (nested && mounted) {
         _incomingTimer?.cancel();
         _arrive(index);
@@ -271,9 +274,14 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
         onDragEnd: (_) {
           final order = _dragOrder;
           if (order == null || !mounted) return;
-          setState(() => _dragOrder = null);
-          if (order.length != item.subtasks.length || listEquals(order, _subtaskOrder)) return;
-          state.setTodoSubtasks(widget.scope, item, [for (final i in order) item.subtasks[i]], day: widget.day);
+          if (order.length != item.subtasks.length || listEquals(order, List.generate(order.length, (i) => i))) {
+            setState(() => _dragOrder = null);
+            return;
+          }
+          // The new order stays up while a repeat's asks which times take it.
+          _setSubtasks(state, [for (final i in order) item.subtasks[i]]).whenComplete(() {
+            if (mounted) setState(() => _dragOrder = null);
+          });
         },
         feedback: Material(
           color: p.tile.withValues(alpha: 0.45),
@@ -303,6 +311,33 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
   /// The item to change: made first, if it's a repeat's time not yet made.
   TodoItem _real() => widget.make?.call() ?? widget.item;
 
+  /// Gives this task the checklist [next]. A change to a repeat's steps,
+  /// not just their ticks, asks whether it's for this time or every one
+  /// after it too.
+  Future<void> _setSubtasks(AppState state, List<TodoSubtask> next) async {
+    final before = widget.item.subtasks;
+    final repeat = state.repeatOf(widget.item);
+    var future = false;
+    if (repeat != null && !_sameSteps(before, next)) {
+      final answer = await _askWhich(context, removing: false);
+      if (answer == null || !mounted) return;
+      future = answer;
+    }
+    if (future) {
+      state.setRepeatSubtasks(widget.scope, _real(), repeat!, next, day: widget.day);
+    } else {
+      state.setTodoSubtasks(widget.scope, _real(), next, day: widget.day);
+    }
+  }
+
+  static bool _sameSteps(List<TodoSubtask> a, List<TodoSubtask> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].text != b[i].text || a[i].numbered != b[i].numbered) return false;
+    }
+    return true;
+  }
+
   Future<void> _editSubtask(AppState state, {int? index}) async {
     final children = widget.item.subtasks;
     final result = await showAppDialog<({String text, bool numbered})>(
@@ -319,7 +354,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
     } else {
       next[index] = next[index].copyWith(text: text);
     }
-    state.setTodoSubtasks(widget.scope, _real(), next, day: widget.day);
+    await _setSubtasks(state, next);
   }
 
   /// When search last opened one of its subtasks, opening it to show it.
@@ -578,7 +613,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                   onEdit: () => _editSubtask(state, index: index),
                                   onRemove: () {
                                     final next = [...item.subtasks]..removeAt(index);
-                                    state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
+                                    _setSubtasks(state, next);
                                   },
                                 ),
                               ),

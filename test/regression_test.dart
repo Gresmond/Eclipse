@@ -4,8 +4,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
+import 'package:eclipse/data/backups.dart';
 import 'package:eclipse/data/google_drive.dart';
 import 'package:eclipse/data/http_request.dart';
+import 'package:eclipse/data/journal_files.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/data/sync_service.dart';
@@ -51,6 +53,64 @@ void main() {
     return temp;
   }
 
+  test('adding a ritual to a month still showing an earlier list keeps that list, once', () {
+    final store = memory();
+    store.setJournal('2026-09-01', 'Earlier writing makes September a month to look at');
+    final state = AppState(store, clock: () => DateTime(2026, 10, 31));
+    addTearDown(state.dispose);
+    final before = state.habitsFor(2026, 9).map((h) => h.name).toList();
+    expect(before, isNotEmpty);
+    state.addHabit(2026, 9, 'Stretch');
+    expect(state.habitsFor(2026, 9).map((h) => h.name), [...before, 'Stretch']);
+    expect(store.monthHabits(2026, 9).map((h) => h.name), [...before, 'Stretch']);
+  });
+
+  test('a backup the app could not read back is refused before anything is replaced', () async {
+    final source = memory();
+    source.addHabit(2026, 10, 'Read');
+    source.raw.execute("UPDATE month_habits SET days = 'not json'");
+    final path = '${temporary().path}/bad.db';
+    source.saveCopy(path);
+    final live = memory();
+    live.addHabit(2026, 10, 'Keep me');
+    await expectLater(live.restoreFrom(path), throwsA(anything));
+    expect(live.monthHabits(2026, 10).single.name, 'Keep me');
+  });
+
+  test('a restore the app then fails to load goes back to what was there', () async {
+    final source = memory();
+    source.addHabit(2026, 10, 'From the copy');
+    final dir = temporary();
+    source.saveCopy('${dir.path}/good.db');
+    final live = memory();
+    live.addHabit(2026, 10, 'Keep me');
+    final backups = Backups(Directory('${dir.path}/backups'));
+    final copy = Backup(File('${dir.path}/good.db'), DateTime(2026, 10, 30));
+    await expectLater(backups.restore(live, copy, check: () => throw StateError('Won’t load')), throwsStateError);
+    expect(live.monthHabits(2026, 10).single.name, 'Keep me');
+  });
+
+  test('a journal file that failed to save is written once the folder works again, even after a restart', () async {
+    final store = memory();
+    final day = DateTime(2026, 10, 31);
+    final files = _FailingJournalFiles(temporary());
+    store.setJournal(dateKey(day), 'Old text');
+    store.setSetting('journalExported', '1');
+    await files.write(day, 'Old text');
+    final state = AppState(store, journalFiles: files, clock: () => day);
+    await state.flushFiles();
+    files.fail = true;
+    await state.setJournal(day, 'New text');
+    await state.flushFiles();
+    files.fail = false;
+    state.dispose();
+    final reopened = AppState(store, journalFiles: files, clock: () => day);
+    addTearDown(reopened.dispose);
+    await reopened.flushFiles();
+    expect(files.fileFor(day).readAsStringSync(), contains('New text'));
+    expect(store.setting('journalFilesStale'), '0');
+  });
+
   test('adding a dated task schedules it immediately and preserves past-day edits', () {
     final store = memory();
     final today = DateTime(2026, 10, 25);
@@ -88,7 +148,10 @@ void main() {
     final other = memory();
     final receiver = SyncEngine(other, 'b')..clearForJoining();
     receiver.mergeAll([(_sent(sender), 'a')]);
-    expect(other.todos(TodoScope.week, '2026-10-19').map((t) => t.dueDate), [DateTime(2026, 10, 28), DateTime(2026, 10, 28)]);
+    expect(other.todos(TodoScope.week, '2026-10-19').map((t) => t.dueDate), [
+      DateTime(2026, 10, 28),
+      DateTime(2026, 10, 28),
+    ]);
     now = DateTime(2026, 10, 27);
     state.checkDate();
     expect(state.todos[TodoScope.tomorrow], hasLength(2));
@@ -797,4 +860,15 @@ void main() {
       }
     }, _LoopbackHttpOverrides()),
   );
+}
+
+class _FailingJournalFiles extends JournalFiles {
+  _FailingJournalFiles(super.dir);
+  bool fail = false;
+
+  @override
+  Future<void> write(DateTime day, String text) {
+    if (fail) throw const FileSystemException('A disk that is briefly unavailable');
+    return super.write(day, text);
+  }
 }

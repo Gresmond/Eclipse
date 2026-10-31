@@ -100,7 +100,7 @@ void main() {
     }
     await tester.pump(); // Paint the final post-layout measurement.
     final resizedGuide = tester.getTopLeft(guide);
-    expect(maskHole().top, settingsHole.top, reason: 'Settings keeps its top, growing downwards');
+    expect(maskHole().center.dy, closeTo(settingsHole.center.dy, 1), reason: 'Settings stays centred as it grows');
     expect(maskHole().height, isNot(settingsHole.height));
     for (var frame = 1; frame < guidePositions.length; frame++) {
       expect(

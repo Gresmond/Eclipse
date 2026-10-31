@@ -5,6 +5,68 @@ import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/models.dart';
 
 void main() {
+  test('every so many weeks finds its next time however far apart', () {
+    final start = DateTime(2026, 10, 31);
+    final repeat = Repeat(uid: 'r', text: 'Renew', rule: const RepeatRule.every(99, weeks: true), start: start);
+    expect(repeat.next(start), start);
+    expect(repeat.next(DateTime(2026, 11, 1)), DateTime(2028, 9, 23));
+    final ended = Repeat(
+      uid: 'r',
+      text: 'Renew',
+      rule: const RepeatRule.every(99, weeks: true),
+      start: start,
+      until: DateTime(2028, 1, 1),
+    );
+    expect(ended.next(DateTime(2026, 11, 1)), isNull);
+    final days = Repeat(uid: 'd', text: 'Water', rule: const RepeatRule.every(3), start: start);
+    expect(days.next(DateTime(2026, 11, 1)), DateTime(2026, 11, 3));
+  });
+
+  test('a checklist made repeating keeps its steps, and each time starts unticked', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 31));
+    addTearDown(state.dispose);
+    List<TodoItem> times() =>
+        state.todos.values.expand((items) => items).where((t) => t.text == 'Pack').toList()
+          ..sort((a, b) => a.repeatDay!.compareTo(b.repeatDay!));
+    List<(String, bool)> steps(TodoItem item) => [for (final s in item.subtasks) (s.text, s.done)];
+    TodoScope scopeOf(TodoItem item) => state.todos.entries.firstWhere((e) => e.value.any((t) => t.id == item.id)).key;
+
+    state.addTodo(TodoScope.today, 'Pack');
+    var item = state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Pack');
+    state.setTodoSubtasks(TodoScope.today, item, [
+      const TodoSubtask('Passport', done: true),
+      const TodoSubtask('Tickets'),
+    ]);
+    item = state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Pack');
+    state.makeRepeating(TodoScope.today, item, item.text, const RepeatRule.every(1));
+    expect(steps(times()[0]), [('Passport', true), ('Tickets', false)], reason: 'this time keeps its ticks');
+    expect(steps(times()[1]), [('Passport', false), ('Tickets', false)]);
+    final repeat = state.repeatOf(times()[0])!;
+    expect(repeat.subtasks.map((s) => s.text), ['Passport', 'Tickets']);
+
+    // Only this one: the others keep the template.
+    final tomorrow = times()[1];
+    state.setTodoSubtasks(scopeOf(tomorrow), tomorrow, [...tomorrow.subtasks, const TodoSubtask('Snacks')]);
+    expect(steps(times()[1]).length, 3);
+    expect(steps(times()[2]).length, 2);
+
+    // This and future ones: later times change too, and a step they had
+    // keeps its tick.
+    final later = times()[2];
+    state.setTodoSubtasks(scopeOf(later), later, [const TodoSubtask('Passport', done: true), later.subtasks[1]]);
+    final from = times()[1];
+    state.setRepeatSubtasks(scopeOf(from), from, repeat, [const TodoSubtask('Passport'), const TodoSubtask('Charger')]);
+    expect(steps(times()[1]), [('Passport', false), ('Charger', false)]);
+    expect(steps(times()[2]), [('Passport', true), ('Charger', false)]);
+    expect(steps(times()[0]).length, 2, reason: 'times before it stay as they were');
+    expect(state.repeatOf(times()[0])!.subtasks.map((s) => (s.text, s.done)), [
+      ('Passport', false),
+      ('Charger', false),
+    ]);
+  });
+
   test('rules come round on their days, and keep their shape', () {
     final start = DateTime(2026, 10, 28); // Wednesday
     final weekly = RepeatRule.weekly({1, 3, 5});

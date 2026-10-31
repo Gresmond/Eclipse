@@ -165,6 +165,41 @@ void main() {
     expect(scroll.position.pixels, scroll.position.maxScrollExtent);
   });
 
+  testWidgets('changing a repeating task’s steps asks which times it’s for; ticking doesn’t', (tester) async {
+    state.addTodo(TodoScope.today, 'Pack');
+    state.setTodoSubtasks(TodoScope.today, task(TodoScope.today), [
+      const TodoSubtask('Passport'),
+      const TodoSubtask('Tickets'),
+    ]);
+    state.makeRepeating(TodoScope.today, task(TodoScope.today), 'Pack', const RepeatRule.every(1));
+    List<TodoItem> times() =>
+        state.todos.values.expand((items) => items).where((t) => t.text == 'Pack').toList()
+          ..sort((a, b) => a.repeatDay!.compareTo(b.repeatDay!));
+    await show(tester);
+    final row = find.ancestor(of: find.text('Pack'), matching: find.byType(TaskRow)).first;
+    await tester.tap(find.descendant(of: row, matching: find.byTooltip('Expand subtasks')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: row, matching: find.text('Passport')));
+    await tester.pumpAndSettle();
+    expect(find.text('Change repeating task'), findsNothing, reason: 'a tick is only this time’s');
+    expect(times().first.subtasks.first.done, isTrue);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(find.descendant(of: row, matching: find.text('Tickets'))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: row, matching: find.byTooltip('Remove subtask')));
+    await tester.pumpAndSettle();
+    expect(find.text('Change repeating task'), findsOneWidget);
+    await tester.tap(find.text('This and future ones'));
+    await tester.pumpAndSettle();
+    expect(times().first.subtasks.map((s) => (s.text, s.done)), [('Passport', true)]);
+    expect(times()[1].subtasks.map((s) => s.text), ['Passport']);
+    expect(state.repeatOf(times().first)!.subtasks.map((s) => s.text), ['Passport']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('dropping on a task name nests across lists and preserves the project', (tester) async {
     state.addTodo(TodoScope.today, 'Read source material');
     state.addTodo(TodoScope.tomorrow, 'Write report', dueDate: DateTime(2026, 10, 29));

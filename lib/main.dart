@@ -31,26 +31,32 @@ Future<void> main() async {
   final dir = await getApplicationSupportDirectory();
   await dir.create(recursive: true);
   final documents = await getApplicationDocumentsDirectory();
-  DataFolder.leaveSandbox(dir, documents);
-  final data = DataFolder.load(dir, documents);
-  final Store store;
+  final AppState state;
   try {
+    DataFolder.leaveSandbox(dir, documents);
+    final data = DataFolder.load(dir, documents);
     await data.root.create(recursive: true);
-    store = Store.open(data.database);
+    final store = Store.open(data.database);
+    // Sync is optional: the app runs on its own without it.
+    SyncService? sync;
+    try {
+      sync = SyncService.load(dir, store);
+    } catch (error) {
+      debugPrint('Sync couldn’t start: $error');
+    }
+    state = AppState(
+      store,
+      backups: Backups(data.backups),
+      journalFiles: JournalFiles(data.journal),
+      dataFolder: data,
+      sync: sync,
+      notifier: SystemNotifications(),
+    );
   } catch (error) {
     _showStartupError(error);
     return;
   }
   unawaited(refreshInstalledCopy(Store.schemaVersion));
-  late final AppState state;
-  state = AppState(
-    store,
-    backups: Backups(data.backups),
-    journalFiles: JournalFiles(data.journal),
-    dataFolder: data,
-    sync: SyncService.load(dir, store),
-    notifier: SystemNotifications(),
-  );
   state.sync?.start();
   if (state.sync?.isOn ?? false) unawaited(state.sync!.run());
   _watchWindow(state);

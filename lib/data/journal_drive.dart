@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:path/path.dart' as p;
 
+import '../models.dart';
 import 'google_drive.dart';
 import 'journal_files.dart';
 
@@ -10,10 +10,26 @@ import 'journal_files.dart';
 /// Journals: one way, from Eclipse, never read back. Runs at the end of each
 /// sync round; what it knows of the folder lives in sync's settings.
 class JournalFolder {
-  JournalFolder(this._config, this._save);
+  JournalFolder(this._config, this._save, {DateTime Function()? now}) : _now = now ?? DateTime.now;
 
   final Map<String, dynamic> _config;
   final Future<void> Function() _save;
+  final DateTime Function() _now;
+
+  /// How often the folder is listed to find files deleted in Drive, which
+  /// are written again: it's Eclipse's copy, as edits made there are.
+  static const checkEvery = Duration(hours: 1);
+
+  /// A day's file where Eclipse puts it, like 2026/2026-10-31.md.
+  static final _dayFile = RegExp(r'^(\d{4})/((\d{4})-\d{2}-\d{2})\.md$');
+
+  /// The day of a file at [path] in the folder, if it's one Eclipse wrote.
+  static String? _dayOf(String path) {
+    final match = _dayFile.firstMatch(path);
+    if (match == null || match[1] != match[3]) return null;
+    final day = DateTime.tryParse(match[2]!);
+    return day != null && dateKey(day) == match[2] ? match[2] : null;
+  }
 
   static const folderName = 'Eclipse Journals';
 
@@ -37,7 +53,7 @@ class JournalFolder {
 
   void forget() {
     behind = false;
-    for (final key in ['journalFolder', 'journalYears', 'journalUp', 'journalFill']) {
+    for (final key in ['journalFolder', 'journalYears', 'journalUp', 'journalFill', 'journalChecked']) {
       _config.remove(key);
     }
   }
@@ -62,15 +78,26 @@ class JournalFolder {
         final (files, years) = await drive.listJournal(found);
         _years.addAll(years);
         for (final MapEntry(key: path, value: (id, md5)) in files.entries) {
-          final name = p.basenameWithoutExtension(path);
-          if (path == '${name.substring(0, 4)}/$name.md') _up[name] = [id, md5];
+          if (_dayOf(path) case final day?) _up[day] = [id, md5];
         }
+        _config['journalChecked'] = _now().toIso8601String();
         folder = found;
       } else {
         folder = await drive.makeFolder(folderName);
         _config['journalFill'] = true;
+        _config['journalChecked'] = _now().toIso8601String();
       }
       _config['journalFolder'] = folder;
+      await _save();
+    } else if (_now().difference(DateTime.tryParse(_config['journalChecked'] as String? ?? '') ?? DateTime(0)) >=
+        checkEvery) {
+      // Files and year folders deleted in Drive are forgotten, to be
+      // written again below.
+      final (files, years) = await drive.listJournal(folder);
+      _years.removeWhere((year, id) => years[year] != id);
+      final there = {for (final MapEntry(key: path, value: (id, _)) in files.entries) ?_dayOf(path): id};
+      _up.removeWhere((day, file) => (file as List)[0] != '' && there[day] != file[0]);
+      _config['journalChecked'] = _now().toIso8601String();
       await _save();
     }
     if (stopped()) return;

@@ -146,6 +146,9 @@ mixin _Habits on ChangeNotifier {
   /// A new ritual, on the weekdays in [days] (see [weekdayBit]).
   void addHabit(int year, int month, String name, {int days = everyDay}) {
     if (name.trim().isEmpty) return;
+    // A preview month gets its own list first, copied from the one it
+    // shows, so the new ritual joins it rather than starting it.
+    final list = _savedList(year, month);
     final h = store.addHabit(
       year,
       month,
@@ -156,7 +159,7 @@ mixin _Habits on ChangeNotifier {
       h.days = [(null, days)];
       store.setHabitDays(year, month, h.id, h.days);
     }
-    _savedList(year, month).add(h);
+    list.add(h);
     _habitsChanged();
   }
 

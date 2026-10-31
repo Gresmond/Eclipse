@@ -275,7 +275,22 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     saveDrafts(); // so it's in the before-restore copy
     await flushFiles();
     final before = {for (final e in store.journalEntries()) e.day};
-    await backups!.restore(store, backup);
+    try {
+      // Loaded before its files are written, so a copy the app can't open
+      // goes back untouched.
+      await backups!.restore(
+        store,
+        backup,
+        check: () {
+          _load();
+          checkDate(); // the backup may start its days at another hour
+        },
+      );
+    } catch (_) {
+      _load();
+      notifyListeners();
+      rethrow;
+    }
     // The journal's files follow: the restored entries written out, and
     // the files of days the copy has no entry for removed.
     final after = {for (final e in store.journalEntries()) e.day: e.text};
@@ -283,8 +298,6 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
       _writeJournalFile(DateTime.parse(day), after[day] ?? '');
     }
     await flushFiles();
-    _load();
-    checkDate(); // the backup may start its days at another hour
     notifyListeners();
   }
 

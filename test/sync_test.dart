@@ -758,6 +758,7 @@ void main() {
       time: 6 * 60,
       birthday: true,
       reminders: 8,
+      subtasks: [const TodoSubtask('Shoes')],
     );
     pc.engine.claimAll();
     final sent = {
@@ -769,6 +770,55 @@ void main() {
         for (final field in fields.keys) (kind, field),
     };
     expect(sent, listed);
+  });
+
+  test('a change file with a value this version can’t read is skipped, not saved', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final temp = Directory.systemTemp.createTempSync('eclipse-bad-value');
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final folder = SyncFolder(temp, 'local', 'Local');
+    for (final (name, register) in [
+      (
+        '2026-10-30',
+        [
+          'entry',
+          '2026-10-31/h',
+          'status',
+          '99',
+          1,
+          'other',
+          {'other': 1},
+        ],
+      ),
+      (
+        '2026-10-31',
+        [
+          'month_habit',
+          '2026-10/h',
+          'days',
+          jsonEncode('not json'),
+          2,
+          'other',
+          {'other': 2},
+        ],
+      ),
+    ]) {
+      File('${temp.path}/other/$name.json')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(
+          jsonEncode({
+            'version': 1,
+            'name': 'Other',
+            'registers': [register],
+          }),
+        );
+    }
+    folder.read(SyncEngine(store, 'local'));
+    expect(store.raw.select('SELECT * FROM entries'), isEmpty);
+    expect(store.raw.select('SELECT * FROM month_habits'), isEmpty);
+    expect(folder.unread, {'Other'});
+    expect(store.raw.select('SELECT * FROM sync_seen'), isEmpty, reason: 'tried again next round');
   });
 
   group('through Google Drive', () {
@@ -786,6 +836,74 @@ void main() {
       final home = Directory('${dir.path}/${c.name}')..createSync();
       return SyncService.load(home, c.store, connect: (_) => drive, signIn: ({cancel}) async => account);
     }
+
+    test('joining history this version can’t read changes nothing here', () async {
+      await drive.upload('pc_2026-10-31.json', utf8.encode(jsonEncode({'version': 2, 'name': 'PC', 'registers': []})));
+      final before = laptop.dump();
+      final onLaptop = service(laptop);
+      expect(await onLaptop.look(account), isTrue);
+      await expectLater(onLaptop.turnOn(account, join: true), throwsA(isA<DriveError>()));
+      expect(laptop.dump(), before);
+      expect(onLaptop.isOn, isFalse);
+    });
+
+    test('a Drive file named to reach outside the sync folder is left alone', () async {
+      await drive.upload('pc_../../escaped.json', utf8.encode('{}'));
+      await drive.upload('pc_2026-10-31.json/../../escaped.json', utf8.encode('{}'));
+      final onLaptop = service(laptop);
+      await onLaptop.look(account);
+      expect(File('${dir.path}/laptop/escaped.json').existsSync(), isFalse);
+      expect(File('${dir.path}/escaped.json').existsSync(), isFalse);
+    });
+
+    test('damaged sync settings leave the app starting, with sync off and the file kept', () {
+      final home = Directory('${dir.path}/damaged')..createSync();
+      final file = File('${home.path}/sync.json')..writeAsStringSync('[]');
+      final damaged = SyncService.load(home, laptop.store);
+      expect(damaged.isOn, isFalse);
+      expect(damaged.error, isNotNull);
+      expect(File('${file.path}.damaged').readAsStringSync(), '[]');
+      file.writeAsStringSync(jsonEncode({'machine': 'abc', 'refresh': 5, 'pushed': 'many', 'down': []}));
+      final wrong = SyncService.load(home, laptop.store);
+      expect(wrong.machine, 'abc');
+      expect(wrong.isOn, isFalse);
+    });
+
+    test('a journal day deleted in Drive is written again at the next check', () async {
+      final config = <String, dynamic>{};
+      var now = DateTime(2026, 10, 31, 9);
+      final folder = JournalFolder(config, () async {}, now: () => now);
+      Future<void> copy() => folder.copy(
+        drive,
+        machine: 'pc',
+        writers: {'2026-10-31': 'pc'},
+        texts: {'2026-10-31': 'Hello'},
+        stopped: () => false,
+      );
+      await copy();
+      await drive.bin(drive.visible.entries.singleWhere((e) => e.value.bytes != null).key);
+      await copy();
+      expect(drive.journal, isEmpty, reason: 'not listed again until the hour is up');
+      now = now.add(JournalFolder.checkEvery);
+      await copy();
+      expect(drive.journal.keys, ['Eclipse Journals/2026/2026-10-31.md']);
+    });
+
+    test('a file renamed in the journal folder doesn’t stop another computer adopting it', () async {
+      final root = await drive.makeFolder(JournalFolder.folderName);
+      final year = await drive.makeFolder('2026', parent: root);
+      await drive.writeFile('a.md', year, utf8.encode('Renamed'));
+      await drive.writeFile('2026-02-30.md', year, utf8.encode('No such day'));
+      final folder = JournalFolder(<String, dynamic>{}, () async {});
+      await folder.copy(
+        drive,
+        machine: 'pc',
+        writers: {'2026-10-31': 'pc'},
+        texts: {'2026-10-31': 'Hello'},
+        stopped: () => false,
+      );
+      expect(drive.journal.keys, contains('Eclipse Journals/2026/2026-10-31.md'));
+    });
 
     test('the first computer starts it, the next joins, and edits go both ways', () async {
       final onPc = service(pc), onLaptop = service(laptop);

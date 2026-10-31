@@ -163,6 +163,7 @@ class SyncEngine implements AutomaticWrites {
       'time': 29,
       'category': 29,
       'reminders': 31,
+      'subtasks': 32,
     },
   };
 
@@ -248,9 +249,10 @@ class SyncEngine implements AutomaticWrites {
       case 'training_set':
         fields = row('SELECT day, exercise, position, weight, reps FROM training_sets WHERE uid = ?', [rowkey]);
       case 'todo_repeat':
-        fields = row('SELECT text, rule, start, until, time, category, reminders FROM todo_repeats WHERE uid = ?', [
-          rowkey,
-        ]);
+        fields = row(
+          'SELECT text, rule, start, until, time, category, reminders, subtasks FROM todo_repeats WHERE uid = ?',
+          [rowkey],
+        );
       default:
         // From a newer version: kept as registers until this one is updated.
         return const {};
@@ -399,11 +401,22 @@ class SyncEngine implements AutomaticWrites {
           _db.execute('DELETE FROM todo_repeats WHERE uid = ?', [rowkey]);
         } else {
           _db.execute(
-            'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category, reminders) VALUES (?, ?, ?, ?, ?, ?, ?, ?) '
+            'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category, reminders, subtasks) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT (uid) DO UPDATE SET text = excluded.text, rule = excluded.rule, '
             'start = excluded.start, until = excluded.until, time = excluded.time, category = excluded.category, '
-            'reminders = excluded.reminders',
-            [rowkey, f['text'] ?? '', f['rule'], f['start'], f['until'], f['time'], f['category'], f['reminders']],
+            'reminders = excluded.reminders, subtasks = excluded.subtasks',
+            [
+              rowkey,
+              f['text'] ?? '',
+              f['rule'],
+              f['start'],
+              f['until'],
+              f['time'],
+              f['category'],
+              f['reminders'],
+              f['subtasks'],
+            ],
           );
         }
     }
@@ -647,6 +660,9 @@ class SyncEngine implements AutomaticWrites {
   /// the same everywhere.
   ///
   /// Returns the journal days that were here, to remove their files.
+  /// Reads the latest edit numbers again, after a rolled-back merge.
+  void forgetCounts() => _lastTs = _lastSeq = null;
+
   List<String> clearForJoining() {
     final days = [for (final r in _db.select('SELECT day FROM journal')) r['day'] as String];
     store.transaction(() {
