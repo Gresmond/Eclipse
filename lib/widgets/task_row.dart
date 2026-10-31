@@ -10,6 +10,7 @@ class _TodoRow extends StatefulWidget {
     required this.item,
     required this.day,
     this.readOnly = false,
+    this.upcomingDate,
     this.fadeIn = false,
     this.arriving = false,
     this.leaving = false,
@@ -17,6 +18,8 @@ class _TodoRow extends StatefulWidget {
     this.make,
     this.order,
   });
+
+  final DateTime? upcomingDate;
 
   final TodoScope scope;
   final TodoItem item;
@@ -103,7 +106,9 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
   _TaskDrag? _activeDrag;
 
   Future<void> _fadeForNesting() async {
-    if (!mounted) return; // A source hidden by a week/month preview has already left.
+    if (!mounted) {
+      return; // A source hidden by a week/month preview has already left.
+    }
     setState(() => _nestingOut = true);
     await Future<void>.delayed(Motion.morph);
   }
@@ -253,8 +258,12 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
       key: _subtaskKey(index),
       onWillAcceptWithDetails: (details) {
         final from = details.data.index;
-        if (details.data.itemId != item.id || from >= item.subtasks.length) return false;
-        if (!item.numbered && item.subtasks[from].done != child.done) return false;
+        if (details.data.itemId != item.id || from >= item.subtasks.length) {
+          return false;
+        }
+        if (!item.numbered && item.subtasks[from].done != child.done) {
+          return false;
+        }
         if (from != index) {
           final order = [..._subtaskOrder];
           final to = order.indexOf(index);
@@ -333,7 +342,9 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
   static bool _sameSteps(List<TodoSubtask> a, List<TodoSubtask> b) {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
-      if (a[i].text != b[i].text || a[i].numbered != b[i].numbered) return false;
+      if (a[i].text != b[i].text || a[i].numbered != b[i].numbered) {
+        return false;
+      }
     }
     return true;
   }
@@ -402,147 +413,167 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
               child: HoverFill(
                 hover: _hover,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: Row(
-                    children: [
-                      _Check(done: done, hover: _hover, pressed: _pressed),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: AnimatedDefaultTextStyle(
-                          duration: Motion.click,
-                          curve: Motion.clickCurve,
-                          style: TextStyle(
-                            fontFamily: Fonts.body,
-                            fontSize: 15,
-                            height: 1.35,
-                            color: done
-                                ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
-                                : p.ink,
-                            decoration: done ? TextDecoration.lineThrough : null,
-                            decorationColor: p.inkMuted.withValues(alpha: 0.45),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              AnimatedContainer(
-                                duration: Motion.hover,
-                                curve: Motion.hoverCurve,
-                                decoration: BoxDecoration(
-                                  color: p.accent.withValues(alpha: _nestOver ? 0.18 : 0),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text.rich(
-                                  TextSpan(
+                  padding: EdgeInsets.symmetric(horizontal: widget.upcomingDate == null ? 8 : 0, vertical: 4),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: widget.upcomingDate == null ? 43 : 0),
+                    child: Row(
+                      children: [
+                        if (widget.upcomingDate == null) ...[
+                          _Check(done: done, hover: _hover, pressed: _pressed),
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: AnimatedDefaultTextStyle(
+                            duration: Motion.click,
+                            curve: Motion.clickCurve,
+                            style: TextStyle(
+                              fontFamily: Fonts.body,
+                              fontSize: 15,
+                              height: 1.35,
+                              color: done
+                                  ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
+                                  : p.ink,
+                              decoration: done ? TextDecoration.lineThrough : null,
+                              decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                AnimatedContainer(
+                                  duration: Motion.hover,
+                                  curve: Motion.hoverCurve,
+                                  decoration: BoxDecoration(
+                                    color: p.accent.withValues(alpha: _nestOver ? 0.18 : 0),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      if (item.dueTime case final time?)
-                                        TextSpan(
-                                          text: '${clockLabel(time)}  ',
-                                          style: _timeStyle(p).copyWith(height: 1.35),
+                                      if (widget.upcomingDate case final date?)
+                                        Padding(
+                                          padding: const EdgeInsets.only(bottom: 8),
+                                          child: Text.rich(
+                                            TextSpan(
+                                              children: [
+                                                TextSpan(
+                                                  text: weekdayNames[date.weekday - 1],
+                                                  style: TextStyle(
+                                                    fontFamily: Fonts.ui,
+                                                    fontSize: 12,
+                                                    color: p.inkMuted,
+                                                  ),
+                                                ),
+                                                if (item.dueTime case final time?)
+                                                  TextSpan(
+                                                    text: '  ·  ${clockLabel(time)}',
+                                                    style: _timeStyle(p).copyWith(fontSize: 12, color: p.inkMuted),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        )
+                                      else if (item.dueTime case final time?)
+                                        Text(
+                                          clockLabel(time),
+                                          style: _timeStyle(p).copyWith(
+                                            fontSize: 12,
+                                            color: p.inkMuted,
+                                            height: 1.35,
+                                            decoration: TextDecoration.none,
+                                          ),
                                         ),
-                                      TextSpan(text: item.text),
+                                      Text(item.text, maxLines: 2, overflow: TextOverflow.ellipsis),
                                     ],
                                   ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ),
-                              if (item.subtasks.isNotEmpty)
-                                Text(
-                                  '${item.subtasks.where((child) => child.done).length}/${item.subtasks.length} complete',
-                                  style: TextStyle(fontSize: 12, color: p.inkMuted, decoration: TextDecoration.none),
-                                ),
-                              // A birthday looks like any other task here.
-                              if (repeat != null && !item.birthday)
-                                Row(
-                                  children: [
-                                    Icon(Icons.repeat_rounded, size: 12, color: p.inkMuted),
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: Text(
-                                        repeat.rule.label,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: p.inkMuted,
-                                          decoration: TextDecoration.none,
+                                if (item.subtasks.isNotEmpty)
+                                  Text(
+                                    '${item.subtasks.where((child) => child.done).length} of ${item.subtasks.length} subtasks complete',
+                                    style: TextStyle(fontSize: 12, color: p.inkMuted, decoration: TextDecoration.none),
+                                  ),
+                                // A birthday looks like any other task here.
+                                if (repeat != null && !item.birthday)
+                                  Row(
+                                    children: [
+                                      Icon(Icons.repeat_rounded, size: 12, color: p.inkMuted),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          repeat.rule.label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: p.inkMuted,
+                                            decoration: TextDecoration.none,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (carried) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: p.missed.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.history_rounded, size: 12, color: p.missed),
-                              const SizedBox(width: 4),
-                              Text(
-                                dayMonth(item.since),
-                                style: TextStyle(
-                                  fontFamily: Fonts.ui,
-                                  fontSize: 12,
-                                  color: p.missed,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // As far from the buttons as they are from the row's right edge.
-                        if (!widget.readOnly) const SizedBox(width: 8),
-                      ],
-                      if (!widget.readOnly)
-                        IgnorePointer(
-                          ignoring: !_hover || widget.leaving,
-                          child: ExcludeFocus(
-                            excluding: !_hover || widget.leaving,
-                            child: AnimatedOpacity(
-                              opacity: _hover ? 1 : 0,
-                              duration: Motion.hover,
-                              curve: Motion.hoverCurve,
-                              onEnd: () {
-                                if (mounted && !_hover) setState(() => _actions = false);
-                              },
-                              child: !_actions
-                                  // The three buttons' room, so the text never reflows.
-                                  ? const SizedBox(width: 3 * _TaskAction.size, height: _TaskAction.size)
-                                  : Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        _TaskAction(
-                                          tooltip: 'Add subtask',
-                                          icon: Icons.playlist_add_rounded,
-                                          onPressed: () => _editSubtask(state),
-                                        ),
-                                        _TaskAction(
-                                          tooltip: 'Edit task',
-                                          icon: Icons.edit_rounded,
-                                          onPressed: () =>
-                                              _editTask(context, widget.scope, item, widget.day, make: widget.make),
-                                        ),
-                                        _TaskAction(
-                                          tooltip: 'Remove',
-                                          icon: Icons.close_rounded,
-                                          onPressed: () => _removeTask(context, item, widget.day, widget.onRemove),
-                                        ),
-                                      ],
-                                    ),
+                                    ],
+                                  ),
+                              ],
                             ),
                           ),
                         ),
-                    ],
+                        if (carried) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: p.missed.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Tooltip(
+                              message: 'Originally planned for ${dayMonth(item.since)}',
+                              child: Icon(Icons.history_rounded, size: 12, color: p.missed),
+                            ),
+                          ),
+                          // As far from the buttons as they are from the row's right edge.
+                          if (!widget.readOnly) const SizedBox(width: 8),
+                        ],
+                        if (!widget.readOnly)
+                          IgnorePointer(
+                            ignoring: !_hover || widget.leaving,
+                            child: ExcludeFocus(
+                              excluding: !_hover || widget.leaving,
+                              child: AnimatedOpacity(
+                                opacity: _hover ? 1 : 0,
+                                duration: Motion.hover,
+                                curve: Motion.hoverCurve,
+                                onEnd: () {
+                                  if (mounted && !_hover) {
+                                    setState(() => _actions = false);
+                                  }
+                                },
+                                child: !_actions
+                                    // The three buttons' room, so the text never reflows.
+                                    ? const SizedBox(width: 3 * _TaskAction.size, height: _TaskAction.size)
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          _TaskAction(
+                                            tooltip: 'Add subtask',
+                                            icon: Icons.playlist_add_rounded,
+                                            onPressed: () => _editSubtask(state),
+                                          ),
+                                          _TaskAction(
+                                            tooltip: 'Edit task',
+                                            icon: Icons.edit_rounded,
+                                            onPressed: () =>
+                                                _editTask(context, widget.scope, item, widget.day, make: widget.make),
+                                          ),
+                                          _TaskAction(
+                                            tooltip: 'Remove',
+                                            icon: Icons.close_rounded,
+                                            onPressed: () => _removeTask(context, item, widget.day, widget.onRemove),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -559,7 +590,10 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              Padding(padding: const EdgeInsets.only(left: 18), child: parentRow),
+              Padding(
+                padding: EdgeInsets.only(left: widget.upcomingDate == null ? 18 : 0),
+                child: parentRow,
+              ),
               if (item.subtasks.isNotEmpty)
                 // Centred on the checkbox, which is centred in its row.
                 Positioned(
@@ -877,7 +911,9 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
                             duration: Motion.hover,
                             curve: Motion.hoverCurve,
                             onEnd: () {
-                              if (mounted && !_hover) setState(() => _actions = false);
+                              if (mounted && !_hover) {
+                                setState(() => _actions = false);
+                              }
                             },
                             child: !_actions
                                 // The two buttons' room, so the text never reflows.

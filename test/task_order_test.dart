@@ -34,7 +34,9 @@ void main() {
     }
     state.addTodo(TodoScope.today, 'Project');
     state.setTodoSubtasks(TodoScope.today, named(TodoScope.today, 'Project'), [const TodoSubtask('Step')]);
-    state.orderTodos([for (final t in ['C', 'A', 'B']) named(TodoScope.today, t)]);
+    state.orderTodos([
+      for (final t in ['C', 'A', 'B']) named(TodoScope.today, t),
+    ]);
     expect(texts(TodoScope.today), ['Project', 'C', 'A', 'B'], reason: 'the group with subtasks stays first');
 
     state.addTodo(TodoScope.today, 'D');
@@ -66,13 +68,23 @@ void main() {
     }
     await show(tester);
     var start = tester.getCenter(find.text('Third'));
-    await tester.dragFrom(start, tester.getTopLeft(find.text('First')) + const Offset(20, 1) - start);
+    await tester.dragFrom(
+      start,
+      tester.getTopLeft(find.ancestor(of: find.text('First'), matching: find.byType(TaskRow))) +
+          const Offset(20, 1) -
+          start,
+    );
     await tester.pumpAndSettle();
     expect(texts(TodoScope.today), ['Third', 'First', 'Second']);
     expect(state.todos[TodoScope.today]!.every((t) => t.subtasks.isEmpty), isTrue);
 
     start = tester.getCenter(find.text('Third'));
-    await tester.dragFrom(start, tester.getBottomLeft(find.text('Second')) + const Offset(20, 1) - start);
+    await tester.dragFrom(
+      start,
+      tester.getBottomLeft(find.ancestor(of: find.text('Second'), matching: find.byType(TaskRow))) +
+          const Offset(20, -1) -
+          start,
+    );
     await tester.pumpAndSettle();
     expect(texts(TodoScope.today), ['First', 'Second', 'Third']);
 

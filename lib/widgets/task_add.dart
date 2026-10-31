@@ -225,13 +225,13 @@ class _AddTaskState extends State<_AddTask> {
                         textCapitalization: TextCapitalization.sentences,
                         inputFormatters: const [NoteInputFormatter()],
                         // As a task's name, so the line is a task's height.
-                        style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink),
+                        style: _taskInputStyle(p),
                         cursorColor: p.accent,
                         decoration: InputDecoration(
                           isDense: true,
                           border: InputBorder.none,
                           hintText: 'Add task',
-                          hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
+                          hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
                           contentPadding: EdgeInsets.zero,
                         ),
                         onSubmitted: (_) => _submit(state),
@@ -266,6 +266,9 @@ class _AddTaskState extends State<_AddTask> {
 
 /// A task's time, in the sleep schedule's semi-mono.
 TextStyle _timeStyle(Palette p) => SleepName.timeStyle(p);
+
+/// Both task-entry fields use the same typography as the tasks they create.
+TextStyle _taskInputStyle(Palette p) => TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink);
 
 /// A rounded field for a new task's name, as at the foot of a to-do card.
 class _Field extends StatelessWidget {
@@ -305,13 +308,13 @@ class _Field extends StatelessWidget {
                 focusNode: focus,
                 textCapitalization: TextCapitalization.sentences,
                 inputFormatters: const [NoteInputFormatter()],
-                style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.ink),
+                style: _taskInputStyle(p),
                 cursorColor: p.accent,
                 decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
                   hintText: 'Add task',
-                  hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
+                  hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
                   contentPadding: const EdgeInsets.symmetric(vertical: 8),
                 ),
                 onSubmitted: (_) => onSubmitted(),
@@ -336,8 +339,6 @@ const _birthdayIcon = Icons.celebration_rounded;
 class _ShowToggle extends StatelessWidget {
   const _ShowToggle({required this.icon, required this.what, required this.shown, required this.onPressed});
 
-  static const size = 28.0;
-
   final IconData icon;
 
   /// What it shows, as in "Show [what]".
@@ -346,28 +347,6 @@ class _ShowToggle extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return IconButton(
-      tooltip: shown ? 'Hide $what' : 'Show $what',
-      onPressed: onPressed,
-      constraints: const BoxConstraints.tightFor(width: size, height: size),
-      padding: EdgeInsets.zero,
-      style: ButtonStyle(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: const WidgetStatePropertyAll(Size(size, size)),
-        shape: const WidgetStatePropertyAll(CircleBorder()),
-        backgroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
-        ),
-        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-      ),
-      icon: TweenAnimationBuilder<Color?>(
-        tween: ColorTween(end: shown ? p.accent : p.inkMuted.withValues(alpha: 0.45)),
-        duration: Motion.click,
-        curve: Motion.clickCurve,
-        builder: (context, colour, _) => Icon(icon, size: 16, color: colour),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      HeaderIconButton(tooltip: shown ? 'Hide $what' : 'Show $what', icon: icon, onPressed: onPressed);
 }

@@ -68,10 +68,14 @@ void main() {
     final week = find.byType(WeekCard), later = find.byType(FurtherAheadCard);
     Finder row(String text) => find.ancestor(of: find.text(text), matching: find.byType(TaskRow));
     expect(find.descendant(of: later, matching: row('Rego')), findsOneWidget);
+    final laterScroll = find.descendant(of: later, matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.text('Rates'), 60, scrollable: laterScroll);
     expect(find.descendant(of: later, matching: row('Rates')), findsOneWidget);
     expect(find.descendant(of: later, matching: row('Papa')), findsNothing);
 
     // A task ticks off into Today.
+    await tester.scrollUntilVisible(find.text('Rego'), -60, scrollable: laterScroll);
+    await tester.ensureVisible(find.text('Rego'));
     await tester.tap(find.descendant(of: later, matching: find.text('Rego')));
     await tester.pumpAndSettle();
     expect(find.descendant(of: later, matching: find.text('Rego')), findsNothing);
@@ -79,6 +83,8 @@ void main() {
     expect(state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Rego').done, isTrue);
 
     // A repeat's next time is made as it's ticked, and goes the same way.
+    await tester.scrollUntilVisible(find.text('Rates'), 60, scrollable: laterScroll);
+    await tester.ensureVisible(find.text('Rates'));
     await tester.tap(find.descendant(of: later, matching: find.text('Rates')));
     await tester.pumpAndSettle();
     expect(find.descendant(of: later, matching: find.text('Rates')), findsNothing);

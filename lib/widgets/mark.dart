@@ -10,6 +10,33 @@ import 'lazy_motion.dart';
 /// fades in and scales up from 60%.
 void paintMark(Canvas canvas, Offset centre, IconData icon, double size, Color color, double amount) {
   if (amount <= 0) return;
+  if (icon == Icons.check_rounded || icon == Icons.close_rounded) {
+    canvas.save();
+    canvas.translate(centre.dx, centre.dy);
+    canvas.scale(0.6 + 0.4 * amount);
+    final path = Path();
+    if (icon == Icons.close_rounded) {
+      path.moveTo(-size * 0.23, -size * 0.23);
+      path.lineTo(size * 0.23, size * 0.23);
+      path.moveTo(size * 0.23, -size * 0.23);
+      path.lineTo(-size * 0.23, size * 0.23);
+    } else {
+      path.moveTo(-size * 0.28, 0);
+      path.lineTo(-size * 0.08, size * 0.20);
+      path.lineTo(size * 0.28, -size * 0.20);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: color.a * amount)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size * 0.085
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.restore();
+    return;
+  }
   final g = _glyph(icon, size, color.withValues(alpha: color.a * amount));
   canvas.save();
   canvas.translate(centre.dx, centre.dy);

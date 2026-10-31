@@ -119,6 +119,7 @@ class TaskRow extends StatelessWidget {
     required this.item,
     required this.day,
     this.readOnly = false,
+    this.upcomingDate,
     this.fadeIn = false,
     this.arriving = false,
     this.leaving = false,
@@ -126,6 +127,8 @@ class TaskRow extends StatelessWidget {
     this.make,
     this.order,
   });
+
+  final DateTime? upcomingDate;
 
   final TodoScope scope;
   final TodoItem item;
@@ -161,6 +164,7 @@ class TaskRow extends StatelessWidget {
       target: item.uid,
       child: _TodoRow(
         scope: scope,
+        upcomingDate: upcomingDate,
         item: item,
         day: day,
         readOnly: readOnly,

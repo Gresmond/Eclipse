@@ -232,7 +232,7 @@ void main() {
     expect(task(TodoScope.today).subtasks.map((s) => s.text), ['First step', 'Small task']);
     expect(find.byTooltip('Expand subtasks'), findsOneWidget);
     expect(find.text('Small task'), findsNothing);
-    expect(find.text('0/2 complete'), findsOneWidget);
+    expect(find.text('0 of 2 subtasks complete'), findsOneWidget);
   });
 
   testWidgets('a task nests under a task in the same list', (tester) async {
@@ -349,7 +349,7 @@ void main() {
     await tester.tap(find.text('Research details'));
     await tester.pumpAndSettle();
     expect(task(TodoScope.today).done, isTrue);
-    expect(find.text('1/1 complete'), findsOneWidget);
+    expect(find.text('1 of 1 subtasks complete'), findsOneWidget);
     const dir = String.fromEnvironment('SCREENSHOT_DIR');
     if (dir.isNotEmpty) {
       final view = tester.binding.renderViews.first;

@@ -143,12 +143,7 @@ class _Header extends StatelessWidget {
             child: _DateButton(
               enabled: month == null && !state.viewingYear,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                decoration: BoxDecoration(
-                  color: p.tile.withValues(alpha: 0.8),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: p.border),
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 child: AnimatedSize(
                   duration: Motion.morph,
                   curve: Motion.morphCurve,
@@ -166,17 +161,19 @@ class _Header extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            kicker.toUpperCase(),
-                            style: TextStyle(
-                              fontFamily: Fonts.ui,
-                              fontSize: 12,
-                              letterSpacing: 2.2,
-                              fontWeight: FontWeight.w700,
-                              color: p.inkMuted.withValues(alpha: 0.8),
+                          ...[
+                            Text(
+                              kicker.toUpperCase(),
+                              style: TextStyle(
+                                fontFamily: Fonts.ui,
+                                fontSize: 12,
+                                letterSpacing: 2.2,
+                                fontWeight: FontWeight.w700,
+                                color: p.inkMuted.withValues(alpha: 0.8),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
+                            const SizedBox(height: 4),
+                          ],
                           Text(title, style: titleStyle),
                         ],
                       ),

@@ -21,20 +21,18 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
     final past = state.viewDay != null;
     final planned = _Planned(state, day, past: past);
     final tasks = planned.days.expand((d) => d);
-    final open = tasks.where((t) => !t.$2.done).length;
     final added = _added(day, [for (final (_, item) in tasks) item.id]);
     final today = state.today;
 
     return Tile(
-      padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
+      padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: 4),
+            padding: const EdgeInsets.only(left: 4, right: 12),
             child: TileHeader(
               title: 'Week ahead',
-              caption: open == 0 && tasks.isNotEmpty ? 'All clear' : '$open open',
               trailingAtEnd: true,
               trailing: _ShowToggle(
                 icon: Icons.date_range_rounded,
@@ -44,16 +42,19 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 22),
           // Another day's week fades through as a whole.
           Expanded(
-            child: FadeThrough(
-              layoutBuilder: FadeThrough.fill,
-              child: _WeekList(
-                key: ValueKey(dateKey(day)),
-                planned: planned,
-                emptyDays: state.weekEmptyDays,
-                added: added,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4, right: 12),
+              child: FadeThrough(
+                layoutBuilder: FadeThrough.fill,
+                child: _WeekList(
+                  key: ValueKey(dateKey(day)),
+                  planned: planned,
+                  emptyDays: state.weekEmptyDays,
+                  added: added,
+                ),
               ),
             ),
           ),
@@ -187,7 +188,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
         padding: const EdgeInsets.fromLTRB(26, 6, 0, 4),
         child: Text(
           'Nothing planned',
-          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted.withValues(alpha: 0.7)),
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
         ),
       );
     } else {
@@ -200,10 +201,17 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
             i,
             _DayHeading(
               parts: [
-                (_shortDate(date, state.today), true),
-                if (name != null) (name, i == 0),
-                if (name != 'Today') (weekday, false),
+                if (name == 'Today')
+                  ('Today', true)
+                else ...[
+                  if (name != null) (name, true),
+                  (_shortDate(date, state.today), name == null),
+                  (weekday, false),
+                ],
               ],
+              caption: widget.planned.days[i].where((t) => !t.$2.done).isEmpty && widget.planned.days[i].isNotEmpty
+                  ? 'All done'
+                  : '${widget.planned.days[i].where((t) => !t.$2.done).length} open',
               strong: i == 0,
               first: first,
             ),
@@ -217,7 +225,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
                 padding: const EdgeInsets.fromLTRB(26, 6, 0, 2),
                 child: Text(
                   'Nothing due',
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted.withValues(alpha: 0.7)),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
                 ),
               ),
             ),
@@ -251,29 +259,42 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
     return ValueListenableBuilder(
       valueListenable: _over[i],
       builder: (context, over, sliver) => TweenAnimationBuilder<double>(
-        tween: Tween(end: over ? 0.08 : 0),
+        tween: Tween(
+          end: over
+              ? 0.08
+              : i == 0
+              ? 0.045
+              : 0,
+        ),
         duration: Motion.hover,
         curve: Motion.hoverCurve,
         builder: (context, alpha, sliver) => DecoratedSliver(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            color: p.accent.withValues(alpha: alpha),
+            color: i == 0
+                ? (p.name == 'Sunrise' ? const Color(0xFFFCF0F2) : p.empty.withValues(alpha: 0.6))
+                : p.accent.withValues(alpha: alpha),
+            border: i == 0 ? Border.all(color: p.name == 'Sunrise' ? const Color(0xFFEAD2D9) : p.border) : null,
           ),
           sliver: sliver!,
         ),
         child: sliver,
       ),
-      child: SliverPadding(padding: const EdgeInsets.only(right: 8), sliver: group),
+      child: SliverPadding(
+        padding: EdgeInsets.fromLTRB(i == 0 ? 18 : 0, i == 0 ? 18 : 0, i == 0 ? 18 : 8, i == 0 ? 12 : 0),
+        sliver: group,
+      ),
     );
   }
 }
 
 /// A day's heading, its parts joined with dots, over a rule.
 class _DayHeading extends StatelessWidget {
-  const _DayHeading({required this.parts, this.strong = false, this.first = false, this.instant = false});
+  const _DayHeading({required this.parts, this.caption, this.strong = false, this.first = false});
 
   /// The heading's parts; strong ones are full ink.
   final List<(String, bool)> parts;
+  final String? caption;
 
   /// All in full ink: today's.
   final bool strong;
@@ -282,38 +303,53 @@ class _DayHeading extends StatelessWidget {
   final bool first;
 
   /// Takes its room at once instead of easing to it.
-  final bool instant;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     // Easing when a day comes in above it, or the one above goes.
     return AnimatedPadding(
-      duration: instant ? Duration.zero : Motion.morph,
+      duration: Motion.morph,
       curve: Motion.morphCurve,
-      padding: EdgeInsets.only(top: first ? 12 : 22, bottom: 4),
+      padding: EdgeInsets.only(top: first ? 0 : 28, bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text.rich(
-            TextSpan(
-              children: [
-                for (final (i, (part, full)) in parts.indexed) ...[
-                  if (i > 0)
-                    TextSpan(
-                      text: '  ·  ',
-                      style: TextStyle(color: p.inkMuted.withValues(alpha: 0.5)),
-                    ),
+          Row(
+            children: [
+              Expanded(
+                child: Text.rich(
                   TextSpan(
-                    text: part,
-                    style: TextStyle(color: strong || full ? p.ink : p.inkMuted),
+                    children: [
+                      for (final (i, (part, full)) in parts.indexed) ...[
+                        if (i > 0)
+                          TextSpan(
+                            text: '  ·  ',
+                            style: TextStyle(color: p.inkMuted.withValues(alpha: 0.5)),
+                          ),
+                        TextSpan(
+                          text: part,
+                          style: TextStyle(color: strong || full ? p.ink : p.inkMuted),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-              ],
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w700, color: p.ink),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: Fonts.ui,
+                    fontSize: strong ? 18 : 16,
+                    fontWeight: FontWeight.w600,
+                    color: p.ink,
+                  ),
+                ),
+              ),
+              if (caption case final label?)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: StatusPill(label: label.toUpperCase(), complete: label == 'All done'),
+                ),
+            ],
           ),
           const SizedBox(height: 6),
           Container(height: 1, color: p.borderSoft),
@@ -329,7 +365,9 @@ void _refocus(FocusNode focus, TextEditingController controller, TextSelection s
   focus.requestFocus();
   // After the focus change, which is applied as a microtask.
   scheduleMicrotask(() {
-    if (selection.isValid && selection.end <= controller.text.length) controller.selection = selection;
+    if (selection.isValid && selection.end <= controller.text.length) {
+      controller.selection = selection;
+    }
   });
 }
 

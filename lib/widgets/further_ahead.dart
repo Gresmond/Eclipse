@@ -3,7 +3,9 @@ part of 'todo_panel.dart';
 /// Tasks more than a week away, under their days (only days with any),
 /// and the next time each repeating task comes round after the week.
 class FurtherAheadCard extends StatefulWidget {
-  const FurtherAheadCard({super.key});
+  const FurtherAheadCard({super.key, this.firstCheckboxInset});
+
+  final ValueNotifier<double>? firstCheckboxInset;
 
   @override
   State<FurtherAheadCard> createState() => _FurtherAheadCardState();
@@ -36,15 +38,15 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
     final today = state.today;
 
     return Tile(
-      padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
+      padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: 4),
+            padding: const EdgeInsets.only(left: 4, right: 12),
             child: TileHeader(
               title: 'Further ahead',
-              caption: '$count planned',
+              badge: StatusPill(label: '$count PLANNED'),
               trailingAtEnd: true,
               trailing: AnimatedOpacity(
                 opacity: past ? 0 : 1,
@@ -62,11 +64,25 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 22),
           Expanded(
-            child: FadeThrough(
-              layoutBuilder: FadeThrough.fill,
-              child: _LaterList(key: ValueKey(dateKey(day)), groups: groups, birthdays: birthdays, added: added),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4, right: 12),
+              child: FadeThrough(
+                layoutBuilder: FadeThrough.fill,
+                child: widget.firstCheckboxInset == null
+                    ? _LaterList(key: ValueKey(dateKey(day)), groups: groups, birthdays: birthdays, added: added)
+                    : ValueListenableBuilder<double>(
+                        valueListenable: widget.firstCheckboxInset!,
+                        builder: (context, inset, _) => _LaterList(
+                          key: ValueKey(dateKey(day)),
+                          groups: groups,
+                          birthdays: birthdays,
+                          added: added,
+                          topInset: inset,
+                        ),
+                      ),
+              ),
             ),
           ),
           _FoldAway(
@@ -86,7 +102,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
 /// One day's further-ahead list: each date's tasks, then the repeats due
 /// round on it; tasks without a day last.
 class _LaterList extends StatefulWidget {
-  const _LaterList({super.key, required this.groups, required this.birthdays, required this.added});
+  const _LaterList({super.key, required this.groups, required this.birthdays, required this.added, this.topInset = 0});
 
   final List<(DateTime?, List<_Later>)> groups;
 
@@ -95,6 +111,7 @@ class _LaterList extends StatefulWidget {
 
   /// Tasks just added, which fade in.
   final Set<int> added;
+  final double topInset;
 
   @override
   State<_LaterList> createState() => _LaterListState();
@@ -197,12 +214,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
           widget.birthdays || AppScope.read(context).viewDay != null
               ? 'Nothing more than a week away'
               : 'Nothing but birthdays',
-          style: TextStyle(
-            fontFamily: Fonts.body,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: p.inkMuted.withValues(alpha: 0.7),
-          ),
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, fontWeight: FontWeight.w500, color: p.inkMuted),
         ),
       );
     }
@@ -211,89 +223,121 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
         controller: controller,
         scrollCacheExtent: const ScrollCacheExtent.pixels(80),
         slivers: [
-          for (final (i, g) in groups.indexed)
+          SliverPadding(padding: EdgeInsets.only(top: widget.topInset)),
+          for (final g in groups)
             SliverPadding(
               key: ValueKey(g.key),
-              padding: const EdgeInsets.only(right: 8),
-              sliver: SliverMainAxisGroup(
+              padding: const EdgeInsets.only(bottom: 24),
+              sliver: SliverCrossAxisGroup(
                 slivers: [
-                  SliverToBoxAdapter(
-                    // A day comes and goes with its last tasks.
-                    child: Appear(
-                      animate: false,
-                      shown: current.contains(g.key),
-                      child: _DayHeading(
-                        instant: instant,
-                        first: i == 0,
-                        parts: switch (g.date) {
-                          null => const [('No date', true)],
-                          final date => [
-                            (_shortDate(date, state.today), true),
-                            (weekdayNames[date.weekday - 1], false),
-                          ],
-                        },
+                  SliverConstrainedCrossAxis(
+                    maxExtent: 56,
+                    sliver: SliverToBoxAdapter(
+                      child: Appear(
+                        animate: false,
+                        shown: current.contains(g.key),
+                        child: AnimatedPadding(
+                          duration: instant ? Duration.zero : Motion.morph,
+                          padding: EdgeInsets.zero,
+                          child: _UpcomingDateTile(date: g.date),
+                        ),
                       ),
                     ),
                   ),
-                  LazyTaskSliver(
-                    ids: [
-                      for (final s in shown[g.key]!) (s.task.$1, s.task.$2.id),
-                      for (final repeat in g.repeats) repeat.uid,
-                    ],
-                    itemBuilder: (context, index) {
-                      final tasks = shown[g.key]!;
-                      if (index >= tasks.length) {
-                        final repeat = g.repeats[index - tasks.length];
-                        final (fadeIn, leaving) = (false, hidden.contains(repeat.uid));
-                        if (repeat.birthday) {
-                          return _LaterRow(day: day, repeat: repeat, date: g.date, fadeIn: fadeIn, leaving: leaving);
-                        }
-                        // Ticked like any other task, it's made first, then
-                        // closes up here as it goes to Today: ticked.
-                        final date = g.date!;
-                        final made = leaving ? _made(state, '${repeat.uid}@${dateKey(date)}') : null;
-                        TodoItem make() => state.occurrence(repeat, date);
-                        return TaskRow(
-                          key: ValueKey(repeat.uid),
-                          scope: TodoScope.month,
-                          item: made ?? _unmade(repeat, date),
-                          day: day,
-                          readOnly: readOnly,
-                          fadeIn: fadeIn,
-                          leaving: leaving,
-                          make: made == null ? make : null,
-                          onRemove: () => state.removeTodo(TodoScope.month, make()),
-                        );
-                      }
-                      final (:task, :arriving, :leaving) = tasks[index];
-                      final (scope, item) = task;
-                      final fadeIn = widget.added.contains(item.id) || arriving;
-                      void remove() => _remove(g.key, task, () => state.removeTodo(scope, item, day: day));
-                      if (item.birthday) {
-                        return _LaterRow(
-                          key: ValueKey((scope, item.id)),
-                          day: day,
-                          task: task,
-                          readOnly: readOnly,
-                          fadeIn: fadeIn,
-                          leaving: leaving,
-                          onRemove: remove,
-                        );
-                      }
-                      // Leaving because it was ticked, it closes up ticked.
-                      final latest = leaving ? _latest(state, item) : null;
-                      return TaskRow(
-                        key: ValueKey((scope, item.id)),
-                        scope: latest?.$1 ?? scope,
-                        item: latest?.$2 ?? item,
-                        day: day,
-                        readOnly: readOnly,
-                        fadeIn: fadeIn,
-                        leaving: leaving,
-                        onRemove: remove,
-                        order: _order(g.key),
-                      );
-                    },
+                  SliverConstrainedCrossAxis(maxExtent: 14, sliver: SliverToBoxAdapter(child: SizedBox.shrink())),
+                  SliverCrossAxisExpanded(
+                    flex: 1,
+                    sliver: SliverMainAxisGroup(
+                      slivers: [
+                        LazyTaskSliver(
+                          ids: [
+                            for (final s in shown[g.key]!) (s.task.$1, s.task.$2.id),
+                            for (final repeat in g.repeats) repeat.uid,
+                          ],
+                          itemBuilder: (context, index) {
+                            final tasks = shown[g.key]!;
+                            if (index >= tasks.length) {
+                              final repeat = g.repeats[index - tasks.length];
+                              final (fadeIn, leaving) = (false, hidden.contains(repeat.uid));
+                              if (repeat.birthday) {
+                                return _LaterRow(
+                                  day: day,
+                                  repeat: repeat,
+                                  date: g.date,
+                                  fadeIn: fadeIn,
+                                  leaving: leaving,
+                                );
+                              }
+                              // Ticked like any other task, it's made first, then
+                              // closes up here as it goes to Today: ticked.
+                              final date = g.date!;
+                              final made = leaving ? _made(state, '${repeat.uid}@${dateKey(date)}') : null;
+                              TodoItem make() => state.occurrence(repeat, date);
+                              return TaskRow(
+                                upcomingDate: g.date,
+                                key: ValueKey(repeat.uid),
+                                scope: TodoScope.month,
+                                item: made ?? _unmade(repeat, date),
+                                day: day,
+                                readOnly: readOnly,
+                                fadeIn: fadeIn,
+                                leaving: leaving,
+                                make: made == null ? make : null,
+                                onRemove: () => state.removeTodo(TodoScope.month, make()),
+                              );
+                            }
+                            final (:task, :arriving, :leaving) = tasks[index];
+                            final (scope, item) = task;
+                            final fadeIn = widget.added.contains(item.id) || arriving;
+                            void remove() => _remove(g.key, task, () => state.removeTodo(scope, item, day: day));
+                            if (item.birthday) {
+                              return _LaterRow(
+                                key: ValueKey((scope, item.id)),
+                                day: day,
+                                task: task,
+                                date: g.date,
+                                readOnly: readOnly,
+                                fadeIn: fadeIn,
+                                leaving: leaving,
+                                onRemove: remove,
+                              );
+                            }
+                            // Leaving because it was ticked, it closes up ticked.
+                            final latest = leaving ? _latest(state, item) : null;
+                            return TaskRow(
+                              upcomingDate: g.date,
+                              key: ValueKey((scope, item.id)),
+                              scope: latest?.$1 ?? scope,
+                              item: latest?.$2 ?? item,
+                              day: day,
+                              readOnly: readOnly,
+                              fadeIn: fadeIn,
+                              leaving: leaving,
+                              onRemove: remove,
+                              order: _order(g.key),
+                            );
+                          },
+                        ),
+                        if (g.date != null && current.contains(g.key))
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.calendar_today_rounded, size: 12, color: p.inkMuted),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      'In ${daysBetween(state.today, g.date!)} days',
+                                      style: TextStyle(fontSize: 12, color: p.inkMuted),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -375,110 +419,116 @@ class _LaterRowState extends State<_LaterRow> {
     final p = context.palette;
     final state = AppScope.read(context);
     final item = _item;
-    final repeat = widget.repeat ?? state.repeatOf(item);
     final scope = widget.task?.$1 ?? TodoScope.month;
     final made = widget.task != null;
-    final caption = switch (repeat) {
-      // A birthday's icon says it comes round every year.
-      _? when item.birthday => null,
-      final repeat? => repeat.rule.label,
-      null when item.subtasks.isNotEmpty =>
-        '${item.subtasks.where((child) => child.done).length}/${item.subtasks.length} complete',
-      null => null,
-    };
+    final date = widget.date;
     return Appear(
       animate: widget.fadeIn,
       shown: !widget.leaving,
       child: IgnorePointer(
         ignoring: widget.readOnly || widget.leaving,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 18, top: 2, bottom: 2),
-          child: MouseRegion(
-            onEnter: (_) => setState(() => _hover = true),
-            onExit: (_) => setState(() => _hover = false),
-            child: HoverFill(
-              hover: _hover,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 20,
-                      child: repeat == null
-                          ? null
-                          : Icon(
-                              item.birthday ? _birthdayIcon : Icons.repeat_rounded,
-                              size: 16,
-                              color: p.inkMuted.withValues(alpha: 0.8),
-                            ),
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hover = true),
+          onExit: (_) => setState(() => _hover = false),
+          child: HoverFill(
+            hover: _hover,
+            child: SizedBox(
+              width: double.infinity,
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (date != null)
+                              Text(weekdayNames[date.weekday - 1], style: TextStyle(fontSize: 12, color: p.inkMuted)),
+                            if (item.dueTime case final time?) ...[
+                              Text('  ·  ', style: TextStyle(fontSize: 12, color: p.inkMuted)),
+                              Text(clockLabel(time), style: _timeStyle(p)),
+                            ],
+                            if (item.birthday) ...[
+                              Text('  ·  ', style: TextStyle(fontSize: 12, color: p.inkMuted)),
+                              Icon(_birthdayIcon, size: 14, color: p.inkMuted),
+                              const SizedBox(width: 5),
+                              Text('Birthday', style: TextStyle(fontSize: 12, color: p.inkMuted)),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          item.text,
+                          style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink),
+                        ),
+                        if (item.subtasks.isNotEmpty)
+                          Text(
+                            '${item.subtasks.where((s) => s.done).length} of ${item.subtasks.length} subtasks complete',
+                            style: TextStyle(fontSize: 12, color: p.inkMuted),
+                          ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                  if (_hover && !widget.readOnly)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text.rich(
-                            TextSpan(
-                              children: [
-                                if (item.dueTime case final time?)
-                                  TextSpan(text: '${clockLabel(time)}  ', style: _timeStyle(p).copyWith(height: 1.35)),
-                                TextSpan(text: item.text),
-                              ],
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontFamily: Fonts.body,
-                              fontSize: 15,
-                              height: 1.35,
-                              color: item.done
-                                  ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
-                                  : p.ink,
-                              decoration: item.done ? TextDecoration.lineThrough : null,
+                          _TaskAction(
+                            tooltip: 'Edit task',
+                            icon: Icons.edit_rounded,
+                            onPressed: () => _editTask(context, scope, item, widget.day, make: made ? null : _make),
+                          ),
+                          _TaskAction(
+                            tooltip: 'Remove',
+                            icon: Icons.close_rounded,
+                            onPressed: () => _removeTask(
+                              context,
+                              item,
+                              widget.day,
+                              made ? widget.onRemove! : () => state.removeTodo(TodoScope.month, _make()),
                             ),
                           ),
-                          if (caption != null)
-                            Text(
-                              caption,
-                              style: TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted),
-                            ),
                         ],
                       ),
                     ),
-                    AnimatedOpacity(
-                      opacity: _hover ? 1 : 0,
-                      duration: Motion.hover,
-                      curve: Motion.hoverCurve,
-                      child: IgnorePointer(
-                        ignoring: !_hover,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _TaskAction(
-                              tooltip: 'Edit task',
-                              icon: Icons.edit_rounded,
-                              onPressed: () => _editTask(context, scope, item, widget.day, make: made ? null : _make),
-                            ),
-                            _TaskAction(
-                              tooltip: 'Remove',
-                              icon: Icons.close_rounded,
-                              onPressed: () => _removeTask(
-                                context,
-                                item,
-                                widget.day,
-                                made ? widget.onRemove! : () => state.removeTodo(TodoScope.month, _make()),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _UpcomingDateTile extends StatelessWidget {
+  const _UpcomingDateTile({required this.date});
+  final DateTime? date;
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final day = date;
+    return Container(
+      width: 56,
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        children: [
+          Text(
+            day == null ? 'NO DATE' : monthNames[day.month - 1].substring(0, 3).toUpperCase(),
+            style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, fontWeight: FontWeight.w600, color: p.inkMuted),
+          ),
+          if (day != null)
+            Text(
+              '${day.day}',
+              style: TextStyle(fontFamily: Fonts.display, fontSize: 28, fontWeight: FontWeight.w600, color: p.ink),
+            ),
+        ],
       ),
     );
   }

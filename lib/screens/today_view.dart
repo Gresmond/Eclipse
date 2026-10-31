@@ -10,10 +10,8 @@ import '../theme/tokens.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/note_input.dart';
-import '../widgets/progress_ring.dart';
 import '../widgets/ritual_name.dart';
 import '../widgets/search_glow.dart';
-import '../widgets/sleep_time.dart';
 import '../widgets/status_cell.dart';
 import '../widgets/tile.dart';
 import '../widgets/todo_panel.dart';
@@ -23,61 +21,82 @@ import '../widgets/welcome_tour.dart';
 /// rituals over the sleep schedule, and what's further ahead over the
 /// journal, lined up with the rituals and sleep cards. Only a card whose
 /// list outgrows it scrolls.
-class TodayView extends StatelessWidget {
+class TodayView extends StatefulWidget {
   const TodayView({super.key});
 
-  static const _gap = 20.0;
+  static const _gap = 22.0;
+
+  @override
+  State<TodayView> createState() => _TodayViewState();
+}
+
+class _TodayViewState extends State<TodayView> {
+  final _firstCheckboxInset = ValueNotifier<double>(0);
+
+  @override
+  void dispose() {
+    _firstCheckboxInset.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.habitsRevision));
     final day = state.shownDay;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // When width is tight (e.g. a tiled window under 860px), scroll sideways
-        // so columns maintain their clean proportions instead of getting squished.
-        const minContentWidth = 860.0;
-        final needsScroll = constraints.maxWidth < minContentWidth;
-        final sleepHeight = _HabitColumn.sleepHeight(state, day, constraints.maxHeight - 28);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // These are the usable bounds after the outer padding. Keep enough
+          // room for names, badges and controls, including with larger text.
+          final textScale = MediaQuery.textScalerOf(context).scale(15) / 15;
+          final minContentWidth = 1216.0 * max(1.0, textScale);
+          final sleepHeight = _HabitColumn.sleepHeight(state, day, constraints.maxHeight);
 
-        Widget content = Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Expanded(
-              flex: 11,
-              child: TourTarget(spot: TourSpot.week, child: WeekCard()),
-            ),
-            const SizedBox(width: _gap),
-            const Expanded(flex: 9, child: _HabitColumn()),
-            const SizedBox(width: _gap),
-            Expanded(
-              flex: 9,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Expanded(
-                    child: TourTarget(spot: TourSpot.later, child: FurtherAheadCard()),
-                  ),
-                  const SizedBox(height: _gap),
-                  SizedBox(
-                    height: sleepHeight,
-                    child: TourTarget(spot: TourSpot.journal, child: const _JournalCard()),
-                  ),
-                ],
+          final content = Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Expanded(
+                flex: 22,
+                child: TourTarget(spot: TourSpot.week, child: WeekCard()),
               ),
-            ),
-          ],
-        );
-
-        if (needsScroll) {
-          content = SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(width: minContentWidth, height: constraints.maxHeight, child: content),
+              const SizedBox(width: TodayView._gap),
+              Expanded(flex: 19, child: _HabitColumn(firstCheckboxInset: _firstCheckboxInset)),
+              const SizedBox(width: TodayView._gap),
+              Expanded(
+                flex: 17,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: TourTarget(
+                        spot: TourSpot.later,
+                        child: FurtherAheadCard(firstCheckboxInset: _firstCheckboxInset),
+                      ),
+                    ),
+                    const SizedBox(height: TodayView._gap),
+                    SizedBox(
+                      height: sleepHeight,
+                      child: TourTarget(spot: TourSpot.journal, child: const _JournalCard()),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           );
-        }
 
-        return Padding(padding: const EdgeInsets.fromLTRB(32, 0, 32, 28), child: content);
-      },
+          // Keep the same scroll view when resizing so task fields retain their
+          // state as the window crosses the minimum width.
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: max(minContentWidth, constraints.maxWidth),
+              height: constraints.maxHeight,
+              child: content,
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -85,7 +104,9 @@ class TodayView extends StatelessWidget {
 /// The rituals' card with the sleep schedule's below it. Their rows share
 /// the column's height evenly, so rows are the same height in both.
 class _HabitColumn extends StatelessWidget {
-  const _HabitColumn();
+  const _HabitColumn({required this.firstCheckboxInset});
+
+  final ValueNotifier<double> firstCheckboxInset;
 
   /// The sleep card's height in a column [height] tall, which the journal
   /// beside it matches.
@@ -117,7 +138,13 @@ class _HabitColumn extends StatelessWidget {
             Expanded(
               child: TourTarget(
                 spot: TourSpot.rituals,
-                child: _HabitsCard(title: 'Daily rituals', habits: rituals, allDone: 'Every ritual done. Beautiful.'),
+                child: _HabitsCard(
+                  title: 'Daily rituals',
+                  habits: rituals,
+                  allDone: 'Every ritual done. Beautiful.',
+                  cardHeight: constraints.maxHeight - sleepHeight - TodayView._gap,
+                  firstCheckboxInset: firstCheckboxInset,
+                ),
               ),
             ),
             const SizedBox(height: TodayView._gap),
@@ -141,21 +168,30 @@ class _HabitColumn extends StatelessWidget {
 }
 
 class _HabitsCard extends StatelessWidget {
-  const _HabitsCard({required this.title, required this.habits, required this.allDone, this.times = false});
+  const _HabitsCard({
+    required this.title,
+    required this.habits,
+    required this.allDone,
+    this.times = false,
+    this.cardHeight,
+    this.firstCheckboxInset,
+  });
 
   final String title;
   final List<Habit> habits;
+  final double? cardHeight;
+  final ValueNotifier<double>? firstCheckboxInset;
 
-  /// The sleep schedule: each item's time beside its name, and no tooltip.
+  /// The sleep schedule: each item's scheduled time is shown on hover.
   final bool times;
 
   /// The line under the title once every one is done.
   final String allDone;
 
   /// The card's height less its rows: padding, header and gap.
-  static const chrome = 22.0 + 60 + 10 + 12;
+  static const chrome = 24.0 + 54 + 22 + 24;
 
-  static const _minRow = 34.0, _maxRow = 52.0;
+  static const _minRow = 34.0, _maxRow = 55.0;
 
   /// Rows share the card's height, 34 to 52px each, and scroll only below
   /// that. A name too long for one line wraps, and its row grows to fit,
@@ -211,7 +247,9 @@ class _HabitsCard extends StatelessWidget {
     }
 
     final withTrail = layOut(trail: width >= _HabitRow.weekTrailFrom);
-    if (!withTrail.trail || withTrail.heights.fold(0.0, (a, b) => a + b) <= height + 0.5) return withTrail;
+    if (!withTrail.trail || withTrail.heights.fold(0.0, (a, b) => a + b) <= height + 0.5) {
+      return withTrail;
+    }
     return layOut(trail: false);
   }
 
@@ -229,7 +267,7 @@ class _HabitsCard extends StatelessWidget {
     final subtitle = done == total && total > 0 ? allDone : '';
 
     return Tile(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -241,25 +279,25 @@ class _HabitsCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TileHeader(title: title),
-                    const SizedBox(height: 6),
+                    if (subtitle.isNotEmpty) const SizedBox(height: 6),
                     // Fades through when the line changes, left-aligned so the
                     // old and new lines share their start.
-                    FadeThrough(
-                      duration: Motion.click,
-                      layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
-                      child: Text(
-                        subtitle,
-                        key: ValueKey(subtitle),
-                        style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                    if (subtitle.isNotEmpty)
+                      FadeThrough(
+                        duration: Motion.click,
+                        layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
+                        child: Text(
+                          subtitle,
+                          key: ValueKey(subtitle),
+                          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
-              ProgressRing(done: done, total: total, size: 60),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 22),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -270,6 +308,23 @@ class _HabitsCard extends StatelessWidget {
                     : [for (final h in habits) state.currentStreak(h)];
                 final badge = _HabitRow.badgeFor(context, streaks.fold(0, max));
                 final rows = _layOutRows(context, habits, constraints, badge);
+                final alignment = firstCheckboxInset;
+                if (alignment != null && rows.heights.isNotEmpty) {
+                  // Both cards share their padding, title and gap. Their
+                  // titles grow together with text scaling; only the ritual
+                  // subtitle and the space inside its first row add an inset.
+                  final headerHeight = TileHeader.titleHeight(context, title);
+                  final normalChrome = 2 * (24.0 + 1) + headerHeight + 22;
+                  final inset = max(
+                    0.0,
+                    cardHeight! - constraints.maxHeight - normalChrome + (rows.heights.first - rows.cell) / 2,
+                  );
+                  if ((alignment.value - inset).abs() > 0.01) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (context.mounted && (alignment.value - inset).abs() > 0.01) alignment.value = inset;
+                    });
+                  }
+                }
                 // Yesterday stays editable. A different month's ritual list
                 // fades through; otherwise only the marks change.
                 return IgnorePointer(
@@ -324,8 +379,8 @@ class _HoverHighlight extends StatelessWidget {
             // swapping borders mid-animation.
             if (divider)
               Positioned(
-                left: 0,
-                right: 0,
+                left: 8,
+                right: 8,
                 top: 0,
                 child: IgnorePointer(
                   child: AnimatedOpacity(
@@ -355,7 +410,7 @@ class _HabitRow extends StatelessWidget {
     this.names,
   });
 
-  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 15, fontWeight: FontWeight.w500);
+  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 15, fontWeight: FontWeight.w400, height: 1.35);
 
   /// Long names wrap onto up to this many lines before they're cut short.
   static const nameLines = 4;
@@ -401,7 +456,7 @@ class _HabitRow extends StatelessWidget {
   final bool weekTrail;
   final bool divider;
 
-  /// The sleep schedule's names, when this row shows a time (see [SleepName]).
+  /// Non-null for sleep rows, whose scheduled time is shown on hover.
   final List<String>? names;
 
   @override
@@ -420,26 +475,19 @@ class _HabitRow extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: names != null
-                  ? SleepName(
-                      habit: habit,
-                      names: names!,
-                      style: nameStyle.copyWith(color: p.ink),
-                      trailing: (weekTrail ? 10 + weekTrailWidth : 0) + 8 + badgeWidth + 8 + cellSize,
-                    )
-                  : Tooltip(
-                      message: habit.description ?? habit.name,
-                      // The whole height of the row, not just the line of text,
-                      // so the tooltip is easy to catch.
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: RitualName(
-                          habit: habit,
-                          maxLines: nameLines,
-                          style: nameStyle.copyWith(color: p.ink),
-                        ),
-                      ),
-                    ),
+              child: Tooltip(
+                message: names != null
+                    ? (habit.minutes == null ? '' : clockLabel(habit.minutes!))
+                    : habit.description ?? habit.name,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: RitualName(
+                    habit: habit,
+                    maxLines: nameLines,
+                    style: nameStyle.copyWith(color: p.ink),
+                  ),
+                ),
+              ),
             ),
             if (weekTrail) ...[const SizedBox(width: 10), _WeekTrail(habit: habit, day: day)],
             const SizedBox(width: 8),
@@ -564,12 +612,13 @@ class _JournalCard extends StatelessWidget {
       radius: 24,
       over: true,
       child: Tile(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TileHeader(
               title: 'Journal',
+              trailingAtEnd: true,
               trailing: state.journalFiles == null
                   ? null
                   : _OpenFolderButton(state.journalFiles!.fileFor(day), problem: state.journalFileProblem),
@@ -660,11 +709,11 @@ class _JournalTextState extends State<_JournalText> {
       expands: true,
       maxLines: null,
       textAlignVertical: TextAlignVertical.top,
-      style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink),
+      style: TextStyle(fontFamily: Fonts.body, fontSize: 16, height: 1.7, color: p.ink),
       decoration: InputDecoration(
         border: InputBorder.none,
         hintText: _past ? 'Nothing written this day.' : null,
-        hintStyle: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted.withValues(alpha: 0.6)),
+        hintStyle: TextStyle(fontFamily: Fonts.body, fontSize: 16, color: p.inkMuted.withValues(alpha: 0.6)),
       ),
       onChanged: _changed,
     );
@@ -712,22 +761,14 @@ class _OpenFolderButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final home = Platform.environment['HOME'];
     final shown = home != null && file.path.startsWith(home) ? '~${file.path.substring(home.length)}' : file.path;
-    return Tooltip(
-      message: problem == null
+    return HeaderIconButton(
+      tooltip: problem == null
           ? 'Saved as $shown\nClick to show it in its folder'
           : '$problem\nYour journal is still kept safe in Eclipse.',
-      child: IconButton(
-        // Small enough not to make this card's header taller than the others.
-        constraints: BoxConstraints.tight(const Size.square(24)),
-        padding: EdgeInsets.zero,
-        iconSize: 16,
-        color: (problem == null ? p.inkMuted : p.missed).withValues(alpha: 0.8),
-        onPressed: _open,
-        icon: const Icon(Icons.folder_open_rounded),
-      ),
+      icon: Icons.folder_open_rounded,
+      onPressed: _open,
     );
   }
 }

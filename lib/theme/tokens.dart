@@ -10,7 +10,7 @@ abstract final class Scale {
 
   /// Text: caption, secondary, body, card heading, section heading, dialog
   /// title, page title.
-  static final fontSizes = <double>{12, 14, 15, 18, 22, 28, 38};
+  static final fontSizes = <double>{12, 14, 15, 16, 18, 22, 28, 38};
 
   /// Letter-spacing on small-caps labels. Looser than this is unreadable,
   /// tighter loses the caps.

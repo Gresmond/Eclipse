@@ -1074,8 +1074,9 @@ void main() {
     await tester.pumpAndSettle();
     await _shoot(tester, 'today');
 
-    // Sleep items show their times beside their names, and no tooltip.
-    expect(find.text('11:00 pm'), findsOneWidget);
+    // Today keeps the time in the standard tooltip, leaving the name uncluttered.
+    expect(find.text('11:00 pm'), findsNothing);
+    expect(find.byTooltip('11:00 pm'), findsOneWidget);
     final name = tester.getRect(find.text('Sleep Early'));
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
     addTearDown(mouse.removePointer);
@@ -1483,7 +1484,7 @@ void main() {
     expect(weekRect.right, lessThan(ritualsRect.left));
     expect(weekRect.width, greaterThan(ritualsRect.width), reason: 'the week keeps the widest column');
     expect(laterRect.left, greaterThan(ritualsRect.right));
-    expect(laterRect.width, closeTo(ritualsRect.width, 0.5));
+    expect(laterRect.width, closeTo(ritualsRect.width * 17 / 19, 0.5));
     expect(laterRect.bottom, closeTo(ritualsRect.bottom, 0.5));
     expect(journalRect.top, closeTo(sleepRect.top, 0.5));
     expect(journalRect.height, closeTo(sleepRect.height, 0.5));
@@ -1491,12 +1492,17 @@ void main() {
 
     // Seven days, today first, and only days with something due; anything
     // later is further ahead, under its day.
-    expect(find.descendant(of: week, matching: find.textContaining('Oct 23')), findsOneWidget);
+    expect(find.descendant(of: week, matching: find.text('Today')), findsOneWidget);
     expect(find.descendant(of: week, matching: find.text('Nothing due')), findsOneWidget);
     expect(find.descendant(of: week, matching: find.textContaining('Tomorrow')), findsNothing);
     // Days with nothing due show on request, and end at day 7.
     await tester.tap(find.byTooltip('Show days with no tasks'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.textContaining('Oct 29', findRichText: true),
+      100,
+      scrollable: find.descendant(of: week, matching: find.byType(Scrollable)).first,
+    );
     expect(
       find.descendant(of: week, matching: find.textContaining('Oct 29', findRichText: true)),
       findsOneWidget,
@@ -1507,7 +1513,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.descendant(of: week, matching: find.textContaining('Oct 29', findRichText: true)), findsNothing);
     expect(find.descendant(of: later, matching: find.text('Book flights')), findsOneWidget);
-    expect(find.descendant(of: later, matching: find.textContaining('Nov 20')), findsOneWidget);
+    expect(find.descendant(of: later, matching: find.text('NOV')), findsOneWidget);
+    expect(find.descendant(of: later, matching: find.text('20')), findsOneWidget);
 
     // Adding for tomorrow from the box at the foot, its day picked first.
     await tester.enterText(
@@ -1918,7 +1925,7 @@ void main() {
 
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    expect(find.text('22/10'), findsWidgets);
+    expect(find.byTooltip('Originally planned for 22/10'), findsWidgets);
 
     await tester.tap(find.text('24 October').last);
     await tester.pumpAndSettle();
