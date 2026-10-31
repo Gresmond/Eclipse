@@ -47,12 +47,36 @@ class _TodoRow extends StatefulWidget {
   State<_TodoRow> createState() => _TodoRowState();
 }
 
-class _TodoRowState extends State<_TodoRow> {
+/// A task or subtask is being dragged. Rows show no hover tint, buttons or
+/// check ring meanwhile, so the nest highlight is the only one shown.
+final _dragging = ValueNotifier(false);
+
+/// Hides a row's hover look while [_dragging], bringing it back after if the
+/// pointer is still over the row.
+mixin _HoverUnlessDragging<T extends StatefulWidget> on State<T> {
+  bool _pointer = false;
+  bool get _hover => _pointer && !_dragging.value;
+
+  void _dragChanged() => setState(() {});
+
+  @override
+  void initState() {
+    super.initState();
+    _dragging.addListener(_dragChanged);
+  }
+
+  @override
+  void dispose() {
+    _dragging.removeListener(_dragChanged);
+    super.dispose();
+  }
+}
+
+class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
   /// Tasks opened since the app started. Every task starts collapsed when the
   /// app opens, and one opened stays open while the app runs, across views.
   static final _opened = <(TodoScope, int)>{};
 
-  bool _hover = false;
   bool _pressed = false;
 
   /// The hover buttons exist only while shown or fading out: a long list
@@ -241,6 +265,9 @@ class _TodoRowState extends State<_TodoRow> {
       builder: (context, _, _) => Draggable<_SubtaskDrag>(
         data: _SubtaskDrag(item.id, index),
         maxSimultaneousDrags: canDrag ? 1 : 0,
+        onDragStarted: () => _dragging.value = true,
+        onDragCompleted: () => _dragging.value = false,
+        onDraggableCanceled: (_, _) => _dragging.value = false,
         onDragEnd: (_) {
           final order = _dragOrder;
           if (order == null || !mounted) return;
@@ -324,9 +351,9 @@ class _TodoRowState extends State<_TodoRow> {
         ignoring: widget.readOnly || widget.leaving || _nestingOut,
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hover = _actions = true),
+          onEnter: (_) => setState(() => _pointer = _actions = true),
           onExit: (_) => setState(() {
-            _hover = false;
+            _pointer = false;
             _pressed = false;
           }),
           child: GestureDetector(
@@ -583,6 +610,7 @@ class _TodoRowState extends State<_TodoRow> {
           drag.grab = childDragAnchorStrategy(draggable, context, position),
       onDragStarted: () {
         _activeDrag = drag;
+        _dragging.value = true;
         SmoothTaskScroll.dragPosition.value = Offset.zero;
       },
       onDragUpdate: (details) => SmoothTaskScroll.dragPosition.value = details.globalPosition,
@@ -590,11 +618,13 @@ class _TodoRowState extends State<_TodoRow> {
       // Let go anywhere but on another task or day, it stays where it was
       // last shown among its day's tasks.
       onDraggableCanceled: (_, _) {
+        _dragging.value = false;
         SmoothTaskScroll.dragPosition.value = null;
         _activeDrag?.onFinished?.call();
         widget.order?._keep();
       },
       onDragCompleted: () {
+        _dragging.value = false;
         SmoothTaskScroll.dragPosition.value = null;
         _activeDrag?.onFinished?.call();
         widget.order?._discard();
@@ -741,8 +771,7 @@ class _SubtaskRow extends StatefulWidget {
   State<_SubtaskRow> createState() => _SubtaskRowState();
 }
 
-class _SubtaskRowState extends State<_SubtaskRow> {
-  bool _hover = false;
+class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
   bool _pressed = false;
   bool _actions = false;
 
@@ -754,9 +783,9 @@ class _SubtaskRowState extends State<_SubtaskRow> {
       ignoring: widget.readOnly,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = _actions = true),
+        onEnter: (_) => setState(() => _pointer = _actions = true),
         onExit: (_) => setState(() {
-          _hover = false;
+          _pointer = false;
           _pressed = false;
         }),
         child: GestureDetector(
