@@ -346,12 +346,15 @@ class _RepeatSwitch extends StatelessWidget {
     final colors = theme.colorScheme;
     return Hoverable(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       builder: (hover) => AnimatedContainer(
         duration: Motion.hover,
         curve: Motion.hoverCurve,
         padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
         decoration: BoxDecoration(
-          color: hover ? p.empty.withValues(alpha: 0.6) : Colors.transparent,
+          // Its own colour faded, not transparent black, which dimmed it
+          // through a darker shade on the way in and out.
+          color: p.empty.withValues(alpha: hover ? 0.6 : 0),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
