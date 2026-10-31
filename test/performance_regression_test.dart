@@ -148,6 +148,10 @@ void main() {
     expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: false), (0, 1));
     store.setEntry('2026-10-26', habit.id, HabitStatus.done);
     expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: true), (2, 2));
+    // A missed rest weekend is passed over too, but only when weekends rest.
+    store.setEntry('2026-10-24', habit.id, HabitStatus.missed);
+    expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: true), (2, 2));
+    expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: false), (1, 1));
   });
 
   test('LRU eviction and clearing release resources exactly once', () {

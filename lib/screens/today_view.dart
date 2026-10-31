@@ -117,12 +117,7 @@ class _HabitColumn extends StatelessWidget {
             Expanded(
               child: TourTarget(
                 spot: TourSpot.rituals,
-                child: _HabitsCard(
-                  title: 'Daily rituals',
-                  habits: rituals,
-                  allDone: 'Every ritual done. Beautiful.',
-                  noneOn: all.isNotEmpty && rituals.isEmpty,
-                ),
+                child: _HabitsCard(title: 'Daily rituals', habits: rituals, allDone: 'Every ritual done. Beautiful.'),
               ),
             ),
             const SizedBox(height: TodayView._gap),
@@ -146,16 +141,7 @@ class _HabitColumn extends StatelessWidget {
 }
 
 class _HabitsCard extends StatelessWidget {
-  const _HabitsCard({
-    required this.title,
-    required this.habits,
-    required this.allDone,
-    this.times = false,
-    this.noneOn = false,
-  });
-
-  /// None of the month's rituals is on this day: it reads as a rest day.
-  final bool noneOn;
+  const _HabitsCard({required this.title, required this.habits, required this.allDone, this.times = false});
 
   final String title;
   final List<Habit> habits;
@@ -240,11 +226,7 @@ class _HabitsCard extends StatelessWidget {
     final readOnly = !state.canEditDay(day);
     final done = state.doneOn(day, habits);
     final total = habits.length;
-    final subtitle = done == total && total > 0
-        ? allDone
-        : noneOn || state.isRestDay(day)
-        ? 'Rest day. Nothing you have to do.'
-        : '';
+    final subtitle = done == total && total > 0 ? allDone : '';
 
     return Tile(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
@@ -373,7 +355,7 @@ class _HabitRow extends StatelessWidget {
     this.names,
   });
 
-  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 14, fontWeight: FontWeight.w500);
+  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 15);
 
   /// Long names wrap onto up to this many lines before they're cut short.
   static const nameLines = 4;

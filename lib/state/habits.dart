@@ -263,7 +263,7 @@ mixin _Habits on ChangeNotifier {
       _monthScores.putIfAbsent((year, month), () => store.monthScores(year, month))[habit.id] ?? (0, 0);
 
   /// Consecutive done days ending today (or yesterday, if today is still
-  /// open). An "other" day, or a blank rest day, is excused: it neither
+  /// open). An "other" day, or a blank or missed rest day, is excused: it neither
   /// breaks nor extends a streak.
   int currentStreak(Habit h) => _streaksOf(h).$1;
 

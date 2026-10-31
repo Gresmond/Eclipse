@@ -305,7 +305,7 @@ extension on _SettingsDialogState {
                 const SizedBox(height: 4),
                 SettingSwitchRow(
                   title: 'Weekends as rest days',
-                  subtitle: "Greyed out. A blank one won’t break a streak.",
+                  subtitle: "Greyed out. A blank or missed one won’t break a streak.",
                   on: state.restWeekends,
                   onTap: () => state.setRestWeekends(!state.restWeekends),
                 ),

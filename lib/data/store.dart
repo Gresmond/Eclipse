@@ -390,10 +390,12 @@ class Store {
       final status = HabitStatus.values[r['status'] as int];
       if (day == today && status == HabitStatus.none || off(day)) continue;
       if (previous != null && gapBreaks(previous, day)) run = 0;
+      // An "other" day, or a rest weekend left blank or missed, neither
+      // breaks nor extends it.
       if (status == HabitStatus.done) {
         run++;
         if (run > best) best = run;
-      } else if (status != HabitStatus.other && !(status == HabitStatus.none && restWeekends && day.weekday >= 6)) {
+      } else if (status != HabitStatus.other && !(restWeekends && day.weekday >= 6)) {
         run = 0;
       }
       previous = day;

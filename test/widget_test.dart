@@ -682,7 +682,7 @@ void main() {
       expect(state.bestStreak(h), 2);
     });
 
-    test('a blank weekend is excused only when weekends are rest days', () {
+    test('a blank or missed weekend is excused only when weekends are rest days', () {
       final store = _testStore();
       var state = AppState(store, clock: () => DateTime(2026, 10, 27)); // Tuesday
       final h = state.habits.first;
@@ -701,7 +701,7 @@ void main() {
       state.selectStatus(DateTime(2026, 10, 25), h, HabitStatus.done);
       expect(state.currentStreak(h), 5, reason: 'a ritual done on a rest day still counts');
       state.selectStatus(DateTime(2026, 10, 25), h, HabitStatus.missed);
-      expect(state.currentStreak(h), 2, reason: 'marked not done, it breaks the streak');
+      expect(state.currentStreak(h), 4, reason: 'marked not done on a rest day, it neither breaks nor adds');
 
       state = AppState(store, clock: () => DateTime(2026, 10, 27));
       expect(state.restWeekends, isTrue, reason: 'remembered');
@@ -1231,7 +1231,7 @@ void main() {
     final weights = tester.renderObject<RenderParagraph>(find.text('File notes'));
     expect(longLabel.didExceedMaxLines, isFalse);
     expect(longLabel.size.height, greaterThan(weights.size.height * 1.5));
-    expect(find.text('Rest day. Nothing you have to do.'), findsNWidgets(2), reason: 'the sleep schedule rests too');
+    expect(find.textContaining('Rest day'), findsNothing);
     await _shoot(tester, 'today_narrow_weekend');
   });
 
@@ -2331,10 +2331,13 @@ void main() {
     final store = _testStore();
     final day = DateTime(2026, 10, 24);
     final task = store.addTodo(TodoScope.today, day, 'Trip');
-    store.setTodoSubtasks(TodoScope.today, task, const [
-      TodoSubtask('Book flights'),
-      TodoSubtask('Renew the passport'),
-    ], day, live: true);
+    store.setTodoSubtasks(
+      TodoScope.today,
+      task,
+      const [TodoSubtask('Book flights'), TodoSubtask('Renew the passport')],
+      day,
+      live: true,
+    );
     final state = AppState(store, clock: () => DateTime(2026, 10, 24));
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
