@@ -8,6 +8,9 @@ bundle="$PWD/build/linux/x64/release/bundle"
 version="$(sed -n 's/^version: *//p' pubspec.yaml)"
 app_version="${version%%+*}"
 build="${version#*+}"
+# Plain versions use internal package revision 1; older +build versions
+# remain readable for compatibility.
+[[ $build != "$version" ]] || build=1
 [[ $app_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && $build =~ ^[1-9][0-9]*$ ]]
 stage="$(mktemp -d "$PWD/build/user-package.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT

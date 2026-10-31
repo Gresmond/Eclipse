@@ -77,6 +77,9 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   @override
   Future<void> flushFiles() async {
     await _initialExport;
+    // A stale-file sweep discovers and queues writes asynchronously. Waiting
+    // for the writer alone can miss deletions it hasn't queued yet.
+    await _rewriting;
     await journalFiles?.pending;
   }
 

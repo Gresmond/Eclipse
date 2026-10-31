@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -16,6 +17,23 @@ import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/data/sync_service.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/training.dart';
+
+/// Holds the stale-file scan so flushing can be checked without a timer.
+class _PausedJournalScan extends JournalFiles {
+  _PausedJournalScan(super.dir);
+
+  Completer<void>? gate;
+  final started = Completer<void>();
+
+  @override
+  Future<List<DateTime>> days() async {
+    if (gate case final pause?) {
+      started.complete();
+      await pause.future;
+    }
+    return super.days();
+  }
+}
 
 /// Two computers, each with its own database, exchanging change files the
 /// way they would through Drive.
@@ -1208,7 +1226,7 @@ void main() {
       });
 
       test('can stop saving files on this computer, and they come back up to date with Drive gone', () async {
-        final files = JournalFiles(Directory('${dir.path}/files'));
+        final files = _PausedJournalScan(Directory('${dir.path}/files'));
         final onPc = signedIn(pc);
         final state = AppState(pc.store, journalFiles: files, sync: onPc, clock: () => DateTime(2026, 10, 28));
         await state.setJournal(DateTime(2026, 10, 20), 'Kept');
@@ -1230,10 +1248,19 @@ void main() {
         expect(files.fileFor(DateTime(2026, 10, 21)).existsSync(), isTrue, reason: 'left as they were');
         expect(files.fileFor(DateTime(2026, 10, 22)).existsSync(), isFalse);
 
+        final scan = files.gate = Completer<void>();
+        addTearDown(() {
+          if (!scan.isCompleted) scan.complete();
+        });
         await onPc.turnOff();
         expect(state.savesJournalFiles, isTrue);
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-        await state.flushFiles();
+        await files.started.future;
+        var flushed = false;
+        final flushing = state.flushFiles().then((_) => flushed = true);
+        await Future<void>.delayed(Duration.zero);
+        expect(flushed, isFalse, reason: 'flush must wait for the sweep to discover stale files');
+        scan.complete();
+        await flushing;
         expect(files.fileFor(DateTime(2026, 10, 20)).readAsStringSync(), contains('Changed while off'));
         expect(files.fileFor(DateTime(2026, 10, 21)).existsSync(), isFalse);
         expect(files.fileFor(DateTime(2026, 10, 22)).readAsStringSync(), contains('New while off'));

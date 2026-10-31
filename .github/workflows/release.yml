@@ -29,13 +29,20 @@ jobs:
         run: |
           full_version="$(sed -n 's/^version: *//p' pubspec.yaml)"
           version="${full_version%%+*}"
+          build="${full_version#*+}"
+          # Plain versions use internal package revision 1 on every platform.
+          [[ $build != "$full_version" ]] || build=1
+          [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && $build =~ ^[1-9][0-9]*$ ]] || {
+            echo '::error::Invalid pubspec.yaml release version'
+            exit 1
+          }
           # v<version>+<build> republishes the v<version> release with a newer build.
           if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "v$version" && $GITHUB_REF_NAME != "v$full_version" ]]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match pubspec.yaml version $version"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "build=${full_version#*+}" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
           # A pushed tag always publishes, so moving a tag re-releases that version.
           if [[ $GITHUB_REF_TYPE != tag ]] && gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo 'new=false' >> "$GITHUB_OUTPUT"
@@ -143,7 +150,7 @@ jobs:
       - name: Build macOS disk image
         if: runner.os == 'macOS'
         run: |
-          flutter build macos --release
+          flutter build macos --release --build-number='${{ needs.version.outputs.build }}'
           mkdir dmg
           cp -R build/macos/Build/Products/Release/Eclipse.app dmg/
           ln -s /Applications dmg/Applications
@@ -152,7 +159,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          flutter build windows --release 2>&1 | Tee-Object -FilePath windows-build.log
+          flutter build windows --release --build-number='${{ needs.version.outputs.build }}' 2>&1 | Tee-Object -FilePath windows-build.log
           if ($LASTEXITCODE -ne 0) {
             Get-Content windows-build.log | Where-Object { $_ -match '(?i)error|failed|not found|exception' } | Select-Object -Last 15 | ForEach-Object {
               $line = $_.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')

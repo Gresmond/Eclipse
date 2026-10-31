@@ -2,9 +2,9 @@ name: eclipse
 description: "A habit tracker and to-do planner."
 publish_to: 'none'
 
-# <two-digit year>.<month>.<release that month>+<build count>.
+# <two-digit year>.<month>.<release that month>.
 # tool/release.sh bumps this and tags the commit; the tag publishes per-user Linux, Windows and Mac releases.
-version: 26.11.1+3
+version: 26.11.1
 
 environment:
   sdk: ^3.13.5
