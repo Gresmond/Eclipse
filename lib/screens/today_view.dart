@@ -355,7 +355,7 @@ class _HabitRow extends StatelessWidget {
     this.names,
   });
 
-  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 15);
+  static const nameStyle = TextStyle(fontFamily: Fonts.body, fontSize: 15, fontWeight: FontWeight.w500);
 
   /// Long names wrap onto up to this many lines before they're cut short.
   static const nameLines = 4;
