@@ -161,8 +161,8 @@ typedef _TaskEdit = ({
   int reminders,
 });
 
-/// Edits [item], asking whether a change to a repeating task's name is
-/// for that time only or every time from it on. A new rule always is.
+/// Edits [item]; a change to a repeating task is for that time and every
+/// time from it on, and only a new date moves just that one.
 /// [make]: makes a time of a repeat not made yet, to change on its own.
 Future<void> _editTask(
   BuildContext context,
@@ -225,11 +225,8 @@ Future<void> _editTask(
   }
   final renamed =
       result.text.trim() != item.text || (time, birthday, reminders) != (item.dueTime, item.birthday, item.reminders);
-  if (!renamed && result.due == item.dueDate) return;
-  final future = renamed ? await _askWhich(context, removing: false) : false;
-  if (future == null || !context.mounted) return;
-  if (future) state.renameRepeat(repeat, result.text, from, time: time, birthday: birthday, reminders: reminders);
-  if (!future || result.due != item.dueDate) {
+  if (renamed) state.renameRepeat(repeat, result.text, from, time: time, birthday: birthday, reminders: reminders);
+  if (result.due != item.dueDate) {
     state.editTodo(
       scope,
       make?.call() ?? item,
@@ -249,7 +246,7 @@ Future<void> _removeTask(BuildContext context, TodoItem item, DateTime day, Void
   final state = AppScope.read(context);
   final repeat = state.repeatOf(item);
   if (repeat == null) return removeOne();
-  final future = await _askWhich(context, removing: true);
+  final future = await _askWhich(context);
   if (future == null || !context.mounted) return;
   // This one closes up like any removed task; with [future], the times
   // after it go too.
@@ -259,18 +256,14 @@ Future<void> _removeTask(BuildContext context, TodoItem item, DateTime day, Void
   });
 }
 
-/// Only this time (false) or this and every time after (true); null if
-/// cancelled.
-Future<bool?> _askWhich(BuildContext context, {required bool removing}) => showAppDialog<bool>(
+/// Remove only this time (false) or this and every time after (true);
+/// null if cancelled.
+Future<bool?> _askWhich(BuildContext context) => showAppDialog<bool>(
   context: context,
   builder: (context) => AlertDialog(
     backgroundColor: context.palette.tile,
-    title: Text(removing ? 'Remove repeating task' : 'Change repeating task'),
-    content: Text(
-      removing
-          ? 'Remove only this one, or this one and every one after it?'
-          : 'Change only this one, or this one and every one after it?',
-    ),
+    title: const Text('Remove repeating task'),
+    content: const Text('Remove only this one, or this one and every one after it?'),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
       TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Only this one')),

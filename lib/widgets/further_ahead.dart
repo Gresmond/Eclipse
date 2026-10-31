@@ -313,6 +313,7 @@ TodoItem _unmade(Repeat repeat, DateTime date) => TodoItem(
   dueDate: date,
   dueTime: repeat.time,
   birthday: repeat.birthday,
+  reminders: repeat.reminders,
   uid: '${repeat.uid}@${dateKey(date)}',
 );
 
