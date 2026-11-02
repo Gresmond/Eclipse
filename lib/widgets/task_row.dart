@@ -424,7 +424,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                         ],
                         Expanded(
                           child: AnimatedDefaultTextStyle(
-                            duration: Motion.click,
+                            duration: context.themed(Motion.click),
                             curve: Motion.clickCurve,
                             style: TextStyle(
                               fontFamily: Fonts.body,
@@ -440,7 +440,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 AnimatedContainer(
-                                  duration: Motion.hover,
+                                  duration: context.themed(Motion.hover),
                                   curve: Motion.hoverCurve,
                                   decoration: BoxDecoration(
                                     color: p.accent.withValues(alpha: _nestOver ? 0.18 : 0),
@@ -851,7 +851,7 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
                     const SizedBox(width: 12),
                     Expanded(
                       child: AnimatedDefaultTextStyle(
-                        duration: Motion.click,
+                        duration: context.themed(Motion.click),
                         curve: Motion.clickCurve,
                         style: TextStyle(
                           fontFamily: Fonts.body,

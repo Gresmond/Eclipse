@@ -416,7 +416,7 @@ class _GroupPill extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: AnimatedContainer(
-          duration: Motion.hover,
+          duration: context.themed(Motion.hover),
           curve: Motion.hoverCurve,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
@@ -595,7 +595,7 @@ class _Chip extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: AnimatedContainer(
-          duration: Motion.click,
+          duration: context.themed(Motion.click),
           curve: Motion.clickCurve,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(

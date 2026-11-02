@@ -360,7 +360,7 @@ class _RepeatSwitch extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       builder: (hover) => AnimatedContainer(
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
         decoration: BoxDecoration(
@@ -499,7 +499,7 @@ class _Pills extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => onSelect(i),
                 child: AnimatedContainer(
-                  duration: Motion.click,
+                  duration: context.themed(Motion.click),
                   curve: Motion.clickCurve,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(

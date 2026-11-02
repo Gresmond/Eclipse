@@ -196,7 +196,7 @@ class _HistoryRow extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       builder: (hover) => AnimatedContainer(
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

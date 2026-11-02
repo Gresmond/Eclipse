@@ -649,7 +649,7 @@ class _Card extends StatelessWidget {
             children: [
               for (var i = 0; i < count; i++)
                 AnimatedContainer(
-                  duration: Motion.morph,
+                  duration: context.themed(Motion.morph),
                   curve: Motion.morphCurve,
                   width: i == index ? 20 : 6,
                   height: 6,
@@ -735,7 +735,7 @@ class _TextButton extends StatelessWidget {
     return Hoverable(
       onTap: onTap,
       builder: (hover) => AnimatedContainer(
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(

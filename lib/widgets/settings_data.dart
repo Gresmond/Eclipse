@@ -331,7 +331,7 @@ class _BackupRow extends StatelessWidget {
     final (title, subtitle) = _describe(backup, today);
 
     return AnimatedContainer(
-      duration: Motion.hover,
+      duration: context.themed(Motion.hover),
       curve: Motion.hoverCurve,
       padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
       decoration: BoxDecoration(

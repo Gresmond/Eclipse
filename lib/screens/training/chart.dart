@@ -549,7 +549,7 @@ class _Segments extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => onSelect(i),
                 child: AnimatedContainer(
-                  duration: Motion.click,
+                  duration: context.themed(Motion.click),
                   curve: Motion.clickCurve,
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(

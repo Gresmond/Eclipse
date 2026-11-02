@@ -82,7 +82,7 @@ class CornerButton extends StatelessWidget {
     return Hoverable(
       onTap: onTap,
       builder: (hover) => AnimatedContainer(
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(

@@ -139,7 +139,7 @@ class _DayStartPickerState extends State<DayStartPicker> {
                               padding: const EdgeInsets.symmetric(vertical: 6),
                               child: Center(
                                 child: AnimatedDefaultTextStyle(
-                                  duration: Motion.morph,
+                                  duration: context.themed(Motion.morph),
                                   curve: Motion.morphCurve,
                                   style: TextStyle(
                                     fontFamily: Fonts.ui,

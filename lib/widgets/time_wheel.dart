@@ -101,7 +101,7 @@ class TimePill extends StatelessWidget {
     return Hoverable(
       onTap: () => _open(context),
       builder: (hover) => AnimatedContainer(
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
@@ -257,7 +257,7 @@ class _TimeWheelState extends State<TimeWheel> {
             child: Align(
               alignment: alignment,
               child: AnimatedDefaultTextStyle(
-                duration: Motion.hover,
+                duration: context.themed(Motion.hover),
                 curve: Motion.hoverCurve,
                 style: style.copyWith(color: i == selected ? p.ink : p.inkMuted.withValues(alpha: 0.75)),
                 child: Text(label(i)),

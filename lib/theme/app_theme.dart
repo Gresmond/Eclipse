@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'palette_recipe.dart';
@@ -113,6 +114,13 @@ class Palette extends ThemeExtension<Palette> {
     todayPanel: todayPanel ?? _todayPanel,
     todayPanelBorder: todayPanelBorder ?? _todayPanelBorder,
   );
+
+  List<Color> get _colours => [
+    background, tile, tileBorder, ink, inkMuted, accent, onAccent, ...gradient,
+    today, onToday, done, missed, other, empty, shadow, todayPanel, todayPanelBorder,
+  ];
+
+  bool _sameColours(Palette other) => listEquals(_colours, other._colours);
 
   /// Blends every colour, so switching themes cross-fades.
   @override
@@ -404,4 +412,33 @@ const _clickable = ButtonStyle(mouseCursor: WidgetStateMouseCursor.clickable);
 
 extension PaletteContext on BuildContext {
   Palette get palette => Theme.of(this).extension<Palette>()!;
+
+  /// [duration], or none while the theme cross-fades. A widget that eases
+  /// its own colours would otherwise chase the fading theme, restarting its
+  /// ease every frame, and land well after everything else.
+  Duration themed(Duration duration) => ThemeMorph.active(this) ? Duration.zero : duration;
+}
+
+/// Whether the theme is part way through cross-fading to [target].
+class ThemeMorph extends StatelessWidget {
+  const ThemeMorph({super.key, required this.target, required this.child});
+
+  final Palette target;
+  final Widget child;
+
+  static bool active(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_ThemeMorphScope>()?.active ?? false;
+
+  @override
+  Widget build(BuildContext context) =>
+      _ThemeMorphScope(active: !context.palette._sameColours(target), child: child);
+}
+
+class _ThemeMorphScope extends InheritedWidget {
+  const _ThemeMorphScope({required this.active, required super.child});
+
+  final bool active;
+
+  @override
+  bool updateShouldNotify(_ThemeMorphScope old) => active != old.active;
 }

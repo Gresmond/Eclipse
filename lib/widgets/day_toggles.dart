@@ -65,7 +65,7 @@ class _DayCircle extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return AnimatedContainer(
-      duration: Motion.click,
+      duration: context.themed(Motion.click),
       curve: Motion.clickCurve,
       width: size,
       height: size,

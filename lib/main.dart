@@ -251,7 +251,7 @@ class EclipseApp extends StatelessWidget {
           // boxes and tints beside them.
           builder: (context, child) => DefaultTextHeightBehavior(
             textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
-            child: UndoLayer(child: child!),
+            child: ThemeMorph(target: paletteNamed(themeName), child: UndoLayer(child: child!)),
           ),
           home: Builder(
             builder: (context) => AbsorbPointer(

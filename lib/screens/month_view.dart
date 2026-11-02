@@ -375,7 +375,7 @@ class _PillButton extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
-          duration: Motion.hover,
+          duration: context.themed(Motion.hover),
           curve: Motion.hoverCurve,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(

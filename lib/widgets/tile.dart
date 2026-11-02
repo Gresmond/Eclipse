@@ -49,7 +49,7 @@ class StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return AnimatedContainer(
-      duration: Motion.morph,
+      duration: context.themed(Motion.morph),
       curve: Motion.morphCurve,
       constraints: const BoxConstraints(minWidth: 76, minHeight: 28),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

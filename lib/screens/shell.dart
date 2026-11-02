@@ -526,7 +526,7 @@ class _Tab extends StatelessWidget {
         // Reserves the bold width, so selecting a tab never resizes the bar.
         Visibility.maintain(visible: false, child: Text(label, style: style(FontWeight.w600))),
         AnimatedDefaultTextStyle(
-          duration: Motion.morph,
+          duration: context.themed(Motion.morph),
           curve: Motion.morphCurve,
           style: style(selected || isCurrent ? FontWeight.w600 : FontWeight.w500),
           child: Text(label),
@@ -540,7 +540,7 @@ class _Tab extends StatelessWidget {
     return Hoverable(
       onTap: onTap,
       builder: (hover) => AnimatedContainer(
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         padding: const EdgeInsets.symmetric(horizontal: padding, vertical: 8),
         decoration: BoxDecoration(

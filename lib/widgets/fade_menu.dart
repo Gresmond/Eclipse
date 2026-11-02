@@ -131,7 +131,7 @@ class FadeMenuRow extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       builder: (hover) => AnimatedContainer(
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         height: grows ? null : height,
         constraints: grows ? BoxConstraints(minHeight: height) : null,

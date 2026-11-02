@@ -305,7 +305,7 @@ class _Cell extends StatelessWidget {
       // The year's total ends flush with the rule beneath it.
       padding: EdgeInsets.only(left: 4, right: strong ? 0 : 4),
       child: AnimatedContainer(
-        duration: Motion.morph,
+        duration: context.themed(Motion.morph),
         curve: Motion.morphCurve,
         height: height,
         alignment: Alignment.center,

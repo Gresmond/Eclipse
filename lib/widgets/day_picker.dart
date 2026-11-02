@@ -147,7 +147,7 @@ class CalendarDay extends StatelessWidget {
       builder: (hover) => Padding(
         padding: const EdgeInsets.all(2),
         child: AnimatedContainer(
-          duration: Motion.hover,
+          duration: context.themed(Motion.hover),
           curve: Motion.hoverCurve,
           height: height - 4,
           alignment: Alignment.center,
