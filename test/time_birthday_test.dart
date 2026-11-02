@@ -319,7 +319,7 @@ void main() {
     expect(find.byType(Dialog), findsNothing, reason: 'Enter confirms');
   });
 
-  testWidgets("a day's line in Week ahead is a field from the start, with only a time", (tester) async {
+  testWidgets("a day's line in Week ahead is a field from the start, with a day to pick", (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -335,11 +335,9 @@ void main() {
       findsOneWidget,
       reason: 'its look before a click',
     );
-    expect(
-      find.descendant(of: week, matching: find.byTooltip('Add a time')),
-      findsNothing,
-      reason: 'until clicked',
-    );
+    final picks = find.descendant(of: week, matching: find.byTooltip('Pick a day'));
+    expect(picks, findsOneWidget, reason: 'only the foot\'s, until clicked');
+    expect(find.descendant(of: week, matching: find.byTooltip('Add a time')), findsNothing);
     final before = tester.getRect(line);
     await tester.tap(line);
     await tester.pumpAndSettle();
@@ -347,16 +345,21 @@ void main() {
     expect((after.top, after.height), (before.top, before.height), reason: 'clicking it only puts the cursor in');
     await tester.enterText(line, 'Call the bank');
 
-    expect(find.descendant(of: week, matching: find.byTooltip('Time, repeat and birthday')), findsNothing);
-    await tester.tap(find.descendant(of: week, matching: find.byTooltip('Add a time')).first);
+    expect(picks, findsNWidgets(2));
+    await tester.tap(picks.first);
     await tester.pumpAndSettle();
-    expect(find.text('Repeat'), findsNothing, reason: 'only a time');
-    await tester.tap(find.text('Save'));
+    await tester.tap(find.text('25'));
     await tester.pumpAndSettle();
-    expect(find.descendant(of: week, matching: find.text('9:00 am')), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: week, matching: find.text('Oct 25')),
+      findsOneWidget,
+      reason: 'another day says so',
+    );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    final task = state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Call the bank');
-    expect(task.dueTime, 9 * 60);
+    final task = state.todos[TodoScope.week]!.singleWhere((t) => t.text == 'Call the bank');
+    expect(task.dueDate, DateTime(2026, 10, 25));
   });
 }

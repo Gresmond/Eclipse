@@ -128,4 +128,24 @@ void main() {
       greaterThan(tester.getTopLeft(find.text('10:00 am')).dx),
     );
   });
+
+  testWidgets('a holiday on today shows over the month and the year too', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = memory();
+    store.addHabit(2026, 11, 'Read');
+    final state = AppState(store, clock: () => DateTime(2026, 11, 2, 9));
+    addTearDown(state.dispose);
+    state.addHoliday(DateTime(2026, 11, 1), DateTime(2026, 11, 8));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('ON HOLIDAY UNTIL SUN 8 NOV'), findsOneWidget);
+    state.showMonth(10);
+    await tester.pumpAndSettle();
+    expect(find.text('2026  ·  ON HOLIDAY UNTIL SUN 8 NOV'), findsOneWidget, reason: 'whichever month is shown');
+    state.showYear();
+    await tester.pumpAndSettle();
+    expect(find.text('YEAR TO DATE  ·  ON HOLIDAY UNTIL SUN 8 NOV'), findsOneWidget);
+  });
 }

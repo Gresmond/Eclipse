@@ -319,6 +319,18 @@ String _repeatLabel(_RepeatChoice choice) {
   return until == null ? choice.rule.label : '${choice.rule.label} until ${dayMonth(until)}/${until.year}';
 }
 
+/// Every detail row's button, set rather than scaled by its label's size,
+/// so its icon sits in line with the location's and the reminders'.
+final _detailButtonStyle = TextButton.styleFrom(
+  padding: const EdgeInsetsDirectional.fromSTEB(12, 0, 16, 0),
+  minimumSize: const Size(0, _detailRowHeight),
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  visualDensity: VisualDensity.standard,
+);
+
+/// How tall each detail row is, the typed location's too.
+const _detailRowHeight = 40.0;
+
 /// One of a task's details under its field, as a button: [icon] and
 /// [label], and with [onClear] a cross that takes it away.
 class _DetailRow extends StatelessWidget {
@@ -339,7 +351,12 @@ class _DetailRow extends StatelessWidget {
         Expanded(
           child: Align(
             alignment: Alignment.centerLeft,
-            child: TextButton.icon(icon: Icon(icon, size: 18), label: Text(label), onPressed: onPressed),
+            child: TextButton.icon(
+              style: _detailButtonStyle,
+              icon: Icon(icon, size: 18),
+              label: Text(label),
+              onPressed: onPressed,
+            ),
           ),
         ),
         // As small as the line, so it doesn't grow when the cross comes.
@@ -388,7 +405,8 @@ class _LocationRow extends StatelessWidget {
       builder: (context, _) => Row(
         children: [
           Expanded(
-            child: Padding(
+            child: Container(
+              height: _detailRowHeight,
               // Lined up with the time button's icon and label.
               padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
               child: Row(
@@ -410,7 +428,7 @@ class _LocationRow extends StatelessWidget {
                         filled: false,
                         hintText: 'Add a location',
                         hintStyle: label.copyWith(color: accent),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                        contentPadding: EdgeInsets.zero,
                       ),
                       onSubmitted: (_) => onSubmitted(),
                     ),
@@ -620,6 +638,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
         if (dated) ...[
           const SizedBox(height: 16),
           TextButton.icon(
+            style: _detailButtonStyle,
             icon: const Icon(Icons.calendar_today_rounded, size: 18),
             label: Text(_due == null ? 'Pick a due date' : 'Due ${dayMonth(_due!)}/${_due!.year}'),
             onPressed: () => _open(_Page.day),

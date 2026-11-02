@@ -47,7 +47,6 @@ class _MonthCalendarState extends State<_MonthCalendar> {
   @override
   Widget build(BuildContext context) {
     final localizations = MaterialLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
     final firstMonth = DateTime(_first.year, _first.month);
     // An end can be any number of months on.
     final last = widget.onEnd == null ? _last : null;
@@ -105,7 +104,7 @@ class _MonthCalendarState extends State<_MonthCalendar> {
                 Row(
                   children: [
                     for (var column = 0; column < 7; column++)
-                      Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations, colors)),
+                      Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations)),
                   ],
                 ),
             ],
@@ -115,8 +114,8 @@ class _MonthCalendarState extends State<_MonthCalendar> {
     );
   }
 
-  Widget _buildDay(int day, int days, MaterialLocalizations localizations, ColorScheme colors) {
-    if (day < 1 || day > days) return const SizedBox(height: 42);
+  Widget _buildDay(int day, int days, MaterialLocalizations localizations) {
+    if (day < 1 || day > days) return const SizedBox(height: CalendarDay.height);
     final date = DateTime(_month.year, _month.month, day);
     final enabled = !date.isBefore(_first) && (_last == null || !date.isAfter(_last!));
     final selected = DateUtils.isSameDay(date, widget.selected);
@@ -124,49 +123,28 @@ class _MonthCalendarState extends State<_MonthCalendar> {
     final today = DateUtils.isSameDay(date, AppScope.read(context).today);
     final marked = !selected && (widget.marked?.call(date) ?? false);
     final endable = _endable(date);
-    return SizedBox(
-      height: 42,
-      child: GestureDetector(
-        onSecondaryTap: end && widget.onEnd != null
-            ? () => widget.onEnd!(null)
-            : endable
-            ? () => widget.onEnd!(date)
-            : null,
-        child: MouseRegion(
-          cursor: enabled || endable || end ? SystemMouseCursors.click : MouseCursor.defer,
-          child: Semantics(
+    return GestureDetector(
+      onSecondaryTap: end && widget.onEnd != null
+          ? () => widget.onEnd!(null)
+          : endable
+          ? () => widget.onEnd!(date)
+          : null,
+      child: MouseRegion(
+        cursor: enabled || endable || end ? SystemMouseCursors.click : MouseCursor.defer,
+        child: Semantics(
+          button: true,
+          enabled: enabled,
+          selected: selected,
+          label: localizations.formatFullDate(date),
+          excludeSemantics: true,
+          child: CalendarDay(
+            day: day,
             selected: selected,
-            label: localizations.formatFullDate(date),
-            child: TextButton(
-              onPressed: enabled ? () => widget.onSelected(date) : null,
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                shape: CircleBorder(side: today && !selected ? BorderSide(color: colors.primary) : BorderSide.none),
-                backgroundColor: selected
-                    ? colors.primary
-                    : end
-                    ? colors.primary.withValues(alpha: 0.28)
-                    : null,
-                foregroundColor: selected ? colors.onPrimary : colors.onSurface,
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                clipBehavior: Clip.none,
-                children: [
-                  Text(localizations.formatDecimal(day)),
-                  if (marked)
-                    Positioned(
-                      bottom: -7,
-                      child: Container(
-                        width: 4,
-                        height: 4,
-                        decoration: BoxDecoration(color: colors.primary, shape: BoxShape.circle),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+            within: end,
+            isToday: today,
+            enabled: enabled,
+            marked: marked,
+            onTap: () => widget.onSelected(date),
           ),
         ),
       ),

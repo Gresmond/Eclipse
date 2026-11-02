@@ -111,8 +111,9 @@ class _DatedAddState extends State<_DatedAdd> {
 }
 
 /// "+ Add task" under a day, which opens into a field: Enter adds and keeps
-/// it open for the next, Escape or clicking away closes it. The repeat
-/// button makes the next one repeat from that day.
+/// it open for the next, Escape or clicking away closes it. The calendar
+/// button picks the next one's day (this one to start), time and repeat,
+/// as at the card's foot.
 class _AddTask extends StatefulWidget {
   const _AddTask({required this.day, required this.today, this.past});
 
@@ -129,9 +130,10 @@ class _AddTaskState extends State<_AddTask> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
   bool _hover = false;
-  int? _time;
+  _DayChoice? _choice;
 
-  /// While the wheel is open, the time stays though the field is empty.
+  /// While the calendar is open, what it picked stays though the field is
+  /// empty.
   bool _picking = false;
 
   @override
@@ -139,7 +141,7 @@ class _AddTaskState extends State<_AddTask> {
     super.initState();
     _focus.addListener(() {
       setState(() {
-        if (!_focus.hasFocus && !_picking && _controller.text.trim().isEmpty) _time = null;
+        if (!_focus.hasFocus && !_picking && _controller.text.trim().isEmpty) _choice = null;
       });
     });
   }
@@ -157,20 +159,36 @@ class _AddTaskState extends State<_AddTask> {
     if (widget.past case final past?) {
       state.addTodo(widget.day == past ? TodoScope.today : TodoScope.tomorrow, text, day: past);
     } else {
-      _addDue(state, text, widget.day, time: _time);
-      setState(() => _time = null);
+      switch (_choice) {
+        case final choice?:
+          _addChosen(state, text, choice.day, choice);
+        case null:
+          _addDue(state, text, widget.day);
+      }
+      setState(() => _choice = null);
     }
     _controller.clear();
     _focus.requestFocus();
   }
 
-  Future<void> _pick(BuildContext anchor) async {
+  Future<void> _pick() async {
     setState(() => _picking = true);
-    final selection = _controller.selection;
-    final picked = await pickTime(anchor, minutes: _time, start: _time ?? 9 * 60);
+    final (choice, selection, today) = (_choice, _controller.selection, widget.today);
+    final picked = await _pickDayAndRepeat(
+      context,
+      first: today,
+      last: DateTime(today.year, today.month, today.day + WeekCard.span),
+      selected: choice?.day ?? widget.day,
+      repeat: choice?.repeat,
+      time: choice?.time,
+      birthday: choice?.birthday ?? false,
+      birthdays: true,
+      reminders: choice?.reminders ?? 0,
+      location: choice?.location,
+    );
     _picking = false;
     if (!mounted) return;
-    if (picked != null) setState(() => _time = picked);
+    if (picked != null) setState(() => _choice = picked);
     _refocus(_focus, _controller, selection);
   }
 
@@ -178,9 +196,11 @@ class _AddTaskState extends State<_AddTask> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.read(context);
-    final time = _time;
-    // Its time only once it's been clicked, or while one is set or picked.
-    final timed = widget.past == null && (_focus.hasFocus || _picking || time != null);
+    final choice = _choice;
+    final moved = choice != null && choice.day != widget.day;
+    final time = choice?.birthday == true ? null : choice?.time;
+    // Its calendar only once it's been clicked, or while a day is picked.
+    final timed = widget.past == null && (_focus.hasFocus || _picking || choice != null);
     return Padding(
       padding: const EdgeInsets.only(left: 18, top: 2, bottom: 2),
       child: CallbackShortcuts(
@@ -243,13 +263,25 @@ class _AddTaskState extends State<_AddTask> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 12)),
-                            Builder(
-                              builder: (anchor) => _TaskAction(
-                                tooltip: time == null ? 'Add a time' : 'Change time',
-                                icon: Icons.more_time_rounded,
-                                onPressed: () => _pick(anchor),
+                            if (moved)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: Text(
+                                  _shortDate(choice.day, widget.today),
+                                  style: TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted),
+                                ),
                               ),
+                            if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 12)),
+                            if (choice?.repeat != null) ...[
+                              const SizedBox(width: 6),
+                              Icon(choice!.birthday ? _birthdayIcon : Icons.repeat_rounded, size: 12, color: p.accent),
+                            ],
+                            _TaskAction(
+                              tooltip: choice == null
+                                  ? 'Pick a day'
+                                  : 'Due ${dayMonth(choice.day)}/${choice.day.year}, click to change',
+                              icon: choice == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
+                              onPressed: _pick,
                             ),
                           ],
                         ),

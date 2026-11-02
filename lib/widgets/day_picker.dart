@@ -87,9 +87,9 @@ class _DayPickerState extends State<DayPicker> {
                     child: Builder(
                       builder: (context) {
                         final d = week * 7 + col - lead + 1;
-                        if (d < 1 || d > days) return const SizedBox(height: 38);
+                        if (d < 1 || d > days) return const SizedBox(height: CalendarDay.height);
                         final day = DateTime(_month.year, _month.month, d);
-                        return _PickerDay(
+                        return CalendarDay(
                           day: d,
                           selected: day == shown,
                           isToday: day == today,
@@ -110,17 +110,26 @@ class _DayPickerState extends State<DayPicker> {
   }
 }
 
-class _PickerDay extends StatelessWidget {
-  const _PickerDay({
+/// A day on any of the app's calendars: a rounded square, [selected]
+/// filled in the theme's done colour, [within] (a range, or a repeat's
+/// end) tinted, today ringed, and a dot under a [marked] one.
+class CalendarDay extends StatelessWidget {
+  const CalendarDay({
+    super.key,
     required this.day,
-    required this.selected,
+    this.selected = false,
+    this.within = false,
     required this.isToday,
-    required this.enabled,
+    this.enabled = true,
+    this.marked = false,
     required this.onTap,
   });
 
+  /// Its height, with the gap round it.
+  static const height = 38.0;
+
   final int day;
-  final bool selected, isToday, enabled;
+  final bool selected, within, isToday, enabled, marked;
   final VoidCallback onTap;
 
   @override
@@ -140,23 +149,41 @@ class _PickerDay extends StatelessWidget {
         child: AnimatedContainer(
           duration: Motion.hover,
           curve: Motion.hoverCurve,
-          height: 34,
+          height: height - 4,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            gradient: selected ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
-            color: selected ? null : (hover && enabled ? p.empty : p.empty.withValues(alpha: 0)),
+            color: selected
+                ? p.done
+                : within
+                ? p.accent.withValues(alpha: hover && enabled ? 0.22 : 0.14)
+                : (hover && enabled ? p.empty : p.empty.withValues(alpha: 0)),
             border: isToday && !selected ? Border.all(color: p.accent.withValues(alpha: 0.5)) : null,
           ),
-          child: Text(
-            '$day',
-            style: TextStyle(
-              fontFamily: Fonts.ui,
-              fontSize: 14,
-              fontWeight: selected || isToday ? FontWeight.w600 : FontWeight.w500,
-              color: fg,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
+          child: Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              Text(
+                '$day',
+                style: TextStyle(
+                  fontFamily: Fonts.ui,
+                  fontSize: 14,
+                  fontWeight: selected || isToday ? FontWeight.w600 : FontWeight.w500,
+                  color: fg,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              if (marked)
+                Positioned(
+                  bottom: -6,
+                  child: Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(color: p.accent, shape: BoxShape.circle),
+                  ),
+                ),
+            ],
           ),
         ),
       ),

@@ -5,7 +5,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import 'app_dialog.dart';
 import 'confirm_on_enter.dart';
-import 'hover_fill.dart';
+import 'day_picker.dart';
 
 /// 'Sat 7 Nov', with the year when it isn't [today]'s.
 String _day(DateTime day, DateTime today) =>
@@ -218,13 +218,13 @@ class _HolidayDialogState extends State<_HolidayDialog> {
                         child: Builder(
                           builder: (context) {
                             final d = week * 7 + col - lead + 1;
-                            if (d < 1 || d > days) return const SizedBox(height: 38);
+                            if (d < 1 || d > days) return const SizedBox(height: CalendarDay.height);
                             final day = DateTime(_month.year, _month.month, d);
                             final end = picked != null && (day == picked.start || day == picked.end);
                             final within = picked != null && !day.isBefore(picked.start) && !day.isAfter(picked.end);
-                            return _RangeDay(
+                            return CalendarDay(
                               day: d,
-                              end: end,
+                              selected: end,
                               within: within,
                               isToday: day == widget.today,
                               onTap: () => _tap(day),
@@ -247,63 +247,6 @@ class _HolidayDialogState extends State<_HolidayDialog> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           TextButton(onPressed: picked == null ? null : _add, child: const Text('Add')),
         ],
-      ),
-    );
-  }
-}
-
-/// A day of the holiday calendar: its first and last days filled, the
-/// days between tinted.
-class _RangeDay extends StatelessWidget {
-  const _RangeDay({
-    required this.day,
-    required this.end,
-    required this.within,
-    required this.isToday,
-    required this.onTap,
-  });
-
-  final int day;
-  final bool end, within, isToday;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Hoverable(
-      onTap: onTap,
-      builder: (hover) => Padding(
-        padding: const EdgeInsets.all(2),
-        child: AnimatedContainer(
-          duration: Motion.hover,
-          curve: Motion.hoverCurve,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            gradient: end ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
-            color: end
-                ? null
-                : within
-                ? p.accent.withValues(alpha: hover ? 0.22 : 0.14)
-                : (hover ? p.empty : p.empty.withValues(alpha: 0)),
-            border: isToday && !end ? Border.all(color: p.accent.withValues(alpha: 0.5)) : null,
-          ),
-          child: Text(
-            '$day',
-            style: TextStyle(
-              fontFamily: Fonts.ui,
-              fontSize: 14,
-              fontWeight: end || isToday ? FontWeight.w600 : FontWeight.w500,
-              color: end
-                  ? p.onAccent
-                  : isToday
-                  ? p.accent
-                  : p.ink,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ),
       ),
     );
   }
