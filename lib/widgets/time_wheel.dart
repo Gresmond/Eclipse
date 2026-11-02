@@ -171,6 +171,14 @@ class TimeWheel extends StatefulWidget {
   State<TimeWheel> createState() => _TimeWheelState();
 }
 
+/// How wide two digits are in [style], as the minutes always are.
+double _digitsWidth(TextStyle style) {
+  final painter = TextPainter(text: TextSpan(text: '00', style: style), textDirection: TextDirection.ltr)..layout();
+  final width = painter.width;
+  painter.dispose();
+  return width;
+}
+
 class _TimeWheelState extends State<TimeWheel> {
   static const _row = 38.0;
   static const _rows = 5;
@@ -215,6 +223,8 @@ class _TimeWheelState extends State<TimeWheel> {
       required int selected,
       required ValueChanged<int> onChanged,
       double width = 56,
+      AlignmentGeometry alignment = Alignment.center,
+      EdgeInsetsGeometry padding = EdgeInsets.zero,
     }) {
       Widget item(int i) => MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -228,12 +238,16 @@ class _TimeWheelState extends State<TimeWheel> {
             duration: Motion.click,
             curve: Motion.clickCurve,
           ),
-          child: Center(
-            child: AnimatedDefaultTextStyle(
-              duration: Motion.hover,
-              curve: Motion.hoverCurve,
-              style: style.copyWith(color: i == selected ? p.ink : p.inkMuted.withValues(alpha: 0.75)),
-              child: Text(label(i)),
+          child: Padding(
+            padding: padding,
+            child: Align(
+              alignment: alignment,
+              child: AnimatedDefaultTextStyle(
+                duration: Motion.hover,
+                curve: Motion.hoverCurve,
+                style: style.copyWith(color: i == selected ? p.ink : p.inkMuted.withValues(alpha: 0.75)),
+                child: Text(label(i)),
+              ),
             ),
           ),
         ),
@@ -244,19 +258,31 @@ class _TimeWheelState extends State<TimeWheel> {
         // cursors drop out; this one keeps the hand while it turns.
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          child: ListWheelScrollView.useDelegate(
-            controller: controller,
-            itemExtent: _row,
-            diameterRatio: 1.6,
-            perspective: 0.004,
-            physics: const FixedExtentScrollPhysics(),
-            onSelectedItemChanged: (i) {
-              onChanged(i % count);
-              _save();
+          // Its snap stops a fraction of a pixel short, which sat its
+          // number off the others' line; it's set right on the row.
+          child: NotificationListener<ScrollEndNotification>(
+            onNotification: (_) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!controller.hasClients) return;
+                final exact = controller.selectedItem * _row;
+                if (controller.offset != exact) controller.jumpTo(exact);
+              });
+              return false;
             },
-            childDelegate: loop
-                ? ListWheelChildLoopingListDelegate(children: [for (var i = 0; i < count; i++) item(i)])
-                : ListWheelChildListDelegate(children: [for (var i = 0; i < count; i++) item(i)]),
+            child: ListWheelScrollView.useDelegate(
+              controller: controller,
+              itemExtent: _row,
+              diameterRatio: 1.6,
+              perspective: 0.004,
+              physics: const FixedExtentScrollPhysics(),
+              onSelectedItemChanged: (i) {
+                onChanged(i % count);
+                _save();
+              },
+              childDelegate: loop
+                  ? ListWheelChildLoopingListDelegate(children: [for (var i = 0; i < count; i++) item(i)])
+                  : ListWheelChildListDelegate(children: [for (var i = 0; i < count; i++) item(i)]),
+            ),
           ),
         ),
       );
@@ -301,6 +327,10 @@ class _TimeWheelState extends State<TimeWheel> {
                         count: 12,
                         loop: true,
                         label: (i) => '${i == 0 ? 12 : i}',
+                        // Against the colon, as far from it as the
+                        // minutes are, however many digits.
+                        alignment: Alignment.centerRight,
+                        padding: EdgeInsets.only(right: (56 - _digitsWidth(style)) / 2),
                         selected: _hour,
                         onChanged: (i) => setState(() => _hour = i),
                       ),
