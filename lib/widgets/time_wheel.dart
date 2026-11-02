@@ -126,7 +126,7 @@ class TimePill extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       RollingNumber(value: (minutes ~/ 60 + 11) % 12 + 1, style: style),
-                      Text(':', style: style),
+                      _Colon(style: style),
                       RollingNumber(value: minutes % 60, digits: 2, style: style),
                       Text(' ', style: style),
                       FadeThrough(
@@ -169,6 +169,20 @@ class TimeWheel extends StatefulWidget {
 
   @override
   State<TimeWheel> createState() => _TimeWheelState();
+}
+
+/// A time's colon centred on its figures: 'case' raises it most of the
+/// way, and the last 3% of its size the rest.
+class _Colon extends StatelessWidget {
+  const _Colon({required this.style});
+
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) => Transform.translate(
+    offset: Offset(0, -0.028 * style.fontSize!),
+    child: Text(':', style: style.copyWith(fontFeatures: const [FontFeature('case')])),
+  );
 }
 
 /// How wide two digits are in [style], as the minutes always are.
@@ -334,7 +348,7 @@ class _TimeWheelState extends State<TimeWheel> {
                         selected: _hour,
                         onChanged: (i) => setState(() => _hour = i),
                       ),
-                      Text(':', style: style),
+                      _Colon(style: style),
                       wheel(
                         controller: _minutes,
                         count: 12,
