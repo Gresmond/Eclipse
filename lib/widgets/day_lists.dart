@@ -244,13 +244,21 @@ String _shortDate(DateTime day, DateTime today) =>
     '${monthNames[day.month - 1].substring(0, 3)} ${day.day}${day.year != today.year ? ' ${day.year}' : ''}';
 
 /// Adds [text] as a task due on [day], in the list it belongs to now.
-void _addDue(AppState state, String text, DateTime day, {int? time, bool birthday = false, int reminders = 0}) {
+void _addDue(
+  AppState state,
+  String text,
+  DateTime day, {
+  int? time,
+  bool birthday = false,
+  int reminders = 0,
+  String? location,
+}) {
   final today = state.today;
   final days = daysBetween(today, day);
   if (days <= 0) {
-    state.addTodo(TodoScope.today, text, time: time, birthday: birthday, reminders: reminders);
+    state.addTodo(TodoScope.today, text, time: time, birthday: birthday, reminders: reminders, location: location);
   } else if (days == 1) {
-    state.addTodo(TodoScope.tomorrow, text, time: time, birthday: birthday, reminders: reminders);
+    state.addTodo(TodoScope.tomorrow, text, time: time, birthday: birthday, reminders: reminders, location: location);
   } else {
     // Due later this week files under This week, anything after under
     // This month; both move into Tomorrow and Today as the day nears.
@@ -262,16 +270,26 @@ void _addDue(AppState state, String text, DateTime day, {int? time, bool birthda
       time: time,
       birthday: birthday,
       reminders: reminders,
+      location: location,
     );
   }
 }
 
 /// Adds [text] on [day] as [choice] says: a task, or a repeating one.
 void _addChosen(AppState state, String text, DateTime day, _DayChoice choice) {
-  final (time, birthday, reminders) = (choice.time, choice.birthday, choice.reminders);
+  final (time, birthday, reminders, location) = (choice.time, choice.birthday, choice.reminders, choice.location);
   if (choice.repeat case final repeat?) {
-    state.addRepeat(text, repeat.rule, day, until: repeat.until, time: time, birthday: birthday, reminders: reminders);
+    state.addRepeat(
+      text,
+      repeat.rule,
+      day,
+      until: repeat.until,
+      time: time,
+      birthday: birthday,
+      reminders: reminders,
+      location: location,
+    );
   } else {
-    _addDue(state, text, day, time: time, birthday: birthday, reminders: reminders);
+    _addDue(state, text, day, time: time, birthday: birthday, reminders: reminders, location: location);
   }
 }

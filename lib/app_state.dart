@@ -176,6 +176,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
           training.reload();
         case 'setting':
           restWeekends = store.setting('restWeekends') == '1';
+          holidays = decodeHolidays(store.setting('holidays'));
           dayStartHour = int.tryParse(store.setting('dayStartHour') ?? '') ?? 0;
           _streaks.clear();
       }
@@ -255,6 +256,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     themeName = _savedTheme();
     themeNotifier.value = themeName;
     restWeekends = store.setting('restWeekends') == '1';
+    holidays = decodeHolidays(store.setting('holidays'));
     followNightLight = store.setting('followNightLight') != '0';
     dayStartHour = int.tryParse(store.setting('dayStartHour') ?? '') ?? 0;
     laterBirthdays = store.setting('laterBirthdays') != 'hidden';

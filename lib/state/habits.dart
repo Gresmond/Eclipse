@@ -6,6 +6,7 @@ mixin _Habits on ChangeNotifier {
   Store get store;
   DateTime get today;
   bool get restWeekends;
+  List<Holiday> get holidays;
   void _removed(String label, List<RowsBefore> before);
 
   int habitsRevision = 0, entriesRevision = 0;
@@ -272,7 +273,8 @@ mixin _Habits on ChangeNotifier {
 
   int bestStreak(Habit h) => _streaksOf(h).$2;
 
-  (int, int) _streaksOf(Habit h) => _streaks[h.id] ??= store.streaks(h.id, today, restWeekends: restWeekends);
+  (int, int) _streaksOf(Habit h) =>
+      _streaks[h.id] ??= store.streaks(h.id, today, restWeekends: restWeekends, holidays: holidays);
 
   @override
   void dispose() {

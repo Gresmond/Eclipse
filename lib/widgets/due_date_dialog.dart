@@ -24,6 +24,7 @@ class _MonthCalendar extends StatefulWidget {
   final bool Function(DateTime day)? marked;
   final ValueChanged<DateTime> onSelected;
   final bool Function(DateTime day)? endable;
+
   /// A right-clicked day: the last, or on the last, null for no end.
   final ValueChanged<DateTime?>? onEnd;
 
@@ -185,6 +186,7 @@ class _DueDateDialog extends StatefulWidget {
     this.birthday = false,
     this.birthdays = false,
     this.reminders = 0,
+    this.location,
   });
 
   final DateTime first;
@@ -195,6 +197,7 @@ class _DueDateDialog extends StatefulWidget {
   final int? time;
   final bool birthday;
   final int reminders;
+  final String? location;
 
   @override
   State<_DueDateDialog> createState() => _DueDateDialogState();
@@ -210,6 +213,7 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
     time: _birthday ? null : _time,
     birthday: _birthday,
     reminders: _reminders(birthday: _birthday),
+    location: _place,
   ));
 
   @override
@@ -217,6 +221,7 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
     super.initState();
     _time = widget.time;
     _notify = widget.reminders;
+    _location.text = widget.location ?? '';
     _repeat = widget.repeat;
     final first = DateUtils.dateOnly(widget.first);
     final last = widget.last == null ? null : DateUtils.dateOnly(widget.last!);
@@ -246,6 +251,7 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
         onRepeat: (repeat) => setState(() => _repeat = repeat),
         time: _timeRow(),
         notify: _notifyRow(birthday: _birthday),
+        location: _locationRow(onSubmitted: _done),
         birthday: widget.birthdays ? _birthday : null,
         onBirthday: (birthday) => setState(() => _birthday = birthday),
       ),

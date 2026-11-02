@@ -148,6 +148,7 @@ class SyncEngine implements AutomaticWrites {
       'category': 29,
       'position': 30,
       'reminders': 31,
+      'location': 33,
     },
     'journal': {'text': 8},
     'sleep_note': {'note': 8},
@@ -164,6 +165,7 @@ class SyncEngine implements AutomaticWrites {
       'category': 29,
       'reminders': 31,
       'subtasks': 32,
+      'location': 33,
     },
   };
 
@@ -227,7 +229,7 @@ class SyncEngine implements AutomaticWrites {
             {'status': 0, 'note': null};
       case 'todo':
         fields = row(
-          'SELECT scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category, position, reminders FROM todos WHERE uid = ?',
+          'SELECT scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category, position, reminders, location FROM todos WHERE uid = ?',
           [rowkey],
         );
       case 'journal':
@@ -250,7 +252,7 @@ class SyncEngine implements AutomaticWrites {
         fields = row('SELECT day, exercise, position, weight, reps FROM training_sets WHERE uid = ?', [rowkey]);
       case 'todo_repeat':
         fields = row(
-          'SELECT text, rule, start, until, time, category, reminders, subtasks FROM todo_repeats WHERE uid = ?',
+          'SELECT text, rule, start, until, time, category, reminders, subtasks, location FROM todo_repeats WHERE uid = ?',
           [rowkey],
         );
       default:
@@ -325,13 +327,13 @@ class SyncEngine implements AutomaticWrites {
           _db.execute('DELETE FROM todos WHERE uid = ?', [rowkey]);
         } else {
           _db.execute(
-            'INSERT INTO todos (uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category, position, reminders) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'INSERT INTO todos (uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category, position, reminders, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT (uid) DO UPDATE SET scope = excluded.scope, period = excluded.period, text = excluded.text, '
             'done = excluded.done, carried = excluded.carried, since = excluded.since, due_date = excluded.due_date, '
             'return_to_tomorrow = excluded.return_to_tomorrow, return_scope = excluded.return_scope, '
             'defer_promotion_day = excluded.defer_promotion_day, subtasks = excluded.subtasks, done_at = excluded.done_at, '
             'due_time = excluded.due_time, category = excluded.category, position = excluded.position, '
-            'reminders = excluded.reminders',
+            'reminders = excluded.reminders, location = excluded.location',
             [
               rowkey,
               f['scope'] ?? 'today',
@@ -350,6 +352,7 @@ class SyncEngine implements AutomaticWrites {
               f['category'],
               f['position'],
               f['reminders'],
+              f['location'],
             ],
           );
         }
@@ -401,11 +404,11 @@ class SyncEngine implements AutomaticWrites {
           _db.execute('DELETE FROM todo_repeats WHERE uid = ?', [rowkey]);
         } else {
           _db.execute(
-            'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category, reminders, subtasks) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category, reminders, subtasks, location) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT (uid) DO UPDATE SET text = excluded.text, rule = excluded.rule, '
             'start = excluded.start, until = excluded.until, time = excluded.time, category = excluded.category, '
-            'reminders = excluded.reminders, subtasks = excluded.subtasks',
+            'reminders = excluded.reminders, subtasks = excluded.subtasks, location = excluded.location',
             [
               rowkey,
               f['text'] ?? '',
@@ -416,6 +419,7 @@ class SyncEngine implements AutomaticWrites {
               f['category'],
               f['reminders'],
               f['subtasks'],
+              f['location'],
             ],
           );
         }

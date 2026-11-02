@@ -111,6 +111,11 @@ class _Header extends StatelessWidget {
     // After midnight but before the day starts, say so: the date shown is
     // the day you're still finishing.
     final weekday = weekdayNames[shown.weekday - 1];
+    final holiday = switch (holidayOn(state.holidays, shown)) {
+      final h? when state.viewDay == null =>
+        '  ·  on holiday until ${weekdayNames[h.end.weekday - 1].substring(0, 3)} ${h.end.day} ${monthNames[h.end.month - 1].substring(0, 3)}',
+      _ => '',
+    };
     final (String kicker, String title) = state.viewingYear
         ? (state.viewYear == today.year ? 'Year to date' : 'The whole year', '${state.viewYear}')
         : month == null
@@ -118,8 +123,8 @@ class _Header extends StatelessWidget {
             state.viewDay != null
                 ? '$weekday  ·  ${shown.year != today.year ? '${shown.year}  ·  ' : ''}${shown == DateTime(today.year, today.month, today.day - 1) ? 'yesterday' : 'looking back'}'
                 : state.lateNight
-                ? '$weekday  ·  until ${hourLabel(state.dayStartHour)}'
-                : weekday,
+                ? '$weekday  ·  until ${hourLabel(state.dayStartHour)}$holiday'
+                : '$weekday$holiday',
             todayTitle,
           )
         : ('${state.viewYear}', monthNames[month - 1]);

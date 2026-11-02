@@ -44,6 +44,8 @@ class Palette extends ThemeExtension<Palette> {
     required this.other,
     required this.empty,
     required this.shadow,
+    this._todayPanel,
+    this._todayPanelBorder,
   });
 
   final String name;
@@ -83,8 +85,34 @@ class Palette extends ThemeExtension<Palette> {
 
   final Color shadow;
 
+  /// The tint and edge of Today's panel in Week ahead. Kept here, not
+  /// picked by theme name, so they cross-fade with the rest of a theme.
+  final Color? _todayPanel, _todayPanelBorder;
+  Color get todayPanel => _todayPanel ?? empty.withValues(alpha: 0.6);
+  Color get todayPanelBorder => _todayPanelBorder ?? tileBorder.withValues(alpha: 0.85);
+
   @override
-  Palette copyWith() => this;
+  Palette copyWith({Color? todayPanel, Color? todayPanelBorder}) => Palette(
+    name: name,
+    brightness: brightness,
+    background: background,
+    tile: tile,
+    tileBorder: tileBorder,
+    ink: ink,
+    inkMuted: inkMuted,
+    accent: accent,
+    onAccent: onAccent,
+    gradient: gradient,
+    today: today,
+    onToday: onToday,
+    done: done,
+    missed: missed,
+    other: other,
+    empty: empty,
+    shadow: shadow,
+    todayPanel: todayPanel ?? _todayPanel,
+    todayPanelBorder: todayPanelBorder ?? _todayPanelBorder,
+  );
 
   /// Blends every colour, so switching themes cross-fades.
   @override
@@ -109,6 +137,8 @@ class Palette extends ThemeExtension<Palette> {
       other: c(this.other, other.other),
       empty: c(empty, other.empty),
       shadow: c(shadow, other.shadow),
+      todayPanel: c(todayPanel, other.todayPanel),
+      todayPanelBorder: c(todayPanelBorder, other.todayPanelBorder),
     );
   }
 }
@@ -183,7 +213,7 @@ final sunrisePalette = const PaletteRecipe(
   softness: 0.5,
   surfaceSource: PaletteSource.missed,
   accentSource: PaletteSource.other,
-).build();
+).build().copyWith(todayPanel: const Color(0xFFFCF0F2), todayPanelBorder: const Color(0xFFEAD2D9));
 
 final sunsetPalette = const PaletteRecipe(
   name: 'Sunset',

@@ -508,6 +508,37 @@ extension on Store {
         _db.execute('PRAGMA user_version = 32');
       });
     }
+    if (version < 33) {
+      transaction(() {
+        // Where a task, or a repeat's every time, happens.
+        for (final table in ['todos', 'todo_repeats']) {
+          if (!_db.select('PRAGMA table_info($table)').any((r) => r['name'] == 'location')) {
+            _db.execute('ALTER TABLE $table ADD COLUMN location TEXT');
+          }
+        }
+        // Holidays joined the synced settings: their triggers name them.
+        final only = 'R.key IN (${Store.syncedSettings.map((k) => "'$k'").join(', ')})';
+        String mark(String row) =>
+            "UPDATE sync_dirty SET at = ${Store._now} WHERE kind = 'setting' AND rowkey = $row.key; "
+            "INSERT INTO sync_dirty SELECT 'setting', $row.key, ${Store._now} "
+            "WHERE $row.key IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sync_dirty WHERE kind = 'setting' AND rowkey = $row.key);";
+        String when(String row) => only.replaceAll('R.', '$row.');
+        for (final event in ['ins', 'upd', 'del']) {
+          _db.execute('DROP TRIGGER IF EXISTS settings_$event');
+        }
+        _db.execute(
+          "CREATE TRIGGER settings_ins AFTER INSERT ON settings WHEN ${when('NEW')} BEGIN ${mark('NEW')} END",
+        );
+        _db.execute(
+          "CREATE TRIGGER settings_upd AFTER UPDATE ON settings WHEN ${when('NEW')} OR ${when('OLD')} "
+          "BEGIN ${mark('OLD')} ${mark('NEW')} END",
+        );
+        _db.execute(
+          "CREATE TRIGGER settings_del AFTER DELETE ON settings WHEN ${when('OLD')} BEGIN ${mark('OLD')} END",
+        );
+        _db.execute('PRAGMA user_version = 33');
+      });
+    }
 
     if (version >= 1 && version < Store.schemaVersion) upgradedFrom = version;
     // Versions before 25 changed synced rows where the sync triggers

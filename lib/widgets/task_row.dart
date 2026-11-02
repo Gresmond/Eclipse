@@ -449,38 +449,14 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      if (widget.upcomingDate case final date?)
-                                        Padding(
-                                          padding: const EdgeInsets.only(bottom: 8),
-                                          child: Text.rich(
-                                            TextSpan(
-                                              children: [
-                                                TextSpan(
-                                                  text: weekdayNames[date.weekday - 1],
-                                                  style: TextStyle(
-                                                    fontFamily: Fonts.ui,
-                                                    fontSize: 12,
-                                                    color: p.inkMuted,
-                                                  ),
-                                                ),
-                                                if (item.dueTime case final time?)
-                                                  TextSpan(
-                                                    text: '  ·  ${clockLabel(time)}',
-                                                    style: _timeStyle(p).copyWith(fontSize: 12, color: p.inkMuted),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                        )
-                                      else if (item.dueTime case final time?)
-                                        Text(
-                                          clockLabel(time),
-                                          style: _timeStyle(p).copyWith(
-                                            fontSize: 12,
-                                            color: p.inkMuted,
-                                            height: 1.35,
-                                            decoration: TextDecoration.none,
-                                          ),
+                                      if (widget.upcomingDate != null || item.dueTime != null || item.location != null)
+                                        _Caption(
+                                          weekday: switch (widget.upcomingDate) {
+                                            final date? => weekdayNames[date.weekday - 1],
+                                            null => null,
+                                          },
+                                          time: item.dueTime,
+                                          location: item.location,
                                         ),
                                       Text(item.text, maxLines: 2, overflow: TextOverflow.ellipsis),
                                     ],
@@ -942,6 +918,64 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The line over a task's name: its weekday further ahead, its time and
+/// where it is, joined with dots.
+class _Caption extends StatelessWidget {
+  const _Caption({this.weekday, this.time, this.location});
+
+  final String? weekday;
+  final int? time;
+  final String? location;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final plain = TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted);
+    final dot = Text('  ·  ', style: plain);
+    final (weekday, time, location) = (this.weekday, this.time, this.location);
+    return Padding(
+      // A weekday heads a task further ahead with a gap under it.
+      padding: EdgeInsets.only(bottom: weekday == null ? 0 : 8),
+      child: Row(
+        children: [
+          // Each part gives way, rather than overflowing a narrow card.
+          if (weekday != null)
+            Flexible(
+              child: Text(weekday, maxLines: 1, overflow: TextOverflow.ellipsis, style: plain),
+            ),
+          if (time != null) ...[
+            if (weekday != null) dot,
+            Flexible(
+              child: Text(
+                clockLabel(time),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _timeStyle(p)
+                    .copyWith(fontSize: 12, color: p.inkMuted, height: 1.35, decoration: TextDecoration.none),
+              ),
+            ),
+          ],
+          if (location != null) ...[
+            if (weekday != null || time != null) dot,
+            Padding(
+              padding: const EdgeInsets.only(right: 3),
+              child: Icon(Icons.place_rounded, size: 12, color: p.inkMuted),
+            ),
+            Flexible(
+              child: Text(
+                location,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: plain.copyWith(height: 1.35, decoration: TextDecoration.none),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

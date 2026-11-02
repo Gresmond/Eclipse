@@ -167,6 +167,7 @@ class TodoItem {
     this.subtasks = const [],
     this.position,
     this.reminders = 0,
+    this.location,
   });
 
   final int id;
@@ -186,6 +187,9 @@ class TodoItem {
 
   /// Which reminders it gives, as [Reminder] bits; 0 for none.
   int reminders;
+
+  /// Where it happens, shown after its time; null for nowhere in particular.
+  String? location;
   String text;
   bool done;
 
@@ -212,7 +216,7 @@ class TodoItem {
   DateTime? get repeatDay => repeatUid == null ? null : DateTime.tryParse(uid!.substring(uid!.indexOf('@') + 1));
 
   bool sameContent(TodoItem other) {
-    if ((id, text, done, doneAt, carried, since, dueDate, dueTime, birthday, uid, position, reminders) !=
+    if ((id, text, done, doneAt, carried, since, dueDate, dueTime, birthday, uid, position, reminders, location) !=
             (
               other.id,
               other.text,
@@ -226,6 +230,7 @@ class TodoItem {
               other.uid,
               other.position,
               other.reminders,
+              other.location,
             ) ||
         subtasks.length != other.subtasks.length) {
       return false;
@@ -396,6 +401,7 @@ class Repeat {
     this.time,
     this.birthday = false,
     this.reminders = 0,
+    this.location,
     this.subtasks = const [],
   });
 
@@ -413,6 +419,9 @@ class Repeat {
 
   /// The reminders each one gives, as [TodoItem.reminders].
   final int reminders;
+
+  /// Where each one happens, as [TodoItem.location].
+  final String? location;
   final RepeatRule rule;
   final DateTime start;
   final DateTime? until;
@@ -601,4 +610,34 @@ List<TodoItem> sortTodos(Iterable<TodoItem> todos) {
     return a.$1.compareTo(b.$1);
   });
   return [for (final entry in indexed) entry.$2];
+}
+
+/// A holiday: every day from [start] to [end], both kept, rests the
+/// rituals and sleep schedule as a rest weekend does.
+typedef Holiday = ({DateTime start, DateTime end});
+
+/// The holiday [day] falls in, if any.
+Holiday? holidayOn(List<Holiday> holidays, DateTime day) =>
+    holidays.where((h) => !day.isBefore(h.start) && !day.isAfter(h.end)).firstOrNull;
+
+/// Holidays as kept in the synced `holidays` setting: day-key pairs.
+String encodeHolidays(List<Holiday> holidays) => jsonEncode([
+  for (final h in holidays) [dateKey(h.start), dateKey(h.end)],
+]);
+
+/// The holidays in [encoded], earliest first; anything unreadable is left out.
+List<Holiday> decodeHolidays(String? encoded) {
+  Object? list;
+  try {
+    list = jsonDecode(encoded ?? '[]');
+  } on FormatException {
+    return [];
+  }
+  return [
+    if (list is List)
+      for (final pair in list)
+        if (pair case [final String a, final String b])
+          if ((DateTime.tryParse(a), DateTime.tryParse(b)) case (final start?, final end?) when !end.isBefore(start))
+            (start: dateOnly(start), end: dateOnly(end)),
+  ]..sort((x, y) => x.start.compareTo(y.start));
 }

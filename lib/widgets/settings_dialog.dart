@@ -19,6 +19,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
+import 'holidays.dart';
 import 'setting_rows.dart';
 import 'settings_search.dart';
 import 'welcome_tour.dart';
@@ -309,6 +310,8 @@ extension on _SettingsDialogState {
                   on: state.restWeekends,
                   onTap: () => state.setRestWeekends(!state.restWeekends),
                 ),
+                const FadeMenuDivider(),
+                const HolidaysRow(),
                 const FadeMenuDivider(),
                 const DayStartPicker(),
                 const FadeMenuDivider(),

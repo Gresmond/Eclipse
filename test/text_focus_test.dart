@@ -26,8 +26,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // The first field: a task's name, over its location.
   EditableTextState field(WidgetTester tester, Finder of) =>
-      tester.state<EditableTextState>(find.descendant(of: of, matching: find.byType(EditableText)));
+      tester.state<EditableTextState>(find.descendant(of: of, matching: find.byType(EditableText)).first);
 
   testWidgets("a task dialog's buttons and pages leave the cursor in its name", (tester) async {
     await show(tester);

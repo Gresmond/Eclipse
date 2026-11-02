@@ -6,6 +6,7 @@ mixin _Navigation on ChangeNotifier {
   DateTime get today;
   bool get lateNight;
   int get dayStartHour;
+  List<Holiday> get holidays;
   bool isFutureMonth(int year, int month);
   void saveDrafts();
   void saveHabitDrafts();
@@ -23,7 +24,8 @@ mixin _Navigation on ChangeNotifier {
 
   /// The day the Today view shows.
   DateTime get shownDay => viewDay ?? today;
-  Object get navigation => (viewYear, viewMonth, viewingYear, viewDay, today, lateNight, dayStartHour, firstMonth);
+  Object get navigation =>
+      (viewYear, viewMonth, viewingYear, viewDay, today, lateNight, dayStartHour, firstMonth, holidays);
 
   /// Gym training, every exercise's progress; the page under the corner.
   late final training = TrainingLog(store, notifyListeners);

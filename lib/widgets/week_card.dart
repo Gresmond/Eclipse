@@ -271,10 +271,8 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
         builder: (context, alpha, sliver) => DecoratedSliver(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            color: i == 0
-                ? (p.name == 'Sunrise' ? const Color(0xFFFCF0F2) : p.empty.withValues(alpha: 0.6))
-                : p.accent.withValues(alpha: alpha),
-            border: i == 0 ? Border.all(color: p.name == 'Sunrise' ? const Color(0xFFEAD2D9) : p.border) : null,
+            color: i == 0 ? p.todayPanel : p.accent.withValues(alpha: alpha),
+            border: i == 0 ? Border.all(color: p.todayPanelBorder) : null,
           ),
           sliver: sliver!,
         ),

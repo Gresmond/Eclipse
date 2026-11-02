@@ -24,7 +24,7 @@ abstract interface class AutomaticWrites {
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 32;
+  static const schemaVersion = 33;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -108,7 +108,7 @@ class Store {
 
   /// Settings that are the same on every computer. The theme isn't: each
   /// follows its own night light.
-  static const syncedSettings = ['dayStartHour', 'restWeekends'];
+  static const syncedSettings = ['dayStartHour', 'restWeekends', 'holidays'];
 
   /// Marks every row as changed, for sync to compare with what it knows.
   void markAllChanged() {
@@ -358,7 +358,7 @@ class Store {
       );
 
   /// Work proportional to logged entries, rather than every calendar day.
-  (int, int) streaks(int habitId, DateTime today, {required bool restWeekends}) {
+  (int, int) streaks(int habitId, DateTime today, {required bool restWeekends, List<Holiday> holidays = const []}) {
     // Each month's days for the ritual; a day that isn't one of them is
     // passed over, whatever was logged on it.
     final months = {
@@ -368,12 +368,13 @@ class Store {
         (r['year'] as int, r['month'] as int): decodeDays(r['days'] as String),
     };
     bool off(DateTime day) => !isOnDay(months[(day.year, day.month)] ?? const [], day);
-    bool excused(DateTime day) => off(day) || restWeekends && day.weekday >= DateTime.saturday;
+    bool rest(DateTime day) => restWeekends && day.weekday >= DateTime.saturday || holidayOn(holidays, day) != null;
+    bool excused(DateTime day) => off(day) || rest(day);
 
     bool gapBreaks(DateTime from, DateTime until) {
       final gap = daysBetween(from, until) - 1;
       if (gap <= 0) return false;
-      if (!restWeekends && months.isEmpty) return true;
+      if (!restWeekends && holidays.isEmpty && months.isEmpty) return true;
       for (var i = 1; i <= gap; i++) {
         if (!excused(DateTime(from.year, from.month, from.day + i))) return true;
       }
@@ -390,12 +391,12 @@ class Store {
       final status = HabitStatus.values[r['status'] as int];
       if (day == today && status == HabitStatus.none || off(day)) continue;
       if (previous != null && gapBreaks(previous, day)) run = 0;
-      // An "other" day, or a rest weekend left blank or missed, neither
-      // breaks nor extends it.
+      // An "other" day, or a rest day left blank or missed, neither breaks
+      // nor extends it.
       if (status == HabitStatus.done) {
         run++;
         if (run > best) best = run;
-      } else if (status != HabitStatus.other && !(restWeekends && day.weekday >= 6)) {
+      } else if (status != HabitStatus.other && !rest(day)) {
         run = 0;
       }
       previous = day;
@@ -492,8 +493,9 @@ class Store {
       .map((r) => (day: r['day'] as String, text: curlyQuotes(r['text'] as String)));
 
   /// Every task kept, ticked or not, on the day it's on, for search.
-  Iterable<({String uid, String day, String text, bool done, List<TodoSubtask> subtasks})> searchableTodos() =>
-      _db.select('SELECT uid, scope, period, text, done, due_date, since, subtasks FROM todos').map((r) {
+  Iterable<({String uid, String day, String text, bool done, List<TodoSubtask> subtasks, String? location})>
+  searchableTodos() =>
+      _db.select('SELECT uid, scope, period, text, done, due_date, since, subtasks, location FROM todos').map((r) {
         final period = r['period'] as String;
         final day = switch (r['scope']) {
           'today' => period,
@@ -506,6 +508,7 @@ class Store {
           text: curlyQuotes(r['text'] as String),
           done: r['done'] == 1,
           subtasks: TodoSubtask.decode(r['subtasks'] as String?),
+          location: r['location'] as String?,
         );
       });
 

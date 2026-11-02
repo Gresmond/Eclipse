@@ -17,6 +17,7 @@ class _RepeatPanel extends StatefulWidget {
     required this.onRepeat,
     this.time,
     this.notify,
+    this.location,
     this.birthday,
     this.onBirthday,
     this.startsOn = false,
@@ -38,6 +39,9 @@ class _RepeatPanel extends StatefulWidget {
 
   /// Its reminders, under the time.
   final Widget? notify;
+
+  /// Where it is, under its reminders.
+  final Widget? location;
 
   /// Whether it's a birthday; null where birthdays aren't offered.
   final bool? birthday;
@@ -157,6 +161,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
         const SizedBox(height: 8),
         if (widget.time case final time?) _BirthdayFold(folded: _birthday, child: time),
         ?widget.notify,
+        ?widget.location,
         _RepeatSwitch(
           on: on,
           label: on ? (_birthday ? 'Birthday' : _summary(widget.repeat)) : 'Repeat',

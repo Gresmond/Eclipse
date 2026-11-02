@@ -47,7 +47,17 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
     AppState state,
     List<({int number, DateTime day, bool leaving})> columns,
   ) {
-    final key = (widget.year, widget.month, _previous, habit, habit.days, size, state.today, state.restWeekends);
+    final key = (
+      widget.year,
+      widget.month,
+      _previous,
+      habit,
+      habit.days,
+      size,
+      state.today,
+      state.restWeekends,
+      state.holidays,
+    );
     final cached = _cells[habit.id];
     if (cached?.$1 == key) return cached!.$2;
     final cells = [
@@ -168,7 +178,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.today, s.restWeekends));
+    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.today, s.restWeekends, s.holidays));
     if (_palette.value != p) _palette.value = p;
     final ids = {for (final habit in widget.habits) habit.id};
     _cells.removeWhere((id, _) => !ids.contains(id));
@@ -296,6 +306,27 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
                           fade: _bandsCurved,
                           color: p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.09 : 0.06),
                         ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Holidays: a soft accent band over their days, one band a run.
+                Positioned.fill(
+                  left: nameWidth,
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _RestBandPainter(
+                        layout: layout,
+                        weekend: [for (final c in columns) holidayOn(state.holidays, c.day) != null],
+                        was: [
+                          for (final c in columns)
+                            if (_bandsFrom case (final y, final m) when c.number <= daysInMonth(y, m))
+                              holidayOn(state.holidays, DateTime(y, m, c.number)) != null
+                            else
+                              false,
+                        ],
+                        fade: _bandsCurved,
+                        color: p.accent.withValues(alpha: p.brightness == Brightness.dark ? 0.12 : 0.08),
                       ),
                     ),
                   ),
@@ -518,8 +549,9 @@ class _RestBandPainter extends CustomPainter {
 
   final _ColumnLayout layout;
 
-  /// Whether each of the layout's columns falls on a weekend, this month
-  /// and in the month being left; [fade] runs from the old bands to these.
+  /// Whether each of the layout's columns falls on a weekend (or another
+  /// banded day), this month and in the month being left; [fade] runs from
+  /// the old bands to these.
   final List<bool> weekend;
   final List<bool> was;
   final Animation<double> fade;

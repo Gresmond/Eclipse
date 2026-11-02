@@ -258,13 +258,18 @@ class _HabitsCard extends StatelessWidget {
     final p = context.palette;
     final state = AppScope.watch(
       context,
-      (s) => (s.shownDay, s.today, s.habitsRevision, s.entriesRevision, s.restWeekends),
+      (s) => (s.shownDay, s.today, s.habitsRevision, s.entriesRevision, s.restWeekends, s.holidays),
     );
     final day = state.shownDay;
     final readOnly = !state.canEditDay(day);
     final done = state.doneOn(day, habits);
     final total = habits.length;
-    final subtitle = done == total && total > 0 ? allDone : '';
+    // A holiday needs nothing tracked; all done still says so.
+    final subtitle = done == total && total > 0
+        ? allDone
+        : holidayOn(state.holidays, day) != null
+        ? 'On holiday'
+        : '';
 
     return Tile(
       padding: const EdgeInsets.all(24),
@@ -462,7 +467,7 @@ class _HabitRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.entriesRevision, s.restWeekends));
+    final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.entriesRevision, s.restWeekends, s.holidays));
     // Streaks run up to today, so a past day leaves them out.
     final past = state.viewDay != null;
     final streak = past ? 0 : state.currentStreak(habit);
@@ -555,7 +560,7 @@ class _WeekTrail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.entriesRevision, s.restWeekends, s.habitsRevision));
+    final state = AppScope.watch(context, (s) => (s.entriesRevision, s.restWeekends, s.holidays, s.habitsRevision));
     final days = state.trailDays(habit, day);
     // Another day's week fades through in place.
     return FadeThrough(

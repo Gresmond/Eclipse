@@ -113,7 +113,41 @@ mixin _Settings on ChangeNotifier {
     notifyListeners();
   }
 
-  bool isRestDay(DateTime day) => restWeekends && day.weekday >= DateTime.saturday;
+  bool isRestDay(DateTime day) => restWeekends && day.weekday >= DateTime.saturday || holidayOn(holidays, day) != null;
+
+  /// Holidays, earliest first: the same on every computer.
+  late List<Holiday> holidays = decodeHolidays(store.setting('holidays'));
+
+  /// Adds a holiday from [start] to [end]; one it overlaps or touches
+  /// joins it.
+  void addHoliday(DateTime start, DateTime end) {
+    var (from, to) = (dateOnly(start), dateOnly(end));
+    final kept = <Holiday>[];
+    for (final h in holidays) {
+      final apart =
+          h.end.isBefore(DateTime(from.year, from.month, from.day - 1)) ||
+          h.start.isAfter(DateTime(to.year, to.month, to.day + 1));
+      if (apart) {
+        kept.add(h);
+      } else {
+        if (h.start.isBefore(from)) from = h.start;
+        if (h.end.isAfter(to)) to = h.end;
+      }
+    }
+    _setHolidays([...kept, (start: from, end: to)]);
+  }
+
+  void removeHoliday(Holiday holiday) => _setHolidays([
+    for (final h in holidays)
+      if (h != holiday) h,
+  ]);
+
+  void _setHolidays(List<Holiday> next) {
+    holidays = decodeHolidays(encodeHolidays(next));
+    store.setSetting('holidays', encodeHolidays(holidays));
+    _streaks.clear();
+    notifyListeners();
+  }
 
   /// Whether Further ahead shows birthdays.
   late bool laterBirthdays = store.setting('laterBirthdays') != 'hidden';

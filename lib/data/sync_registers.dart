@@ -118,6 +118,7 @@ class _Reg {
       // Any kind, as computers from before birthdays replaced categories send
       // others; only a birthday counts.
       ('todo', 'category') || ('todo_repeat', 'category') => v == null || v is String,
+      ('todo', 'location') || ('todo_repeat', 'location') => v == null || v is String,
       _ => v == null || v is num || v is String,
     };
   }

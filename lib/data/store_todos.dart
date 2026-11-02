@@ -91,6 +91,7 @@ extension StoreTodos on Store {
           subtasks: TodoSubtask.decode(s['subtasks'] as String?),
           position: s['position'] as int?,
           reminders: _bits(s['reminders']),
+          location: _place(s['location']),
         ),
       );
     }
@@ -132,6 +133,7 @@ extension StoreTodos on Store {
             'category',
             'position',
             'reminders',
+            'location',
           ])
             key: r[key],
           'deleted': deleted,
@@ -168,6 +170,7 @@ extension StoreTodos on Store {
     subtasks: TodoSubtask.decode(r['subtasks'] as String?),
     position: r['position'] as int?,
     reminders: _bits(r['reminders']),
+    location: _place(r['location']),
   );
 
   /// Open tasks that give reminders, each with the day it's on: its due
@@ -189,6 +192,9 @@ extension StoreTodos on Store {
 
   /// How [reminders] are kept: null for none, as before there were any.
   static int? _stored(int reminders) => reminders == 0 ? null : reminders;
+
+  /// A stored location, or none for a blank or anything else.
+  static String? _place(Object? value) => value is String && value.trim().isNotEmpty ? value.trim() : null;
 
   /// Rolls unfinished to-dos from earlier days' 'tomorrow' list into today's
   /// 'today' list.
@@ -359,12 +365,13 @@ extension StoreTodos on Store {
     int? time,
     bool birthday = false,
     int reminders = 0,
+    String? location,
   }) {
     transaction(() {
       _db.execute(
         // On a new day, it goes after those put in order there.
         'UPDATE todos SET text = ?1, due_date = ?2, due_time = ?3, category = ?4, defer_promotion_day = NULL, '
-        'position = CASE WHEN due_date IS ?2 THEN position END, reminders = ?6 WHERE id = ?5',
+        'position = CASE WHEN due_date IS ?2 THEN position END, reminders = ?6, location = ?7 WHERE id = ?5',
         [
           text,
           dueDate == null ? null : dateKey(dueDate),
@@ -372,6 +379,7 @@ extension StoreTodos on Store {
           birthdayKind(birthday),
           id,
           _stored(reminders),
+          _place(location),
         ],
       );
       _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [id]), day);
@@ -495,6 +503,7 @@ extension StoreTodos on Store {
     int? time,
     bool birthday = false,
     int reminders = 0,
+    String? location,
     bool deleted = false,
   }) {
     transaction(
@@ -508,6 +517,7 @@ extension StoreTodos on Store {
         time: time,
         birthday: birthday,
         reminders: reminders,
+        location: location,
         deleted: deleted,
       ),
     );
@@ -524,6 +534,7 @@ extension StoreTodos on Store {
     int? time,
     bool birthday = false,
     int reminders = 0,
+    String? location,
     bool deleted = false,
   }) {
     final uid = item?.uid ?? _db.select('SELECT lower(hex(randomblob(8))) AS uid').single['uid'] as String;
@@ -558,6 +569,7 @@ extension StoreTodos on Store {
       snapshot['due_time'] = time == null ? null : clockKey(time);
       snapshot['category'] = birthdayKind(birthday);
       snapshot['reminders'] = _stored(reminders);
+      snapshot['location'] = _place(location);
     }
     if (subtasks != null) snapshot['subtasks'] = subtasks;
     if (done != null) {
@@ -624,6 +636,7 @@ extension StoreTodos on Store {
           time: parseClock(r['time'] as String? ?? ''),
           birthday: isBirthday(r['category']),
           reminders: _bits(r['reminders']),
+          location: _place(r['location']),
           subtasks: TodoSubtask.decode(r['subtasks'] as String?),
         ),
   ];
@@ -636,6 +649,7 @@ extension StoreTodos on Store {
     int? time,
     bool birthday = false,
     int reminders = 0,
+    String? location,
     List<TodoSubtask> subtasks = const [],
   }) {
     final repeat = Repeat(
@@ -647,6 +661,7 @@ extension StoreTodos on Store {
       time: time,
       birthday: birthday,
       reminders: reminders,
+      location: _place(location),
       subtasks: _unticked(subtasks),
     );
     saveRepeat(repeat);
@@ -654,11 +669,11 @@ extension StoreTodos on Store {
   }
 
   void saveRepeat(Repeat r) => _db.execute(
-    'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category, reminders, subtasks) '
-    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+    'INSERT INTO todo_repeats (uid, text, rule, start, until, time, category, reminders, subtasks, location) '
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
     'ON CONFLICT (uid) DO UPDATE SET text = excluded.text, rule = excluded.rule, start = excluded.start, '
     'until = excluded.until, time = excluded.time, category = excluded.category, reminders = excluded.reminders, '
-    'subtasks = excluded.subtasks',
+    'subtasks = excluded.subtasks, location = excluded.location',
     [
       r.uid,
       r.text,
@@ -669,6 +684,7 @@ extension StoreTodos on Store {
       birthdayKind(r.birthday),
       _stored(r.reminders),
       r.subtasks.isEmpty ? null : TodoSubtask.encode(r.subtasks),
+      r.location,
     ],
   );
 
@@ -725,8 +741,8 @@ extension StoreTodos on Store {
   }
 
   /// Renames repeat [uid], and the open to-dos it has made for [from] on,
-  /// and gives them its [time], whether it's a [birthday] and its
-  /// [reminders].
+  /// and gives them its [time], whether it's a [birthday], its
+  /// [reminders] and its [location].
   void renameRepeat(
     String uid,
     String text,
@@ -735,22 +751,26 @@ extension StoreTodos on Store {
     int? time,
     bool birthday = false,
     int reminders = 0,
+    String? location,
   }) {
-    final (clock, kind, bits) = (time == null ? null : clockKey(time), birthdayKind(birthday), _stored(reminders));
+    final (clock, kind, bits, place) = (
+      time == null ? null : clockKey(time),
+      birthdayKind(birthday),
+      _stored(reminders),
+      _place(location),
+    );
     transaction(() {
-      _db.execute('UPDATE todo_repeats SET text = ?, time = ?, category = ?, reminders = ? WHERE uid = ?', [
-        text,
-        clock,
-        kind,
-        bits,
-        uid,
-      ]);
+      _db.execute(
+        'UPDATE todo_repeats SET text = ?, time = ?, category = ?, reminders = ?, location = ? WHERE uid = ?',
+        [text, clock, kind, bits, place, uid],
+      );
       for (final r in _openOccurrences(uid, from)) {
-        _db.execute('UPDATE todos SET text = ?, due_time = ?, category = ?, reminders = ? WHERE id = ?', [
+        _db.execute('UPDATE todos SET text = ?, due_time = ?, category = ?, reminders = ?, location = ? WHERE id = ?', [
           text,
           clock,
           kind,
           bits,
+          place,
           r['id'],
         ]);
         _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [r['id']]), today);
@@ -797,8 +817,8 @@ extension StoreTodos on Store {
   });
 
   void _makeOccurrence(Repeat repeat, DateTime day) => _db.execute(
-    'INSERT INTO todos (uid, scope, period, text, since, due_date, due_time, category, reminders, subtasks) '
-    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO todos (uid, scope, period, text, since, due_date, due_time, category, reminders, subtasks, location) '
+    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [
       '${repeat.uid}@${dateKey(day)}',
       TodoScope.month.name,
@@ -810,6 +830,7 @@ extension StoreTodos on Store {
       birthdayKind(repeat.birthday),
       _stored(repeat.reminders),
       TodoSubtask.encode(repeat.subtasks),
+      repeat.location,
     ],
   );
 

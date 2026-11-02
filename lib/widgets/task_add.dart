@@ -40,6 +40,7 @@ class _DatedAddState extends State<_DatedAdd> {
       birthday: choice?.birthday ?? false,
       birthdays: widget.birthdays,
       reminders: choice?.reminders ?? 0,
+      location: choice?.location,
     );
     if (!mounted) return null;
     if (picked != null) setState(() => _choice = picked);

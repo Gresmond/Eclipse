@@ -1,8 +1,8 @@
 part of 'todo_panel.dart';
 
 /// A day, how a task first due on it repeats, its time, whether it's a
-/// birthday and its reminders.
-typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, bool birthday, int reminders});
+/// birthday, its reminders and where it is.
+typedef _DayChoice = ({DateTime day, _RepeatChoice? repeat, int? time, bool birthday, int reminders, String? location});
 
 /// A new task's day from [first] on (to [last], if given), opening on
 /// [selected], with its time and repeat set under the calendar, and with
@@ -17,6 +17,7 @@ Future<_DayChoice?> _pickDayAndRepeat(
   bool birthday = false,
   bool birthdays = false,
   int reminders = 0,
+  String? location,
 }) => showAppDialog<_DayChoice>(
   context: context,
   builder: (_) => _DueDateDialog(
@@ -28,6 +29,7 @@ Future<_DayChoice?> _pickDayAndRepeat(
     birthday: birthday,
     birthdays: birthdays,
     reminders: reminders,
+    location: location,
   ),
 );
 
@@ -50,6 +52,22 @@ mixin _DetailPages<T extends StatefulWidget> on State<T> {
 
   /// Its reminders as chosen; what it gives is [Reminder.allowed] of them.
   int _notify = 0;
+
+  /// Where it happens, typed in under the time.
+  final _location = TextEditingController();
+
+  @override
+  void dispose() {
+    _location.dispose();
+    super.dispose();
+  }
+
+  /// Its location as saved: null when left blank.
+  String? get _place => _location.text.trim().isEmpty ? null : _location.text.trim();
+
+  /// Its location, typed straight in; Enter saves, as in the name.
+  Widget _locationRow({required VoidCallback onSubmitted}) =>
+      _LocationRow(controller: _location, onSubmitted: onSubmitted);
 
   /// The day a repeat set on its page comes round from.
   DateTime? _repeatStart;
@@ -159,6 +177,7 @@ typedef _TaskEdit = ({
   int? time,
   bool birthday,
   int reminders,
+  String? location,
 });
 
 /// Edits [item], asking whether a change to a repeating task's name is
@@ -179,7 +198,7 @@ Future<void> _editTask(
   );
   if (result == null || !context.mounted) return;
   final choice = result.repeat;
-  final (time, birthday, reminders) = (result.time, result.birthday, result.reminders);
+  final (time, birthday, reminders, location) = (result.time, result.birthday, result.reminders, result.location);
   if (repeat == null) {
     if (choice == null) {
       state.editTodo(
@@ -191,6 +210,7 @@ Future<void> _editTask(
         time: time,
         birthday: birthday,
         reminders: reminders,
+        location: location,
       );
     } else {
       state.makeRepeating(
@@ -203,6 +223,7 @@ Future<void> _editTask(
         time: time,
         birthday: birthday,
         reminders: reminders,
+        location: location,
       );
     }
     return;
@@ -220,15 +241,27 @@ Future<void> _editTask(
       time: time,
       birthday: birthday,
       reminders: reminders,
+      location: location,
     );
     return;
   }
   final renamed =
-      result.text.trim() != item.text || (time, birthday, reminders) != (item.dueTime, item.birthday, item.reminders);
+      result.text.trim() != item.text ||
+      (time, birthday, reminders, location) != (item.dueTime, item.birthday, item.reminders, item.location);
   if (!renamed && result.due == item.dueDate) return;
   final future = renamed ? await _askWhich(context, removing: false) : false;
   if (future == null || !context.mounted) return;
-  if (future) state.renameRepeat(repeat, result.text, from, time: time, birthday: birthday, reminders: reminders);
+  if (future) {
+    state.renameRepeat(
+      repeat,
+      result.text,
+      from,
+      time: time,
+      birthday: birthday,
+      reminders: reminders,
+      location: location,
+    );
+  }
   if (!future || result.due != item.dueDate) {
     state.editTodo(
       scope,
@@ -239,6 +272,7 @@ Future<void> _editTask(
       time: time,
       birthday: birthday,
       reminders: reminders,
+      location: location,
     );
   }
 }
@@ -332,6 +366,63 @@ class _TimeRow extends StatelessWidget {
       onPressed: onOpen,
       clear: 'All day',
       onClear: time == null ? null : onClear,
+    );
+  }
+}
+
+/// Where a task happens, typed in on a line like the time's: a pin, the
+/// place or "Add a location", and a cross that clears it.
+class _LocationRow extends StatelessWidget {
+  const _LocationRow({required this.controller, required this.onSubmitted});
+
+  final TextEditingController controller;
+  final VoidCallback onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final label = Theme.of(context).textTheme.labelLarge!;
+    final accent = Theme.of(context).colorScheme.primary;
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) => Row(
+        children: [
+          Expanded(
+            child: Padding(
+              // Lined up with the time button's icon and label.
+              padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
+              child: Row(
+                children: [
+                  Icon(Icons.place_rounded, size: 18, color: accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      textCapitalization: TextCapitalization.sentences,
+                      inputFormatters: const [NoteInputFormatter()],
+                      style: label.copyWith(color: p.ink),
+                      cursorColor: p.accent,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        filled: false,
+                        hintText: 'Add a location',
+                        hintStyle: label.copyWith(color: accent),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                      ),
+                      onSubmitted: (_) => onSubmitted(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (controller.text.isNotEmpty)
+            _TaskAction(tooltip: 'No location', icon: Icons.close_rounded, onPressed: controller.clear),
+        ],
+      ),
     );
   }
 }
@@ -438,6 +529,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
     super.initState();
     _time = widget.item.dueTime;
     _notify = widget.item.reminders;
+    _location.text = widget.item.location ?? '';
     _repeat = switch (widget.repeat) {
       final r? => (rule: r.rule, until: r.until),
       null => null,
@@ -467,6 +559,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
       time: _birthday ? null : _time,
       birthday: _birthday,
       reminders: _reminders(birthday: _birthday),
+      location: _place,
     ));
   }
 
@@ -535,6 +628,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
         const SizedBox(height: 4),
         _FoldAway(folded: _birthday, child: _timeRow()),
         _notifyRow(birthday: _birthday),
+        _locationRow(onSubmitted: _save),
         _FoldAway(folded: _birthday, child: _repeatRow()),
         const SizedBox(height: 16),
       ],
