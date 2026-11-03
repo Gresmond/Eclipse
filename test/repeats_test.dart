@@ -123,10 +123,10 @@ void main() {
       until: DateTime(2027, 1, 1),
     );
     expect(ended.next(DateTime(2026, 11, 1)), isNull);
-    // 29 February comes round in leap years only.
+    // 29 February falls on the 28th in other years.
     final leap = Repeat(uid: 'c', text: 'Leap day', rule: const RepeatRule.yearly(1), start: DateTime(2028, 2, 29));
-    expect(leap.next(DateTime(2028, 3, 1)), DateTime(2032, 2, 29));
-    expect(leap.on(DateTime(2029, 2, 28)), isFalse);
+    expect(leap.next(DateTime(2028, 3, 1)), DateTime(2029, 2, 28));
+    expect(leap.on(DateTime(2029, 2, 28)), isTrue);
     expect(leap.on(DateTime(2029, 3, 1)), isFalse);
   });
 

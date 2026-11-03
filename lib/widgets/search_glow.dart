@@ -33,6 +33,13 @@ class SearchGlow extends StatefulWidget {
   /// one built as the day fades in catches it but a later one doesn't.
   static const _catch = Duration(milliseconds: 1500);
 
+  /// The targets of those built now, each with how many there are.
+  static final _built = <String, int>{};
+
+  /// Whether a [SearchGlow] for [target] is built, so it can light itself;
+  /// a lazy list scrolls one it hasn't built yet into being first.
+  static bool isBuilt(String target) => _built.containsKey(target);
+
   @override
   State<SearchGlow> createState() => _SearchGlowState();
 }
@@ -43,7 +50,29 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
   Timer? _wait;
 
   @override
+  void initState() {
+    super.initState();
+    _count(widget.target, 1);
+  }
+
+  @override
+  void didUpdateWidget(SearchGlow old) {
+    super.didUpdateWidget(old);
+    if (old.target != widget.target) {
+      _count(old.target, -1);
+      _count(widget.target, 1);
+    }
+  }
+
+  static void _count(String? target, int by) {
+    if (target == null) return;
+    final n = (SearchGlow._built[target] ?? 0) + by;
+    n > 0 ? SearchGlow._built[target] = n : SearchGlow._built.remove(target);
+  }
+
+  @override
   void dispose() {
+    _count(widget.target, -1);
     _wait?.cancel();
     _glow.dispose();
     super.dispose();

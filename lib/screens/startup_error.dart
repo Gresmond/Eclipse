@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../data/store.dart' show DatabaseTooNewException;
 import '../data/updates.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
@@ -15,7 +16,7 @@ class StartupErrorApp extends StatelessWidget {
   final Updater? updater;
 
   /// A database written by a newer build: updating fixes it.
-  bool get _tooNew => '$error'.contains('newer version of Eclipse');
+  bool get _tooNew => error is DatabaseTooNewException;
 
   @override
   Widget build(BuildContext context) {

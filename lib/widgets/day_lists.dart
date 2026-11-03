@@ -58,17 +58,21 @@ class _Planned {
       if (kept.contains('${repeat.uid}@${dateKey(next)}')) continue;
       (byDay[dateKey(next)] ??= []).add((scope: null, item: null, repeat: repeat));
     }
-    later = [for (final key in byDay.keys.toList()..sort()) (DateTime.parse(key), _byTime(byDay[key]!, (l) => l.item))];
+    final start = state.dayStartHour;
+    later = [
+      for (final key in byDay.keys.toList()..sort()) (DateTime.parse(key), _byTime(byDay[key]!, (l) => l.item, start)),
+    ];
     for (var i = 0; i < days.length; i++) {
-      days[i] = _byTime(days[i], (t) => t.$2);
+      days[i] = _byTime(days[i], (t) => t.$2, start);
     }
   }
 
-  /// [tasks] with the open ones at a time first, earliest first; the rest
+  /// [tasks] with the open ones at a time first, earliest first, those in
+  /// the small hours after a day starting at [startHour] last; the rest
   /// keep their order.
-  static List<T> _byTime<T>(List<T> tasks, TodoItem? Function(T) item) {
+  static List<T> _byTime<T>(List<T> tasks, TodoItem? Function(T) item, int startHour) {
     int? time(T t) => switch (item(t)) {
-      final i? when !i.done => i.dueTime,
+      final i? when !i.done && i.dueTime != null => i.dueTime! + (afterMidnight(i.dueTime, startHour) ? 24 * 60 : 0),
       _ => null,
     };
     if (!tasks.any((t) => time(t) != null)) return tasks;
@@ -85,6 +89,37 @@ class _Planned {
   final days = List.generate(WeekCard.span + 1, (_) => <_Task>[]);
   late final List<(DateTime, List<_Later>)> later;
   final undated = <_Later>[];
+}
+
+/// For a lazy task list: when search (or a reminder) opens one of its
+/// tasks whose row isn't built yet, scrolls down through the list until
+/// it is, when it lights itself and comes into view.
+mixin _RevealsFound<T extends StatefulWidget> on State<T> {
+  /// The list's scroll, from its [SmoothTaskScroll].
+  ScrollController? _scroll;
+  DateTime? _sought;
+
+  /// Call in build with the uids the list holds.
+  void _reveal(Iterable<String?> uids) {
+    final found = AppScope.watch(context, (s) => s.found).found;
+    if (found == null || found.at == _sought) return;
+    final uid = found.target.split('#').first;
+    if (!uids.contains(uid)) return;
+    _sought = found.at;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _step(uid, 0));
+  }
+
+  void _step(String uid, int tries) {
+    final scroll = _scroll;
+    if (!mounted || scroll == null || !scroll.hasClients || SearchGlow.isBuilt(uid)) return;
+    final position = scroll.position;
+    // From the top, a screenful at a time, building each in turn.
+    if (tries > 0 && position.pixels >= position.maxScrollExtent) return;
+    final next = tries == 0 ? 0.0 : position.pixels + position.viewportDimension * 0.8;
+    position.jumpTo(next.clamp(position.minScrollExtent, position.maxScrollExtent));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _step(uid, tries + 1));
+    WidgetsBinding.instance.scheduleFrame();
+  }
 }
 
 /// Remembers the tasks a list has shown, so one added since fades in.
@@ -118,7 +153,8 @@ typedef _Shown = ({_Task task, bool arriving, bool leaving});
 /// The comings and goings of one day's lists, for a list state made per
 /// day: a task come from another day (ticked from Tomorrow, or moved
 /// here) shows unticked at the bottom of its day before it settles into
-/// place, and a removed one closes up where it was.
+/// place; a newly added one fades in straight in its place (above any
+/// ticked ones); and a removed one closes up where it was.
 mixin _DayMotion<T extends StatefulWidget> on State<T> {
   /// Each day's tasks as last drawn, by its group.
   final _drawn = <String, List<int>>{};
@@ -149,14 +185,15 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
     _timers.add(timer);
   }
 
-  /// [tasks], [group]'s list in order, as it's drawn now. Call once per
-  /// group per build, after [_settle] for the build before.
-  List<_Shown> _shown(String group, List<_Task> tasks) {
+  /// [tasks], [group]'s list in order, as it's drawn now; those in [fresh]
+  /// were just added, not come from another day. Call once per group per
+  /// build, after [_settle] for the build before.
+  List<_Shown> _shown(String group, List<_Task> tasks, {Set<int> fresh = const {}}) {
     tasks = _given[group] = _inOrder(group, tasks);
     final ids = [for (final (_, item) in tasks) item.id];
     // Everything there when the list first shows is simply there.
     final before = _drawn[group] ?? (_started ? const <int>[] : ids);
-    final added = ids.toSet().difference(before.toSet());
+    final added = ids.toSet().difference(before.toSet()).difference(fresh);
     if (added.isNotEmpty) {
       _arriving.addAll(added);
       _after(() => _arriving.removeAll(added));
@@ -239,10 +276,6 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
   bool _hasDeparting(String group) => _departing.values.any((d) => d.group == group);
 }
 
-/// 'Oct 28', with the year when it isn't [today]'s.
-String _shortDate(DateTime day, DateTime today) =>
-    '${monthNames[day.month - 1].substring(0, 3)} ${day.day}${day.year != today.year ? ' ${day.year}' : ''}';
-
 /// Adds [text] as a task due on [day], in the list it belongs to now.
 void _addDue(
   AppState state,
@@ -253,26 +286,10 @@ void _addDue(
   int reminders = 0,
   String? location,
 }) {
-  final today = state.today;
-  final days = daysBetween(today, day);
-  if (days <= 0) {
-    state.addTodo(TodoScope.today, text, time: time, birthday: birthday, reminders: reminders, location: location);
-  } else if (days == 1) {
-    state.addTodo(TodoScope.tomorrow, text, time: time, birthday: birthday, reminders: reminders, location: location);
-  } else {
-    // Due later this week files under This week, anything after under
-    // This month; both move into Tomorrow and Today as the day nears.
-    final sunday = DateTime(today.year, today.month, today.day + 7 - today.weekday);
-    state.addTodo(
-      day.isAfter(sunday) ? TodoScope.month : TodoScope.week,
-      text,
-      dueDate: day,
-      time: time,
-      birthday: birthday,
-      reminders: reminders,
-      location: location,
-    );
-  }
+  // Due later this week files under This week, anything after under This
+  // month; both move into Tomorrow and Today as the day nears.
+  final (scope, due) = scopeForDay(state.today, day);
+  state.addTodo(scope, text, dueDate: due, time: time, birthday: birthday, reminders: reminders, location: location);
 }
 
 /// Adds [text] on [day] as [choice] says: a task, or a repeating one.

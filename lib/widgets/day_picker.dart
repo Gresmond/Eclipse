@@ -6,31 +6,65 @@ import 'hover_fill.dart';
 
 /// A month of days to pick from, opening on [selected]. Days after
 /// [today] can't be picked, and months before [first] aren't shown.
-class DayPicker extends StatefulWidget {
+class DayPicker extends StatelessWidget {
   const DayPicker({super.key, required this.today, required this.first, required this.selected, required this.onPick});
 
   final DateTime today, first, selected;
   final ValueChanged<DateTime> onPick;
 
   @override
-  State<DayPicker> createState() => _DayPickerState();
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 2, 14, 8),
+    child: MonthCalendar(
+      initial: selected,
+      first: first,
+      last: today,
+      dayBuilder: (context, day) => CalendarDay(
+        day: day.day,
+        selected: day == selected,
+        isToday: day == today,
+        enabled: !day.isAfter(today),
+        onTap: () {
+          Navigator.pop(context);
+          onPick(day);
+        },
+      ),
+    ),
+  );
 }
 
-class _DayPickerState extends State<DayPicker> {
-  late DateTime _month = DateTime(widget.selected.year, widget.selected.month);
+/// The app's one calendar: a month's name with arrows to the months either
+/// side (no further back than [first]'s month, or on than [last]'s, when
+/// set), the weekdays' letters, Monday first, and always six weeks' rows,
+/// so the arrows and what's under it stay put month to month. Opens on
+/// [initial]'s month; [dayBuilder] draws each day, usually a [CalendarDay].
+class MonthCalendar extends StatefulWidget {
+  const MonthCalendar({super.key, required this.initial, this.first, this.last, required this.dayBuilder});
+
+  final DateTime initial;
+  final DateTime? first, last;
+  final Widget Function(BuildContext context, DateTime day) dayBuilder;
+
+  @override
+  State<MonthCalendar> createState() => _MonthCalendarState();
+}
+
+class _MonthCalendarState extends State<MonthCalendar> {
+  late DateTime _month = DateTime(widget.initial.year, widget.initial.month);
 
   void _shift(int delta) => setState(() => _month = DateTime(_month.year, _month.month + delta));
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final today = widget.today, shown = widget.selected;
-    final atToday = _month.year == today.year && _month.month == today.month;
-    final atFirst = !_month.isAfter(widget.first);
+    final (first, last) = (widget.first, widget.last);
+    final atFirst = first != null && !_month.isAfter(DateTime(first.year, first.month));
+    final atLast = last != null && !_month.isBefore(DateTime(last.year, last.month));
     final lead = _month.weekday - 1; // Monday first
     final days = daysInMonth(_month.year, _month.month);
 
-    Widget arrow(IconData icon, VoidCallback? onTap) => IconButton(
+    Widget arrow(IconData icon, String tooltip, VoidCallback? onTap) => IconButton(
+      tooltip: tooltip,
       iconSize: 18,
       visualDensity: VisualDensity.compact,
       color: p.inkMuted,
@@ -39,73 +73,59 @@ class _DayPickerState extends State<DayPicker> {
       icon: Icon(icon),
     );
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 2, 14, 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              const SizedBox(width: 6),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '${monthNames[_month.month - 1]} ${_month.year}',
+                style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
+              ),
+            ),
+            arrow(Icons.chevron_left_rounded, 'Previous month', atFirst ? null : () => _shift(-1)),
+            arrow(Icons.chevron_right_rounded, 'Next month', atLast ? null : () => _shift(1)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            for (final name in weekdayNames)
               Expanded(
-                child: Text(
-                  '${monthNames[_month.month - 1]} ${_month.year}',
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
+                child: Center(
+                  child: Text(
+                    name[0],
+                    style: TextStyle(
+                      fontFamily: Fonts.ui,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.6,
+                      color: p.inkMuted.withValues(alpha: 0.7),
+                    ),
+                  ),
                 ),
               ),
-              arrow(Icons.chevron_left_rounded, atFirst ? null : () => _shift(-1)),
-              arrow(Icons.chevron_right_rounded, atToday ? null : () => _shift(1)),
-            ],
-          ),
-          const SizedBox(height: 4),
+          ],
+        ),
+        const SizedBox(height: 4),
+        for (var week = 0; week < 6; week++)
           Row(
             children: [
-              for (final name in weekdayNames)
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      name[0],
-                      style: TextStyle(
-                        fontFamily: Fonts.ui,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.6,
-                        color: p.inkMuted.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ),
-                ),
+              for (var col = 0; col < 7; col++)
+                if (week * 7 + col - lead + 1 case final d when d >= 1 && d <= days)
+                  // Keyed by its date, so a month's change draws new days
+                  // rather than easing the old ones' fills into them.
+                  Expanded(
+                    key: ValueKey(DateTime(_month.year, _month.month, d)),
+                    child: widget.dayBuilder(context, DateTime(_month.year, _month.month, d)),
+                  )
+                else
+                  const Expanded(child: SizedBox(height: CalendarDay.height)),
             ],
           ),
-          const SizedBox(height: 4),
-          // Always six weeks' rows, so the arrows stay put month to month.
-          for (var week = 0; week < 6; week++)
-            Row(
-              children: [
-                for (var col = 0; col < 7; col++)
-                  Expanded(
-                    child: Builder(
-                      builder: (context) {
-                        final d = week * 7 + col - lead + 1;
-                        if (d < 1 || d > days) return const SizedBox(height: CalendarDay.height);
-                        final day = DateTime(_month.year, _month.month, d);
-                        return CalendarDay(
-                          day: d,
-                          selected: day == shown,
-                          isToday: day == today,
-                          enabled: !day.isAfter(today),
-                          onTap: () {
-                            Navigator.pop(context);
-                            widget.onPick(day);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-        ],
-      ),
+      ],
     );
   }
 }

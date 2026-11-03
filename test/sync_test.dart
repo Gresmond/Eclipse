@@ -779,6 +779,7 @@ void main() {
       location: 'Gym hall',
       subtasks: [const TodoSubtask('Shoes')],
     );
+    store.setSetting('holidays', encodeHolidays([(start: DateTime(2026, 12, 24), end: DateTime(2026, 12, 26))]));
     pc.engine.claimAll();
     final sent = {
       for (final r in store.raw.select('SELECT DISTINCT kind, field FROM sync_reg'))
@@ -922,6 +923,32 @@ void main() {
         stopped: () => false,
       );
       expect(drive.journal.keys, contains('Eclipse Journals/2026/2026-10-31.md'));
+    });
+
+    test('two computers that made Eclipse Journals at once end up sharing the first one made', () async {
+      var now = DateTime(2026, 11, 3, 9);
+      final onPc = JournalFolder(<String, dynamic>{}, () async {}, now: () => now);
+      final onLaptop = JournalFolder(<String, dynamic>{}, () async {}, now: () => now);
+      const texts = {'2026-11-01': 'Written on the PC', '2026-11-02': 'Written on the laptop'};
+      const writers = {'2026-11-01': 'pc', '2026-11-02': 'laptop'};
+      await onPc.copy(drive, machine: 'pc', writers: writers, texts: texts, stopped: () => false);
+      // Drive's search hadn't caught up: the laptop doesn't see the PC's.
+      final first = onPc.id!;
+      final shown = drive.visible[first]!;
+      drive.visible[first] = (name: 'hidden', parent: shown.parent, bytes: shown.bytes, binned: false);
+      await onLaptop.copy(drive, machine: 'laptop', writers: writers, texts: texts, stopped: () => false);
+      drive.visible[first] = shown;
+      expect(onLaptop.id, isNot(first), reason: 'each made its own');
+      // At the next hourly check, the laptop finds the first one made.
+      now = now.add(JournalFolder.checkEvery);
+      for (final (folder, machine) in [(onPc, 'pc'), (onLaptop, 'laptop')]) {
+        await folder.copy(drive, machine: machine, writers: writers, texts: texts, stopped: () => false);
+      }
+      expect([onPc.id, onLaptop.id], [first, first]);
+      expect(drive.journal, {
+        'Eclipse Journals/2026/2026-11-01.md': '# Sunday 1 November 2026\n\nWritten on the PC\n',
+        'Eclipse Journals/2026/2026-11-02.md': '# Monday 2 November 2026\n\nWritten on the laptop\n',
+      }, reason: 'one folder, with every day, the other in the bin');
     });
 
     test('the first computer starts it, the next joins, and edits go both ways', () async {
@@ -1558,13 +1585,14 @@ class _World {
     }
   }
 
-  /// The latest time in each computer's files in Drive, by id.
-  Map<String, int> latestSent() {
-    final latest = <String, int>{};
+  /// The latest time and number in each computer's files in Drive, by id.
+  Map<String, ({int ts, int seq})> latestSent() {
+    final latest = <String, ({int ts, int seq})>{};
     for (final MapEntry(key: name, value: versions) in drive.entries) {
       final who = name.split('/').first;
       for (final r in versions.last) {
-        latest[who] = max(latest[who] ?? 0, r[4] as int);
+        final (:ts, :seq) = latest[who] ?? (ts: 0, seq: 0);
+        latest[who] = (ts: max(ts, r[4] as int), seq: max(seq, (r[6] as Map)[who] as int? ?? 0));
       }
     }
     return latest;

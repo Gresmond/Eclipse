@@ -370,9 +370,11 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
         final width = spot == null ? _welcomeWidth : _cardWidth;
         _to ??= _TourGeometry(hole: hole, card: _cardAt(spot, width, size), width: width, radius: 24);
         _from ??= _to;
-        final scrim = p.brightness == Brightness.dark
-            ? const Color(0xFF000000).withValues(alpha: 0.58)
-            : p.shadow.withValues(alpha: 0.55);
+        final scrim = Color.lerp(
+          p.shadow.withValues(alpha: 0.55),
+          const Color(0xFF000000).withValues(alpha: 0.58),
+          p.darkness,
+        )!;
 
         return Focus(
           autofocus: true,

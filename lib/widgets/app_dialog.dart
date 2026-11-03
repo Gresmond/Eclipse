@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../theme/app_theme.dart';
 
@@ -35,4 +36,39 @@ class _AppDialogRoute<T> extends DialogRoute<T> {
     Animation<double> secondaryAnimation,
     Widget child,
   ) => dialogTransition(animation, child);
+}
+
+/// A dialog centred when it opens, whose top then stays put as it grows
+/// or shrinks, rising only as far as it must to stay on screen. Taller
+/// than the screen, it fills it and scrolls.
+class KeepTop extends SingleChildRenderObjectWidget {
+  const KeepTop({super.key, required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderKeepTop();
+}
+
+class _RenderKeepTop extends RenderShiftedBox {
+  _RenderKeepTop() : super(null);
+
+  double? _top;
+
+  /// The height [_top] was centred in; a new one centres it again.
+  double? _room;
+
+  @override
+  void performLayout() {
+    size = constraints.biggest;
+    final child = this.child!;
+    // With no height limit the dialog is only as tall as it is.
+    child.layout(constraints.loosen().copyWith(maxHeight: double.infinity), parentUsesSize: true);
+    if (child.size.height > size.height) child.layout(constraints.loosen(), parentUsesSize: true);
+    final spare = size.height - child.size.height;
+    if (_top == null || _room != size.height) {
+      _top = spare / 2;
+      _room = size.height;
+    }
+    _top = _top!.clamp(0.0, spare);
+    (child.parentData! as BoxParentData).offset = Offset((size.width - child.size.width) / 2, _top!);
+  }
 }

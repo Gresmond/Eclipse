@@ -9,11 +9,14 @@ import '../theme/tokens.dart';
 import 'corner_card.dart';
 
 /// Over everything, dialogs too: the card naming what was just removed,
-/// with Undo, in the bottom-right corner, and Ctrl+Z to put back the last
+/// with Undo, in the bottom-right corner, with the other corner [cards]
+/// (reminders, sync, updates) above it, and Ctrl+Z to put back the last
 /// few removals (a text field's own Ctrl+Z comes first).
 class UndoLayer extends StatefulWidget {
-  const UndoLayer({super.key, required this.child});
+  const UndoLayer({super.key, this.cards, required this.child});
 
+  /// The corner's other cards, stacked above the undo card.
+  final Widget? cards;
   final Widget child;
 
   static const cardTime = Motion.notice;
@@ -66,15 +69,27 @@ class _UndoLayerState extends State<UndoLayer> {
             Positioned(
               right: 32,
               bottom: 28,
-              child: Material(
-                type: MaterialType.transparency,
-                child: CornerCard(
-                  visible: state.shownRemoval != null,
-                  gap: 0,
-                  child: _Card(
-                    label: state.shownRemoval?.label ?? '',
-                    onUndo: state.undo,
-                    onHover: (held) => _hold(state, held),
+              // Its own overlay, for the cards' tooltips: this sits above
+              // the navigator's.
+              child: Overlay.wrap(
+                alwaysSizeToContent: true,
+                clipBehavior: Clip.none,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      ?widget.cards,
+                      CornerCard(
+                        visible: state.shownRemoval != null,
+                        child: _Card(
+                          label: state.shownRemoval?.label ?? '',
+                          onUndo: state.undo,
+                          onHover: (held) => _hold(state, held),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -108,6 +123,8 @@ class _UndoAction extends Action<_UndoIntent> {
 class _Card extends StatelessWidget {
   const _Card({required this.label, required this.onUndo, required this.onHover});
 
+  static const height = 52.0;
+
   final String label;
   final VoidCallback onUndo;
   final ValueChanged<bool> onHover;
@@ -119,7 +136,7 @@ class _Card extends StatelessWidget {
       onEnter: (_) => onHover(true),
       onExit: (_) => onHover(false),
       child: Container(
-        height: UndoCardSpace.height,
+        height: _Card.height,
         constraints: const BoxConstraints(maxWidth: 600),
         padding: const EdgeInsets.fromLTRB(18, 0, 10, 0),
         decoration: BoxDecoration(
@@ -144,19 +161,5 @@ class _Card extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// Room under the other corner cards for the undo card while it shows,
-/// so they move up out of its way rather than sit under it.
-class UndoCardSpace extends StatelessWidget {
-  const UndoCardSpace({super.key});
-
-  static const height = 52.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final shown = AppScope.watch(context, (s) => s.shownRemoval != null).shownRemoval != null;
-    return AnimatedContainer(duration: Motion.morph, curve: Motion.morphCurve, height: shown ? height + 12 : 0);
   }
 }

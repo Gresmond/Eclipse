@@ -95,7 +95,21 @@ mixin _Reminders on ChangeNotifier {
   DateTime get today;
   DateTime Function() get _clock;
   ReminderNotifier? get notifier;
+  int get dayStartHour;
   void showFound(DateTime day, String target);
+
+  /// The tasks that remind, each on the calendar day it happens: with a
+  /// day starting at 4am, a task at 1:00 am is in the small hours after its
+  /// day's evening, on the next date.
+  List<(TodoItem, DateTime)> _remindingTodos() => [
+    for (final (item, day) in store.remindingTodos(today))
+      (
+        item,
+        afterMidnight(item.birthday ? null : item.dueTime, dayStartHour)
+            ? DateTime(day.year, day.month, day.day + 1)
+            : day,
+      ),
+  ];
 
   /// The setting that keeps which reminders have shown, on this computer.
   static const _shownSetting = 'remindersShown';
@@ -125,7 +139,7 @@ mixin _Reminders on ChangeNotifier {
   void checkReminders() {
     final now = _clock();
     final shown = _shownKeys();
-    final due = dueReminders(store.remindingTodos(today), now, shown);
+    final due = dueReminders(_remindingTodos(), now, shown);
     if (due.isEmpty) return;
     for (final (alert, keys) in due) {
       shown.addAll(keys);
@@ -142,7 +156,7 @@ mixin _Reminders on ChangeNotifier {
     final shown = _shownKeys();
     final due = dueReminders(
       [
-        for (final task in store.remindingTodos(today))
+        for (final task in _remindingTodos())
           if (which(task.$1.uid ?? '')) task,
       ],
       _clock(),

@@ -17,8 +17,8 @@ mixin _Todos on ChangeNotifier {
   final _todoDays = LruCache<String, Map<TodoScope, List<TodoItem>>>(3);
   final _orderedTodos = LruCache<(TodoScope, String?), List<TodoItem>>(16);
 
+  /// The repeats stay: everything that changes one forgets them itself.
   void _todosChanged() {
-    _repeats = null;
     _todoDays.clear();
     _orderedTodos.clear();
     todosRevision++;
@@ -26,6 +26,19 @@ mixin _Todos on ChangeNotifier {
   }
 
   final Map<TodoScope, List<TodoItem>> todos = {};
+
+  /// What's worked out from the lists under [key], kept until they change:
+  /// Week ahead and Further ahead both plan the same days from them.
+  T fromTodos<T extends Object>(Object key, T Function() build) {
+    if (_fromTodosAt != todosRevision) {
+      _fromTodos.clear();
+      _fromTodosAt = todosRevision;
+    }
+    return _fromTodos.putIfAbsent(key, build) as T;
+  }
+
+  final _fromTodos = <Object, Object>{};
+  int? _fromTodosAt;
 
   /// Today and the preceding calendar day remain editable.
   bool canEditDay(DateTime day) =>
@@ -198,6 +211,7 @@ mixin _Todos on ChangeNotifier {
     final current = todos[source]!.where((t) => t.id == item.id).firstOrNull;
     if (current == null || current.done) return;
     store.moveTodo(current.id, destination, today);
+    _quietReminders((uid) => uid == current.uid);
     _reloadTodos();
     _todosChanged();
   }
@@ -206,14 +220,11 @@ mixin _Todos on ChangeNotifier {
   void moveTodoTo(TodoScope source, TodoItem item, DateTime day) {
     final current = todos[source]!.where((t) => t.id == item.id).firstOrNull;
     if (current == null || current.done || day.isBefore(today)) return;
-    final days = daysBetween(today, day);
-    if (days <= 1) {
-      moveTodo(source, current, days == 0 ? TodoScope.today : TodoScope.tomorrow);
-      return;
-    }
-    // Due this week files under This week, anything after under This month.
-    final sunday = DateTime(today.year, today.month, today.day + 7 - today.weekday);
-    store.moveTodo(current.id, day.isAfter(sunday) ? TodoScope.month : TodoScope.week, today, due: day);
+    final (scope, due) = scopeForDay(today, day);
+    if (due == null) return moveTodo(source, current, scope);
+    store.moveTodo(current.id, scope, today, due: due);
+    // As after an edit, what it would have reminded of already is past.
+    _quietReminders((uid) => uid == current.uid);
     _reloadTodos();
     _todosChanged();
   }
@@ -242,19 +253,43 @@ mixin _Todos on ChangeNotifier {
   // Repeating tasks
 
   List<Repeat>? _repeats;
+  Map<String, Repeat>? _repeatsByUid;
   List<Repeat> get repeats => _repeats ??= store.repeats();
 
   /// The repeat [item] is a time of, while it still repeats.
   Repeat? repeatOf(TodoItem item) {
     final uid = item.repeatUid;
-    return uid == null ? null : repeats.where((r) => r.uid == uid).firstOrNull;
+    if (uid == null) return null;
+    final all = repeats;
+    if (_repeatsByUid case final byUid? when identical(_repeatsOf, all)) return byUid[uid];
+    _repeatsOf = all;
+    return (_repeatsByUid = {for (final r in all) r.uid: r})[uid];
   }
+
+  List<Repeat>? _repeatsOf;
+
+  /// The times each repeat has made from a day on, by day and repeat, as
+  /// [comingOccurrence] asks for them. Only making times or taking in
+  /// another computer's adds to them, and both go through [_startDay],
+  /// which forgets them; ticking, moving or removing a task doesn't.
+  final _made = <String, Map<String, Set<String>>>{};
+
+  /// Times the made times were read for [comingOccurrence], for tests.
+  @visibleForTesting
+  int debugMadeLookups = 0;
+
+  Set<String> _madeFrom(Repeat repeat, DateTime from) =>
+      _made.putIfAbsent(dateKey(from), () {
+        debugMadeLookups++;
+        return store.madeOccurrencesFrom(from);
+      })[repeat.uid] ??
+      const {};
 
   /// The first time [repeat] comes round on or after [from] that wasn't
   /// taken away, made or not and done or not: the one time of it shown.
   /// [kept] has the uids of the to-dos still in a list.
   DateTime? comingOccurrence(Repeat repeat, DateTime from, {Set<String> kept = const {}}) {
-    final made = store.madeOccurrences(repeat.uid);
+    final made = _madeFrom(repeat, from);
     for (var day = repeat.next(from); day != null; day = repeat.next(DateTime(day.year, day.month, day.day + 1))) {
       final uid = '${repeat.uid}@${dateKey(day)}';
       if (kept.contains(uid) || !made.contains(uid)) return day;
@@ -382,11 +417,12 @@ mixin _Todos on ChangeNotifier {
 
   /// Stops [repeat] coming round from [from] on.
   void endRepeat(Repeat repeat, DateTime from) {
-    const times = 'substr(uid, 1, length(?1)) = ?1';
+    const times = 'uid >= ? AND uid < ?';
+    final range = StoreTodos.occurrenceRange(repeat.uid);
     _removed('Removed “${repeat.text}” and later ones', [
       store.rowsBefore('todo_repeats', ['uid'], 'uid = ?', [repeat.uid]),
-      store.rowsBefore('todos', ['uid'], times, ['${repeat.uid}@']),
-      store.rowsBefore('todo_history', ['uid', 'day'], times, ['${repeat.uid}@']),
+      store.rowsBefore('todos', ['uid'], times, range),
+      store.rowsBefore('todo_history', ['uid', 'day'], times, range),
     ]);
     store.endRepeat(repeat.uid, from, today);
     _reloadTodos();

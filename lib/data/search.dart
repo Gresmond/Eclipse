@@ -39,28 +39,38 @@ class SearchHit {
 }
 
 /// Everything search looks through, read once and matched as you type.
+/// Read at the first search, not when it's made, so opening Settings costs
+/// nothing; AppState keeps one until a task or the journal changes.
 class SearchIndex {
-  SearchIndex(Store store)
-    : _journal = [for (final e in store.journalEntries()) (day: e.day, text: e.text, key: _fold(e.text))],
-      _todos = [
-        for (final t in store.searchableTodos())
-          (
-            todo: t,
-            // Its location matches as its name does.
-            key: _fold(t.location == null ? t.text : '${t.text}\n${t.location}'),
-            subtasks: [for (final (i, s) in t.subtasks.indexed) (index: i, text: s.text, key: _fold(s.text))],
-          ),
-      ];
+  SearchIndex(this._store);
 
-  final List<({String day, String text, String key})> _journal;
-  final List<
+  final Store _store;
+
+  /// Times the text was read and folded, for tests.
+  static int debugBuilds = 0;
+
+  late final List<({String day, String text, String key})> _journal = [
+    for (final e in _store.journalEntries()) (day: e.day, text: e.text, key: _fold(e.text)),
+  ];
+  late final List<
     ({
       ({String uid, String day, String text, bool done, List<TodoSubtask> subtasks, String? location}) todo,
       String key,
       List<({int index, String text, String key})> subtasks,
     })
   >
-  _todos;
+  _todos = () {
+    debugBuilds++;
+    return [
+      for (final t in _store.searchableTodos())
+        (
+          todo: t,
+          // Its location matches as its name does.
+          key: _fold(t.location == null ? t.text : '${t.text}\n${t.location}'),
+          subtasks: [for (final (i, s) in t.subtasks.indexed) (index: i, text: s.text, key: _fold(s.text))],
+        ),
+    ];
+  }();
 
   /// The words of [query], folded the way the text is.
   static List<String> words(String query) => _fold(query).split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();

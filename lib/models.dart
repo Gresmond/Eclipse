@@ -353,8 +353,8 @@ class RepeatRule {
       RepeatKind.weeks => since % (7 * every) == 0,
       // The 31st falls on a shorter month's last day.
       RepeatKind.monthly => day.day == min(every, DateTime(day.year, day.month + 1, 0).day),
-      // A 29 February start comes round in leap years only.
-      RepeatKind.yearly => day.month == start.month && day.day == start.day && (day.year - start.year) % every == 0,
+      // A 29 February start comes round on the 28th in other years.
+      RepeatKind.yearly => dateOnly(day) == yearlyDate(start, day.year) && (day.year - start.year) % every == 0,
       // On its start's date, or a shorter month's last day.
       RepeatKind.months =>
         ((day.year - start.year) * 12 + day.month - start.month) % every == 0 &&
@@ -382,6 +382,11 @@ class RepeatRule {
   @override
   int get hashCode => encode().hashCode;
 }
+
+/// [start]'s date in [year]: a 29 February start falls on the 28th in a
+/// year without one.
+DateTime yearlyDate(DateTime start, int year) =>
+    DateTime(year, start.month, min(start.day, daysInMonth(year, start.month)));
 
 /// '1st', '2nd', '11th', '23rd'.
 String ordinal(int n) {
@@ -428,6 +433,21 @@ class Repeat {
 
   bool on(DateTime day) => (until == null || !day.isAfter(until!)) && rule.on(day, start);
 
+  /// Its to-do for [day] as it will be made, before it is: what the store
+  /// makes, checklist and all, so a change to it starts from the same.
+  TodoItem unmade(DateTime day) => TodoItem(
+    -1,
+    text,
+    since: day,
+    dueDate: day,
+    dueTime: time,
+    birthday: birthday,
+    reminders: reminders,
+    location: location,
+    subtasks: [for (final step in subtasks) step.copyWith(done: false)],
+    uid: '$uid@${dateKey(day)}',
+  );
+
   /// The first day it comes round on or after [from], if any: every so many
   /// days or weeks, years or months by counting them, the others within a
   /// year and a bit (a monthly 31st needs no more).
@@ -441,8 +461,7 @@ class Repeat {
     if (rule.kind == RepeatKind.yearly) {
       // Its years from the one [day] is in, until one has its date.
       for (var year = start.year + ((day.year - start.year) ~/ rule.every) * rule.every; ; year += rule.every) {
-        final date = DateTime(year, start.month, start.day);
-        if (date.day != start.day) continue;
+        final date = yearlyDate(start, year);
         if (until != null && date.isAfter(until!)) return null;
         if (!date.isBefore(day)) return date;
       }
@@ -464,8 +483,30 @@ class Repeat {
   }
 }
 
-/// '24/10'.
-String dayMonth(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+/// 'Nov'.
+String shortMonth(int month) => monthNames[month - 1].substring(0, 3);
+
+/// 'Wed'.
+String shortWeekday(DateTime day) => weekdayNames[day.weekday - 1].substring(0, 3);
+
+/// The app's dates, day first: '4 Nov', with the year when it isn't
+/// [today]'s (or always, without a [today]).
+String dayAndMonth(DateTime day, {DateTime? today}) =>
+    '${day.day} ${shortMonth(day.month)}${today == null || day.year != today.year ? ' ${day.year}' : ''}';
+
+/// 'Wed 4 Nov', with the year as [dayAndMonth] gives it.
+String shortDay(DateTime day, {DateTime? today}) => '${shortWeekday(day)} ${dayAndMonth(day, today: today)}';
+
+/// The list a task due on [day] goes in, seen from [today]: Today (also
+/// for a day gone by), Tomorrow, This week to Sunday, This month after;
+/// with the due date those two keep.
+(TodoScope, DateTime?) scopeForDay(DateTime today, DateTime day) {
+  final days = daysBetween(today, day);
+  if (days <= 0) return (TodoScope.today, null);
+  if (days == 1) return (TodoScope.tomorrow, null);
+  final sunday = DateTime(today.year, today.month, today.day + 7 - today.weekday);
+  return (day.isAfter(sunday) ? TodoScope.month : TodoScope.week, dateOnly(day));
+}
 
 final _nonSpace = RegExp(r'\S');
 
@@ -528,6 +569,10 @@ int daysBetween(DateTime from, DateTime to) =>
 /// before then, it's still the day before. Works in calendar days, so a
 /// clock change doesn't shift it.
 DateTime dayOf(DateTime now, int startHour) => DateTime(now.year, now.month, now.day - (now.hour < startHour ? 1 : 0));
+
+/// Whether a task at [time] on a day starting at [startHour] happens after
+/// midnight, on the next calendar date: 1:00 am when days start at 4am.
+bool afterMidnight(int? time, int startHour) => time != null && time < startHour * 60;
 
 /// When the day after the one [now] counts towards begins.
 DateTime nextDayStart(DateTime now, int startHour) {

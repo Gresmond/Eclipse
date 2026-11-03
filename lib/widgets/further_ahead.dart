@@ -17,7 +17,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
     final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay, s.laterBirthdays));
     final day = state.shownDay;
     final past = state.viewDay != null;
-    final planned = _Planned(state, day, past: past);
+    final planned = state.fromTodos((_Planned, dateKey(day), past), () => _Planned(state, day, past: past));
     // Birthdays are only known from today on, so a past day leaves them out.
     final birthdays = state.laterBirthdays && !past;
     bool shows(_Later later) => birthdays || !(later.item?.birthday ?? later.repeat!.birthday);
@@ -117,7 +117,7 @@ class _LaterList extends StatefulWidget {
   State<_LaterList> createState() => _LaterListState();
 }
 
-class _LaterListState extends State<_LaterList> with _DayMotion {
+class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
   /// Birthdays were just shown or hidden: this build jumps to how it is.
   var _instant = false;
 
@@ -206,8 +206,12 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
     }
     final hidden = _hiding.keys.toSet();
     groups.sort((a, b) => a.date == null ? 1 : (b.date == null ? -1 : a.date!.compareTo(b.date!)));
-    final shown = {for (final g in groups) g.key: _shown(g.key, g.tasks)};
+    final shown = {for (final g in groups) g.key: _shown(g.key, g.tasks, fresh: widget.added)};
     _settle();
+    _reveal([
+      for (final g in groups)
+        for (final (_, item) in g.tasks) item.uid,
+    ]);
     if (groups.isEmpty) {
       return Center(
         child: Text(
@@ -220,7 +224,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
     }
     return SmoothTaskScroll(
       builder: (context, controller) => CustomScrollView(
-        controller: controller,
+        controller: _scroll = controller,
         scrollCacheExtent: const ScrollCacheExtent.pixels(80),
         slivers: [
           SliverPadding(padding: EdgeInsets.only(top: widget.topInset)),
@@ -277,7 +281,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                                 upcomingDate: g.date,
                                 key: ValueKey(repeat.uid),
                                 scope: TodoScope.month,
-                                item: made ?? _unmade(repeat, date),
+                                item: made ?? repeat.unmade(date),
                                 day: day,
                                 readOnly: readOnly,
                                 fadeIn: fadeIn,
@@ -289,7 +293,8 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
                             final (:task, :arriving, :leaving) = tasks[index];
                             final (scope, item) = task;
                             final fadeIn = widget.added.contains(item.id) || arriving;
-                            void remove() => _remove(g.key, task, () => state.removeTodo(scope, item, day: day));
+                            void remove() =>
+                                _remove(g.key, task, () => state.removeTodo(scope, item, day: state.shownDay));
                             if (item.birthday) {
                               return _LaterRow(
                                 key: ValueKey((scope, item.id)),
@@ -349,19 +354,6 @@ class _LaterListState extends State<_LaterList> with _DayMotion {
   }
 }
 
-/// [repeat]'s to-do for [date], before it's made.
-TodoItem _unmade(Repeat repeat, DateTime date) => TodoItem(
-  -1,
-  repeat.text,
-  since: date,
-  dueDate: date,
-  dueTime: repeat.time,
-  birthday: repeat.birthday,
-  reminders: repeat.reminders,
-  location: repeat.location,
-  uid: '${repeat.uid}@${dateKey(date)}',
-);
-
 /// The to-do made with [uid], wherever it is now.
 TodoItem? _made(AppState state, String uid) =>
     [for (final items in state.todos.values) ...items].where((item) => item.uid == uid).firstOrNull;
@@ -411,7 +403,7 @@ class _LaterRowState extends State<_LaterRow> {
 
   /// The to-do, or the one the repeat will make, not made until it's
   /// changed on its own.
-  TodoItem get _item => widget.task?.$2 ?? _unmade(widget.repeat!, widget.date!);
+  TodoItem get _item => widget.task?.$2 ?? widget.repeat!.unmade(widget.date!);
 
   TodoItem _make() => AppScope.read(context).occurrence(widget.repeat!, widget.date!);
 
@@ -442,24 +434,15 @@ class _LaterRowState extends State<_LaterRow> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            if (date != null)
-                              Text(weekdayNames[date.weekday - 1], style: TextStyle(fontSize: 12, color: p.inkMuted)),
-                            if (item.dueTime case final time?) ...[
-                              Text('  ·  ', style: TextStyle(fontSize: 12, color: p.inkMuted)),
-                              Text(clockLabel(time), style: _timeStyle(p)),
-                            ],
-                            if (item.birthday) ...[
-                              Text('  ·  ', style: TextStyle(fontSize: 12, color: p.inkMuted)),
-                              Icon(_birthdayIcon, size: 14, color: p.inkMuted),
-                              const SizedBox(width: 5),
-                              Text('Birthday', style: TextStyle(fontSize: 12, color: p.inkMuted)),
-                            ],
-                          ],
+                        // The same caption as a task row's, so the two
+                        // can't drift: weekday, time, place, then Birthday.
+                        _Caption(
+                          weekday: date == null ? null : weekdayNames[date.weekday - 1],
+                          time: item.dueTime,
+                          location: item.location,
+                          birthday: item.birthday,
+                          gap: true,
                         ),
-                        const SizedBox(height: 8),
                         Text(
                           item.text,
                           style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink),
@@ -521,7 +504,7 @@ class _UpcomingDateTile extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            day == null ? 'NO DATE' : monthNames[day.month - 1].substring(0, 3).toUpperCase(),
+            day == null ? 'NO DATE' : shortMonth(day.month).toUpperCase(),
             style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, fontWeight: FontWeight.w600, color: p.inkMuted),
           ),
           if (day != null)

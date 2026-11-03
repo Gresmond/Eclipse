@@ -77,6 +77,45 @@ void main() {
     expect(top('Alpha'), closeTo(start, 0.01));
   });
 
+  // MOTION-01: the panel's tint shows under gliding rows; no slab is drawn.
+  testWidgets('rows glide with nothing painted behind them, the crossing one cutting the others away', (tester) async {
+    for (final name in ['Alpha', 'Bravo', 'Charlie', 'Delta']) {
+      state.addTodo(TodoScope.today, name);
+    }
+    await show(tester);
+    final tile = palettes.first.tile;
+    final list = tester.renderObject(find.ancestor(of: find.text('Bravo'), matching: find.byType(SliverList)).first);
+    await tester.tap(find.text('Alpha'));
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(list, isNot(paints..rrect(color: tile)), reason: 'frame $i of the glide');
+    }
+    expect(list, paints..clipPath(), reason: 'rows the ticked one passes are cut away under it');
+    await tester.pumpAndSettle();
+    expect(list, isNot(paints..clipPath()), reason: 'nothing is cut once it lands');
+  });
+
+  // MOTION-06: a newly typed task appears in its final place.
+  testWidgets('a new task fades in above the ticked ones rather than gliding up past them', (tester) async {
+    state.addTodo(TodoScope.today, 'Alpha');
+    state.addTodo(TodoScope.today, 'Bravo');
+    state.toggleTodo(state.todos[TodoScope.today]!.last);
+    await show(tester);
+    state.addTodo(TodoScope.today, 'Charlie');
+    await tester.pump();
+    for (var i = 0; i < 20; i++) {
+      expect(
+        tester.getTopLeft(find.text('Charlie')).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.text('Bravo')).dy),
+        reason: 'frame $i: it opens its room above Bravo, never below it',
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('Charlie')).dy, lessThan(tester.getTopLeft(find.text('Bravo')).dy));
+  });
+
   for (final interrupt in [false, true]) {
     testWidgets('subtasks glide in both directions; interrupt midway: $interrupt', (tester) async {
       state.addTodo(TodoScope.today, 'Project');

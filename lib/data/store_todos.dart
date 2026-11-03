@@ -28,19 +28,30 @@ extension StoreTodos on Store {
   /// open that day. An item ticked off later shows unticked, as it was.
   Map<TodoScope, List<TodoItem>> todoListsOn(DateTime day) {
     final key = dateKey(day);
+    // Every task ever has a latest snapshot by then, nearly all of them
+    // ticked or taken away long before: those are left out here, so only
+    // the few that can be on the day's lists are read (the checks below
+    // still decide).
     final snapshots = _db.select(
       '''
       WITH latest AS (
-        SELECT uid, MAX(day) AS day FROM todo_history WHERE day <= ? GROUP BY uid
+        SELECT uid, MAX(day) AS day FROM todo_history WHERE day <= ?1 GROUP BY uid
       )
       SELECT h.rowid AS history_id, h.uid, h.snapshot, t.id,
         CASE WHEN t.done = 1 AND t.scope = 'today' THEN t.period END AS ticked
       FROM latest l
       JOIN todo_history h ON h.uid = l.uid AND h.day = l.day
       LEFT JOIN todos t ON t.uid = h.uid
+      WHERE NOT (t.done IS 1 AND t.scope IS 'today' AND t.period < ?1)
+        AND (t.done IS 1 AND t.scope IS 'today' AND t.period = ?1
+          OR json_extract(h.snapshot, '\$.deleted') IS NOT 1
+            AND json_extract(h.snapshot, '\$.since') <= ?1
+            AND NOT (json_extract(h.snapshot, '\$.done') IS 1
+              AND json_extract(h.snapshot, '\$.period') IS NOT CASE json_extract(h.snapshot, '\$.scope')
+                WHEN 'week' THEN ?2 WHEN 'month' THEN ?3 ELSE ?1 END))
       ORDER BY COALESCE(t.id, h.rowid)
     ''',
-      [key],
+      [key, TodoScope.week.period(day), TodoScope.month.period(day)],
     );
     final lists = {for (final scope in TodoScope.values) scope: <TodoItem>[]};
     // Only legacy tasks without a snapshot need the old approximation.
@@ -89,7 +100,7 @@ extension StoreTodos on Store {
           birthday: isBirthday(s['category']),
           doneAt: DateTime.tryParse(s['done_at'] as String? ?? ''),
           subtasks: TodoSubtask.decode(s['subtasks'] as String?),
-          position: s['position'] as int?,
+          position: _position(s['position']),
           reminders: _bits(s['reminders']),
           location: _place(s['location']),
         ),
@@ -168,18 +179,20 @@ extension StoreTodos on Store {
     birthday: isBirthday(r['category']),
     doneAt: DateTime.tryParse(r['done_at'] as String? ?? ''),
     subtasks: TodoSubtask.decode(r['subtasks'] as String?),
-    position: r['position'] as int?,
+    position: _position(r['position']),
     reminders: _bits(r['reminders']),
     location: _place(r['location']),
   );
 
   /// Open tasks that give reminders, each with the day it's on: its due
-  /// day, or, in Today or Tomorrow without one, that list's.
+  /// day, or, in Tomorrow without one, tomorrow; in Today without one, the
+  /// day it came into Today. A task carried on from an earlier day is still
+  /// on that day, as one with a due date is, so its time doesn't remind again.
   List<(TodoItem, DateTime)> remindingTodos(DateTime today) => [
     for (final r in _db.select('SELECT * FROM todos WHERE done = 0 AND reminders > 0'))
       if (DateTime.tryParse(r['due_date'] as String? ?? '') ??
               switch (r['scope']) {
-                'today' => today,
+                'today' => _inTodaySince(r['uid'] as String, today),
                 'tomorrow' => DateTime(today.year, today.month, today.day + 1),
                 _ => null,
               }
@@ -187,8 +200,23 @@ extension StoreTodos on Store {
         (_todo(r), day),
   ];
 
+  /// The first day of the stay in Today that [uid] is on now: the day after
+  /// the last its record shows it in another list, or its first record.
+  DateTime _inTodaySince(String uid, DateTime today) {
+    final first = _db.select(
+      "SELECT MIN(day) AS day FROM todo_history WHERE uid = ?1 AND json_extract(snapshot, '\$.scope') = 'today' "
+      "AND day > COALESCE((SELECT MAX(day) FROM todo_history WHERE uid = ?1 AND json_extract(snapshot, '\$.scope') != 'today'), '')",
+      [uid],
+    ).first['day'];
+    final day = DateTime.tryParse(first as String? ?? '');
+    return day == null || day.isAfter(today) ? today : day;
+  }
+
   /// A stored set of reminders, or none for anything else.
   static int _bits(Object? value) => value is int ? value & 15 : 0;
+
+  /// A stored place among a day's tasks, or none for anything else.
+  static int? _position(Object? value) => value is int ? value : null;
 
   /// How [reminders] are kept: null for none, as before there were any.
   static int? _stored(int reminders) => reminders == 0 ? null : reminders;
@@ -212,11 +240,12 @@ extension StoreTodos on Store {
       final changed = _db.updatedRows;
       final now = _byIds([for (final r in rows) r['id'] as int]);
       for (final r in rows) {
-        final previous = DateTime.parse(r['period'] as String);
         // The task belongs to Today from the next calendar day, even if the
         // application was closed for several days.
         final updated = [now[r['id']]!];
-        _recordTodos(updated, DateTime(previous.year, previous.month, previous.day + 1));
+        if (DateTime.tryParse(r['period'] as String) case final previous?) {
+          _recordTodos(updated, DateTime(previous.year, previous.month, previous.day + 1));
+        }
         _recordTodos(updated, DateTime.parse(todayPeriod));
       }
       return changed;
@@ -397,7 +426,8 @@ extension StoreTodos on Store {
         [dateKey(weekAhead), dateKey(today)],
       );
       for (final r in monthRows) {
-        final due = DateTime.parse(r['due_date'] as String);
+        final due = DateTime.tryParse(r['due_date'] as String);
+        if (due == null) continue;
         final enters = _promotionDay(r, DateTime(due.year, due.month, due.day - 7), earliest);
         // A task already due tomorrow goes straight to Tomorrow below.
         if (enters.isBefore(DateTime(due.year, due.month, due.day - 1))) {
@@ -416,7 +446,8 @@ extension StoreTodos on Store {
         [dateKey(tomorrow), dateKey(today)],
       );
       for (final r in rows) {
-        final due = DateTime.parse(r['due_date'] as String);
+        final due = DateTime.tryParse(r['due_date'] as String);
+        if (due == null) continue;
         final enters = _promotionDay(r, DateTime(due.year, due.month, due.day - 1), earliest);
         if (enters.isBefore(due)) {
           _db.execute('UPDATE todos SET scope = ?, period = ? WHERE id = ?', [
@@ -715,9 +746,15 @@ extension StoreTodos on Store {
   }
 
   /// The open to-dos of repeat [uid] for [from] on.
-  List<Row> _openOccurrences(String uid, DateTime from) => [
-    for (final r in _db.select('SELECT * FROM todos WHERE substr(uid, 1, length(?1)) = ?1 AND done = 0', ['$uid@']))
-      if ((r['uid'] as String).substring(uid.length + 1).compareTo(dateKey(from)) >= 0) r,
+  List<Row> _openOccurrences(String uid, DateTime from) =>
+      _db.select('SELECT * FROM todos WHERE uid >= ? AND uid < ? AND done = 0', occurrenceRange(uid, from: from));
+
+  /// The bounds of the uids of repeat [uid]'s times, from [from] on when
+  /// given: `uid@day` sorts after `uid@` and before `uidA`, so a
+  /// lookup by them uses each table's index on uid.
+  static List<String> occurrenceRange(String uid, {DateTime? from}) => [
+    '$uid@${from == null ? '' : dateKey(from)}',
+    '${uid}A',
   ];
 
   /// Stops repeat [uid] coming round from [from] on, and takes away the
@@ -779,32 +816,138 @@ extension StoreTodos on Store {
   }
 
   /// The uids of every to-do repeat [uid] has made, here or (taken away
-  /// since) on another computer.
-  Set<String> madeOccurrences(String uid) => {
+  /// since) on another computer; with [from], only those for then on.
+  Set<String> madeOccurrences(String uid, {DateTime? from}) => {
     for (final r in _db.select(
-      'SELECT uid FROM todos WHERE substr(uid, 1, length(?1)) = ?1 '
-      'UNION SELECT uid FROM todo_history WHERE substr(uid, 1, length(?1)) = ?1 '
-      "UNION SELECT rowkey FROM sync_reg WHERE kind = 'todo' AND substr(rowkey, 1, length(?1)) = ?1",
-      ['$uid@'],
+      'SELECT uid FROM todos WHERE uid >= ?1 AND uid < ?2 '
+      'UNION SELECT uid FROM todo_history WHERE uid >= ?1 AND uid < ?2 '
+      "UNION SELECT rowkey FROM sync_reg WHERE kind = 'todo' AND rowkey >= ?1 AND rowkey < ?2",
+      occurrenceRange(uid, from: from),
     ))
       r.columnAt(0) as String,
   };
 
+  /// [madeOccurrences] for every repeat at once, from [from] on, by repeat
+  /// uid: one statement, each repeat still looked up by its index.
+  Map<String, Set<String>> madeOccurrencesFrom(DateTime from) {
+    final made = <String, Set<String>>{};
+    for (final r in _db.select(
+      '''
+      SELECT r.uid AS repeat, t.uid FROM todo_repeats r
+        JOIN todos t ON t.uid >= r.uid || '@' || ?1 AND t.uid < r.uid || 'A'
+      UNION SELECT r.uid, h.uid FROM todo_repeats r
+        JOIN todo_history h ON h.uid >= r.uid || '@' || ?1 AND h.uid < r.uid || 'A'
+      UNION SELECT r.uid, s.rowkey FROM todo_repeats r
+        JOIN sync_reg s ON s.kind = 'todo' AND s.rowkey >= r.uid || '@' || ?1 AND s.rowkey < r.uid || 'A'
+    ''',
+      [dateKey(from)],
+    )) {
+      (made[r['repeat'] as String] ??= {}).add(r['uid'] as String);
+    }
+    return made;
+  }
+
+  /// Where [makeRepeats] has got to with each repeat, on this computer
+  /// only: by uid, the repeat's start, rule and end as it was walked, and
+  /// the last day walked. A repeat changed since is walked from its start
+  /// again.
+  static const walkedSetting = 'repeatsWalked';
+
+  /// The days [makeRepeats] has looked at, for tests: each later call looks
+  /// only at the days after those it looked at before.
+  static int debugRepeatDaysWalked = 0;
+
   /// Makes the to-do for each time a repeat comes round, up to a week
   /// after [today], that hasn't been made (or made and taken away) yet.
+  /// Each repeat is walked on from the last day walked before, so a repeat
+  /// begun years ago costs no more than a new one; and the times of one
+  /// that has ended, made by another computer that hadn't heard, go.
   ///
   /// Filled in, not edited: each computer makes the same ones, with the
   /// same uids, so they meet in sync rather than doubling up. They start in
   /// This month, by their day, and a day start moves them on from there.
   void makeRepeats(DateTime today) => weak(() {
     final last = DateTime(today.year, today.month, today.day + 7);
-    for (final repeat in repeats()) {
-      final made = madeOccurrences(repeat.uid);
-      for (var day = repeat.start; !day.isAfter(last); day = DateTime(day.year, day.month, day.day + 1)) {
-        if (repeat.on(day) && !made.contains('${repeat.uid}@${dateKey(day)}')) _makeOccurrence(repeat, day);
+    final before = switch (_decodeJson(setting(walkedSetting))) {
+      final Map<String, dynamic> m => m,
+      _ => const <String, dynamic>{},
+    };
+    final walked = <String, List<String>>{};
+    final all = repeats();
+    final marks = {
+      for (final repeat in all)
+        repeat.uid: [
+          dateKey(repeat.start),
+          repeat.rule.encode(),
+          if (repeat.until case final until?) dateKey(until) else '',
+        ],
+    };
+    DateTime? walkedThrough(Repeat repeat) => switch (before[repeat.uid]) {
+      [final String start, final String rule, final String until, final String day]
+          when start == marks[repeat.uid]![0] && rule == marks[repeat.uid]![1] && until == marks[repeat.uid]![2] =>
+        DateTime.tryParse(day),
+      _ => null,
+    };
+    // On a new day most repeats go on from the same day: their times made
+    // already are read at once.
+    final froms = <String, int>{};
+    for (final repeat in all) {
+      if (walkedThrough(repeat) case final through?) {
+        final key = dateKey(DateTime(through.year, through.month, through.day + 1));
+        froms[key] = (froms[key] ?? 0) + 1;
       }
     }
+    final common = froms.entries.where((e) => e.value > 1).map((e) => e.key).toSet();
+    final batches = <String, Map<String, Set<String>>>{};
+    for (final repeat in all) {
+      final mark = marks[repeat.uid]!;
+      final through = walkedThrough(repeat);
+      final from = through == null ? repeat.start : DateTime(through.year, through.month, through.day + 1);
+      if (!from.isAfter(last)) {
+        final key = dateKey(from);
+        final made = common.contains(key) && through != null
+            ? batches.putIfAbsent(key, () => madeOccurrencesFrom(from))[repeat.uid] ?? const <String>{}
+            : madeOccurrences(repeat.uid, from: from);
+        for (
+          var day = repeat.next(from);
+          day != null && !day.isAfter(last);
+          day = repeat.next(DateTime(day.year, day.month, day.day + 1))
+        ) {
+          debugRepeatDaysWalked++;
+          if (!made.contains('${repeat.uid}@${dateKey(day)}')) _makeOccurrence(repeat, day);
+        }
+      }
+      walked[repeat.uid] = [...mark, dateKey(through != null && through.isAfter(last) ? through : last)];
+    }
+    _takeAwayEnded(today);
+    final encoded = jsonEncode(walked);
+    if (encoded != setting(walkedSetting)) setSetting(walkedSetting, encoded);
   });
+
+  static Object? _decodeJson(String? value) {
+    if (value == null) return null;
+    try {
+      return jsonDecode(value);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  /// Takes away the open times of repeats that have ended before them, or
+  /// been taken away altogether: made by another computer that hadn't heard
+  /// yet, or made there since. A time that was ticked stays.
+  void _takeAwayEnded(DateTime today) {
+    for (final r in _db.select('''
+      SELECT t.id FROM todo_repeats r JOIN todos t ON t.uid >= r.uid || '@' AND t.uid < r.uid || 'A'
+      WHERE r.until IS NOT NULL AND t.done = 0 AND substr(t.uid, length(r.uid) + 2) > r.until
+      UNION
+      SELECT t.id FROM sync_reg s JOIN todos t ON t.uid >= s.rowkey || '@' AND t.uid < s.rowkey || 'A'
+      WHERE s.kind = 'todo_repeat' AND s.field = '_' AND s.value = 'false' AND t.done = 0
+        AND NOT EXISTS (SELECT 1 FROM todo_repeats WHERE uid = s.rowkey)
+    ''')) {
+      deleteTodo(r['id'] as int, day: today);
+    }
+  }
 
   /// The to-do for [repeat] on [day], made now if it hasn't been: a time
   /// further ahead than [makeRepeats] reaches, to change or take away.

@@ -47,6 +47,7 @@ class Palette extends ThemeExtension<Palette> {
     required this.shadow,
     this._todayPanel,
     this._todayPanelBorder,
+    this._darkness,
   });
 
   final String name;
@@ -92,6 +93,15 @@ class Palette extends ThemeExtension<Palette> {
   Color get todayPanel => _todayPanel ?? empty.withValues(alpha: 0.6);
   Color get todayPanelBorder => _todayPanelBorder ?? tileBorder.withValues(alpha: 0.85);
 
+  /// 0 for a light theme and 1 for a dark one, and between them partway
+  /// through a fade from one to the other. Pick light or dark values by
+  /// it, lerped, rather than by [brightness], which flips at the midpoint.
+  final double? _darkness;
+  double get darkness => _darkness ?? (brightness == Brightness.dark ? 1 : 0);
+
+  /// [light] or [dark] for this theme, blended partway through a fade.
+  double byDarkness(double light, double dark) => light + (dark - light) * darkness;
+
   @override
   Palette copyWith({Color? todayPanel, Color? todayPanelBorder}) => Palette(
     name: name,
@@ -113,6 +123,7 @@ class Palette extends ThemeExtension<Palette> {
     shadow: shadow,
     todayPanel: todayPanel ?? _todayPanel,
     todayPanelBorder: todayPanelBorder ?? _todayPanelBorder,
+    darkness: _darkness,
   );
 
   List<Color> get _colours => [
@@ -147,6 +158,7 @@ class Palette extends ThemeExtension<Palette> {
       shadow: c(shadow, other.shadow),
       todayPanel: c(todayPanel, other.todayPanel),
       todayPanelBorder: c(todayPanelBorder, other.todayPanelBorder),
+      darkness: darkness + (other.darkness - darkness) * t,
     );
   }
 }

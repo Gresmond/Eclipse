@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:eclipse/data/dev_install.dart';
+import 'package:eclipse/data/store.dart' show DatabaseTooNewException;
 import 'package:eclipse/data/updates.dart';
 import 'package:eclipse/screens/startup_error.dart';
 
@@ -32,7 +33,7 @@ void main() {
   testWidgets('data from a newer build explains itself and offers the rebuild', (tester) async {
     final updater = GitUpdater(repo: '/repo', installedCommit: 'abc', executable: '/repo/eclipse');
     await tester.pumpWidget(
-      StartupErrorApp(error: StateError('This database needs a newer version of Eclipse'), updater: updater),
+      StartupErrorApp(error: const DatabaseTooNewException(), updater: updater),
     );
     expect(find.text('This copy of Eclipse is older than your data'), findsOneWidget);
     expect(find.text(updater.actionLabel), findsOneWidget);

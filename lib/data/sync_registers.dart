@@ -97,6 +97,7 @@ class _Reg {
       'month_habit' || 'sleep_note' => head != null && _monthKey.hasMatch(head),
       'entry' || 'todo_history' => head != null && _day(head),
       'journal' => _day(rowkey),
+      'holiday' => head != null && _day(head) && _day(rowkey.substring(slash + 1)),
       _ => true,
     };
     if (!key || !kept.containsKey(field)) return key;
@@ -105,7 +106,16 @@ class _Reg {
       ('entry', 'status') => v == null || v is int && v >= 0 && v < HabitStatus.values.length,
       ('todo', 'scope') || ('todo', 'return_scope') => v == null || v is String && _scope(v),
       ('todo', 'since') => v == null || v is String && _day(v),
-      ('todo', 'done') => v == null || v == 0 || v == 1,
+      ('todo', 'done') || ('todo', 'return_to_tomorrow') => v == null || v == 0 || v == 1,
+      // Read as they are by the day start, the lists and search: a value
+      // they can't read would stop every day start until it was put right.
+      ('todo', 'period') => v is String && (_monthKey.hasMatch(v) || _day(v)),
+      ('todo', 'due_date') || ('todo', 'defer_promotion_day') => v == null || v is String && _day(v),
+      ('todo', 'done_at') => v == null || v is String && DateTime.tryParse(v) != null,
+      ('todo', 'carried') => v == null || v is int && v >= 0,
+      ('todo', 'position') => v == null || v is int,
+      ('todo', 'reminders') || ('todo_repeat', 'reminders') => v == null || v is int && v >= 0 && v <= 15,
+      ('todo', 'text') || ('todo_repeat', 'text') => v == null || v is String,
       ('todo', 'subtasks') || ('todo_repeat', 'subtasks') => readsAs(v, TodoSubtask.decode),
       ('month_habit', 'days') => readsAs(v, decodeDays),
       ('todo_history', 'snapshot') => readsAs(v, _snapshot),

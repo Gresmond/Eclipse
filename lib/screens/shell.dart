@@ -20,13 +20,35 @@ import '../widgets/hover_fill.dart';
 import '../widgets/page_turn.dart';
 import '../widgets/reminder_cards.dart';
 import '../widgets/sync_banner.dart';
-import '../widgets/undo_card.dart';
 import '../widgets/update_banner.dart';
 import '../widgets/welcome_tour.dart';
 import 'month_view.dart';
 import 'today_view.dart';
 import 'training_view.dart';
 import 'year_view.dart';
+
+/// The corner cards over the window and its dialogs: sync, an update and
+/// reminders, stacked above the undo card.
+class CornerCards extends StatelessWidget {
+  const CornerCards({super.key, this.updater});
+
+  final Updater? updater;
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = AppScope.watch(context, (s) => s.sync).sync;
+    final updater = this.updater;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (sync != null) SyncBanner(sync: sync),
+        if (updater != null) UpdateBanner(updater: updater),
+        const ReminderCards(),
+      ],
+    );
+  }
+}
 
 /// Window chrome: title, year switcher and month tabs.
 class Shell extends StatelessWidget {
@@ -40,7 +62,6 @@ class Shell extends StatelessWidget {
     final state = AppScope.watch(context, (s) => (s.navigation, s.touring, s.showingTraining));
     final month = state.viewMonth;
 
-    final updater = this.updater;
     final page = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -74,20 +95,6 @@ class Shell extends StatelessWidget {
               back: const TrainingView(),
             ),
           ),
-          Positioned(
-            right: 32,
-            bottom: 28,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (state.sync != null) SyncBanner(sync: state.sync!),
-                if (updater != null) UpdateBanner(updater: updater),
-                const ReminderCards(),
-                const UndoCardSpace(),
-              ],
-            ),
-          ),
           if (state.touring) Positioned.fill(child: WelcomeTour(appearanceBuilder: (_) => const _AppearanceMenu())),
         ],
       ),
@@ -114,7 +121,7 @@ class _Header extends StatelessWidget {
     // Today's holiday, on the day, month and year alike; not looking back.
     final holiday = switch (holidayOn(state.holidays, today)) {
       final h? when state.viewDay == null =>
-        '  ·  on holiday until ${weekdayNames[h.end.weekday - 1].substring(0, 3)} ${h.end.day} ${monthNames[h.end.month - 1].substring(0, 3)}',
+        '  ·  on holiday until ${shortDay(h.end, today: today)}',
       _ => '',
     };
     final (String kicker, String title) = state.viewingYear
@@ -221,8 +228,7 @@ class _Header extends StatelessWidget {
                             ? null
                             : shown == DateTime(today.year, today.month, today.day - 1)
                             ? 'Yesterday'
-                            : '${shown.day} ${monthNames[shown.month - 1].substring(0, 3)}'
-                                  '${shown.year != today.year ? ' ${shown.year}' : ''}',
+                            : dayAndMonth(shown, today: today),
                         tabs: [
                           _Tab(
                             label: 'Today',
@@ -231,7 +237,7 @@ class _Header extends StatelessWidget {
                           ),
                           for (final m in months)
                             _Tab(
-                              label: monthNames[m - 1].substring(0, 3),
+                              label: shortMonth(m),
                               selected: month == m,
                               isCurrent: state.viewYear == today.year && m == today.month,
                               onTap: () => state.showMonth(m),

@@ -161,6 +161,8 @@ class TaskRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.read(context);
+    // Today's lists stay today's if the day changes before it's removed.
+    final todays = day == state.today;
     return SearchGlow(
       target: item.uid,
       child: _TodoRow(
@@ -172,7 +174,7 @@ class TaskRow extends StatelessWidget {
         fadeIn: fadeIn,
         arriving: arriving,
         leaving: leaving,
-        onRemove: onRemove ?? () => state.removeTodo(scope, item, day: day),
+        onRemove: onRemove ?? () => state.removeTodo(scope, item, day: todays ? null : day),
         make: make,
         order: order,
       ),

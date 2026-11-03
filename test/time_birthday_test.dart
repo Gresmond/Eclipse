@@ -353,7 +353,7 @@ void main() {
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     expect(
-      find.descendant(of: week, matching: find.text('Oct 25')),
+      find.descendant(of: week, matching: find.text('25 Oct')),
       findsOneWidget,
       reason: 'another day says so',
     );

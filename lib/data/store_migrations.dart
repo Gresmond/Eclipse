@@ -1,17 +1,29 @@
 part of 'store.dart';
 
+/// The database was written by a newer build than this one: updating
+/// Eclipse opens it.
+class DatabaseTooNewException implements Exception {
+  const DatabaseTooNewException();
+
+  @override
+  String toString() => 'This database needs a newer version of Eclipse';
+}
+
 /// Brings an older database up to [Store.schemaVersion].
 extension on Store {
   void _migrate() {
     final version = _db.select('PRAGMA user_version').first.columnAt(0) as int;
-    if (version > Store.schemaVersion) throw StateError('This database needs a newer version of Eclipse');
+    if (version > Store.schemaVersion) throw const DatabaseTooNewException();
+    // The first steps once ran their statements one at a time: one cut
+    // short left tables made and the version not set. Each step now goes
+    // whole or not at all, and makes only what isn't there yet.
     if (version < 1) {
-      _db.execute('''
-        CREATE TABLE habits (id INTEGER PRIMARY KEY AUTOINCREMENT);
+      transaction(() => _db.execute('''
+        CREATE TABLE IF NOT EXISTS habits (id INTEGER PRIMARY KEY AUTOINCREMENT);
 
         -- Each month has its own ordered list. habit_id ties a ritual across
         -- months (for streaks); the name can differ per month.
-        CREATE TABLE month_habits (
+        CREATE TABLE IF NOT EXISTS month_habits (
           year INTEGER NOT NULL,
           month INTEGER NOT NULL,
           habit_id INTEGER NOT NULL REFERENCES habits(id),
@@ -20,7 +32,7 @@ extension on Store {
           PRIMARY KEY (year, month, habit_id)
         );
 
-        CREATE TABLE entries (
+        CREATE TABLE IF NOT EXISTS entries (
           day TEXT NOT NULL,
           habit_id INTEGER NOT NULL REFERENCES habits(id),
           status INTEGER NOT NULL,
@@ -30,7 +42,7 @@ extension on Store {
 
         -- period: yyyy-mm-dd for today, the Monday's date for week, yyyy-mm
         -- for month. All sort chronologically as strings.
-        CREATE TABLE todos (
+        CREATE TABLE IF NOT EXISTS todos (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           scope TEXT NOT NULL,
           period TEXT NOT NULL,
@@ -38,18 +50,18 @@ extension on Store {
           done INTEGER NOT NULL DEFAULT 0,
           carried INTEGER NOT NULL DEFAULT 0
         );
-        CREATE INDEX todos_scope_period ON todos (scope, period);
+        CREATE INDEX IF NOT EXISTS todos_scope_period ON todos (scope, period);
 
-        CREATE TABLE journal (day TEXT PRIMARY KEY, text TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS journal (day TEXT PRIMARY KEY, text TEXT NOT NULL);
 
         PRAGMA user_version = 1;
-      ''');
+      '''));
     }
     if (version < 2) {
-      _db.execute('''
-        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      transaction(() => _db.execute('''
+        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         PRAGMA user_version = 2;
-      ''');
+      '''));
     }
     if (version < 3) {
       transaction(() {
@@ -91,12 +103,14 @@ extension on Store {
       });
     }
     if (version < 4) {
-      _db.execute('''
-        -- A ritual's note, shown on hover. On the habit, not the month, so it
-        -- follows the ritual through every month.
-        ALTER TABLE habits ADD COLUMN note TEXT;
-        PRAGMA user_version = 4;
-      ''');
+      transaction(() {
+        // A ritual's note, shown on hover. On the habit, not the month, so it
+        // follows the ritual through every month.
+        if (!_db.select('PRAGMA table_info(habits)').any((r) => r['name'] == 'note')) {
+          _db.execute('ALTER TABLE habits ADD COLUMN note TEXT');
+        }
+        _db.execute('PRAGMA user_version = 4');
+      });
     }
     if (version < 5) {
       transaction(() {
@@ -128,10 +142,10 @@ extension on Store {
       });
     }
     if (version < 7) {
-      _db.execute('''
+      transaction(() => _db.execute('''
         -- Your own text for a sleep item's tooltip, from this month on until
         -- a later month has its own. Empty: show just the name.
-        CREATE TABLE sleep_notes (
+        CREATE TABLE IF NOT EXISTS sleep_notes (
           year INTEGER NOT NULL,
           month INTEGER NOT NULL,
           item TEXT NOT NULL,
@@ -139,7 +153,7 @@ extension on Store {
           PRIMARY KEY (year, month, item)
         );
         PRAGMA user_version = 7;
-      ''');
+      '''));
     }
     if (version < 8) {
       transaction(() {
@@ -539,6 +553,11 @@ extension on Store {
         _db.execute('PRAGMA user_version = 33');
       });
     }
+    // Version 34 syncs each holiday on its own (SyncEngine's 'holiday'
+    // registers), so two computers' holidays both stay. It changes nothing
+    // here: upgrading to it takes in those another computer sent while this
+    // one couldn't keep them.
+    if (version < 34) _db.execute('PRAGMA user_version = 34');
 
     if (version >= 1 && version < Store.schemaVersion) upgradedFrom = version;
     // Versions before 25 changed synced rows where the sync triggers

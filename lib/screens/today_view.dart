@@ -737,8 +737,16 @@ class _OpenFolderButton extends StatelessWidget {
   final String? problem;
 
   Future<void> _open() async {
-    final folder = file.parent;
-    await folder.create(recursive: true);
+    var folder = file.parent;
+    try {
+      await folder.create(recursive: true);
+    } on FileSystemException {
+      // The folder can't be made (the problem the tooltip names): show the
+      // nearest one that's there instead.
+      while (!folder.existsSync() && folder.parent.path != folder.path) {
+        folder = folder.parent;
+      }
+    }
     final exists = file.existsSync();
     if (Platform.isMacOS) {
       await Process.run('open', exists ? ['-R', file.path] : [folder.path]);

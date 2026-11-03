@@ -19,7 +19,7 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
     final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.shownDay, s.viewDay, s.weekEmptyDays));
     final day = state.shownDay;
     final past = state.viewDay != null;
-    final planned = _Planned(state, day, past: past);
+    final planned = state.fromTodos((_Planned, dateKey(day), past), () => _Planned(state, day, past: past));
     final tasks = planned.days.expand((d) => d);
     final added = _added(day, [for (final (_, item) in tasks) item.id]);
     final today = state.today;
@@ -87,7 +87,7 @@ class _WeekList extends StatefulWidget {
   State<_WeekList> createState() => _WeekListState();
 }
 
-class _WeekListState extends State<_WeekList> with _DayMotion {
+class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
   /// Whether a task is being dragged over each day, to light it.
   final _over = List.generate(WeekCard.span + 1, (_) => ValueNotifier(false));
   final _overBy = List.generate(WeekCard.span + 1, (_) => <Object>{});
@@ -145,8 +145,12 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
     final day = state.shownDay;
     final readOnly = !state.canEditDay(day);
     final planned = widget.planned;
-    final shown = [for (var i = 0; i <= WeekCard.span; i++) _shown('$i', planned.days[i])];
+    final shown = [for (var i = 0; i <= WeekCard.span; i++) _shown('$i', planned.days[i], fresh: widget.added)];
     _settle();
+    _reveal([
+      for (final day in planned.days)
+        for (final (_, item) in day) item.uid,
+    ]);
     // Today always; another day while it has tasks, or one closing up,
     // unless empty days show too.
     final visible = [
@@ -155,7 +159,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
     ];
     return SmoothTaskScroll(
       builder: (context, controller) => CustomScrollView(
-        controller: controller,
+        controller: _scroll = controller,
         scrollCacheExtent: const ScrollCacheExtent.pixels(80),
         slivers: [
           for (final i in visible) _section(state, i, shown[i], readOnly, first: i == visible.first),
@@ -170,6 +174,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
     final date = _date(i);
     final added = widget.added;
     final weekday = weekdayNames[date.weekday - 1];
+    final isToday = date == state.today;
     final name = switch (daysBetween(state.today, date)) {
       0 => 'Today',
       1 => 'Tomorrow',
@@ -201,17 +206,16 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
             i,
             _DayHeading(
               parts: [
-                if (name == 'Today')
+                if (isToday)
                   ('Today', true)
                 else ...[
                   if (name != null) (name, true),
-                  (_shortDate(date, state.today), name == null),
+                  (dayAndMonth(date, today: state.today), name == null),
                   (weekday, false),
                 ],
               ],
-              caption: widget.planned.days[i].where((t) => !t.$2.done).isEmpty && widget.planned.days[i].isNotEmpty
-                  ? 'All done'
-                  : '${widget.planned.days[i].where((t) => !t.$2.done).length} open',
+              open: widget.planned.days[i].where((t) => !t.$2.done).length,
+              any: widget.planned.days[i].isNotEmpty,
               strong: i == 0,
               first: first,
             ),
@@ -288,11 +292,21 @@ class _WeekListState extends State<_WeekList> with _DayMotion {
 
 /// A day's heading, its parts joined with dots, over a rule.
 class _DayHeading extends StatelessWidget {
-  const _DayHeading({required this.parts, this.caption, this.strong = false, this.first = false});
+  const _DayHeading({
+    required this.parts,
+    required this.open,
+    required this.any,
+    this.strong = false,
+    this.first = false,
+  });
 
   /// The heading's parts; strong ones are full ink.
   final List<(String, bool)> parts;
-  final String? caption;
+
+  /// How many of its tasks are open, and whether it has any: with none
+  /// open, its pill says All done.
+  final int open;
+  final bool any;
 
   /// All in full ink: today's.
   final bool strong;
@@ -300,11 +314,10 @@ class _DayHeading extends StatelessWidget {
   /// The first in its list, with less room above.
   final bool first;
 
-  /// Takes its room at once instead of easing to it.
-
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final complete = open == 0 && any;
     // Easing when a day comes in above it, or the one above goes.
     return AnimatedPadding(
       duration: Motion.morph,
@@ -342,11 +355,10 @@ class _DayHeading extends StatelessWidget {
                   ),
                 ),
               ),
-              if (caption case final label?)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: StatusPill(label: label.toUpperCase(), complete: label == 'All done'),
-                ),
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: StatusPill(label: complete ? 'ALL DONE' : '$open OPEN', complete: complete),
+              ),
             ],
           ),
           const SizedBox(height: 6),

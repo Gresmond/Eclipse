@@ -80,7 +80,11 @@ void main() {
 
     state.addHoliday(DateTime(2026, 11, 5), DateTime(2026, 11, 7));
     state.addHoliday(DateTime(2026, 11, 8), DateTime(2026, 11, 9));
-    expect(state.holidays, [(start: DateTime(2026, 11, 5), end: DateTime(2026, 11, 9))]);
+    // Both are past, so they stay apart (a past one is never swallowed).
+    expect(state.holidays, [
+      (start: DateTime(2026, 11, 5), end: DateTime(2026, 11, 7)),
+      (start: DateTime(2026, 11, 8), end: DateTime(2026, 11, 9)),
+    ]);
     expect(state.isRestDay(DateTime(2026, 11, 6)), isTrue);
     expect(state.isRestDay(DateTime(2026, 11, 10)), isFalse);
     expect(state.currentStreak(read), 6, reason: 'blank holiday days no longer break it');
@@ -92,7 +96,9 @@ void main() {
       ..mergeAll([(_sent(sender), 'a')]);
     expect(decodeHolidays(other.setting('holidays')), state.holidays);
 
-    state.removeHoliday(state.holidays.single);
+    for (final h in [...state.holidays]) {
+      state.removeHoliday(h);
+    }
     expect(state.isRestDay(DateTime(2026, 11, 6)), isFalse);
     expect(state.currentStreak(read), 3);
   });

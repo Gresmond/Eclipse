@@ -7,18 +7,15 @@ import 'app_dialog.dart';
 import 'confirm_on_enter.dart';
 import 'day_picker.dart';
 
-/// 'Sat 7 Nov', with the year when it isn't [today]'s.
-String _day(DateTime day, DateTime today) =>
-    '${weekdayNames[day.weekday - 1].substring(0, 3)} ${day.day} ${monthNames[day.month - 1].substring(0, 3)}'
-    '${day.year != today.year ? ' ${day.year}' : ''}';
-
-/// 'Sat 7 Nov – Sun 15 Nov', or one day alone.
-String holidayLabel(Holiday h, DateTime today) =>
-    h.start == h.end ? _day(h.start, today) : '${_day(h.start, today)} – ${_day(h.end, today)}';
+/// 'Sat 7 Nov – Sun 15 Nov', or one day alone, with the year when it
+/// isn't [today]'s.
+String holidayLabel(Holiday h, DateTime today) => h.start == h.end
+    ? shortDay(h.start, today: today)
+    : '${shortDay(h.start, today: today)} – ${shortDay(h.end, today: today)}';
 
 /// Settings' holidays: each current or coming one with a cross to take it
-/// away, and a button that adds one. Past ones stay kept, unshown, so their
-/// days stay rested.
+/// away, then, muted under Past, those already over, which can be taken
+/// away too (one added by mistake); and a button that adds one.
 class HolidaysRow extends StatelessWidget {
   const HolidaysRow({super.key});
 
@@ -31,6 +28,34 @@ class HolidaysRow extends StatelessWidget {
       for (final h in state.holidays)
         if (!h.end.isBefore(today)) h,
     ];
+    final past = [
+      for (final h in state.holidays.reversed)
+        if (h.end.isBefore(today)) h,
+    ];
+    Widget row(Holiday h, {required bool over}) => Padding(
+      key: ValueKey(h),
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Icon(Icons.beach_access_rounded, size: 16, color: over ? p.inkMuted : p.accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              holidayLabel(h, today),
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: over ? p.inkMuted : p.ink),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Remove holiday',
+            iconSize: 16,
+            visualDensity: VisualDensity.compact,
+            color: p.inkMuted,
+            onPressed: () => state.removeHoliday(h),
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
       child: Column(
@@ -76,31 +101,24 @@ class HolidaysRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final h in shown)
+                for (final h in shown) row(h, over: false),
+                if (past.isNotEmpty) ...[
                   Padding(
-                    key: ValueKey(h),
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      children: [
-                        Icon(Icons.beach_access_rounded, size: 16, color: p.accent),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            holidayLabel(h, today),
-                            style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.ink),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Remove holiday',
-                          iconSize: 16,
-                          visualDensity: VisualDensity.compact,
-                          color: p.inkMuted,
-                          onPressed: () => state.removeHoliday(h),
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                      ],
+                    key: const ValueKey('past'),
+                    padding: const EdgeInsets.only(top: 10, bottom: 2),
+                    child: Text(
+                      'PAST',
+                      style: TextStyle(
+                        fontFamily: Fonts.ui,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.6,
+                        color: p.inkMuted,
+                      ),
                     ),
                   ),
+                  for (final h in past) row(h, over: true),
+                ],
               ],
             ),
           ),
@@ -122,10 +140,7 @@ class _HolidayDialog extends StatefulWidget {
 }
 
 class _HolidayDialogState extends State<_HolidayDialog> {
-  late DateTime _month = DateTime(widget.today.year, widget.today.month);
   DateTime? _start, _end;
-
-  void _shift(int delta) => setState(() => _month = DateTime(_month.year, _month.month + delta));
 
   void _tap(DateTime day) => setState(() {
     final start = _start;
@@ -154,17 +169,6 @@ class _HolidayDialogState extends State<_HolidayDialog> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final picked = _picked;
-    final lead = _month.weekday - 1; // Monday first
-    final days = daysInMonth(_month.year, _month.month);
-
-    Widget arrow(IconData icon, VoidCallback onTap) => IconButton(
-      iconSize: 18,
-      visualDensity: VisualDensity.compact,
-      color: p.inkMuted,
-      onPressed: onTap,
-      icon: Icon(icon),
-    );
-
     return ConfirmOnEnter(
       onConfirm: _add,
       child: AlertDialog(
@@ -175,65 +179,16 @@ class _HolidayDialogState extends State<_HolidayDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      '${monthNames[_month.month - 1]} ${_month.year}',
-                      style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
-                    ),
-                  ),
-                  arrow(Icons.chevron_left_rounded, () => _shift(-1)),
-                  arrow(Icons.chevron_right_rounded, () => _shift(1)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  for (final name in weekdayNames)
-                    Expanded(
-                      child: Center(
-                        child: Text(
-                          name[0],
-                          style: TextStyle(
-                            fontFamily: Fonts.ui,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.6,
-                            color: p.inkMuted.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              // Always six weeks' rows, so the arrows stay put month to month.
-              for (var week = 0; week < 6; week++)
-                Row(
-                  children: [
-                    for (var col = 0; col < 7; col++)
-                      Expanded(
-                        child: Builder(
-                          builder: (context) {
-                            final d = week * 7 + col - lead + 1;
-                            if (d < 1 || d > days) return const SizedBox(height: CalendarDay.height);
-                            final day = DateTime(_month.year, _month.month, d);
-                            final end = picked != null && (day == picked.start || day == picked.end);
-                            final within = picked != null && !day.isBefore(picked.start) && !day.isAfter(picked.end);
-                            return CalendarDay(
-                              day: d,
-                              selected: end,
-                              within: within,
-                              isToday: day == widget.today,
-                              onTap: () => _tap(day),
-                            );
-                          },
-                        ),
-                      ),
-                  ],
+              MonthCalendar(
+                initial: widget.today,
+                dayBuilder: (context, day) => CalendarDay(
+                  day: day.day,
+                  selected: picked != null && (day == picked.start || day == picked.end),
+                  within: picked != null && !day.isBefore(picked.start) && !day.isAfter(picked.end),
+                  isToday: day == widget.today,
+                  onTap: () => _tap(day),
                 ),
+              ),
               const SizedBox(height: 8),
               Text(switch (picked) {
                 null => 'Click its first day, then its last.',

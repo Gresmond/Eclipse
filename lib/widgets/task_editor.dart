@@ -192,11 +192,15 @@ Future<void> _editTask(
 }) async {
   final state = AppScope.read(context);
   final repeat = state.repeatOf(item);
+  final onToday = day == state.today;
   final result = await showAppDialog<_TaskEdit>(
     context: context,
     builder: (_) => _EditTaskDialog(item: item, scope: scope, day: day, repeat: repeat),
   );
   if (result == null || !context.mounted) return;
+  // Today's lists stay today's across midnight: saved after the day
+  // changed, it changes the task, not the day before's record of it.
+  if (onToday) day = state.today;
   final choice = result.repeat;
   final (time, birthday, reminders, location) = (result.time, result.birthday, result.reminders, result.location);
   if (repeat == null) {
@@ -251,6 +255,7 @@ Future<void> _editTask(
   if (!renamed && result.due == item.dueDate) return;
   final future = renamed ? await _askWhich(context, removing: false) : false;
   if (future == null || !context.mounted) return;
+  if (onToday) day = state.today;
   if (future) {
     state.renameRepeat(
       repeat,
@@ -278,13 +283,17 @@ Future<void> _editTask(
 }
 
 /// Removes [item] by [removeOne], or, for a repeating task, that time or
-/// every time from it on, as chosen.
+/// every time from it on, as chosen. [removeOne] works out its day when
+/// it's called, so an answer given after midnight still takes the task
+/// from today's lists.
 Future<void> _removeTask(BuildContext context, TodoItem item, DateTime day, VoidCallback removeOne) async {
   final state = AppScope.read(context);
   final repeat = state.repeatOf(item);
   if (repeat == null) return removeOne();
+  final onToday = day == state.today;
   final future = await _askWhich(context, removing: true);
   if (future == null || !context.mounted) return;
+  if (onToday) day = state.today;
   // This one closes up like any removed task; with [future], the times
   // after it go too.
   state.removeTogether(() {
@@ -316,7 +325,7 @@ Future<bool?> _askWhich(BuildContext context, {required bool removing}) => showA
 /// "Every Mon, Wed until 12/12/2026".
 String _repeatLabel(_RepeatChoice choice) {
   final until = choice.until;
-  return until == null ? choice.rule.label : '${choice.rule.label} until ${dayMonth(until)}/${until.year}';
+  return until == null ? choice.rule.label : '${choice.rule.label} until ${dayAndMonth(until)}';
 }
 
 /// Every detail row's button, set rather than scaled by its label's size,
@@ -640,7 +649,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
           TextButton.icon(
             style: _detailButtonStyle,
             icon: const Icon(Icons.calendar_today_rounded, size: 18),
-            label: Text(_due == null ? 'Pick a due date' : 'Due ${dayMonth(_due!)}/${_due!.year}'),
+            label: Text(_due == null ? 'Pick a due date' : 'Due ${dayAndMonth(_due!)}'),
             onPressed: () => _open(_Page.day),
           ),
         ],

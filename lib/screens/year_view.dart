@@ -253,7 +253,7 @@ class _Table extends StatelessWidget {
             const SizedBox(width: _nameWidth),
             for (final m in shown)
               Expanded(
-                child: Center(child: Text(monthNames[m - 1].substring(0, 3).toUpperCase(), style: label)),
+                child: Center(child: Text(shortMonth(m).toUpperCase(), style: label)),
               ),
             if (shown.length < 12) Spacer(flex: 12 - shown.length),
             const SizedBox(width: 10),

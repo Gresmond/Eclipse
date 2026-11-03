@@ -1,8 +1,7 @@
 part of 'todo_panel.dart';
 
-/// A month of days from [first] on (to [last], if given), with arrows to
-/// the months either side; weeks start on Monday, as everywhere else in
-/// the app. A repeat's [end] is shaded, and [marked] days (the ones it
+/// A [MonthCalendar] of days from [first] on (to [last], if given). A
+/// repeat's [end] is shaded, and [marked] days (the ones it
 /// comes round on) have a dot. Right-clicking a day [endable] says sets
 /// it as the end, past [last] too.
 class _MonthCalendar extends StatefulWidget {
@@ -33,90 +32,22 @@ class _MonthCalendar extends StatefulWidget {
 }
 
 class _MonthCalendarState extends State<_MonthCalendar> {
-  late DateTime _month = DateTime(widget.selected.year, widget.selected.month);
-
   DateTime get _first => DateUtils.dateOnly(widget.first);
   DateTime? get _last => widget.last == null ? null : DateUtils.dateOnly(widget.last!);
 
   bool _endable(DateTime day) => widget.onEnd != null && (widget.endable?.call(day) ?? false);
 
-  void _moveMonth(int offset) {
-    setState(() => _month = DateTime(_month.year, _month.month + offset));
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final localizations = MaterialLocalizations.of(context);
-    final firstMonth = DateTime(_first.year, _first.month);
+  Widget build(BuildContext context) => MonthCalendar(
+    initial: widget.selected,
+    first: _first,
     // An end can be any number of months on.
-    final last = widget.onEnd == null ? _last : null;
-    final lastMonth = last == null ? null : DateTime(last.year, last.month);
-    final leading = DateTime(_month.year, _month.month).weekday - 1;
-    final days = DateUtils.getDaysInMonth(_month.year, _month.month);
-    final weeks = ((leading + days) / 7).ceil();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Text(localizations.formatMonthYear(_month), style: Theme.of(context).textTheme.titleSmall),
-              ),
-            ),
-            IconButton(
-              tooltip: localizations.previousMonthTooltip,
-              onPressed: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
-              icon: const Icon(Icons.chevron_left_rounded),
-            ),
-            IconButton(
-              tooltip: localizations.nextMonthTooltip,
-              onPressed: lastMonth == null || _month.isBefore(lastMonth) ? () => _moveMonth(1) : null,
-              icon: const Icon(Icons.chevron_right_rounded),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            for (var i = 0; i < 7; i++)
-              Expanded(
-                child: SizedBox(
-                  height: 36,
-                  child: Center(
-                    child: Text(
-                      localizations.narrowWeekdays[(1 + i) % 7],
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        // Only the weeks the month has, the rows below moving with it.
-        AnimatedSize(
-          duration: Motion.morph,
-          curve: Motion.morphCurve,
-          alignment: Alignment.topCenter,
-          child: Column(
-            children: [
-              for (var row = 0; row < weeks; row++)
-                Row(
-                  children: [
-                    for (var column = 0; column < 7; column++)
-                      Expanded(child: _buildDay(row * 7 + column - leading + 1, days, localizations)),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+    last: widget.onEnd == null ? _last : null,
+    dayBuilder: _buildDay,
+  );
 
-  Widget _buildDay(int day, int days, MaterialLocalizations localizations) {
-    if (day < 1 || day > days) return const SizedBox(height: CalendarDay.height);
-    final date = DateTime(_month.year, _month.month, day);
+  Widget _buildDay(BuildContext context, DateTime date) {
+    final localizations = MaterialLocalizations.of(context);
     final enabled = !date.isBefore(_first) && (_last == null || !date.isAfter(_last!));
     final selected = DateUtils.isSameDay(date, widget.selected);
     final end = !selected && widget.end != null && DateUtils.isSameDay(date, widget.end);
@@ -138,7 +69,7 @@ class _MonthCalendarState extends State<_MonthCalendar> {
           label: localizations.formatFullDate(date),
           excludeSemantics: true,
           child: CalendarDay(
-            day: day,
+            day: date.day,
             selected: selected,
             within: end,
             isToday: today,

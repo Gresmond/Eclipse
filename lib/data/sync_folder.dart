@@ -57,16 +57,22 @@ class SyncFolder {
     ]..sort((a, b) => a.path.compareTo(b.path));
   }
 
-  /// The latest edit in each computer's files here, by id.
-  Map<String, int> latestSent() {
-    final latest = <String, int>{};
+  /// The latest edit in each computer's files here, by id: its time, and
+  /// its number in that computer's count. The number says what went
+  /// whatever the clock did: put right, it can give later edits earlier
+  /// times.
+  Map<String, ({int ts, int seq})> latestSent() {
+    final latest = <String, ({int ts, int seq})>{};
     for (final file in _files()) {
       try {
         final json = jsonDecode(file.readAsStringSync());
         if (json is! Map || json['registers'] is! List) continue;
         final who = p.basename(file.parent.path);
         for (final r in json['registers'] as List) {
-          if (r is List && r.length > 4 && r[4] is int) latest[who] = max(latest[who] ?? 0, r[4] as int);
+          if (r is! List || r.length < 5 || r[4] is! int) continue;
+          final seq = r.length > 6 && r[6] is Map && (r[6] as Map)[who] is int ? (r[6] as Map)[who] as int : 0;
+          final (:ts, seq: had) = latest[who] ?? (ts: 0, seq: 0);
+          latest[who] = (ts: max(ts, r[4] as int), seq: max(had, seq));
         }
       } on FormatException {
         continue;

@@ -12,7 +12,11 @@ import 'fade_through.dart';
 /// entry, any day, found as you type. Typing fades [settings] away for the
 /// results; a result opens its day and lights it there.
 class SettingsSearch extends StatefulWidget {
-  const SettingsSearch({super.key, required this.settings});
+  const SettingsSearch({super.key, required this.settings, this.handle});
+
+  /// Lets the dialog ask, for Enter, whether it's searching and open the
+  /// first result.
+  final SettingsSearchHandle? handle;
 
   /// General's settings, under the bar while it's empty.
   final Widget settings;
@@ -25,10 +29,22 @@ class SettingsSearch extends StatefulWidget {
   static const shown = 100;
 
   @override
-  State<SettingsSearch> createState() => SettingsSearchState();
+  State<SettingsSearch> createState() => _SettingsSearchState();
 }
 
-class SettingsSearchState extends State<SettingsSearch> {
+/// The search a dialog shows now: the one built last, even while an
+/// earlier one fades out.
+class SettingsSearchHandle {
+  _SettingsSearchState? _search;
+
+  /// Whether anything's typed, so the results show in place of the settings.
+  bool get searching => _search?.searching ?? false;
+
+  /// Opens the first result, for Enter.
+  void openFirst() => _search?.openFirst();
+}
+
+class _SettingsSearchState extends State<SettingsSearch> {
   final _controller = TextEditingController();
   late final _state = AppScope.read(context);
   final _focus = FocusNode();
@@ -40,11 +56,22 @@ class SettingsSearchState extends State<SettingsSearch> {
   void initState() {
     super.initState();
     _state.saveDrafts();
-    _index = SearchIndex(_state.store);
+    _index = _state.searchIndex;
+    widget.handle?._search = this;
+  }
+
+  @override
+  void didUpdateWidget(SettingsSearch old) {
+    super.didUpdateWidget(old);
+    if (old.handle != widget.handle) {
+      if (old.handle?._search == this) old.handle!._search = null;
+      widget.handle?._search = this;
+    }
   }
 
   @override
   void dispose() {
+    if (widget.handle?._search == this) widget.handle!._search = null;
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -210,8 +237,7 @@ class _HitRow extends StatelessWidget {
       -1 => 'Yesterday',
       _ => null,
     };
-    final date = '${weekdayNames[d.weekday - 1].substring(0, 3)} ${d.day} ${monthNames[d.month - 1].substring(0, 3)}';
-    return [name ?? date, if (d.year != today.year) '${d.year}'].join(' ');
+    return [name ?? shortDay(d, today: d), if (d.year != today.year) '${d.year}'].join(' ');
   }
 
   @override

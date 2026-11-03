@@ -431,7 +431,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                               fontSize: 15,
                               height: 1.35,
                               color: done
-                                  ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
+                                  ? p.inkMuted.withValues(alpha: p.byDarkness(0.7, 0.75))
                                   : p.ink,
                               decoration: done ? TextDecoration.lineThrough : null,
                               decorationColor: p.inkMuted.withValues(alpha: 0.45),
@@ -500,7 +500,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Tooltip(
-                              message: 'Originally planned for ${dayMonth(item.since)}',
+                              message: 'Originally planned for ${shortDay(item.since, today: widget.day)}',
                               child: Icon(Icons.history_rounded, size: 12, color: p.missed),
                             ),
                           ),
@@ -858,7 +858,7 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
                           fontSize: 15,
                           height: 1.35,
                           color: done
-                              ? p.inkMuted.withValues(alpha: p.brightness == Brightness.dark ? 0.75 : 0.7)
+                              ? p.inkMuted.withValues(alpha: p.byDarkness(0.7, 0.75))
                               : p.ink,
                           decoration: done ? TextDecoration.lineThrough : null,
                           decorationColor: p.inkMuted.withValues(alpha: 0.45),
@@ -924,13 +924,17 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
 }
 
 /// The line over a task's name: its weekday further ahead, its time and
-/// where it is, joined with dots.
+/// where it is, joined with dots, and Birthday for one.
 class _Caption extends StatelessWidget {
-  const _Caption({this.weekday, this.time, this.location});
+  const _Caption({this.weekday, this.time, this.location, this.birthday = false, this.gap = false});
 
   final String? weekday;
   final int? time;
   final String? location;
+  final bool birthday;
+
+  /// A gap under it even without a weekday, as over a birthday further ahead.
+  final bool gap;
 
   @override
   Widget build(BuildContext context) {
@@ -940,7 +944,7 @@ class _Caption extends StatelessWidget {
     final (weekday, time, location) = (this.weekday, this.time, this.location);
     return Padding(
       // A weekday heads a task further ahead with a gap under it.
-      padding: EdgeInsets.only(bottom: weekday == null ? 0 : 8),
+      padding: EdgeInsets.only(bottom: weekday == null && !gap ? 0 : 8),
       child: Row(
         children: [
           // Each part gives way, rather than overflowing a narrow card.
@@ -973,6 +977,16 @@ class _Caption extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: plain.copyWith(height: 1.35, decoration: TextDecoration.none),
               ),
+            ),
+          ],
+          if (birthday) ...[
+            if (weekday != null || time != null || location != null) dot,
+            Padding(
+              padding: const EdgeInsets.only(right: 5),
+              child: Icon(_birthdayIcon, size: 14, color: p.inkMuted),
+            ),
+            Flexible(
+              child: Text('Birthday', maxLines: 1, overflow: TextOverflow.ellipsis, style: plain),
             ),
           ],
         ],

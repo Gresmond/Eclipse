@@ -358,11 +358,10 @@ class SyncService extends ChangeNotifier {
       // app did by itself meanwhile. The first computer, or one moving its
       // data to another account, sends everything as it is.
       if (hasSynced) {
-        engine
-          ..adoptUnsent(folder.latestSent())
-          ..flush();
+        engine.adoptUnsent(folder.latestSent());
+        await engine.flushGradually();
       } else {
-        engine.claimAll();
+        await engine.claimAllGradually();
       }
     }
     journal.forget();

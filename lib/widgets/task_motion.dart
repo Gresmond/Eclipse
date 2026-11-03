@@ -32,19 +32,15 @@ class GlidingColumnState extends State<GlidingColumn> with SingleTickerProviderS
   }
 
   @override
-  Widget build(BuildContext context) => _SlidingColumn(
-    progress: _motion.progress,
-    generation: _motion.generation,
-    lift: context.palette.tile,
-    children: widget.children,
-  );
+  Widget build(BuildContext context) =>
+      _SlidingColumn(progress: _motion.progress, generation: _motion.generation, children: widget.children);
 }
 
 /// Stacks its children like a Column, but when they're reordered each one
 /// glides from where it was drawn to its new place. Paint-only: children
 /// are laid out once at their new places and only drawn somewhere else.
 class _SlidingColumn extends MultiChildRenderObjectWidget {
-  const _SlidingColumn({required this.progress, required this.generation, required this.lift, required super.children});
+  const _SlidingColumn({required this.progress, required this.generation, required super.children});
 
   /// Runs 0 to 1 for each reorder.
   final Animation<double> progress;
@@ -53,17 +49,13 @@ class _SlidingColumn extends MultiChildRenderObjectWidget {
   /// is on screen, even one still moving from the last change.
   final int generation;
 
-  /// The card colour under a row that's lifted while it glides, beneath it.
-  final Color lift;
-
   @override
-  _RenderSlidingColumn createRenderObject(BuildContext context) => _RenderSlidingColumn(progress, generation, lift);
+  _RenderSlidingColumn createRenderObject(BuildContext context) => _RenderSlidingColumn(progress, generation);
 
   @override
   void updateRenderObject(BuildContext context, _RenderSlidingColumn renderObject) => renderObject
     ..progress = progress
-    ..generation = generation
-    ..lift = lift;
+    ..generation = generation;
 }
 
 class _SlideParentData extends ContainerBoxParentData<RenderBox> {
@@ -76,14 +68,9 @@ class _RenderSlidingColumn extends RenderBox
     with
         ContainerRenderObjectMixin<RenderBox, _SlideParentData>,
         RenderBoxContainerDefaultsMixin<RenderBox, _SlideParentData> {
-  _RenderSlidingColumn(this._progress, this._generation, this._lift);
+  _RenderSlidingColumn(this._progress, this._generation);
 
-  Color _lift;
-  set lift(Color value) {
-    if (value == _lift) return;
-    _lift = value;
-    markNeedsPaint();
-  }
+  final _clip = LayerHandle<ClipPathLayer>();
 
   Animation<double> _progress;
   set progress(Animation<double> value) {
@@ -117,6 +104,12 @@ class _RenderSlidingColumn extends RenderBox
   }
 
   @override
+  void dispose() {
+    _clip.layer = null;
+    super.dispose();
+  }
+
+  @override
   void setupParentData(RenderBox child) {
     if (child.parentData is! _SlideParentData) child.parentData = _SlideParentData();
   }
@@ -142,9 +135,10 @@ class _RenderSlidingColumn extends RenderBox
   @override
   void paint(PaintingContext context, Offset offset) {
     final t = _progress.value;
-    // The row going furthest (the one just ticked) rides above the rest on
-    // the card's colour, so rows never show through each other as they pass.
-    // Only when rows cross: rows closing up after a removal just slide.
+    // The row going furthest (the one just ticked) crosses the others. They
+    // are cut away where it passes, so no two rows ever show through each
+    // other, and nothing is painted behind it: the card shows through as it
+    // does everywhere else. Rows closing up after a removal just slide.
     var furthest = 0.0;
     var up = false, down = false;
     for (var child = firstChild; child != null; child = (child.parentData! as _SlideParentData).nextSibling) {
@@ -154,30 +148,38 @@ class _RenderSlidingColumn extends RenderBox
       up |= move < -0.5;
       down |= move > 0.5;
     }
-    if (!(up && down)) furthest = double.infinity;
-    final lifted = <RenderBox>[];
-    var child = firstChild;
-    while (child != null) {
+    RenderBox? lifted;
+    for (var child = firstChild; child != null; child = (child.parentData! as _SlideParentData).nextSibling) {
       final data = child.parentData! as _SlideParentData;
-      final distance = (data.target! - data.from!).abs();
       final y = t >= 1 ? data.target! : data.from! + (data.target! - data.from!) * t;
+      final distance = (data.target! - data.from!).abs();
       if (t >= 1) data.from = data.target;
       data.painted = y;
       // Hit testing and tooltips follow the row to where it's drawn.
       data.offset = Offset(0, y);
-      if (t < 1 && distance > 0.5 && distance == furthest) {
-        lifted.add(child);
-      } else {
-        context.paintChild(child, offset + data.offset);
+      if (t < 1 && up && down && lifted == null && distance > 0.5 && distance == furthest) lifted = child;
+    }
+    void paintOthers(PaintingContext context, Offset offset) {
+      for (var child = firstChild; child != null; child = (child.parentData! as _SlideParentData).nextSibling) {
+        if (child != lifted) context.paintChild(child, offset + (child.parentData! as _SlideParentData).offset);
       }
-      child = data.nextSibling;
     }
-    for (final row in lifted) {
-      final rect = (offset + (row.parentData! as _SlideParentData).offset) & row.size;
-      final rrect = RRect.fromRectAndRadius(rect.deflate(1), const Radius.circular(12));
-      context.canvas.drawRRect(rrect, Paint()..color = _lift);
-      context.paintChild(row, rect.topLeft);
+
+    if (lifted == null) {
+      _clip.layer = null;
+      paintOthers(context, offset);
+      return;
     }
+    final over = (lifted.parentData! as _SlideParentData).offset & lifted.size;
+    _clip.layer = context.pushClipPath(
+      needsCompositing,
+      offset,
+      Offset.zero & size,
+      _without(Offset.zero & size, over),
+      paintOthers,
+      oldLayer: _clip.layer,
+    );
+    context.paintChild(lifted, offset + (lifted.parentData! as _SlideParentData).offset);
   }
 
   @override
@@ -224,6 +226,7 @@ class LazyTaskSliver extends StatefulWidget {
 
 class _LazyTaskSliverState extends State<LazyTaskSliver> with SingleTickerProviderStateMixin {
   late final _motion = ReorderMotion(this);
+  final _group = _GlideGroup();
 
   @override
   void didUpdateWidget(LazyTaskSliver oldWidget) {
@@ -251,10 +254,41 @@ class _LazyTaskSliverState extends State<LazyTaskSliver> with SingleTickerProvid
         progress: _motion.progress,
         generation: _motion.generation,
         position: Scrollable.of(context).position,
-        color: context.palette.tile,
+        group: _group,
         child: RepaintBoundary(child: widget.itemBuilder(context, i)),
       ),
     );
+  }
+}
+
+/// The rows of one list as they glide: how far each built one moves this
+/// reorder, so the one crossing the others is known to them all.
+class _GlideGroup {
+  int? _generation;
+  final _moves = <_RenderGlideRow, double>{};
+
+  /// A row starting [generation]'s glide, going [move].
+  void start(_RenderGlideRow row, int generation, double move) {
+    if (_generation != generation) {
+      _generation = generation;
+      _moves.clear();
+    }
+    _moves[row] = move;
+  }
+
+  void remove(_RenderGlideRow row) => _moves.remove(row);
+
+  /// The row going furthest when rows pass each other (some go up and some
+  /// down, as when one is ticked to the foot), if any.
+  _RenderGlideRow? get crossing {
+    var up = false, down = false;
+    _RenderGlideRow? furthest;
+    for (final MapEntry(key: row, value: move) in _moves.entries) {
+      up |= move < -0.5;
+      down |= move > 0.5;
+      if (furthest == null || move.abs() > _moves[furthest]!.abs()) furthest = row;
+    }
+    return up && down ? furthest : null;
   }
 }
 
@@ -264,31 +298,35 @@ class _GlideRow extends SingleChildRenderObjectWidget {
     required this.progress,
     required this.generation,
     required this.position,
-    required this.color,
+    required this.group,
     required super.child,
   });
   final Animation<double> progress;
   final int generation;
   final ScrollPosition position;
-  final Color color;
+  final _GlideGroup group;
   @override
-  RenderObject createRenderObject(BuildContext context) => _RenderGlideRow(progress, generation, position, color);
+  RenderObject createRenderObject(BuildContext context) => _RenderGlideRow(progress, generation, position, group);
   @override
-  void updateRenderObject(BuildContext context, _RenderGlideRow renderObject) => renderObject
-    ..generation = generation
-    ..color = color;
+  void updateRenderObject(BuildContext context, _RenderGlideRow renderObject) =>
+      renderObject.generation = generation;
 }
 
 /// Paint-only movement in scroll-content coordinates. Scrolling stays native.
+/// A row that the one crossing the others passes over is cut away under it,
+/// so the two never show through each other; nothing is painted behind
+/// either.
 class _RenderGlideRow extends RenderProxyBox {
-  _RenderGlideRow(this.progress, this.generation, this.position, this.color);
+  _RenderGlideRow(this.progress, this.generation, this.position, this.group);
   final Animation<double> progress;
   final ScrollPosition position;
+  final _GlideGroup group;
   int generation;
-  Color color;
   int? _paintedGeneration;
   double? _painted, _from;
   Offset _translation = Offset.zero;
+  final _clip = LayerHandle<ClipPathLayer>();
+
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
@@ -298,26 +336,57 @@ class _RenderGlideRow extends RenderProxyBox {
   @override
   void detach() {
     progress.removeListener(markNeedsPaint);
+    group.remove(this);
     super.detach();
   }
 
   @override
+  void dispose() {
+    _clip.layer = null;
+    super.dispose();
+  }
+
+  /// Where it lies now in the scroll's content, top left.
+  Offset get _target => localToGlobal(Offset.zero) + Offset(0, position.pixels);
+
+  /// Where it's drawn this frame, in the scroll's content.
+  Offset _at(Offset target) {
+    final from = _paintedGeneration == generation ? _from! : (_painted ?? target.dy);
+    return Offset(target.dx, progress.value >= 1 ? target.dy : from + (target.dy - from) * progress.value);
+  }
+
+  @override
   void paint(PaintingContext context, Offset offset) {
-    final target = localToGlobal(Offset.zero).dy + position.pixels;
+    final target = _target;
     if (_paintedGeneration != generation) {
-      _from = _painted ?? target;
+      _from = _painted ?? target.dy;
       _paintedGeneration = generation;
+      group.start(this, generation, target.dy - _from!);
     }
-    final y = progress.value >= 1 ? target : _from! + (target - _from!) * progress.value;
+    final y = _at(target).dy;
     _painted = y;
-    _translation = Offset(0, y - target);
-    if (_translation.dy.abs() > 0.1) {
-      context.canvas.drawRRect(
-        RRect.fromRectAndRadius((offset + _translation) & size, const Radius.circular(12)),
-        Paint()..color = color,
-      );
+    _translation = Offset(0, y - target.dy);
+    final child = this.child;
+    if (child == null) return;
+    final crossing = progress.value < 1 ? group.crossing : null;
+    final mine = _translation & size;
+    // The crossing row, in this one's terms.
+    final over = crossing == null || crossing == this || !crossing.attached || !crossing.hasSize
+        ? null
+        : (crossing._at(crossing._target) - target) & crossing.size;
+    if (over == null || !over.overlaps(mine)) {
+      _clip.layer = null;
+      context.paintChild(child, offset + _translation);
+      return;
     }
-    if (child != null) context.paintChild(child!, offset + _translation);
+    _clip.layer = context.pushClipPath(
+      needsCompositing,
+      offset,
+      mine,
+      _without(mine, over),
+      (context, offset) => context.paintChild(child, offset + _translation),
+      oldLayer: _clip.layer,
+    );
   }
 
   @override
@@ -332,3 +401,9 @@ class _RenderGlideRow extends RenderProxyBox {
     hitTest: (result, transformed) => super.hitTest(result, position: transformed),
   );
 }
+
+/// [area] less the rounded row [cut], to clip the rows [cut] passes over.
+Path _without(Rect area, Rect cut) => Path()
+  ..fillType = PathFillType.evenOdd
+  ..addRect(area.inflate(1))
+  ..addRRect(RRect.fromRectAndRadius(cut, const Radius.circular(12)));

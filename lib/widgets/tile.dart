@@ -86,14 +86,15 @@ class Tile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final isDark = p.brightness == Brightness.dark;
     return Container(
       padding: padding,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [p.tile, isDark ? p.tile : Color.lerp(p.tile, p.background, 0.14)!],
+          // A light theme's tile darkens a touch towards its foot; a dark
+          // one's stays flat, eased between them through a theme fade.
+          colors: [p.tile, Color.lerp(p.tile, p.background, p.byDarkness(0.14, 0))!],
         ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: p.border, width: 1.0),

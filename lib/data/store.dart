@@ -24,7 +24,7 @@ abstract interface class AutomaticWrites {
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 33;
+  static const schemaVersion = 34;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -387,7 +387,7 @@ class Store {
       habitId,
       dateKey(today),
     ])) {
-      final day = DateTime.parse(r['day'] as String);
+      final day = _parseDay(r['day'] as String);
       final status = HabitStatus.values[r['status'] as int];
       if (day == today && status == HabitStatus.none || off(day)) continue;
       if (previous != null && gapBreaks(previous, day)) run = 0;
@@ -403,6 +403,21 @@ class Store {
     }
     if (previous != null && gapBreaks(previous, today)) run = 0;
     return (run, best);
+  }
+
+  /// A day's key ('2026-11-03') read without DateTime.parse's general
+  /// pattern, which over years of marks is most of a streak's work.
+  static DateTime _parseDay(String key) {
+    if (key.length != 10) return DateTime.parse(key);
+    int digits(int from, int to) {
+      var n = 0;
+      for (var i = from; i < to; i++) {
+        n = n * 10 + key.codeUnitAt(i) - 0x30;
+      }
+      return n;
+    }
+
+    return DateTime(digits(0, 4), digits(5, 7), digits(8, 10));
   }
 
   /// Up to [count] of the ritual's days before [day], latest first: each
@@ -495,21 +510,28 @@ class Store {
   /// Every task kept, ticked or not, on the day it's on, for search.
   Iterable<({String uid, String day, String text, bool done, List<TodoSubtask> subtasks, String? location})>
   searchableTodos() =>
-      _db.select('SELECT uid, scope, period, text, done, due_date, since, subtasks, location FROM todos').map((r) {
+      _db.select('SELECT uid, scope, period, text, done, due_date, since, subtasks, location FROM todos').expand((r) {
         final period = r['period'] as String;
         final day = switch (r['scope']) {
-          'today' => period,
-          'tomorrow' => dateKey(DateTime.parse(period).copyWith(day: DateTime.parse(period).day + 1)),
-          _ => (r['due_date'] as String?) ?? (r['since'] as String),
+          'today' => DateTime.tryParse(period),
+          'tomorrow' => switch (DateTime.tryParse(period)) {
+            final d? => DateTime(d.year, d.month, d.day + 1),
+            null => null,
+          },
+          _ => DateTime.tryParse((r['due_date'] as String?) ?? (r['since'] as String)),
         };
-        return (
-          uid: r['uid'] as String,
-          day: day.substring(0, 10),
-          text: curlyQuotes(r['text'] as String),
-          done: r['done'] == 1,
-          subtasks: TodoSubtask.decode(r['subtasks'] as String?),
-          location: r['location'] as String?,
-        );
+        // One whose day can't be read (from a damaged copy) isn't found.
+        if (day == null) return const <Never>[];
+        return [
+          (
+            uid: r['uid'] as String,
+            day: dateKey(day),
+            text: curlyQuotes(r['text'] as String),
+            done: r['done'] == 1,
+            subtasks: TodoSubtask.decode(r['subtasks'] as String?),
+            location: r['location'] as String?,
+          ),
+        ];
       });
 
   String journal(String day) {

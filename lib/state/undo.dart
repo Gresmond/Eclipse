@@ -14,7 +14,9 @@ class Removal {
 /// times out.
 mixin _Undo on ChangeNotifier {
   Store get store;
-  void _reloadAfterUndo();
+
+  /// After rows of [tables] were put back.
+  void _reloadAfterUndo(Set<String> tables);
 
   static const _kept = 3;
 
@@ -62,7 +64,7 @@ mixin _Undo on ChangeNotifier {
     // Later removals first: each was taken after the one before it.
     store.putBack(removal._before.reversed);
     if (identical(shownRemoval, removal)) shownRemoval = null;
-    _reloadAfterUndo();
+    _reloadAfterUndo({for (final b in removal._before) b.table});
   }
 
   /// The card naming [removal] has had its time.

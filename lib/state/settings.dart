@@ -5,6 +5,7 @@ part of '../app_state.dart';
 mixin _Settings on ChangeNotifier {
   Store get store;
   LruCache<int, (int, int)> get _streaks;
+  DateTime get today;
   void checkDate();
 
   /// The hour a new day starts: 0 for midnight or 4 for night owls.
@@ -119,12 +120,41 @@ mixin _Settings on ChangeNotifier {
   late List<Holiday> holidays = decodeHolidays(store.setting('holidays'));
 
   /// Adds a holiday from [start] to [end]; one it overlaps or touches
-  /// joins it.
+  /// joins it. A past one (over before today) is never swallowed, so taking
+  /// the new one away can't take its rest days with it: the new one only
+  /// adds the days around it.
   void addHoliday(DateTime start, DateTime end) {
-    var (from, to) = (dateOnly(start), dateOnly(end));
+    var parts = [(start: dateOnly(start), end: dateOnly(end))];
+    for (final past in holidays.where((h) => h.end.isBefore(today))) {
+      parts = [
+        for (final part in parts) ...[
+          if (part.start.isBefore(past.start))
+            (
+              start: part.start,
+              end: _earliest(part.end, DateTime(past.start.year, past.start.month, past.start.day - 1)),
+            ),
+          if (part.end.isAfter(past.end))
+            (start: _latest(part.start, DateTime(past.end.year, past.end.month, past.end.day + 1)), end: part.end),
+        ],
+      ];
+    }
+    var next = holidays;
+    for (final part in parts) {
+      next = _joined(next, part.start, part.end);
+    }
+    _setHolidays(next);
+  }
+
+  static DateTime _earliest(DateTime a, DateTime b) => a.isBefore(b) ? a : b;
+  static DateTime _latest(DateTime a, DateTime b) => a.isAfter(b) ? a : b;
+
+  /// [holidays] with [from] to [to] added, joined with any it overlaps or
+  /// touches that isn't over yet.
+  List<Holiday> _joined(List<Holiday> holidays, DateTime from, DateTime to) {
     final kept = <Holiday>[];
     for (final h in holidays) {
       final apart =
+          h.end.isBefore(today) ||
           h.end.isBefore(DateTime(from.year, from.month, from.day - 1)) ||
           h.start.isAfter(DateTime(to.year, to.month, to.day + 1));
       if (apart) {
@@ -134,7 +164,7 @@ mixin _Settings on ChangeNotifier {
         if (h.end.isAfter(to)) to = h.end;
       }
     }
-    _setHolidays([...kept, (start: from, end: to)]);
+    return [...kept, (start: from, end: to)];
   }
 
   void removeHoliday(Holiday holiday) => _setHolidays([

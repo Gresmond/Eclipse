@@ -1499,19 +1499,19 @@ void main() {
     await tester.tap(find.byTooltip('Show days with no tasks'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.textContaining('Oct 29', findRichText: true),
+      find.textContaining('29 Oct', findRichText: true),
       100,
       scrollable: find.descendant(of: week, matching: find.byType(Scrollable)).first,
     );
     expect(
-      find.descendant(of: week, matching: find.textContaining('Oct 29', findRichText: true)),
+      find.descendant(of: week, matching: find.textContaining('29 Oct', findRichText: true)),
       findsOneWidget,
       reason: 'the week ends at day 7',
     );
-    expect(find.descendant(of: week, matching: find.textContaining('Oct 30', findRichText: true)), findsNothing);
+    expect(find.descendant(of: week, matching: find.textContaining('30 Oct', findRichText: true)), findsNothing);
     await tester.tap(find.byTooltip('Hide days with no tasks'));
     await tester.pumpAndSettle();
-    expect(find.descendant(of: week, matching: find.textContaining('Oct 29', findRichText: true)), findsNothing);
+    expect(find.descendant(of: week, matching: find.textContaining('29 Oct', findRichText: true)), findsNothing);
     expect(find.descendant(of: later, matching: find.text('Book flights')), findsOneWidget);
     expect(find.descendant(of: later, matching: find.text('NOV')), findsOneWidget);
     expect(find.descendant(of: later, matching: find.text('20')), findsOneWidget);
@@ -1645,7 +1645,7 @@ void main() {
     final week = find.byType(WeekCard);
     final from = tester.getCenter(find.text('Drag me'));
     // An empty day, shown with empty days, takes it at its heading.
-    final to = tester.getCenter(find.descendant(of: week, matching: find.textContaining('Oct 25', findRichText: true)));
+    final to = tester.getCenter(find.descendant(of: week, matching: find.textContaining('25 Oct', findRichText: true)));
     await tester.dragFrom(from, to - from);
     await tester.pumpAndSettle();
     expect(state.todos[TodoScope.today]!.map((t) => t.text), isNot(contains('Drag me')));
@@ -1769,11 +1769,11 @@ void main() {
     await tester.tap(find.descendant(of: panel, matching: find.byTooltip('Edit task')).last);
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Original task'), 'Revised task');
-    await tester.tap(find.text('Due 27/10/2026'));
+    await tester.tap(find.text('Due 27 Oct 2026'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24').last);
     await tester.pumpAndSettle();
-    expect(find.text('Due 24/10/2026'), findsOneWidget, reason: 'a day goes back to the task');
+    expect(find.text('Due 24 Oct 2026'), findsOneWidget, reason: 'a day goes back to the task');
     await tester.tap(find.widgetWithText(TextField, 'Revised task'));
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
@@ -1925,7 +1925,7 @@ void main() {
 
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Originally planned for 22/10'), findsWidgets);
+    expect(find.byTooltip('Originally planned for Thu 22 Oct'), findsWidgets);
 
     await tester.tap(find.text('24 October').last);
     await tester.pumpAndSettle();

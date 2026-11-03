@@ -71,7 +71,7 @@ class _DatedAddState extends State<_DatedAdd> {
         controller: _controller,
         focus: _focus,
         leading: _TaskAction(
-          tooltip: due == null ? 'Pick a day' : 'Due ${dayMonth(due)}/${due.year}, click to change',
+          tooltip: due == null ? 'Pick a day' : 'Due ${dayAndMonth(due)}, click to change',
           icon: due == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
           onPressed: _pick,
         ),
@@ -82,7 +82,7 @@ class _DatedAddState extends State<_DatedAdd> {
             children: [
               if (due != null)
                 Flexible(
-                  child: Text(_shortDate(due, today), maxLines: 1, overflow: TextOverflow.ellipsis, style: note),
+                  child: Text(dayAndMonth(due, today: today), maxLines: 1, overflow: TextOverflow.ellipsis, style: note),
                 ),
               if (time != null) ...[
                 const SizedBox(width: 6),
@@ -267,7 +267,7 @@ class _AddTaskState extends State<_AddTask> {
                               Padding(
                                 padding: const EdgeInsets.only(right: 6),
                                 child: Text(
-                                  _shortDate(choice.day, widget.today),
+                                  dayAndMonth(choice.day, today: widget.today),
                                   style: TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted),
                                 ),
                               ),
@@ -279,7 +279,7 @@ class _AddTaskState extends State<_AddTask> {
                             _TaskAction(
                               tooltip: choice == null
                                   ? 'Pick a day'
-                                  : 'Due ${dayMonth(choice.day)}/${choice.day.year}, click to change',
+                                  : 'Due ${dayAndMonth(choice.day)}, click to change',
                               icon: choice == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
                               onPressed: _pick,
                             ),

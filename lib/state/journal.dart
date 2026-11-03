@@ -52,9 +52,14 @@ mixin _Journal on ChangeNotifier {
   Future<void> _rewriteStaleJournal() => _rewriting ??= _rewriteStale().whenComplete(() => _rewriting = null);
   Future<void>? _rewriting;
 
+  /// Saves that have failed, counted: a sweep that saw one fail while it
+  /// ran leaves the files marked behind, as that save had them.
+  var _journalFailures = 0;
+
   Future<void> _rewriteStale() async {
     final files = journalFiles;
     if (files == null || store.setting('journalFilesStale') != '1') return;
+    final failures = _journalFailures;
     try {
       final days = <String>{};
       var written = true;
@@ -72,8 +77,9 @@ mixin _Journal on ChangeNotifier {
       for (final day in await files.days()) {
         if (!days.contains(dateKey(day))) written &= await _writeJournalFile(day, '');
       }
-      // Only once every file is right: one that failed is tried again.
-      if (_savesFiles && written) store.setSetting('journalFilesStale', '0');
+      // Only once every file is right: one that failed, the sweep's own or
+      // a save made meanwhile, is tried again.
+      if (_savesFiles && written && _journalFailures == failures) store.setSetting('journalFilesStale', '0');
     } catch (e) {
       debugPrint('Rewriting journal files failed: $e');
     }
@@ -177,6 +183,7 @@ mixin _Journal on ChangeNotifier {
                 'Allow it in System Settings, Privacy & Security, Files and Folders.'
           : "The journal’s files couldn’t be saved (${e.osError?.message ?? e.message}).";
     }
+    if (problem != null) _journalFailures++;
     if (_disposed) return problem == null;
     if (problem != null) {
       store.setSetting('journalFilesStale', '1');

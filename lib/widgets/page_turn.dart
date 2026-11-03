@@ -135,7 +135,7 @@ class _PageTurnState extends State<PageTurn> with TickerProviderStateMixin {
 
   /// The page's underside: near white, a touch of the tile's tint so it
   /// belongs to the theme.
-  static Color _paper(Palette p) => Color.lerp(p.tile, Colors.white, p.brightness == Brightness.dark ? 0.86 : 0.7)!;
+  static Color _paper(Palette p) => Color.lerp(p.tile, Colors.white, p.byDarkness(0.7, 0.86))!;
 }
 
 /// Where the page is folded: the corner (W, H) has been lifted to [tip], so

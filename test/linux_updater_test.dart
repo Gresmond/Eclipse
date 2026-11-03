@@ -230,4 +230,38 @@ void main() {
       expect(restarts, 1);
     });
   }, skip: !Platform.isLinux);
+
+  // 26.11.1 went out as 26.11.1+3, then again as plain 26.11.1, which
+  // builds as 1: lower, so copies of the first never see it. The copies
+  // out there compare as this does, so what reaches them is a newer
+  // version (plain, build 1) or the same version republished with a build
+  // above 3 (tagged v26.11.1+4).
+  for (final (tag, build) in [('v26.11.2', 1), ('v26.11.1', 4)]) {
+    test('$tag build $build reaches the copies that installed 26.11.1+3, on every platform', () async {
+      final release = {
+        'tag_name': tag,
+        'body': '<!-- eclipse-build: $build -->\n<!-- eclipse-linux-build: $build -->',
+        'assets': [
+          {
+            'name': 'Eclipse.tar.zst',
+            'browser_download_url': 'https://github.com/Gresmond/Eclipse/releases/download/$tag/Eclipse.tar.zst',
+            'digest': 'sha256:${'0' * 64}',
+          },
+          for (final extension in ['.dmg', '.exe'])
+            {'name': 'Eclipse$extension', 'browser_download_url': 'https://example.invalid/Eclipse$extension'},
+        ],
+      };
+      Future<(int, List<int>)> fetch(Uri _) async => (200, utf8.encode(jsonEncode(release)));
+      final updaters = [
+        LinuxUpdater('26.11.1', installRoot: '/nowhere', installedRelease: 3, fetch: fetch),
+        for (final extension in ['.dmg', '.exe'])
+          ReleaseUpdater('26.11.1', installedRelease: 3, assetExtension: extension, fetch: fetch),
+      ];
+      for (final updater in updaters) {
+        await updater.check();
+        expect(updater.status, UpdateStatus.available, reason: updater.runtimeType.toString());
+        updater.dispose();
+      }
+    });
+  }
 }

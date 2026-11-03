@@ -153,6 +153,9 @@ class SyncEngine implements AutomaticWrites {
     'journal': {'text': 8},
     'sleep_note': {'note': 8},
     'setting': {'value': 8},
+    // A holiday, by its first and last days: there or taken away. The
+    // 'holidays' setting keeps them all, as versions before 34 sync it.
+    'holiday': {_present: 34},
     'exercise': {_present: 22, 'name': 22, 'muscle': 22, 'bodyweight': 22},
     'training_set': {_present: 22, 'day': 22, 'exercise': 22, 'position': 22, 'weight': 22, 'reps': 22},
     'todo_repeat': {
@@ -246,6 +249,8 @@ class SyncEngine implements AutomaticWrites {
         return {
           'value': row('SELECT value FROM settings WHERE key = ?', [rowkey])?['value'],
         };
+      case 'holiday':
+        return {_present: _holidays().contains(rowkey)};
       case 'exercise':
         fields = row('SELECT name, muscle, bodyweight FROM exercises WHERE uid = ?', [rowkey]);
       case 'training_set':
@@ -371,6 +376,16 @@ class SyncEngine implements AutomaticWrites {
             [y, m, item, note],
           );
         }
+      case 'setting' when rowkey == _holidaysKey:
+        // All the holidays at once, as versions before 34 send them: each
+        // one this computer has a register of goes by that, the rest by
+        // this list.
+        final listed = _holidayKeys(f['value'] as String?);
+        final kept = _holidayRegisters();
+        _setHolidays({
+          for (final key in {..._holidays(), ...listed, ...kept.keys})
+            if (kept[key] ?? listed.contains(key)) key,
+        });
       case 'setting':
         final value = f['value'] as String?;
         if (value == null) {
@@ -378,6 +393,8 @@ class SyncEngine implements AutomaticWrites {
         } else {
           store.setSetting(rowkey, value);
         }
+      case 'holiday':
+        _setHolidays({..._holidays()..remove(rowkey), if (f[_present] == true) rowkey});
       case 'exercise':
         if (gone) {
           _db.execute('DELETE FROM exercises WHERE uid = ?', [rowkey]);
@@ -428,6 +445,44 @@ class SyncEngine implements AutomaticWrites {
 
   static bool _blank(Object? v) => v == null || v == false || v == 0 || v == '';
 
+  // Holidays
+
+  static const _holidaysKey = 'holidays';
+
+  /// A holiday's rowkey: its first and last days.
+  static String _holidayKey(Holiday h) => '${dateKey(h.start)}/${dateKey(h.end)}';
+
+  static Set<String> _holidayKeys(String? encoded) => {for (final h in decodeHolidays(encoded)) _holidayKey(h)};
+
+  /// The holidays here, by rowkey.
+  Set<String> _holidays() => _holidayKeys(store.setting(_holidaysKey));
+
+  void _setHolidays(Set<String> keys) {
+    final next = encodeHolidays([
+      for (final key in keys)
+        if (_split(key) case (final a, final b))
+          if ((DateTime.tryParse(a), DateTime.tryParse(b)) case (final start?, final end?)) (start: start, end: end),
+    ]);
+    final value = encodeHolidays(decodeHolidays(next));
+    if (value != (store.setting(_holidaysKey) ?? encodeHolidays(const []))) store.setSetting(_holidaysKey, value);
+  }
+
+  /// Whether each holiday with a register of its own is there, by rowkey.
+  Map<String, bool> _holidayRegisters() => {
+    for (final r in _db.select("SELECT rowkey, value FROM sync_reg WHERE kind = 'holiday' AND field = ?", [_present]))
+      r['rowkey'] as String: r['value'] == 'true',
+  };
+
+  /// What a holiday without a register of its own was last synced as: in
+  /// the 'holidays' list sync had, or not.
+  Map<String, String> _holidaysSynced() {
+    final listed = _holidayKeys(switch (_reg('setting', _holidaysKey, 'value')) {
+      final r? => jsonDecode(r.value) as String?,
+      null => null,
+    });
+    return {for (final key in listed) key: jsonEncode(true)};
+  }
+
   // Registers
 
   _Reg? _reg(String kind, String rowkey, String field) {
@@ -448,17 +503,72 @@ class SyncEngine implements AutomaticWrites {
   };
 
   /// Turns rows written here since last time into edits of this computer.
-  void flush() => _flush();
+  /// While [flushGradually] works through a backlog, only a frame's worth.
+  void flush() => _flush(budget: _gradual > 0 ? _frameBudget : null);
+
+  /// How long a flush runs between frames while working through a backlog.
+  static const _frameBudget = Duration(milliseconds: 6);
+
+  var _gradual = 0;
+
+  /// Rows turned into edits by the latest flush, for tests.
+  int debugLastFlushed = 0;
+
+  /// [flush], a frame's worth at a time with frames drawn between: a long
+  /// history written before sync was on (every row, when it's the first
+  /// computer) takes seconds, which would otherwise hold the window still.
+  Future<void> flushGradually() async {
+    _gradual++;
+    try {
+      while (_flush(budget: _frameBudget)) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    } finally {
+      _gradual--;
+    }
+  }
+
+  /// [claimAll], with the flush [flushGradually].
+  Future<void> claimAllGradually() {
+    _db.execute('DELETE FROM sync_local');
+    store.markAllChanged();
+    return flushGradually();
+  }
 
   /// [weak]: filled in, not edited, so they don't count as having seen
   /// anything: an edit another computer made that this one hadn't heard of
-  /// wins over them. [skip]: fields left as they are.
-  void _flush({bool weak = false, Set<(String, String)> skip = const {}}) {
-    final dirty = _db.select('SELECT kind, rowkey, at FROM sync_dirty ORDER BY at');
-    if (dirty.isEmpty) return;
+  /// wins over them. [skip]: fields left as they are. With a [budget], stops
+  /// once it's spent, leaving the rest; returns whether any were left.
+  bool _flush({bool weak = false, Set<(String, String)> skip = const {}, Duration? budget}) {
+    final rows = _db.select('SELECT kind, rowkey, at FROM sync_dirty ORDER BY at');
+    debugLastFlushed = 0;
+    if (rows.isEmpty) return false;
+    final clock = Stopwatch()..start();
+    final done = <(String, String)>[];
+    var left = false;
     store.transaction(() {
+      // The holidays changed: each one that came or went is an edit of its
+      // own, so another computer's, made meanwhile, stays too. They go with
+      // the list, never in a later flush.
+      var synced = const <String, String>{};
+      final dirty = <({String kind, String rowkey, int at})>[];
+      for (final r in rows) {
+        final d = (kind: r['kind'] as String, rowkey: r['rowkey'] as String, at: r['at'] as int);
+        dirty.add(d);
+        if (d.kind == 'setting' && d.rowkey == _holidaysKey) {
+          synced = _holidaysSynced();
+          for (final key in {..._holidays(), ..._holidayRegisters().keys, ...synced.keys}) {
+            dirty.add((kind: 'holiday', rowkey: key, at: d.at));
+          }
+        }
+      }
       for (final d in dirty) {
-        final kind = d['kind'] as String, rowkey = d['rowkey'] as String;
+        final (:kind, :rowkey, :at) = d;
+        if (budget != null && kind != 'holiday' && clock.elapsed > budget) {
+          left = true;
+          break;
+        }
+        done.add((kind, rowkey));
         final now = _read(kind, rowkey), local = _marks(kind, rowkey);
         final changed = <String, Object?>{};
         for (final MapEntry(key: field, value: v) in now.entries) {
@@ -469,8 +579,8 @@ class SyncEngine implements AutomaticWrites {
             // back to what sync has (moved back to the list it came from).
             if (left == value) continue;
           } else {
-            final old = _reg(kind, rowkey, field);
-            if (old == null ? _blank(v) : old.value == value) continue;
+            final old = _reg(kind, rowkey, field)?.value ?? (kind == 'holiday' ? synced[rowkey] : null);
+            if (old == null ? _blank(v) : old == value) continue;
           }
           changed[field] = v;
         }
@@ -484,7 +594,7 @@ class SyncEngine implements AutomaticWrites {
         // An edit says the row is there, so one made after it was deleted
         // elsewhere brings it back; the later of the two wins.
         if (_removable.contains(kind) && now[_present] == true) changed[_present] = true;
-        final ts = _tick(d['at'] as int), seq = _nextSeq();
+        final ts = _tick(at), seq = _nextSeq();
         for (final MapEntry(key: field, value: v) in changed.entries) {
           final old = _reg(kind, rowkey, field);
           final vv = weak ? {...?old?.vv} : {...?old?.vv, me: seq};
@@ -506,8 +616,21 @@ class SyncEngine implements AutomaticWrites {
           }
         }
       }
-      _db.execute('DELETE FROM sync_dirty');
+      if (!left) {
+        _db.execute('DELETE FROM sync_dirty');
+      } else {
+        final forget = _db.prepare('DELETE FROM sync_dirty WHERE kind = ? AND rowkey = ?');
+        try {
+          for (final (kind, rowkey) in done) {
+            forget.execute([kind, rowkey]);
+          }
+        } finally {
+          forget.close();
+        }
+      }
     });
+    debugLastFlushed = done.length;
+    return left;
   }
 
   /// Whether this computer has synced. Until it has, what the app does by
@@ -522,7 +645,9 @@ class SyncEngine implements AutomaticWrites {
   @override
   void before({required bool local, String? day}) {
     if (!_engaged) return;
-    flush();
+    // All of them, even while working through a backlog: what a day start
+    // writes is told apart from the edits by what's left unsent.
+    _flush();
     if (local && (day != _startedFor || _movedEdited)) {
       _resetLocal();
       _startedFor = day;
@@ -621,7 +746,7 @@ class SyncEngine implements AutomaticWrites {
   void claimAll() {
     _db.execute('DELETE FROM sync_local');
     store.markAllChanged();
-    flush();
+    _flush();
   }
 
   /// The user explicitly chose to transfer local data to another account.
@@ -638,15 +763,18 @@ class SyncEngine implements AutomaticWrites {
   /// Takes as this computer's own the edits under another id newer than
   /// anything of that id's in Drive ([sent]): its own, from before it had
   /// this id (sync's settings lost, the database kept), which never went.
-  void adoptUnsent(Map<String, int> sent) {
+  /// Newer by that id's count, or for an edit that's only filled in (which
+  /// doesn't count), by its time.
+  void adoptUnsent(Map<String, ({int ts, int seq})> sent) {
     store.transaction(() {
       for (final r in _db.select('SELECT DISTINCT origin FROM sync_reg WHERE origin != ?', [me])) {
         final origin = r['origin'] as String;
-        _db.execute('UPDATE sync_reg SET origin = ?, seq = MAX(seq, ts) WHERE origin = ? AND ts > ?', [
-          me,
-          origin,
-          sent[origin] ?? 0,
-        ]);
+        final (:ts, :seq) = sent[origin] ?? (ts: 0, seq: 0);
+        _db.execute(
+          'UPDATE sync_reg SET origin = ?1, seq = MAX(seq, ts) WHERE origin = ?2 AND '
+          "(ts > ?3 OR COALESCE(json_extract(vv, '\$.\"' || ?2 || '\"'), 0) > ?4)",
+          [me, origin, ts, seq],
+        );
       }
     });
     _lastSeq = null;
@@ -681,6 +809,9 @@ class SyncEngine implements AutomaticWrites {
       _db.execute('DELETE FROM training_sets');
       _db.execute('DELETE FROM todo_repeats');
       _db.execute('DELETE FROM settings WHERE key IN (${Store.syncedSettings.map((k) => "'$k'").join(', ')})');
+      // How far this computer had made each repeat's times: the others'
+      // history says that now.
+      _db.execute('DELETE FROM settings WHERE key = ?', [StoreTodos.walkedSetting]);
       _db.execute('DELETE FROM habits WHERE id NOT IN (SELECT habit_id FROM sleep_habits)');
       _db.execute('DELETE FROM sync_reg');
       _db.execute('DELETE FROM sync_seen');
@@ -738,7 +869,7 @@ class SyncEngine implements AutomaticWrites {
   /// Merges other computers' registers in, and brings the rows they touch
   /// up to date.
   Incoming mergeAll(Iterable<(Iterable<List<Object?>>, String)> batches) {
-    flush(); // so edits made here count in the comparison
+    _flush(); // so edits made here count in the comparison
     final touched = <(String, String)>{};
     final names = <String>{};
     final failed = <int>{};

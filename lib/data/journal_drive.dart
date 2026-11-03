@@ -91,14 +91,35 @@ class JournalFolder {
       await _save();
     } else if (_now().difference(DateTime.tryParse(_config['journalChecked'] as String? ?? '') ?? DateTime(0)) >=
         checkEvery) {
-      // Files and year folders deleted in Drive are forgotten, to be
-      // written again below.
-      final (files, years) = await drive.listJournal(folder);
-      _years.removeWhere((year, id) => years[year] != id);
-      final there = {for (final MapEntry(key: path, value: (id, _)) in files.entries) ?_dayOf(path): id};
-      _up.removeWhere((day, file) => (file as List)[0] != '' && there[day] != file[0]);
-      _config['journalChecked'] = _now().toIso8601String();
-      await _save();
+      // Two computers that made the folder at once, neither seeing the
+      // other's yet, each keep their own: the first made is the one. The
+      // other's maker moves to it, fills it with every day, and bins its own.
+      final oldest = await drive.findFolder(folderName);
+      if (oldest != null && oldest != folder) {
+        final duplicate = folder;
+        forget();
+        final (files, years) = await drive.listJournal(oldest);
+        _years.addAll(years);
+        for (final MapEntry(key: path, value: (id, md5)) in files.entries) {
+          if (_dayOf(path) case final day?) _up[day] = [id, md5];
+        }
+        folder = oldest;
+        _config
+          ..['journalFolder'] = folder
+          ..['journalFill'] = true
+          ..['journalChecked'] = _now().toIso8601String();
+        await _save();
+        await drive.bin(duplicate);
+      } else {
+        // Files and year folders deleted in Drive are forgotten, to be
+        // written again below.
+        final (files, years) = await drive.listJournal(folder);
+        _years.removeWhere((year, id) => years[year] != id);
+        final there = {for (final MapEntry(key: path, value: (id, _)) in files.entries) ?_dayOf(path): id};
+        _up.removeWhere((day, file) => (file as List)[0] != '' && there[day] != file[0]);
+        _config['journalChecked'] = _now().toIso8601String();
+        await _save();
+      }
     }
     if (stopped()) return;
 

@@ -181,7 +181,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
     final start = widget.start;
     final rule = choice.rule;
     final weekday = weekdayNames[start.weekday - 1];
-    final date = '${start.day} ${monthNames[start.month - 1].substring(0, 3)}';
+    final date = dayAndMonth(start, today: start);
     final n = rule.every;
     final what = switch (rule.kind) {
       RepeatKind.weeks => n == 1 ? 'Every week on $weekday' : 'Every $n weeks on $weekday',
@@ -192,8 +192,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
     };
     final until = choice.until;
     if (until == null) return what;
-    final year = until.year == start.year ? '' : ' ${until.year}';
-    return '$what, until ${until.day} ${monthNames[until.month - 1].substring(0, 3)}$year';
+    return '$what, until ${dayAndMonth(until, today: start)}';
   }
 
   Widget _options(Palette p) {
@@ -315,10 +314,10 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                     child: _ScaleDown(
                       alignment: Alignment.center,
                       child: _DateTags(
-                        starts: 'Starts ${start.day} ${monthNames[start.month - 1].substring(0, 3)}',
+                        starts: 'Starts ${dayAndMonth(start, today: start)}',
                         ends: until == null
                             ? 'Ends never'
-                            : 'Ends ${until.day} ${monthNames[until.month - 1].substring(0, 3)}',
+                            : 'Ends ${dayAndMonth(until, today: until)}',
                       ),
                     ),
                   ),

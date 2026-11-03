@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'data/backups.dart';
 import 'data/data_folder.dart';
 import 'data/journal_files.dart';
+import 'data/search.dart';
 import 'data/store.dart';
 import 'data/sync.dart';
 import 'data/sync_service.dart';
@@ -78,9 +79,17 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   Future<void> flushFiles() async {
     await _initialExport;
     // A stale-file sweep discovers and queues writes asynchronously. Waiting
-    // for the writer alone can miss deletions it hasn't queued yet.
-    await _rewriting;
-    await journalFiles?.pending;
+    // for the writer alone can miss deletions it hasn't queued yet; and a
+    // save that works starts a sweep once it's done, so both are waited for
+    // until neither has anything left.
+    while (true) {
+      if (_rewriting case final sweep?) {
+        await sweep;
+        continue;
+      }
+      await journalFiles?.pending;
+      if (_rewriting == null) return;
+    }
   }
 
   Future<void>? _shutdown;
@@ -174,7 +183,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
           reloadTodos = true;
         case 'exercise' || 'training_set':
           training.reload();
-        case 'setting':
+        case 'setting' || 'holiday':
           restWeekends = store.setting('restWeekends') == '1';
           holidays = decodeHolidays(store.setting('holidays'));
           dayStartHour = int.tryParse(store.setting('dayStartHour') ?? '') ?? 0;
@@ -306,20 +315,39 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     notifyListeners();
   }
 
+  /// Everything search looks through: kept until a task or the journal
+  /// changes, so opening Settings again, or going back to its General
+  /// ribbon, doesn't read it all again.
+  SearchIndex get searchIndex {
+    final at = (todosRevision, journalRevision);
+    if (_searchAt != at) {
+      _searchAt = at;
+      _searchIndex = SearchIndex(store);
+    }
+    return _searchIndex!;
+  }
+
+  SearchIndex? _searchIndex;
+  (int, int)? _searchAt;
+
   @override
   void _removed(String label, List<RowsBefore> before) => _undoable(label, before);
 
   @override
   void _quietReminders(bool Function(String uid) which) => _settleReminders(which);
 
+  /// Only what the rows put back are part of: a task's undo leaves the
+  /// rituals, and their rows, as they are.
   @override
-  void _reloadAfterUndo() {
-    _monthHabits.clear();
-    _monthScores.clear();
-    _previewHabits.clear();
-    _trails.clear();
-    _streaks.clear();
-    habitsRevision++;
+  void _reloadAfterUndo(Set<String> tables) {
+    if (!tables.every(const {'todos', 'todo_history', 'todo_repeats'}.contains)) {
+      _monthHabits.clear();
+      _monthScores.clear();
+      _previewHabits.clear();
+      _trails.clear();
+      _streaks.clear();
+      habitsRevision++;
+    }
     _startDay();
     _todosChanged();
   }
@@ -327,6 +355,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   @override
   void _startDay() {
     _repeats = null;
+    _made.clear();
     _todoDays.clear();
     _orderedTodos.clear();
     todosRevision++;

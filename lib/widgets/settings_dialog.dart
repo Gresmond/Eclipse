@@ -30,9 +30,9 @@ part 'settings_data.dart';
 Widget settingsTransition(BuildContext context, Animation<double> animation, Widget child) =>
     dialogTransition(animation, child);
 
-/// Settings, in three ribbons: General, Data, and Search. Restoring a
-/// backup asks first, inline on its row. Pops with the restored [Backup],
-/// or nothing.
+/// Settings, in two ribbons: General, with search atop it, and Data.
+/// Restoring a backup asks first, inline on its row. Pops with the
+/// restored [Backup], or nothing.
 class SettingsDialog extends StatefulWidget {
   const SettingsDialog({super.key, this.tourRibbon, this.tourTargetKey});
 
@@ -45,10 +45,10 @@ class SettingsDialog extends StatefulWidget {
 }
 
 class _SettingsDialogState extends State<SettingsDialog> {
-  /// 0 for General, 1 for Data, 2 for Search. Always opens on General.
+  /// 0 for General, 1 for Data. Always opens on General.
   late int _ribbon = widget.tourRibbon ?? 0;
 
-  final _search = GlobalKey<SettingsSearchState>();
+  final _search = SettingsSearchHandle();
 
   late List<Backup> _backups = AppScope.of(context).backups?.list() ?? [];
   Backup? _confirming;
@@ -143,7 +143,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     final current = state.journalFiles!.dir;
     final picked = await DataFolder.pick(start: current.parent.path, title: 'Save journal entries in');
     if (picked == null || !mounted) return;
-    final folder = ['Eclipse Journal', 'Eclipse Journals'].contains(pth.basename(picked.path))
+    final folder = {DataFolder.oldJournalName, DataFolder.journalName}.contains(pth.basename(picked.path))
         ? picked
         : Directory(pth.join(picked.path, DataFolder.journalName));
     setState(() {
@@ -216,10 +216,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       onConfirm: _restoring || _moving || _signingIn || _confirming != null || _newJournal != null || _joining != null
           ? null
           // Opens the first result while searching, else closes.
-          : () => switch (_search.currentState) {
-              final search? when _ribbon == 0 && search.searching => search.openFirst(),
-              _ => Navigator.pop(context),
-            },
+          : () => _ribbon == 0 && _search.searching ? _search.openFirst() : Navigator.pop(context),
       child: Dialog(
         clipBehavior: Clip.antiAlias,
         backgroundColor: p.tile,
@@ -256,16 +253,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  AnimatedSize(
-                    duration: Motion.morph,
-                    curve: Motion.morphCurve,
-                    alignment: Alignment.topCenter,
-                    clipBehavior: Clip.none,
+                  // A ribbon's page never lies over Close: see PageSize.
+                  PageSize(
+                    page: _ribbon,
+                    easeWithin: true,
                     child: FadeThrough(
                       layoutBuilder: FadeThrough.pinTop,
                       child: KeyedSubtree(
                         key: ValueKey(_ribbon),
-                        child: _ribbon == 0 ? SettingsSearch(key: _search, settings: _general(p)) : _backupsAndSync(p),
+                        child: _ribbon == 0 ? SettingsSearch(handle: _search, settings: _general(p)) : _backupsAndSync(p),
                       ),
                     ),
                   ),

@@ -43,13 +43,16 @@ class DataFolder {
   /// The journal's folder, when Eclipse picks it.
   static const journalName = 'Eclipse Journals';
 
+  /// Its name in Documents before that.
+  static const oldJournalName = 'Eclipse Journal';
+
   /// Eclipse's own journal folder was 'Eclipse Journal' in Documents, and
   /// 'Journal' inside a chosen data folder, at first: renamed once, with
   /// what's in it. Left where it is if the new name is taken.
   void _renameJournal() {
     if (journalChosen != null) return;
     final old = Directory(
-      p.join(chosen == null ? documents.path : root.path, chosen == null ? 'Eclipse Journal' : 'Journal'),
+      p.join(chosen == null ? documents.path : root.path, chosen == null ? oldJournalName : 'Journal'),
     );
     try {
       if (old.existsSync() && FileSystemEntity.typeSync(journal.path) == FileSystemEntityType.notFound) {
