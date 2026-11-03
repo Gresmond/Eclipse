@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'app_dialog.dart';
 import 'confirm_on_enter.dart';
 import 'day_picker.dart';
@@ -47,7 +48,7 @@ class HolidaysRow extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Remove holiday',
-            iconSize: 16,
+            iconSize: Scale.dismissIcon,
             visualDensity: VisualDensity.compact,
             color: p.inkMuted,
             onPressed: () => state.removeHoliday(h),
@@ -106,16 +107,7 @@ class HolidaysRow extends StatelessWidget {
                   Padding(
                     key: const ValueKey('past'),
                     padding: const EdgeInsets.only(top: 10, bottom: 2),
-                    child: Text(
-                      'PAST',
-                      style: TextStyle(
-                        fontFamily: Fonts.ui,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.6,
-                        color: p.inkMuted,
-                      ),
-                    ),
+                    child: Text('PAST', style: capsLabel(p.inkMuted)),
                   ),
                   for (final h in past) row(h, over: true),
                 ],
@@ -171,9 +163,8 @@ class _HolidayDialogState extends State<_HolidayDialog> {
     final picked = _picked;
     return ConfirmOnEnter(
       onConfirm: _add,
-      child: AlertDialog(
-        backgroundColor: p.tile,
-        title: const Text('Add a holiday'),
+      child: AppAlertDialog(
+        title: 'Add a holiday',
         content: SizedBox(
           width: 340,
           child: Column(
@@ -199,8 +190,8 @@ class _HolidayDialogState extends State<_HolidayDialog> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: picked == null ? null : _add, child: const Text('Add')),
+          DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(context)),
+          DialogConfirm(label: 'Add', onPressed: picked == null ? null : _add),
         ],
       ),
     );

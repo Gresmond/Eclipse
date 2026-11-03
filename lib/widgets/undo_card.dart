@@ -7,6 +7,7 @@ import '../app_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'corner_card.dart';
+import 'fade_through.dart';
 
 /// Over everything, dialogs too: the card naming what was just removed,
 /// with Undo, in the bottom-right corner, with the other corner [cards]
@@ -147,12 +148,21 @@ class _Card extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // A second removal fades its label through, the card easing to
+            // its width as the header's date does.
             Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.ink),
+              child: PageSize(
+                page: label,
+                child: FadeThrough(
+                  layoutBuilder: FadeThrough.pinTop,
+                  child: Text(
+                    label,
+                    key: ValueKey(label),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.ink),
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 16),

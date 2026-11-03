@@ -93,6 +93,22 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
   /// The repeat last shown, kept while the row closes up.
   Repeat? _repeat;
   bool _nestingOut = false;
+
+  /// The row, or which of its subtasks, is being dragged: it dims in place
+  /// rather than being swapped for a dimmed copy, which rebuilt its whole
+  /// subtree as the drag began and again as it ended.
+  bool _draggingRow = false;
+  int? _draggingSubtask;
+  void _dragDim({bool? row, int? subtask, bool clear = false}) {
+    if (!mounted) return;
+    setState(() {
+      if (row != null) _draggingRow = row;
+      if (subtask != null || clear) _draggingSubtask = subtask;
+    });
+  }
+
+  Widget _dimmed(bool dim, Widget child) =>
+      AnimatedOpacity(opacity: dim ? 0.3 : 1, duration: Motion.hover, curve: Motion.hoverCurve, child: child);
   bool _acceptingNest = false;
 
   /// A dragged task is over the middle of the row, to nest in it.
@@ -126,7 +142,9 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
       drag.day == state.today &&
       drag.item.id != widget.item.id &&
       !drag.item.done &&
-      drag.item.subtasks.isEmpty;
+      drag.item.subtasks.isEmpty &&
+      // From the other card, it moves there rather than nesting.
+      _inWeekAhead(state, drag.item) == (widget.upcomingDate == null);
 
   void _setNestOver(bool over) {
     if (over != _nestOver) setState(() => _nestOver = over);
@@ -277,10 +295,14 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
       builder: (context, _, _) => Draggable<_SubtaskDrag>(
         data: _SubtaskDrag(item.id, index),
         maxSimultaneousDrags: canDrag ? 1 : 0,
-        onDragStarted: () => _dragging.value = true,
+        onDragStarted: () {
+          _dragging.value = true;
+          _dragDim(subtask: index);
+        },
         onDragCompleted: () => _dragging.value = false,
         onDraggableCanceled: (_, _) => _dragging.value = false,
         onDragEnd: (_) {
+          _dragDim(clear: true);
           final order = _dragOrder;
           if (order == null || !mounted) return;
           if (order.length != item.subtasks.length || listEquals(order, List.generate(order.length, (i) => i))) {
@@ -304,8 +326,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
             ),
           ),
         ),
-        childWhenDragging: Opacity(opacity: 0.3, child: row),
-        child: row,
+        child: _dimmed(_draggingSubtask == index, row),
       ),
     );
   }
@@ -389,6 +410,11 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
     // Closing up after its repeat ended, it still shows the repeat.
     final repeat = widget.leaving ? _repeat : (_repeat = state.repeatOf(item));
 
+    // The caption above the name, and the subtask and repeat lines below it.
+    final captionLine = MediaQuery.textScalerOf(context).scale(12) * 1.35;
+    final linesAbove = item.dueTime != null || item.location != null ? 1 : 0;
+    final linesBelow = (item.subtasks.isNotEmpty ? 1 : 0) + (repeat != null && !item.birthday ? 1 : 0);
+
     final parentRow = Appear(
       animate: widget.fadeIn,
       shown: !widget.leaving && !_nestingOut,
@@ -419,7 +445,11 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                     child: Row(
                       children: [
                         if (widget.upcomingDate == null) ...[
-                          _Check(done: done, hover: _hover, pressed: _pressed),
+                          // On the name, not the middle of the lines round it.
+                          Transform.translate(
+                            offset: Offset(0, (linesAbove - linesBelow) * captionLine / 2),
+                            child: _Check(done: done, hover: _hover, pressed: _pressed),
+                          ),
                           const SizedBox(width: 12),
                         ],
                         Expanded(
@@ -430,9 +460,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                               fontFamily: Fonts.body,
                               fontSize: 15,
                               height: 1.35,
-                              color: done
-                                  ? p.inkMuted.withValues(alpha: p.byDarkness(0.7, 0.75))
-                                  : p.ink,
+                              color: done ? p.inkMuted : p.ink,
                               decoration: done ? TextDecoration.lineThrough : null,
                               decorationColor: p.inkMuted.withValues(alpha: 0.45),
                             ),
@@ -501,7 +529,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                             ),
                             child: Tooltip(
                               message: 'Originally planned for ${shortDay(item.since, today: widget.day)}',
-                              child: Icon(Icons.history_rounded, size: 12, color: p.missed),
+                              child: Icon(Icons.history_rounded, size: 12, color: p.missedInk),
                             ),
                           ),
                           // As far from the buttons as they are from the row's right edge.
@@ -606,7 +634,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                             SearchGlow(
                               target: item.uid == null ? null : '${item.uid}#$index',
                               // After its task's brief light.
-                              delay: const Duration(milliseconds: 700),
+                              delay: Motion.glowDelay,
                               child: Appear(
                                 animate: _incomingSubtask == index || widget.fadeIn,
                                 animateSize: false,
@@ -656,10 +684,14 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
       onDragStarted: () {
         _activeDrag = drag;
         _dragging.value = true;
+        _dragDim(row: true);
         SmoothTaskScroll.dragPosition.value = Offset.zero;
       },
       onDragUpdate: (details) => SmoothTaskScroll.dragPosition.value = details.globalPosition,
-      onDragEnd: (_) => SmoothTaskScroll.dragPosition.value = null,
+      onDragEnd: (_) {
+        SmoothTaskScroll.dragPosition.value = null;
+        _dragDim(row: false);
+      },
       // Let go anywhere but on another task or day, it stays where it was
       // last shown among its day's tasks.
       onDraggableCanceled: (_, _) {
@@ -687,8 +719,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
           ),
         ),
       ),
-      childWhenDragging: Opacity(opacity: 0.3, child: row),
-      child: row,
+      child: _dimmed(_draggingRow, row),
     );
   }
 }
@@ -737,7 +768,7 @@ class _CheckState extends State<_Check> with TickerProviderStateMixin {
         lift: 1.06,
         dip: 0.88,
         child: CustomPaint(
-          size: const Size.square(20),
+          size: Size.square(MediaQuery.textScalerOf(context).scale(20)),
           painter: _CheckPainter(fill: _curved, hover: _hover, palette: context.palette),
         ),
       ),
@@ -776,7 +807,7 @@ class _CheckPainter extends CustomPainter {
     }
 
     // The tick grows in after the fill, as on a ritual square.
-    paintMark(canvas, centre, Icons.check_rounded, 13, p.onAccent, Motion.incoming.transform(t));
+    paintMark(canvas, centre, Icons.check_rounded, size.width * 0.65, p.onAccent, Motion.incoming.transform(t));
   }
 
   @override
@@ -857,9 +888,7 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
                           fontFamily: Fonts.body,
                           fontSize: 15,
                           height: 1.35,
-                          color: done
-                              ? p.inkMuted.withValues(alpha: p.byDarkness(0.7, 0.75))
-                              : p.ink,
+                          color: done ? p.inkMuted : p.ink,
                           decoration: done ? TextDecoration.lineThrough : null,
                           decorationColor: p.inkMuted.withValues(alpha: 0.45),
                         ),
@@ -942,54 +971,71 @@ class _Caption extends StatelessWidget {
     final plain = TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted);
     final dot = Text('  ·  ', style: plain);
     final (weekday, time, location) = (this.weekday, this.time, this.location);
+    final timeStyle = _timeStyle(p)
+        .copyWith(fontSize: 12, color: p.inkMuted, height: 1.35, decoration: TextDecoration.none);
+    final scaler = MediaQuery.textScalerOf(context);
+    double width(String text, TextStyle style) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }
+
     return Padding(
       // A weekday heads a task further ahead with a gap under it.
       padding: EdgeInsets.only(bottom: weekday == null && !gap ? 0 : 8),
-      child: Row(
-        children: [
-          // Each part gives way, rather than overflowing a narrow card.
-          if (weekday != null)
-            Flexible(
-              child: Text(weekday, maxLines: 1, overflow: TextOverflow.ellipsis, style: plain),
-            ),
-          if (time != null) ...[
-            if (weekday != null) dot,
-            Flexible(
-              child: Text(
-                clockLabel(time),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: _timeStyle(p)
-                    .copyWith(fontSize: 12, color: p.inkMuted, height: 1.35, decoration: TextDecoration.none),
-              ),
-            ),
-          ],
-          if (location != null) ...[
-            if (weekday != null || time != null) dot,
-            Padding(
-              padding: const EdgeInsets.only(right: 3),
-              child: Icon(Icons.place_rounded, size: 12, color: p.inkMuted),
-            ),
-            Flexible(
-              child: Text(
-                location,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: plain.copyWith(height: 1.35, decoration: TextDecoration.none),
-              ),
-            ),
-          ],
-          if (birthday) ...[
-            if (weekday != null || time != null || location != null) dot,
-            Padding(
-              padding: const EdgeInsets.only(right: 5),
-              child: Icon(_birthdayIcon, size: 14, color: p.inkMuted),
-            ),
-            Flexible(
-              child: Text('Birthday', maxLines: 1, overflow: TextOverflow.ellipsis, style: plain),
-            ),
-          ],
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // The weekday and time are always whole, the location giving way
+          // first, unless the card can't even hold those two.
+          final dots = [weekday, time, location ?? (birthday ? '' : null)].nonNulls.length - 1;
+          final whole =
+              (weekday == null ? 0 : width(weekday, plain)) +
+              (time == null ? 0 : width(clockLabel(time), timeStyle)) +
+              (dots < 1 ? 0 : dots * width('  ·  ', plain)) +
+              // The glyph before what gives way.
+              (location != null || birthday ? scaler.scale(19) : 0);
+          Widget part(Widget text) => whole > constraints.maxWidth ? Flexible(child: text) : text;
+          return Row(
+            children: [
+              if (weekday != null) part(Text(weekday, maxLines: 1, overflow: TextOverflow.ellipsis, style: plain)),
+              if (time != null) ...[
+                if (weekday != null) dot,
+                part(Text(clockLabel(time), maxLines: 1, overflow: TextOverflow.ellipsis, style: timeStyle)),
+              ],
+              if (location != null) ...[
+                if (weekday != null || time != null) dot,
+                Padding(
+                  padding: const EdgeInsets.only(right: 3),
+                  child: Icon(Icons.place_rounded, size: 12, color: p.inkMuted),
+                ),
+                Flexible(
+                  child: Text(
+                    location,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: plain.copyWith(height: 1.35, decoration: TextDecoration.none),
+                  ),
+                ),
+              ],
+              if (birthday) ...[
+                if (weekday != null || time != null || location != null) dot,
+                Padding(
+                  padding: const EdgeInsets.only(right: 5),
+                  child: Icon(_birthdayIcon, size: 14, color: p.inkMuted),
+                ),
+                Flexible(
+                  child: Text('Birthday', maxLines: 1, overflow: TextOverflow.ellipsis, style: plain),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }

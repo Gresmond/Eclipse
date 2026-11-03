@@ -2,6 +2,77 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
+
+/// Every dialog's title: Settings' Greed heading.
+TextStyle dialogTitleStyle(Palette p) =>
+    TextStyle(fontFamily: Fonts.display, fontSize: 28, fontWeight: FontWeight.w400, color: p.ink);
+
+/// The gap under a dialog's title, and the one above its buttons.
+const dialogTitleGap = 20.0;
+const dialogActionsGap = 14.0;
+
+/// A dialog with a title, a body and its buttons, laid out as Settings is:
+/// [dialogPadding] round it, a [dialogTitleStyle] title, and
+/// [DialogDismiss] and [DialogConfirm] buttons.
+class AppAlertDialog extends StatelessWidget {
+  const AppAlertDialog({super.key, required this.title, this.content, required this.actions});
+
+  final String title;
+  final Widget? content;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return AlertDialog(
+      backgroundColor: p.tile,
+      titlePadding: EdgeInsets.fromLTRB(dialogPadding.left, dialogPadding.top, dialogPadding.right, 0),
+      contentPadding: EdgeInsets.fromLTRB(dialogPadding.left, dialogTitleGap, dialogPadding.right, 0),
+      actionsPadding: EdgeInsets.fromLTRB(
+        dialogPadding.left,
+        dialogActionsGap,
+        dialogPadding.right,
+        dialogPadding.bottom,
+      ),
+      title: Text(title, style: dialogTitleStyle(p)),
+      content: content == null
+          ? null
+          : DefaultTextStyle.merge(
+              style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.45, color: p.ink),
+              child: content!,
+            ),
+      actions: actions,
+    );
+  }
+}
+
+/// Every dialog's way out (Cancel, Close, Skip): plain text in muted ink.
+class DialogDismiss extends StatelessWidget {
+  const DialogDismiss({super.key, required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    style: TextButton.styleFrom(foregroundColor: context.palette.inkMuted),
+    onPressed: onPressed,
+    child: Text(label),
+  );
+}
+
+/// Every dialog's yes: filled in the done colour, as the theme draws every
+/// [FilledButton].
+class DialogConfirm extends StatelessWidget {
+  const DialogConfirm({super.key, required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => FilledButton(onPressed: onPressed, child: Text(label));
+}
 
 /// A centered panel fades with the same timing as popup menus. It doesn't
 /// grow: scaling a whole panel makes its text and toggles wobble.
@@ -28,6 +99,10 @@ class _AppDialogRoute<T> extends DialogRoute<T> {
     : super(
         animationStyle: const AnimationStyle(duration: Motion.morph, reverseDuration: Motion.morph),
       );
+
+  /// The shade fades with the panel, rather than ahead of it.
+  @override
+  Curve get barrierCurve => Motion.morphCurve;
 
   @override
   Widget buildTransitions(

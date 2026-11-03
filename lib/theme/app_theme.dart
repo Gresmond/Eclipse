@@ -37,12 +37,15 @@ class Palette extends ThemeExtension<Palette> {
     required this.inkMuted,
     required this.accent,
     required this.onAccent,
+    required this.onDone,
     required this.gradient,
     required this.today,
     required this.onToday,
     required this.done,
     required this.missed,
+    required this.missedInk,
     required this.other,
+    required this.otherInk,
     required this.empty,
     required this.shadow,
     this._todayPanel,
@@ -63,8 +66,13 @@ class Palette extends ThemeExtension<Palette> {
   final Color inkMuted;
   final Color accent;
 
-  /// Text and icons drawn on the gradient or a status colour.
+  /// Text and icons drawn on the gradient, and marks on a status colour.
+  /// Text clears 4.5:1 on every gradient stop, marks 3:1 on each status.
   final Color onAccent;
+
+  /// Text on a [done] fill: a selected day, a confirm button, a chosen
+  /// option. Clears 4.5:1 on [done].
+  final Color onDone;
 
   /// Signature gradient for selected tabs, headers and the progress ring:
   /// missed, other, then done, so it always ends on done.
@@ -82,7 +90,15 @@ class Palette extends ThemeExtension<Palette> {
   /// Habit status colours.
   final Color done;
   final Color missed;
+
+  /// [missed] darkened (or, on a dark theme, lightened) until it reads as
+  /// text: error lines and small warning glyphs. Clears 4.5:1 on [tile]
+  /// and [background].
+  final Color missedInk;
   final Color other;
+
+  /// [other], moved in lightness as [missedInk] is, for text in its colour.
+  final Color otherInk;
   final Color empty;
 
   final Color shadow;
@@ -113,12 +129,15 @@ class Palette extends ThemeExtension<Palette> {
     inkMuted: inkMuted,
     accent: accent,
     onAccent: onAccent,
+    onDone: onDone,
     gradient: gradient,
     today: today,
     onToday: onToday,
     done: done,
     missed: missed,
+    missedInk: missedInk,
     other: other,
+    otherInk: otherInk,
     empty: empty,
     shadow: shadow,
     todayPanel: todayPanel ?? _todayPanel,
@@ -127,8 +146,8 @@ class Palette extends ThemeExtension<Palette> {
   );
 
   List<Color> get _colours => [
-    background, tile, tileBorder, ink, inkMuted, accent, onAccent, ...gradient,
-    today, onToday, done, missed, other, empty, shadow, todayPanel, todayPanelBorder,
+    background, tile, tileBorder, ink, inkMuted, accent, onAccent, onDone, ...gradient,
+    today, onToday, done, missed, missedInk, other, otherInk, empty, shadow, todayPanel, todayPanelBorder,
   ];
 
   bool _sameColours(Palette other) => listEquals(_colours, other._colours);
@@ -148,12 +167,15 @@ class Palette extends ThemeExtension<Palette> {
       inkMuted: c(inkMuted, other.inkMuted),
       accent: c(accent, other.accent),
       onAccent: c(onAccent, other.onAccent),
+      onDone: c(onDone, other.onDone),
       gradient: [for (var i = 0; i < gradient.length; i++) c(gradient[i], other.gradient[i])],
       today: c(today, other.today),
       onToday: c(onToday, other.onToday),
       done: c(done, other.done),
       missed: c(missed, other.missed),
+      missedInk: c(missedInk, other.missedInk),
       other: c(this.other, other.other),
+      otherInk: c(otherInk, other.otherInk),
       empty: c(empty, other.empty),
       shadow: c(shadow, other.shadow),
       todayPanel: c(todayPanel, other.todayPanel),
@@ -380,6 +402,8 @@ ThemeData buildTheme(Palette p) {
       elevation: 0,
       backgroundColor: p.tile,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
+      // Settings' title; app_dialog.dart's AppAlertDialog sets the padding.
+      titleTextStyle: TextStyle(fontFamily: Fonts.display, fontSize: 28, fontWeight: FontWeight.w400, color: p.ink),
     ),
     colorScheme: scheme,
     scaffoldBackgroundColor: p.background,
@@ -395,26 +419,46 @@ ThemeData buildTheme(Palette p) {
     // here shows the hand.
     iconButtonTheme: const IconButtonThemeData(style: _clickable),
     textButtonTheme: const TextButtonThemeData(style: _clickable),
-    filledButtonTheme: const FilledButtonThemeData(style: _clickable),
+    // Every filled button is a yes, in the done colour.
+    filledButtonTheme: FilledButtonThemeData(
+      style: _clickable.copyWith(
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled) ? p.done.withValues(alpha: 0.45) : p.done,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled) ? p.onDone.withValues(alpha: 0.8) : p.onDone,
+        ),
+      ),
+    ),
     outlinedButtonTheme: const OutlinedButtonThemeData(style: _clickable),
     elevatedButtonTheme: const ElevatedButtonThemeData(style: _clickable),
     extensions: [p],
   );
-  // Body-sized Material text reads one point larger; headlines keep their size.
+  // Material's text styles, pinned to the type scale and with no tracking
+  // of their own, so a style taken from the theme matches one written out.
   // Sizes live in the typography geometry; ThemeData's own textTheme has none.
-  final g = theme.typography.englishLike;
-  TextStyle up(TextStyle? s) => TextStyle(fontSize: s!.fontSize! + 1);
+  TextStyle size(double fontSize) => TextStyle(fontSize: fontSize, letterSpacing: 0);
   return theme.copyWith(
+    // Glyphs grow with the text beside them.
+    iconTheme: theme.iconTheme.copyWith(applyTextScaling: true),
+    primaryIconTheme: theme.primaryIconTheme.copyWith(applyTextScaling: true),
     textTheme: theme.textTheme.merge(
       TextTheme(
-        titleMedium: up(g.titleMedium),
-        titleSmall: up(g.titleSmall),
-        bodyLarge: up(g.bodyLarge),
-        bodyMedium: up(g.bodyMedium),
-        bodySmall: up(g.bodySmall),
-        labelLarge: up(g.labelLarge),
-        labelMedium: up(g.labelMedium),
-        labelSmall: up(g.labelSmall),
+        displayLarge: size(38),
+        displayMedium: size(38),
+        displaySmall: size(38),
+        headlineLarge: size(28),
+        headlineMedium: size(28),
+        headlineSmall: size(22),
+        titleLarge: size(22),
+        titleMedium: size(16),
+        titleSmall: size(15),
+        bodyLarge: size(16),
+        bodyMedium: size(15),
+        bodySmall: size(14),
+        labelLarge: size(15),
+        labelMedium: size(14),
+        labelSmall: size(12),
       ),
     ),
   );

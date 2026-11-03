@@ -95,7 +95,7 @@ class CornerButton extends StatelessWidget {
             fontFamily: Fonts.ui,
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: filled ? p.onAccent : p.inkMuted,
+            color: filled ? p.onDone : p.inkMuted,
           ),
         ),
       ),

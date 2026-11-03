@@ -141,7 +141,7 @@ void main() {
           expect(contrast(hint.color!, surface), greaterThanOrEqualTo(4.5), reason: palette.name);
         }
       }
-      for (final label in ['Nothing due', 'Nothing more than a week away']) {
+      for (final label in ['Nothing due.', 'Nothing more than a week away.']) {
         final text = tester.widget<Text>(find.text(label));
         expect(contrast(text.style!.color!, palette.tile), greaterThanOrEqualTo(4.5), reason: palette.name);
       }

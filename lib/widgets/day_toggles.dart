@@ -79,9 +79,9 @@ class _DayCircle extends StatelessWidget {
         weekdayNames[weekday - 1][0],
         style: TextStyle(
           fontFamily: Fonts.ui,
-          fontSize: size * 0.48,
+          fontSize: size >= 30 ? 14 : 12,
           fontWeight: FontWeight.w600,
-          color: on ? p.onAccent : p.inkMuted,
+          color: on ? p.onDone : p.inkMuted,
         ),
       ),
     );

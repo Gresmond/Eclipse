@@ -107,13 +107,7 @@ class _Header extends StatelessWidget {
             children: [
               Text(
                 'PROGRESS',
-                style: TextStyle(
-                  fontFamily: Fonts.ui,
-                  fontSize: 12,
-                  letterSpacing: 2.2,
-                  fontWeight: FontWeight.w700,
-                  color: p.inkMuted.withValues(alpha: 0.8),
-                ),
+                style: capsLabel(p.inkMuted),
               ),
               const SizedBox(height: 4),
               Text(

@@ -53,7 +53,11 @@ Future<void> main() async {
       notifier: SystemNotifications(),
     );
   } catch (error) {
-    _showStartupError(error);
+    String? theme;
+    try {
+      theme = savedThemeName(DataFolder.load(dir, documents).database);
+    } catch (_) {}
+    _showStartupError(error, theme: theme);
     return;
   }
   unawaited(refreshInstalledCopy(Store.schemaVersion));
@@ -79,7 +83,7 @@ Future<void> main() async {
 
 /// Shows why the data couldn't be opened, instead of a blank window, and
 /// offers the update when an older copy meets data from a newer one.
-void _showStartupError(Object error) {
+void _showStartupError(Object error, {String? theme}) {
   final updater = Updater.forThisApp();
   if (updater != null && updater is! GitUpdater) unawaited(updater.check());
   if (Platform.isLinux || Platform.isWindows) {
@@ -88,7 +92,7 @@ void _showStartupError(Object error) {
       if (call.method != 'quit') throw MissingPluginException();
     });
   }
-  runApp(StartupErrorApp(error: error, updater: updater));
+  runApp(StartupErrorApp(error: error, updater: updater, themeName: theme));
 }
 
 Future<void> _shutdown(AppState state) async {
@@ -192,13 +196,26 @@ void _watchNightLight(AppState state) {
 
 /// Sends tasks' reminders as they come due: looked for every few seconds,
 /// since timers stand still while the computer sleeps, and whenever the
-/// window comes back. Cards show only while the window is open.
+/// window comes back. Cards show only while the window is open. On starting
+/// or waking they wait for a sync, for times changed on another computer.
 void _watchReminders(AppState state) {
   void check() {
     if (!state.closing) state.checkReminders();
   }
 
-  Timer.periodic(const Duration(seconds: 10), (_) => check());
+  void syncFirst() {
+    final sync = state.sync;
+    if (sync != null && sync.isOn) state.holdReminders(sync.run());
+  }
+
+  syncFirst();
+  var last = DateTime.now();
+  Timer.periodic(const Duration(seconds: 10), (_) {
+    final now = DateTime.now();
+    if (now.difference(last) > const Duration(seconds: 30)) syncFirst();
+    last = now;
+    check();
+  });
   AppLifecycleListener(
     onShow: () {
       state.windowOpen = true;
@@ -251,7 +268,13 @@ class EclipseApp extends StatelessWidget {
           // boxes and tints beside them.
           builder: (context, child) => DefaultTextHeightBehavior(
             textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
-            child: ThemeMorph(target: paletteNamed(themeName), child: UndoLayer(cards: CornerCards(updater: updater), child: child!)),
+            child: ThemeMorph(
+              target: paletteNamed(themeName),
+              child: UndoLayer(
+                cards: CornerCards(updater: updater),
+                child: child!,
+              ),
+            ),
           ),
           home: Builder(
             builder: (context) => AbsorbPointer(

@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'app_dialog.dart';
 import 'confirm_on_enter.dart';
 import 'fade_through.dart';
+import '../theme/tokens.dart';
 
-/// A dialog whose content swaps between pages in place, sized and moved
-/// exactly as Settings' tabs are: one width throughout, the old page
+/// A dialog whose content swaps between pages in place: one width
+/// throughout, the old page
 /// fading out as the new one fades in, and the panel easing to the new
 /// one's height (see [PageSize]), so neither page ever lies over the
 /// buttons. Its top stays where it opened as it grows or shrinks.
@@ -20,7 +21,7 @@ class PagedDialog extends StatefulWidget {
     required this.actions,
     this.onBack,
     this.backgroundColor,
-    this.padding = const EdgeInsets.all(24),
+    this.padding = dialogPadding,
     this.preserveButtons = true,
     this.onReturn,
   });

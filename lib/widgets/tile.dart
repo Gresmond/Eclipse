@@ -61,16 +61,7 @@ class StatusPill extends StatelessWidget {
       child: Center(
         widthFactor: 1,
         heightFactor: 1,
-        child: _CaptionSwap(
-          caption: label.toUpperCase(),
-          style: TextStyle(
-            fontFamily: Fonts.ui,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: Scale.capsSpacing,
-            color: complete ? p.ink : p.inkMuted,
-          ),
-        ),
+        child: _CaptionSwap(caption: label.toUpperCase(), style: capsLabel(complete ? p.ink : p.inkMuted)),
       ),
     );
   }
@@ -200,13 +191,7 @@ class _CaptionParts {
   final String word;
 }
 
-TextStyle _captionStyle(BuildContext context) => TextStyle(
-  fontFamily: Fonts.ui,
-  fontSize: 12,
-  letterSpacing: 1.2,
-  fontWeight: FontWeight.w600,
-  color: context.palette.inkMuted,
-);
+TextStyle _captionStyle(BuildContext context) => capsLabel(context.palette.inkMuted);
 
 class _Caption extends StatelessWidget {
   const _Caption({super.key, required this.caption, this.style});

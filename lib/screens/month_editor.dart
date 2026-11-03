@@ -77,7 +77,7 @@ class _RitualEditorState extends State<_RitualEditor> {
                     decoration: InputDecoration(
                       border: InputBorder.none,
                       hintText: 'Add a ritual to ${monthNames[month - 1]}',
-                      hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.7)),
+                      hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted),
                     ),
                     onSubmitted: (v) {
                       state.addHabit(year, month, v, days: _addDays);
@@ -333,7 +333,7 @@ class _EditableRowState extends State<_EditableRow> {
                     isDense: true,
                     contentPadding: const EdgeInsets.only(bottom: 6),
                     hintText: 'Add a note',
-                    hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.5)),
+                    hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted),
                   ),
                   onSubmitted: (_) => widget.onDone(),
                   onChanged: (v) => state.draftHabitNote(widget.year, widget.month, widget.habit, v),
@@ -353,7 +353,7 @@ class _EditableRowState extends State<_EditableRow> {
           IconButton(
             tooltip: 'Remove from ${monthNames[widget.month - 1]}',
             iconSize: 18,
-            color: p.missed,
+            color: p.missedInk,
             onPressed: () => state.removeHabit(widget.year, widget.month, widget.habit),
             icon: const Icon(Icons.remove_circle_outline_rounded),
           ),

@@ -31,7 +31,7 @@ class SearchGlow extends StatefulWidget {
 
   /// How long after opening a newly built [SearchGlow] still lights, so
   /// one built as the day fades in catches it but a later one doesn't.
-  static const _catch = Duration(milliseconds: 1500);
+  static const _catch = Motion.glowCatch;
 
   /// The targets of those built now, each with how many there are.
   static final _built = <String, int>{};
@@ -45,7 +45,7 @@ class SearchGlow extends StatefulWidget {
 }
 
 class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateMixin {
-  late final _glow = AnimationController(vsync: this, duration: const Duration(seconds: 4));
+  late final _glow = AnimationController(vsync: this, duration: Motion.glow);
   DateTime? _shown;
   Timer? _wait;
 
@@ -85,7 +85,7 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
     if (found.target != target && !parent) return;
     if (DateTime.now().difference(found.at) > SearchGlow._catch) return;
     _shown = found.at;
-    _glow.duration = parent ? const Duration(seconds: 1) : const Duration(seconds: 4);
+    _glow.duration = parent ? Motion.glowBrief : Motion.glow;
     void light() {
       if (!mounted) return;
       Scrollable.ensureVisible(context, alignment: 0.3, duration: Motion.morph, curve: Motion.morphCurve);
@@ -118,7 +118,7 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
                 ? t / 0.05
                 : t < 0.625
                 ? 1.0
-                : 1 - Curves.easeInOut.transform((t - 0.625) / 0.375);
+                : 1 - Motion.glowFadeCurve.transform((t - 0.625) / 0.375);
             return DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(widget.radius),

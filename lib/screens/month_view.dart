@@ -92,7 +92,7 @@ class _MonthViewState extends State<MonthView> {
       body = _Grid(year: year, month: month, habits: habits, nameWidth: _nameWidth, maxCell: maxCell);
     }
 
-    final header = TextStyle(fontSize: 12, letterSpacing: 1.2, fontWeight: FontWeight.w500, color: p.inkMuted);
+    final header = capsLabel(p.inkMuted);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
@@ -386,7 +386,7 @@ class _PillButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 16, color: fg),
+              Icon(icon, size: Scale.rowActionIcon, color: fg),
               const SizedBox(width: 8),
               Text(
                 label,
@@ -401,13 +401,17 @@ class _PillButton extends StatelessWidget {
 }
 
 class _DayHeader extends StatelessWidget {
-  const _DayHeader({required this.day, required this.isToday, required this.rest});
+  const _DayHeader({required this.day, required this.isToday, required this.rest, this.holiday = false});
 
   final DateTime day;
   final bool isToday;
 
   /// A weekend shown as a rest day: greyed.
   final bool rest;
+
+  /// On a holiday: its letter and number take the accent, a second cue beside the
+  /// column's soft band.
+  final bool holiday;
 
   @override
   Widget build(BuildContext context) {
@@ -432,8 +436,10 @@ class _DayHeader extends StatelessWidget {
             duration: Motion.morph,
             curve: Motion.morphCurve,
             builder: (context, t, _) {
-              final letterFg = Color.lerp(weekend ? p.other : p.inkMuted, p.inkMuted.withValues(alpha: 0.6), r)!;
-              final numberFg = Color.lerp(p.ink, p.inkMuted.withValues(alpha: 0.75), r)!;
+              final letterFg = holiday
+                  ? p.accent
+                  : Color.lerp(weekend ? p.otherInk : p.inkMuted, p.inkMuted.withValues(alpha: 0.6), r)!;
+              final numberFg = holiday ? p.accent : Color.lerp(p.ink, p.inkMuted.withValues(alpha: 0.75), r)!;
               // Inset as it sits inside a rest band, 4px from the band on
               // every side with corners following the band's, on every day.
               return Container(
@@ -469,7 +475,7 @@ class _DayHeader extends StatelessWidget {
                         style: TextStyle(
                           fontFamily: Fonts.ui,
                           fontSize: 12,
-                          color: Color.lerp(letterFg, p.onToday, t)!.withValues(alpha: 0.8),
+                          color: Color.lerp(letterFg, p.onToday, t),
                           fontWeight: FontWeight.w600,
                         ),
                       ),

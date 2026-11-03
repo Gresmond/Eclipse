@@ -156,6 +156,11 @@ mixin _Todos on ChangeNotifier {
         reminders: reminders,
         location: location,
       );
+      // Given another day, it goes where that day's tasks are kept.
+      if (dueDate != null && dueDate != item.dueDate) {
+        final (destination, due) = scopeForDay(today, dueDate);
+        store.moveTodo(item.id, destination, today, due: due);
+      }
       _quietReminders((uid) => uid == item.uid);
       store.promoteDueTodos(today, earliest: today);
       store.rollTomorrowToToday(dateKey(today));

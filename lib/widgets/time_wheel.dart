@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import 'app_dialog.dart';
 import 'confirm_on_enter.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
@@ -51,8 +52,8 @@ Future<int?> pickTime(
               child: OverflowBar(
                 spacing: 8,
                 children: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                  TextButton(onPressed: save, child: const Text('Save')),
+                  DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(context)),
+                  DialogConfirm(label: 'Save', onPressed: save),
                 ],
               ),
             ),
@@ -187,7 +188,10 @@ class _Colon extends StatelessWidget {
 
 /// How wide two digits are in [style], as the minutes always are.
 double _digitsWidth(TextStyle style) {
-  final painter = TextPainter(text: TextSpan(text: '00', style: style), textDirection: TextDirection.ltr)..layout();
+  final painter = TextPainter(
+    text: TextSpan(text: '00', style: style),
+    textDirection: TextDirection.ltr,
+  )..layout();
   final width = painter.width;
   painter.dispose();
   return width;
@@ -288,7 +292,7 @@ class _TimeWheelState extends State<TimeWheel> {
               itemExtent: _row,
               diameterRatio: 1.6,
               perspective: 0.004,
-              physics: const FixedExtentScrollPhysics(),
+              physics: const _WheelPhysics(),
               onSelectedItemChanged: (i) {
                 onChanged(i % count);
                 _save();
@@ -377,4 +381,17 @@ class _TimeWheelState extends State<TimeWheel> {
       ),
     );
   }
+}
+
+/// Snaps onto a row as [FixedExtentScrollPhysics] does, but settles all the
+/// way: the default tolerance ends the spring up to a pixel short, and the
+/// last of it then jumped.
+class _WheelPhysics extends FixedExtentScrollPhysics {
+  const _WheelPhysics({super.parent});
+
+  @override
+  _WheelPhysics applyTo(ScrollPhysics? ancestor) => _WheelPhysics(parent: buildParent(ancestor));
+
+  @override
+  Tolerance toleranceFor(ScrollMetrics metrics) => const Tolerance(distance: 0.1, velocity: 3);
 }

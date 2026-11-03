@@ -1,8 +1,7 @@
 part of 'todo_panel.dart';
 
 /// Today and the six days after it, one day under another: today always,
-/// the others only when something's due. The strip of days at the top
-/// jumps to one, follows the scroll, and takes a task dropped on it.
+/// the others only when something's due.
 class WeekCard extends StatefulWidget {
   const WeekCard({super.key});
 
@@ -24,50 +23,125 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
     final added = _added(day, [for (final (_, item) in tasks) item.id]);
     final today = state.today;
 
-    return Tile(
-      padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, right: 12),
-            child: TileHeader(
-              title: 'Week ahead',
-              trailingAtEnd: true,
-              trailing: _ShowToggle(
-                icon: Icons.date_range_rounded,
-                what: 'days with no tasks',
-                shown: state.weekEmptyDays,
-                onPressed: state.toggleWeekEmptyDays,
-              ),
-            ),
-          ),
-          const SizedBox(height: 22),
-          // Another day's week fades through as a whole.
-          Expanded(
-            child: Padding(
+    return _CardDrop(
+      first: today,
+      last: DateTime(today.year, today.month, today.day + WeekCard.span),
+      takes: (item) => !_inWeekAhead(state, item),
+      child: Tile(
+        padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
               padding: const EdgeInsets.only(left: 4, right: 12),
-              child: FadeThrough(
-                layoutBuilder: FadeThrough.fill,
-                child: _WeekList(
-                  key: ValueKey(dateKey(day)),
-                  planned: planned,
-                  emptyDays: state.weekEmptyDays,
-                  added: added,
+              child: TileHeader(
+                title: 'Week ahead',
+                trailingAtEnd: true,
+                trailing: _ShowToggle(
+                  icon: Icons.date_range_rounded,
+                  what: 'days with no tasks',
+                  shown: state.weekEmptyDays,
+                  onPressed: state.toggleWeekEmptyDays,
                 ),
               ),
             ),
-          ),
-          _FoldAway(
-            folded: past,
-            child: _DatedAdd(
-              first: today,
-              last: DateTime(today.year, today.month, today.day + WeekCard.span),
-              birthdays: true,
-              onAdd: (text, choice) => _addChosen(state, text, choice.day, choice),
+            const SizedBox(height: 22),
+            // Another day's week fades through as a whole.
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4, right: 12),
+                child: FadeThrough(
+                  layoutBuilder: FadeThrough.fill,
+                  child: _WeekList(
+                    key: ValueKey(dateKey(day)),
+                    planned: planned,
+                    emptyDays: state.weekEmptyDays,
+                    added: added,
+                  ),
+                ),
+              ),
             ),
+            _FoldAway(
+              folded: past,
+              child: _DatedAdd(
+                first: today,
+                last: DateTime(today.year, today.month, today.day + WeekCard.span),
+                birthdays: true,
+                onAdd: (text, choice) => _addChosen(state, text, choice.day, choice),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Whether [item] is listed in Week ahead rather than Further ahead.
+bool _inWeekAhead(AppState state, TodoItem item) {
+  final due = item.dueDate;
+  return due == null || daysBetween(state.today, due) <= WeekCard.span;
+}
+
+/// A card that takes an open task dropped from the other one, anywhere a
+/// day or a task doesn't take it first, and asks which of its days from
+/// [first] (to [last], if given) the task goes on.
+class _CardDrop extends StatelessWidget {
+  const _CardDrop({required this.first, this.last, required this.takes, required this.child});
+
+  final DateTime first;
+  final DateTime? last;
+  final bool Function(TodoItem item) takes;
+  final Widget child;
+
+  Future<void> _drop(BuildContext context, _TaskDrag drag) async {
+    final day = await showAppDialog<DateTime>(
+      context: context,
+      builder: (context) => AppAlertDialog(
+        title: 'Due date',
+        content: SizedBox(
+          width: _taskDialogWidth - dialogPadding.horizontal,
+          child: _MonthCalendar(
+            first: first,
+            last: last,
+            selected: first,
+            onSelected: (day) => Navigator.pop(context, day),
           ),
-        ],
+        ),
+        actions: [DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(context))],
+      ),
+    );
+    if (day != null && context.mounted) AppScope.read(context).moveTodoTo(drag.scope, drag.item, day);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return DragTarget<_TaskDrag>(
+      onWillAcceptWithDetails: (details) {
+        final state = AppScope.read(context);
+        final drag = details.data;
+        return state.viewDay == null &&
+            drag.day == state.today &&
+            !drag.item.done &&
+            !drag.item.birthday &&
+            takes(drag.item);
+      },
+      onAcceptWithDetails: (details) => _drop(context, details.data),
+      // As a day a task is dragged over lights up.
+      builder: (context, candidates, _) => TweenAnimationBuilder<double>(
+        tween: Tween(end: candidates.isEmpty ? 0 : 0.08),
+        duration: Motion.hover,
+        curve: Motion.hoverCurve,
+        builder: (context, alpha, child) => DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            color: p.accent.withValues(alpha: alpha),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: child,
+        ),
+        child: child,
       ),
     );
   }
@@ -228,7 +302,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
               Padding(
                 padding: const EdgeInsets.fromLTRB(26, 6, 0, 2),
                 child: Text(
-                  'Nothing due',
+                  'Nothing due.',
                   style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
                 ),
               ),

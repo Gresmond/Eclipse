@@ -107,7 +107,8 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   /// The month the weekend bands are fading from, and the fade into this
   /// month's bands.
   (int, int)? _bandsFrom;
-  late final _bands = AnimationController(vsync: this, duration: Motion.morph, value: 1);
+  // With the columns and squares, as one morph.
+  late final _bands = AnimationController(vsync: this, duration: Motion.page, value: 1);
   late final _bandsCurved = CurvedAnimation(parent: _bands, curve: Motion.morphCurve);
 
   /// A grid new on screen builds its first half of rows in its first frame
@@ -204,7 +205,12 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
         // Keep header content stable while only its column width changes.
         final headers = {
           for (final c in columns)
-            c.number: _DayHeader(day: c.day, isToday: c.day == state.today, rest: state.isRestDay(c.day)),
+            c.number: _DayHeader(
+              day: c.day,
+              isToday: c.day == state.today,
+              rest: state.isRestDay(c.day),
+              holiday: holidayOn(state.holidays, c.day) != null,
+            ),
         };
         final layout = _ColumnLayout(shown: _shown, colFor: colFor, days: [for (final c in columns) c.number]);
 

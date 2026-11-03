@@ -308,8 +308,7 @@ class _GlideRow extends SingleChildRenderObjectWidget {
   @override
   RenderObject createRenderObject(BuildContext context) => _RenderGlideRow(progress, generation, position, group);
   @override
-  void updateRenderObject(BuildContext context, _RenderGlideRow renderObject) =>
-      renderObject.generation = generation;
+  void updateRenderObject(BuildContext context, _RenderGlideRow renderObject) => renderObject.generation = generation;
 }
 
 /// Paint-only movement in scroll-content coordinates. Scrolling stays native.

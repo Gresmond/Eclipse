@@ -37,63 +37,67 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
     ]);
     final today = state.today;
 
-    return Tile(
-      padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, right: 12),
-            child: TileHeader(
-              title: 'Further ahead',
-              badge: StatusPill(label: '$count PLANNED'),
-              trailingAtEnd: true,
-              trailing: AnimatedOpacity(
-                opacity: past ? 0 : 1,
-                duration: Motion.morph,
-                curve: Motion.morphCurve,
-                child: IgnorePointer(
-                  ignoring: past,
-                  child: _ShowToggle(
-                    icon: _birthdayIcon,
-                    what: 'birthdays',
-                    shown: state.laterBirthdays,
-                    onPressed: state.toggleLaterBirthdays,
+    return _CardDrop(
+      first: DateTime(today.year, today.month, today.day + WeekCard.span + 1),
+      takes: (item) => _inWeekAhead(state, item),
+      child: Tile(
+        padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 4, right: 12),
+              child: TileHeader(
+                title: 'Further ahead',
+                badge: StatusPill(label: '$count PLANNED'),
+                trailingAtEnd: true,
+                trailing: AnimatedOpacity(
+                  opacity: past ? 0 : 1,
+                  duration: Motion.morph,
+                  curve: Motion.morphCurve,
+                  child: IgnorePointer(
+                    ignoring: past,
+                    child: _ShowToggle(
+                      icon: _birthdayIcon,
+                      what: 'birthdays',
+                      shown: state.laterBirthdays,
+                      onPressed: state.toggleLaterBirthdays,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 22),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 4, right: 12),
-              child: FadeThrough(
-                layoutBuilder: FadeThrough.fill,
-                child: widget.firstCheckboxInset == null
-                    ? _LaterList(key: ValueKey(dateKey(day)), groups: groups, birthdays: birthdays, added: added)
-                    : ValueListenableBuilder<double>(
-                        valueListenable: widget.firstCheckboxInset!,
-                        builder: (context, inset, _) => _LaterList(
-                          key: ValueKey(dateKey(day)),
-                          groups: groups,
-                          birthdays: birthdays,
-                          added: added,
-                          topInset: inset,
+            const SizedBox(height: 22),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4, right: 12),
+                child: FadeThrough(
+                  layoutBuilder: FadeThrough.fill,
+                  child: widget.firstCheckboxInset == null
+                      ? _LaterList(key: ValueKey(dateKey(day)), groups: groups, birthdays: birthdays, added: added)
+                      : ValueListenableBuilder<double>(
+                          valueListenable: widget.firstCheckboxInset!,
+                          builder: (context, inset, _) => _LaterList(
+                            key: ValueKey(dateKey(day)),
+                            groups: groups,
+                            birthdays: birthdays,
+                            added: added,
+                            topInset: inset,
+                          ),
                         ),
-                      ),
+                ),
               ),
             ),
-          ),
-          _FoldAway(
-            folded: past,
-            child: _DatedAdd(
-              first: DateTime(today.year, today.month, today.day + WeekCard.span + 1),
-              birthdays: true,
-              onAdd: (text, choice) => _addChosen(state, text, choice.day, choice),
+            _FoldAway(
+              folded: past,
+              child: _DatedAdd(
+                first: DateTime(today.year, today.month, today.day + WeekCard.span + 1),
+                birthdays: true,
+                onAdd: (text, choice) => _addChosen(state, text, choice.day, choice),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -213,12 +217,17 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
         for (final (_, item) in g.tasks) item.uid,
     ]);
     if (groups.isEmpty) {
-      return Center(
-        child: Text(
-          widget.birthdays || AppScope.read(context).viewDay != null
-              ? 'Nothing more than a week away'
-              : 'Nothing but birthdays',
-          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, fontWeight: FontWeight.w500, color: p.inkMuted),
+      // Where and as Week ahead says the same.
+      return Align(
+        alignment: Alignment.topLeft,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(26, widget.topInset + 6, 0, 2),
+          child: Text(
+            widget.birthdays || AppScope.read(context).viewDay != null
+                ? 'Nothing more than a week away.'
+                : 'Nothing but birthdays.',
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+          ),
         ),
       );
     }
@@ -503,10 +512,7 @@ class _UpcomingDateTile extends StatelessWidget {
       decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(12)),
       child: Column(
         children: [
-          Text(
-            day == null ? 'NO DATE' : shortMonth(day.month).toUpperCase(),
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, fontWeight: FontWeight.w600, color: p.inkMuted),
-          ),
+          Text(day == null ? 'NO DATE' : shortMonth(day.month).toUpperCase(), style: capsLabel(p.inkMuted)),
           if (day != null)
             Text(
               '${day.day}',

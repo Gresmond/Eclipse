@@ -447,7 +447,7 @@ class _HabitRow extends StatelessWidget {
     final width = painter.width;
     painter.dispose();
     // Padding, flame and its gap around the count.
-    return max(44.0, (12 + 12 + 1.5 + width).ceilToDouble());
+    return max(44.0, (12 + MediaQuery.textScalerOf(context).scale(12) + 2 + width).ceilToDouble());
   }
 
   final Habit habit;
@@ -718,7 +718,7 @@ class _JournalTextState extends State<_JournalText> {
       decoration: InputDecoration(
         border: InputBorder.none,
         hintText: _past ? 'Nothing written this day.' : null,
-        hintStyle: TextStyle(fontFamily: Fonts.body, fontSize: 16, color: p.inkMuted.withValues(alpha: 0.6)),
+        hintStyle: TextStyle(fontFamily: Fonts.body, fontSize: 16, color: p.inkMuted),
       ),
       onChanged: _changed,
     );

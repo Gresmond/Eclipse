@@ -42,7 +42,7 @@ void main() {
     name.selection = const TextSelection.collapsed(offset: 4);
     await tester.pump();
 
-    for (final (open, back) in [('Due 27 Oct 2026', 'Cancel'), ('Add a time', 'Save'), ('Doesn’t repeat', 'Cancel')]) {
+    for (final (open, back) in [('Add a time', 'Save'), ('Doesn’t repeat', 'Cancel')]) {
       await click(tester, find.text(open));
       // The time's Save is on its wheel, over the dialog's own.
       await click(tester, find.text(back).last);

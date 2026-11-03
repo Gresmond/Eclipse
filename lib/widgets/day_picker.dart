@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'hover_fill.dart';
 
 /// A month of days to pick from, opening on [selected]. Days after
@@ -57,6 +58,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final localizations = MaterialLocalizations.of(context);
     final (first, last) = (widget.first, widget.last);
     final atFirst = first != null && !_month.isAfter(DateTime(first.year, first.month));
     final atLast = last != null && !_month.isBefore(DateTime(last.year, last.month));
@@ -65,7 +67,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
 
     Widget arrow(IconData icon, String tooltip, VoidCallback? onTap) => IconButton(
       tooltip: tooltip,
-      iconSize: 18,
+      iconSize: Scale.navIcon,
       visualDensity: VisualDensity.compact,
       color: p.inkMuted,
       disabledColor: p.inkMuted.withValues(alpha: 0.25),
@@ -85,8 +87,8 @@ class _MonthCalendarState extends State<MonthCalendar> {
                 style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
               ),
             ),
-            arrow(Icons.chevron_left_rounded, 'Previous month', atFirst ? null : () => _shift(-1)),
-            arrow(Icons.chevron_right_rounded, 'Next month', atLast ? null : () => _shift(1)),
+            arrow(Icons.chevron_left_rounded, localizations.previousMonthTooltip, atFirst ? null : () => _shift(-1)),
+            arrow(Icons.chevron_right_rounded, localizations.nextMonthTooltip, atLast ? null : () => _shift(1)),
           ],
         ),
         const SizedBox(height: 4),
@@ -94,18 +96,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           children: [
             for (final name in weekdayNames)
               Expanded(
-                child: Center(
-                  child: Text(
-                    name[0],
-                    style: TextStyle(
-                      fontFamily: Fonts.ui,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.6,
-                      color: p.inkMuted.withValues(alpha: 0.7),
-                    ),
-                  ),
-                ),
+                child: Center(child: Text(name[0], style: capsLabel(p.inkMuted))),
               ),
           ],
         ),
@@ -156,7 +147,7 @@ class CalendarDay extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final fg = selected
-        ? p.onAccent
+        ? p.onDone
         : !enabled
         ? p.inkMuted.withValues(alpha: 0.3)
         : isToday

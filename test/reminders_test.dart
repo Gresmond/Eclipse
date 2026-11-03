@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
@@ -77,6 +79,26 @@ void main() {
     tearDown(() {
       state.dispose();
       store.close();
+    });
+
+    test('held for a sync, then goes off with what it brought, or after the limit', () async {
+      state.addTodo(TodoScope.today, 'Dentist', time: 15 * 60, reminders: quarter);
+      state.addTodo(TodoScope.today, 'Call', time: 16 * 60, reminders: quarter);
+      now = DateTime(2026, 10, 30, 14, 45);
+      final sync = Completer<void>();
+      state.holdReminders(sync.future);
+      state.checkReminders();
+      expect(notifier.shown, isEmpty, reason: 'waits for the sync');
+      sync.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(notifier.shown, hasLength(1), reason: 'goes off as it ends');
+
+      now = DateTime(2026, 10, 30, 15, 45);
+      state.holdReminders(Completer<void>().future, limit: const Duration(milliseconds: 10));
+      state.checkReminders();
+      expect(notifier.shown, hasLength(1));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(notifier.shown, hasLength(2), reason: 'a stuck sync holds nothing for long');
     });
 
     test('goes off once, by the system and in the window', () {

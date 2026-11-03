@@ -33,9 +33,8 @@ Future<_DayChoice?> _pickDayAndRepeat(
   ),
 );
 
-/// What a task's dialog shows: its own page, or its due day or repeat in
-/// its place.
-enum _Page { main, day, repeat }
+/// What a task's dialog shows: its own page, or its repeat in its place.
+enum _Page { main, repeat }
 
 /// How wide a task's dialog is on every page: wide enough for the repeat
 /// page's custom row.
@@ -152,7 +151,12 @@ class _SubPage extends StatelessWidget {
       Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(tooltip: 'Back', onPressed: onBack, icon: const Icon(Icons.arrow_back_rounded)),
+          IconButton(
+            tooltip: 'Back',
+            iconSize: Scale.navIcon,
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
           const SizedBox(width: 4),
           Text(title, style: Theme.of(context).textTheme.titleMedium),
         ],
@@ -306,18 +310,17 @@ Future<void> _removeTask(BuildContext context, TodoItem item, DateTime day, Void
 /// cancelled.
 Future<bool?> _askWhich(BuildContext context, {required bool removing}) => showAppDialog<bool>(
   context: context,
-  builder: (context) => AlertDialog(
-    backgroundColor: context.palette.tile,
-    title: Text(removing ? 'Remove repeating task' : 'Change repeating task'),
+  builder: (context) => AppAlertDialog(
+    title: removing ? 'Remove repeating task' : 'Change repeating task',
     content: Text(
       removing
           ? 'Remove only this one, or this one and every one after it?'
           : 'Change only this one, or this one and every one after it?',
     ),
     actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Only this one')),
-      TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('This and future ones')),
+      DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(context)),
+      DialogConfirm(label: 'Only this one', onPressed: () => Navigator.pop(context, false)),
+      DialogConfirm(label: 'This and future ones', onPressed: () => Navigator.pop(context, true)),
     ],
   ),
 );
@@ -494,10 +497,7 @@ class _BirthdayFold extends StatefulWidget {
 class _BirthdayFoldState extends State<_BirthdayFold> with SingleTickerProviderStateMixin {
   late final _controller = AnimationController(vsync: this, duration: Motion.morph, value: widget.folded ? 0 : 1);
   late final _height = CurvedAnimation(parent: _controller, curve: Motion.morphCurve);
-  late final _opacity = CurvedAnimation(
-    parent: _controller,
-    curve: const Interval(0.5, 1, curve: Motion.morphCurve),
-  );
+  late final _opacity = CurvedAnimation(parent: _controller, curve: Motion.secondHalf);
 
   @override
   void didUpdateWidget(_BirthdayFold old) {
@@ -603,36 +603,27 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
       width: _taskDialogWidth,
       backgroundColor: p.tile,
       actions: [
-        TextButton(onPressed: _cancel ?? () => Navigator.pop(context), child: const Text('Cancel')),
-        TextButton(onPressed: _back ?? _save, child: const Text('Save')),
+        DialogDismiss(label: 'Cancel', onPressed: _cancel ?? () => Navigator.pop(context)),
+        DialogConfirm(label: 'Save', onPressed: _back ?? _save),
       ],
       child: switch (_page) {
         _Page.main => _main(today),
-        _Page.day => _SubPage(
-          title: 'Due date',
-          onBack: _back!,
-          child: _MonthCalendar(
-            first: today,
-            selected: _due ?? today,
-            onSelected: (day) {
-              _due = day;
-              _leave(keep: true);
-            },
-          ),
-        ),
         _ => _repeatPage(today, start.isBefore(today) ? today : start),
       },
     );
   }
 
   Widget _main(DateTime today) {
-    final dated = widget.scope == TodoScope.week || widget.scope == TodoScope.month;
+    final dated =
+        widget.scope == TodoScope.week || widget.scope == TodoScope.month || (widget.day == today && !widget.item.done);
+    // The day it's on, for a task kept by its list rather than a due date.
+    final on = _due ?? (widget.scope == TodoScope.tomorrow ? DateTime(today.year, today.month, today.day + 1) : today);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Edit task', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 16),
+        Text('Edit task', style: dialogTitleStyle(context.palette)),
+        const SizedBox(height: dialogTitleGap),
         TextField(
           inputFormatters: const [NoteInputFormatter()],
           controller: _text,
@@ -646,11 +637,10 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
         ),
         if (dated) ...[
           const SizedBox(height: 16),
-          TextButton.icon(
-            style: _detailButtonStyle,
-            icon: const Icon(Icons.calendar_today_rounded, size: 18),
-            label: Text(_due == null ? 'Pick a due date' : 'Due ${dayAndMonth(_due!)}'),
-            onPressed: () => _open(_Page.day),
+          _MonthCalendar(
+            first: today,
+            selected: on.isBefore(today) ? today : on,
+            onSelected: (day) => setState(() => _due = day),
           ),
         ],
         const SizedBox(height: 4),
@@ -689,8 +679,8 @@ class _SubtaskDialogState extends State<_SubtaskDialog> {
   @override
   Widget build(BuildContext context) => ConfirmOnEnter(
     onConfirm: _save,
-    child: AlertDialog(
-      title: Text(widget.text.isEmpty ? 'Add subtask' : 'Edit subtask'),
+    child: AppAlertDialog(
+      title: widget.text.isEmpty ? 'Add subtask' : 'Edit subtask',
       content: SizedBox(
         width: 340,
         child: Column(
@@ -729,8 +719,8 @@ class _SubtaskDialogState extends State<_SubtaskDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        TextButton(onPressed: _save, child: const Text('Save')),
+        DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(context)),
+        DialogConfirm(label: 'Save', onPressed: _save),
       ],
     ),
   );

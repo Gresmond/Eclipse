@@ -57,7 +57,7 @@ extension on _SettingsDialogState {
                     child: FilledButton(
                       style: FilledButton.styleFrom(
                         disabledBackgroundColor: p.done.withValues(alpha: 0.45),
-                        disabledForegroundColor: p.onAccent.withValues(alpha: 0.8),
+                        disabledForegroundColor: p.onDone.withValues(alpha: 0.8),
                       ),
                       onPressed: null,
                       child: const Text('Sign in with Google'),
@@ -115,7 +115,7 @@ extension on _SettingsDialogState {
           const SizedBox(height: 12),
           Text(
             curlyQuotes(_error!),
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missed),
+            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missedInk),
           ),
         ],
       ],
@@ -132,9 +132,9 @@ extension on _SettingsDialogState {
         ? FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: p.done,
-              foregroundColor: p.onAccent,
+              foregroundColor: p.onDone,
               disabledBackgroundColor: p.done.withValues(alpha: 0.45),
-              disabledForegroundColor: p.onAccent.withValues(alpha: 0.8),
+              disabledForegroundColor: p.onDone.withValues(alpha: 0.8),
             ),
             onPressed: onTap,
             child: Text(label),
@@ -180,7 +180,7 @@ extension on _SettingsDialogState {
                 curlyQuotes(status),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: sync.error != null && !sync.busy ? small.copyWith(color: p.missed) : small,
+                style: sync.error != null && !sync.busy ? small.copyWith(color: p.missedInk) : small,
               ),
             ),
           ],
@@ -245,7 +245,7 @@ extension on _SettingsDialogState {
         ),
         if (why != null && !_signingIn) ...[
           const SizedBox(height: 4),
-          Text(curlyQuotes(why), style: small.copyWith(color: p.missed)),
+          Text(curlyQuotes(why), style: small.copyWith(color: p.missedInk)),
         ],
         const SizedBox(height: 8),
         Row(
@@ -363,16 +363,9 @@ class _BackupRow extends StatelessWidget {
               child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.done)),
             )
           else if (confirming) ...[
-            TextButton(
-              onPressed: onCancel,
-              child: Text('Cancel', style: TextStyle(color: p.inkMuted)),
-            ),
+            DialogDismiss(label: 'Cancel', onPressed: onCancel),
             const SizedBox(width: 4),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: p.accent, foregroundColor: p.onAccent),
-              onPressed: onConfirm,
-              child: const Text('Restore'),
-            ),
+            DialogConfirm(label: 'Restore', onPressed: onConfirm),
           ] else
             OutlinedButton(
               style: OutlinedButton.styleFrom(

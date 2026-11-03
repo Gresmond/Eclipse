@@ -32,12 +32,21 @@ Future<void> showFadeMenu(
   );
 }
 
+const _grow = Interval(0, 0.8, curve: Motion.morphCurve);
+
 /// The same entrance for a live popup and its tour preview.
 Widget fadeMenuTransition(Animation<double> animation, Widget child, {Alignment alignment = Alignment.topRight}) {
   final t = animation.drive(CurveTween(curve: Motion.morphCurve));
   return FadeTransition(
     opacity: t,
-    child: ScaleTransition(scale: t.drive(Tween(begin: 0.96, end: 1.0)), alignment: alignment, child: child),
+    // Full size a little before the fade ends, so the text's settling onto
+    // whole pixels, when the scale drops away, happens mid-fade rather than
+    // as a jump on the last frame.
+    child: ScaleTransition(
+      scale: animation.drive(CurveTween(curve: _grow)).drive(Tween(begin: 0.96, end: 1.0)),
+      alignment: alignment,
+      child: child,
+    ),
   );
 }
 

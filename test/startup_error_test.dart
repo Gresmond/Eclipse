@@ -4,6 +4,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:flutter/material.dart' show Theme;
+import 'package:sqlite3/sqlite3.dart' show sqlite3;
+import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/data/dev_install.dart';
 import 'package:eclipse/data/store.dart' show DatabaseTooNewException;
 import 'package:eclipse/data/updates.dart';
@@ -53,5 +56,25 @@ void main() {
     expect(find.text('Eclipse couldn’t open your data'), findsOneWidget);
     expect(find.textContaining('Disk is full'), findsOneWidget);
     expect(find.text('Quit'), findsOneWidget);
+  });
+
+  test('the saved theme is read from a database that can still be read, and is null otherwise', () {
+    final dir = Directory.systemTemp.createTempSync('eclipse-theme');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final path = p.join(dir.path, 'productivity.db');
+    expect(savedThemeName(path), isNull, reason: 'no file');
+    File(path).writeAsStringSync('not a database');
+    expect(savedThemeName(path), isNull, reason: 'unreadable');
+    File(path).deleteSync();
+    final db = sqlite3.open(path);
+    db.execute('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)');
+    db.execute("INSERT INTO settings VALUES ('theme', 'Sunset')");
+    db.close();
+    expect(savedThemeName(path), 'Sunset');
+  });
+
+  testWidgets('the error screen wears the saved theme', (tester) async {
+    await tester.pumpWidget(StartupErrorApp(error: const FileSystemException('Disk is full'), themeName: 'Sunset'));
+    expect(Theme.of(tester.element(find.text('Quit'))).extension<Palette>()!.name, 'Sunset');
   });
 }

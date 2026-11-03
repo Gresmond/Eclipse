@@ -19,6 +19,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
+import 'glide_pill.dart';
 import 'holidays.dart';
 import 'setting_rows.dart';
 import 'settings_search.dart';
@@ -217,65 +218,67 @@ class _SettingsDialogState extends State<SettingsDialog> {
           ? null
           // Opens the first result while searching, else closes.
           : () => _ribbon == 0 && _search.searching ? _search.openFirst() : Navigator.pop(context),
-      child: Dialog(
-        clipBehavior: Clip.antiAlias,
-        backgroundColor: p.tile,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
-        child: TourTarget(
-          key: widget.tourTargetKey,
-          spot: widget.tourRibbon == null ? TourSpot.settings : TourSpot.settingsPreview,
-          child: SizedBox(
-            width: 480,
-            // Scrolls when the window is too short for all of it.
-            child: SingleChildScrollView(
-              padding: dialogPadding,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Settings',
-                          style: TextStyle(fontFamily: Fonts.display, fontSize: 28, color: p.ink),
+      // Its top stays where it opened as a ribbon's page grows or shrinks,
+      // as the task dialogs' does.
+      child: KeepTop(
+        child: Dialog(
+          clipBehavior: Clip.antiAlias,
+          backgroundColor: p.tile,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
+          child: TourTarget(
+            key: widget.tourTargetKey,
+            spot: widget.tourRibbon == null ? TourSpot.settings : TourSpot.settingsPreview,
+            child: SizedBox(
+              width: 480,
+              // Scrolls when the window is too short for all of it.
+              child: SingleChildScrollView(
+                padding: dialogPadding,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: Text('Settings', style: dialogTitleStyle(p))),
+                        _Ribbons(
+                          labels: const ['General', 'Data'],
+                          selected: _ribbon,
+                          onSelect: (i) => setState(() {
+                            _ribbon = i;
+                            _error = null;
+                            _journalError = null;
+                          }),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Clipped, so the old page never lies over Close as it fades.
+                    ClipRect(
+                      child: AnimatedSize(
+                        duration: Motion.morph,
+                        curve: Motion.morphCurve,
+                        alignment: Alignment.topCenter,
+                        clipBehavior: Clip.none,
+                        child: FadeThrough(
+                          layoutBuilder: FadeThrough.pinTop,
+                          child: KeyedSubtree(
+                            key: ValueKey(_ribbon),
+                            child: _ribbon == 0
+                                ? SettingsSearch(handle: _search, settings: _general(p))
+                                : _backupsAndSync(p),
+                          ),
                         ),
                       ),
-                      _Ribbons(
-                        labels: const ['General', 'Data'],
-                        selected: _ribbon,
-                        onSelect: (i) => setState(() {
-                          _ribbon = i;
-                          _error = null;
-                          _journalError = null;
-                        }),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  // A ribbon's page never lies over Close: see PageSize.
-                  PageSize(
-                    page: _ribbon,
-                    easeWithin: true,
-                    child: FadeThrough(
-                      layoutBuilder: FadeThrough.pinTop,
-                      child: KeyedSubtree(
-                        key: ValueKey(_ribbon),
-                        child: _ribbon == 0 ? SettingsSearch(handle: _search, settings: _general(p)) : _backupsAndSync(p),
-                      ),
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      const Spacer(),
-                      TextButton(
-                        onPressed: _restoring ? null : () => Navigator.pop(context),
-                        child: Text('Close', style: TextStyle(color: p.inkMuted)),
-                      ),
-                    ],
-                  ),
-                ],
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        const Spacer(),
+                        DialogDismiss(label: 'Close', onPressed: _restoring ? null : () => Navigator.pop(context)),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -396,7 +399,7 @@ extension on _SettingsDialogState {
             Expanded(
               child: Text(
                 'Journal folder',
-                style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
+                style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w500, color: p.ink),
               ),
             ),
             if (folder == null)
@@ -432,22 +435,15 @@ extension on _SettingsDialogState {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              TextButton(
-                onPressed: _cancelJournalMove,
-                child: Text('Cancel', style: TextStyle(color: p.inkMuted)),
-              ),
+              DialogDismiss(label: 'Cancel', onPressed: _cancelJournalMove),
               const SizedBox(width: 4),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: p.done, foregroundColor: p.onAccent),
-                onPressed: _moveJournal,
-                child: const Text('Move'),
-              ),
+              DialogConfirm(label: 'Move', onPressed: _moveJournal),
             ],
           ),
         ],
         if (_journalError != null) ...[
           const SizedBox(height: 8),
-          Text(curlyQuotes(_journalError!), style: small.copyWith(color: p.missed)),
+          Text(curlyQuotes(_journalError!), style: small.copyWith(color: p.missedInk)),
         ],
       ],
     );
@@ -456,7 +452,7 @@ extension on _SettingsDialogState {
 
 /// The ribbons along the top of Settings: one pill, in the done colour like
 /// the tab bar's, glides to the chosen one.
-class _Ribbons extends StatelessWidget {
+class _Ribbons extends StatefulWidget {
   const _Ribbons({required this.labels, required this.selected, required this.onSelect});
 
   final List<String> labels;
@@ -464,59 +460,55 @@ class _Ribbons extends StatelessWidget {
   final ValueChanged<int> onSelect;
 
   @override
+  State<_Ribbons> createState() => _RibbonsState();
+}
+
+class _RibbonsState extends State<_Ribbons> {
+  late final _keys = [for (final _ in widget.labels) GlobalKey()];
+
+  @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final labels = widget.labels;
     return Container(
       width: 270,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: AnimatedAlign(
-              duration: Motion.morph,
-              curve: Motion.morphCurve,
-              alignment: Alignment(labels.length == 1 ? 0 : -1 + 2 * selected / (labels.length - 1), 0),
-              child: FractionallySizedBox(
-                widthFactor: 1 / labels.length,
-                heightFactor: 1,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: p.done),
-                ),
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              for (final (i, label) in labels.indexed)
-                Expanded(
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => onSelect(i),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Center(
-                          child: AnimatedDefaultTextStyle(
-                            duration: context.themed(Motion.morph),
-                            curve: Motion.morphCurve,
-                            style: TextStyle(
-                              fontFamily: Fonts.ui,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: i == selected ? p.onAccent : p.inkMuted,
-                            ),
-                            child: Text(label),
+      // The same pill as the tab bar's.
+      child: GlidePill(
+        target: _keys[widget.selected],
+        color: p.done,
+        child: Row(
+          children: [
+            for (final (i, label) in labels.indexed)
+              Expanded(
+                key: _keys[i],
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => widget.onSelect(i),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Center(
+                        child: AnimatedDefaultTextStyle(
+                          duration: context.themed(Motion.morph),
+                          curve: Motion.morphCurve,
+                          style: TextStyle(
+                            fontFamily: Fonts.ui,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: i == widget.selected ? p.onAccent : p.inkMuted,
                           ),
+                          child: Text(label),
                         ),
                       ),
                     ),
                   ),
                 ),
-            ],
-          ),
-        ],
+              ),
+          ],
+        ),
       ),
     );
   }

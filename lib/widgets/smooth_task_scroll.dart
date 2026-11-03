@@ -1,6 +1,5 @@
-import 'dart:async';
-
 import 'package:flutter/gestures.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/motion.dart';
@@ -22,18 +21,30 @@ class _SmoothTaskScrollState extends State<SmoothTaskScroll> {
   /// Every task list on screen. While a task is dragged, one timer and one
   /// pointer route serve them all, rather than one per list.
   static final _lists = <_SmoothTaskScrollState>{};
-  static Timer? _edgeTimer;
+
+  /// Runs the edge scroll once a frame, in step with the screen, while a
+  /// task is dragged.
+  static Ticker? _edgeTicker;
+  static Duration _lastTick = Duration.zero;
+
+  static void _stopEdge() {
+    _edgeTicker?.dispose();
+    _edgeTicker = null;
+  }
 
   static void _dragChanged() {
     if (SmoothTaskScroll.dragPosition.value == null) {
-      _edgeTimer?.cancel();
-      _edgeTimer = null;
-    } else {
-      _edgeTimer ??= Timer.periodic(const Duration(milliseconds: 16), (_) {
+      _stopEdge();
+    } else if (_edgeTicker == null) {
+      _lastTick = Duration.zero;
+      _edgeTicker = Ticker((elapsed) {
+        // In 60 Hz frames, so the speed is the same at any refresh rate.
+        final frames = (elapsed - _lastTick).inMicroseconds / 16667;
+        _lastTick = elapsed;
         for (final list in _lists.toList()) {
-          list._edgeScroll();
+          list._edgeScroll(frames);
         }
-      });
+      })..start();
     }
   }
 
@@ -61,8 +72,7 @@ class _SmoothTaskScrollState extends State<SmoothTaskScroll> {
   void dispose() {
     _lists.remove(this);
     if (_lists.isEmpty) {
-      _edgeTimer?.cancel();
-      _edgeTimer = null;
+      _stopEdge();
       SmoothTaskScroll.dragPosition.removeListener(_dragChanged);
       GestureBinding.instance.pointerRouter.removeGlobalRoute(_pointer);
     }
@@ -80,7 +90,7 @@ class _SmoothTaskScrollState extends State<SmoothTaskScroll> {
     _controller.jumpTo((position.pixels + delta).clamp(position.minScrollExtent, position.maxScrollExtent));
   }
 
-  void _edgeScroll() {
+  void _edgeScroll(double frames) {
     final point = SmoothTaskScroll.dragPosition.value;
     if (point == null || !_controller.hasClients || !_inside(point)) return;
     final box = context.findRenderObject()! as RenderBox;
@@ -91,7 +101,7 @@ class _SmoothTaskScrollState extends State<SmoothTaskScroll> {
         : local.dy > box.size.height - edge
         ? 8 * (1 - (box.size.height - local.dy) / edge)
         : 0.0;
-    if (delta != 0) _jumpBy(delta);
+    if (delta != 0) _jumpBy(delta * frames);
   }
 
   @override

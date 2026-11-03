@@ -181,29 +181,64 @@ Palette derivePalette({
   final accentL = dark ? 0.80 : 0.50;
   final accentC = math.min(accent.c, Oklch.maxChroma(accentL, accent.h) * 0.85);
   final onToday = contrast(white, today) >= contrast(darkInk, today) ? white : darkInk;
+  // Text on a done fill takes whichever ink reads best on it.
+  final onDone = contrast(white, done) >= contrast(darkInk, done) ? white : darkInk;
+  final background = neutral(dark ? night(0.165) : 0.965);
+  final tile = neutral(dark ? night(0.205) : 0.992, dark ? 1 : 0.5);
+  // Runs from missed through other to done, so it ends on the goal. Labels
+  // sit on it in [onAccent], so the whole run moves away from that ink,
+  // in one lightness step, until its worst stop reads as text.
+  final stops = [missed, other, done].map((c) {
+    final o = Oklch.of(c);
+    return Oklch(o.l, o.c * 1.1, o.h);
+  }).toList();
+  final away = onAccent == white ? -1 : 1;
+  var shift = 0.0;
+  List<Color> shifted() => [
+    for (final o in stops)
+      shift == 0 ? o.toColor() : Oklch(o.l + shift, math.min(o.c, Oklch.maxChroma(o.l + shift, o.h)), o.h).toColor(),
+  ];
+  while (shifted().any((c) => contrast(onAccent, c) < _textContrast) && shift.abs() < 0.5) {
+    shift += away * 0.005;
+  }
 
   return Palette(
     name: name,
     brightness: brightness,
-    background: neutral(dark ? night(0.165) : 0.965),
-    tile: neutral(dark ? night(0.205) : 0.992, dark ? 1 : 0.5),
+    background: background,
+    tile: tile,
     tileBorder: neutral(dark ? night(0.285) : 0.905),
     ink: ink,
     // Lifted surfaces need lighter muted text to keep its contrast.
     inkMuted: neutral(dark ? 0.73 + surfaceLift / 2 : 0.52, 2),
     accent: Oklch(accentL, accentC, accent.h).toColor(),
     onAccent: onAccent,
-    // Runs from missed through other to done, so it ends on the goal.
-    gradient: [missed, other, done].map((c) {
-      final o = Oklch.of(c);
-      return Oklch(o.l, o.c * 1.1, o.h).toColor();
-    }).toList(),
+    onDone: onDone,
+    gradient: shifted(),
     today: today,
     onToday: onToday,
     done: done,
     missed: missed,
+    missedInk: readable(missed, [tile, background], dark: dark),
     other: other,
+    otherInk: readable(other, [tile, background], dark: dark),
     empty: neutral(dark ? night(0.255) : 0.94),
     shadow: neutral(dark ? 0.12 : 0.35),
   );
+}
+
+/// WCAG AA for body text.
+const _textContrast = 4.5;
+
+/// [colour] with its lightness moved away from [surfaces] (darker on a
+/// light theme, lighter on a dark one) until it clears 4.5:1 on all of
+/// them; its hue stays, and its chroma only as far as the gamut allows.
+Color readable(Color colour, List<Color> surfaces, {required bool dark}) {
+  final o = Oklch.of(colour);
+  var l = o.l;
+  Color at(double l) => Oklch(l, math.min(o.c, Oklch.maxChroma(l, o.h)), o.h).toColor();
+  while (surfaces.any((s) => contrast(at(l), s) < _textContrast) && l > 0 && l < 1) {
+    l += dark ? 0.005 : -0.005;
+  }
+  return l == o.l ? colour : at(l);
 }

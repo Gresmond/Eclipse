@@ -33,8 +33,8 @@ class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
     ..forward();
   late final _curved = CurvedAnimation(parent: _controller, curve: Motion.morphCurve);
 
-  late final _sizeFirst = _controller.drive(CurveTween(curve: const Interval(0, 0.5, curve: Motion.morphCurve)));
-  late final _fadeLast = _controller.drive(CurveTween(curve: const Interval(0.5, 1, curve: Motion.morphCurve)));
+  late final _sizeFirst = _controller.drive(CurveTween(curve: Motion.firstHalf));
+  late final _fadeLast = _controller.drive(CurveTween(curve: Motion.secondHalf));
 
   @override
   void didUpdateWidget(Appear old) {

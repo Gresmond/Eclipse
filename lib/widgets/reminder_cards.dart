@@ -151,13 +151,7 @@ class _Card extends StatelessWidget {
                       curlyQuotes(alert.text),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontFamily: Fonts.display,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.2,
-                        color: p.ink,
-                      ),
+                      style: cornerCardTitle(p.ink),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -172,7 +166,7 @@ class _Card extends StatelessWidget {
                 tooltip: 'Dismiss',
                 onPressed: onClose,
                 visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.close_rounded, size: 18, color: p.inkMuted),
+                icon: Icon(Icons.close_rounded, size: Scale.dismissIcon, color: p.inkMuted),
               ),
             ],
           ),

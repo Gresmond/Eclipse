@@ -315,9 +315,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                       alignment: Alignment.center,
                       child: _DateTags(
                         starts: 'Starts ${dayAndMonth(start, today: start)}',
-                        ends: until == null
-                            ? 'Ends never'
-                            : 'Ends ${dayAndMonth(until, today: until)}',
+                        ends: until == null ? 'Ends never' : 'Ends ${dayAndMonth(until, today: until)}',
                       ),
                     ),
                   ),
@@ -461,7 +459,7 @@ class _DateTags extends StatelessWidget {
       color: context.palette.inkMuted,
     );
     return Tooltip(
-      message: 'Left-click to set a start date. Right-click to set an end date',
+      message: 'Left-click to set a start date. Right-click to set an end date.',
       child: Text('$starts  ·  $ends', style: style),
     );
   }
@@ -511,7 +509,7 @@ class _Pills extends StatelessWidget {
                       fontFamily: Fonts.ui,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: _on(i) ? p.onAccent : p.inkMuted,
+                      color: _on(i) ? p.onDone : p.inkMuted,
                     ),
                   ),
                 ),

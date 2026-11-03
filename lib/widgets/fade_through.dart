@@ -335,22 +335,14 @@ class _SizeSlotState extends State<_SizeSlot> {
 /// over [duration] swaps them: a taller page's room opens while the old one
 /// fades out, before the new one shows, and a shorter one's room closes
 /// only once the old page has gone. Within a page it follows its child
-/// exactly, or, with [easeWithin], eases to a new size over [Motion.morph]
-/// as an [AnimatedSize] would.
+/// exactly.
 class PageSize extends StatefulWidget {
-  const PageSize({
-    super.key,
-    required this.page,
-    this.duration = Motion.page,
-    this.easeWithin = false,
-    required this.child,
-  });
+  const PageSize({super.key, required this.page, this.duration = Motion.page, required this.child});
 
   final Object page;
 
   /// The [FadeThrough]'s, inside it.
   final Duration duration;
-  final bool easeWithin;
   final Widget child;
 
   @override
@@ -359,41 +351,28 @@ class PageSize extends StatefulWidget {
 
 class _PageSizeState extends State<PageSize> with SingleTickerProviderStateMixin {
   @override
-  Widget build(BuildContext context) => _PageSizeBox(
-    page: widget.page,
-    duration: widget.duration,
-    easeWithin: widget.easeWithin,
-    vsync: this,
-    child: widget.child,
-  );
+  Widget build(BuildContext context) =>
+      _PageSizeBox(page: widget.page, duration: widget.duration, vsync: this, child: widget.child);
 }
 
 class _PageSizeBox extends SingleChildRenderObjectWidget {
-  const _PageSizeBox({
-    required this.page,
-    required this.duration,
-    required this.easeWithin,
-    required this.vsync,
-    super.child,
-  });
+  const _PageSizeBox({required this.page, required this.duration, required this.vsync, super.child});
 
   final Object page;
   final Duration duration;
-  final bool easeWithin;
   final TickerProvider vsync;
 
   @override
-  RenderObject createRenderObject(BuildContext context) => _RenderPageSize(page, duration, easeWithin, vsync);
+  RenderObject createRenderObject(BuildContext context) => _RenderPageSize(page, duration, vsync);
 
   @override
   void updateRenderObject(BuildContext context, _RenderPageSize renderObject) => renderObject
     ..page = page
-    ..duration = duration
-    ..easeWithin = easeWithin;
+    ..duration = duration;
 }
 
 class _RenderPageSize extends RenderProxyBox {
-  _RenderPageSize(this._page, this.duration, this.easeWithin, TickerProvider vsync)
+  _RenderPageSize(this._page, this.duration, TickerProvider vsync)
     : _controller = AnimationController(vsync: vsync, value: 1) {
     _controller.addListener(() {
       if (_controller.value != _last) markNeedsLayout();
@@ -402,13 +381,11 @@ class _RenderPageSize extends RenderProxyBox {
 
   final AnimationController _controller;
   Duration duration;
-  bool easeWithin;
   double _last = 1;
 
-  /// The size it eases from, and the child's it eases to; [_phased] for a
-  /// new page, whose growing comes first and shrinking last.
-  Size? _from, _to;
-  bool _phased = false;
+  /// The size it eases from, for a new page, whose growing comes first and
+  /// shrinking last.
+  Size? _from;
   bool _newPage = false;
 
   Object _page;
@@ -428,15 +405,11 @@ class _RenderPageSize extends RenderProxyBox {
   static final _grow = Interval(0, Motion.incoming.begin, curve: Motion.morphCurve);
   static final _shrink = Interval(1 - Motion.incoming.begin, 1, curve: Motion.morphCurve);
 
-  double _eased(double from, double to, double t) {
-    final curve = !_phased ? Motion.morphCurve : (to >= from ? _grow : _shrink);
-    return from + (to - from) * curve.transform(t);
-  }
+  double _eased(double from, double to, double t) => from + (to - from) * (to >= from ? _grow : _shrink).transform(t);
 
-  void _start({required bool phased}) {
+  void _start() {
     _from = size;
-    _phased = phased;
-    _controller.duration = phased ? duration : Motion.morph;
+    _controller.duration = duration;
     _last = 0;
     _controller.forward(from: 0);
   }
@@ -445,13 +418,8 @@ class _RenderPageSize extends RenderProxyBox {
   void performLayout() {
     final child = this.child!..layout(constraints, parentUsesSize: true);
     final target = child.size;
-    if (hasSize && _newPage) {
-      _start(phased: true);
-    } else if (hasSize && easeWithin && _to != null && target != _to && !_controller.isAnimating) {
-      _start(phased: false);
-    }
+    if (hasSize && _newPage) _start();
     _newPage = false;
-    _to = target;
     _last = _controller.value;
     final from = _from;
     if (from == null || _controller.isCompleted) {
@@ -460,8 +428,6 @@ class _RenderPageSize extends RenderProxyBox {
       return;
     }
     final t = _controller.value;
-    size = constraints.constrain(
-      Size(_eased(from.width, target.width, t), _eased(from.height, target.height, t)),
-    );
+    size = constraints.constrain(Size(_eased(from.width, target.width, t), _eased(from.height, target.height, t)));
   }
 }

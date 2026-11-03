@@ -410,15 +410,9 @@ class _NoteDialogState extends State<_NoteDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.habit.name.toUpperCase(),
-                  style: TextStyle(fontSize: 12, letterSpacing: 1.2, color: p.other, fontWeight: FontWeight.w600),
-                ),
+                Text(widget.habit.name.toUpperCase(), style: capsLabel(p.otherInk)),
                 const SizedBox(height: 8),
-                Text(
-                  'What happened?',
-                  style: TextStyle(fontFamily: Fonts.display, fontSize: 28, color: p.ink),
-                ),
+                Text('What happened?', style: dialogTitleStyle(p)),
                 const SizedBox(height: 18),
                 TextField(
                   inputFormatters: const [NoteInputFormatter()],
@@ -442,16 +436,9 @@ class _NoteDialogState extends State<_NoteDialog> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text('Skip', style: TextStyle(color: p.inkMuted)),
-                    ),
+                    DialogDismiss(label: 'Skip', onPressed: () => Navigator.pop(context)),
                     const SizedBox(width: 6),
-                    FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: p.other),
-                      onPressed: () => Navigator.pop(context, _controller.text),
-                      child: const Text('Save note'),
-                    ),
+                    DialogConfirm(label: 'Save note', onPressed: () => Navigator.pop(context, _controller.text)),
                   ],
                 ),
               ],

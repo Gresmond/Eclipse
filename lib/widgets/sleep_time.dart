@@ -29,7 +29,7 @@ class SleepName extends StatelessWidget {
     fontFamily: Fonts.time,
     fontSize: 14,
     fontWeight: FontWeight.w500,
-    color: p.inkMuted.withValues(alpha: 0.7),
+    color: p.inkMuted,
     fontFeatures: const [FontFeature.tabularFigures()],
   );
 

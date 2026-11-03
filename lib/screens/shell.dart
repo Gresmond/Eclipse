@@ -16,6 +16,7 @@ import '../widgets/app_dialog.dart';
 import '../widgets/day_picker.dart';
 import '../widgets/fade_menu.dart';
 import '../widgets/fade_through.dart';
+import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/page_turn.dart';
 import '../widgets/reminder_cards.dart';
@@ -120,8 +121,7 @@ class _Header extends StatelessWidget {
     final weekday = weekdayNames[shown.weekday - 1];
     // Today's holiday, on the day, month and year alike; not looking back.
     final holiday = switch (holidayOn(state.holidays, today)) {
-      final h? when state.viewDay == null =>
-        '  ·  on holiday until ${shortDay(h.end, today: today)}',
+      final h? when state.viewDay == null => '  ·  on holiday until ${shortDay(h.end, today: today)}',
       _ => '',
     };
     final (String kicker, String title) = state.viewingYear
@@ -157,10 +157,10 @@ class _Header extends StatelessWidget {
               enabled: month == null && !state.viewingYear,
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                child: AnimatedSize(
-                  duration: Motion.morph,
-                  curve: Motion.morphCurve,
-                  alignment: Alignment.centerLeft,
+                // A longer date's room opens before it fades in, and a shorter
+                // one's closes only once the old has faded: never clipped.
+                child: PageSize(
+                  page: (kicker, title),
                   // Fades with the page below it, rather than snapping first.
                   child: FadeThrough(
                     // Outgoing text fades without holding the old width.
@@ -174,19 +174,7 @@ class _Header extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          ...[
-                            Text(
-                              kicker.toUpperCase(),
-                              style: TextStyle(
-                                fontFamily: Fonts.ui,
-                                fontSize: 12,
-                                letterSpacing: 2.2,
-                                fontWeight: FontWeight.w700,
-                                color: p.inkMuted.withValues(alpha: 0.8),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                          ],
+                          ...[Text(kicker.toUpperCase(), style: capsLabel(p.inkMuted)), const SizedBox(height: 4)],
                           Text(title, style: titleStyle),
                         ],
                       ),
@@ -316,7 +304,6 @@ class _TabBar extends StatefulWidget {
 }
 
 class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
-  final _stackKey = GlobalKey();
   final _pastKey = GlobalKey();
 
   /// By position; the months shown change with the year.
@@ -345,11 +332,6 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
       ? _fromWidth + (_toWidth - _fromWidth) * Motion.morphCurve.transform(_relabel.value)
       : _Tab.boldWidth(context, _pastLabel ?? '');
 
-  /// From the bar's right edge, which stays put as the past tab folds.
-  ({double right, double top, Size size})? _pill;
-  int? _pillFor;
-  bool _glide = false;
-
   @override
   void didUpdateWidget(_TabBar old) {
     super.didUpdateWidget(old);
@@ -377,103 +359,62 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  /// Moves the pill under the selected tab once it has been laid out.
-  /// Only a change of tab glides; resizing the window just follows along.
-  void _measure(Duration _) {
-    // A changing label drives the pill itself, frame by frame.
-    if (!mounted || _relabel.isAnimating) return;
-    final stack = _stackKey.currentContext?.findRenderObject() as RenderBox?;
-    final key = widget.selected < 0 ? _pastKey : _key(widget.selected);
-    final tab = key.currentContext?.findRenderObject() as RenderBox?;
-    if (stack == null || tab == null || !tab.hasSize || !stack.hasSize) return;
-    // Measured from the right, so a tab still unfolding is placed where it
-    // ends up.
-    final at = tab.localToGlobal(Offset.zero, ancestor: stack);
-    final rect = (right: stack.size.width - at.dx - tab.size.width, top: at.dy, size: tab.size);
-    if (rect == _pill) return;
-    setState(() {
-      _glide = _pillFor != null && _pillFor != widget.selected;
-      _pillFor = widget.selected;
-      _pill = rect;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    WidgetsBinding.instance.addPostFrameCallback(_measure);
-    final pill = _pill;
     final divider = Container(width: 1, height: 18, margin: const EdgeInsets.symmetric(horizontal: 6), color: p.border);
 
-    return AnimatedBuilder(animation: _relabel, builder: (context, _) => _bar(p, pill, divider));
+    return AnimatedBuilder(animation: _relabel, builder: (context, _) => _bar(p, divider));
   }
 
-  Widget _bar(Palette p, ({double right, double top, Size size})? pill, Widget divider) {
+  Widget _bar(Palette p, Widget divider) {
     final labelWidth = _labelWidth;
-    final relabeling = _relabel.isAnimating && widget.selected < 0;
-    return Stack(
-      key: _stackKey,
-      children: [
-        if (pill != null)
-          AnimatedPositioned(
-            duration: _glide && !relabeling ? Motion.morph : Duration.zero,
-            curve: Motion.morphCurve,
-            right: pill.right,
-            top: pill.top,
-            // Sized from the label while it sits on the past tab, so the frame
-            // a relabel ends never shows the old day's measured width.
-            width: widget.selected < 0 && _pillFor == -1 ? labelWidth + _Tab.padding * 2 : pill.size.width,
-            height: pill.size.height,
-            // A rounded rect, not a StadiumBorder: Impeller on Linux draws
-            // shape paths without anti-aliasing, but rounded rects smoothly.
-            child: DecoratedBox(
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(30), color: p.done),
-            ),
-          ),
-        Row(
-          children: [
-            // Grows in from Today's left, its label easing into view.
-            AnimatedBuilder(
-              animation: _pastOpen,
-              builder: (context, child) {
-                final t = Motion.morphCurve.transform(_pastOpen.value);
-                return ClipRect(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    widthFactor: t,
-                    child: Opacity(opacity: t, child: child),
-                  ),
-                );
-              },
-              child: _pastLabel == null
-                  ? const SizedBox.shrink()
-                  : Row(
-                      children: [
-                        KeyedSubtree(
-                          key: _pastKey,
-                          child: _Tab(
-                            label: _pastLabel!,
-                            selected: widget.selected < 0,
-                            onTap: null,
-                            labelWidth: labelWidth,
-                          ),
+    return GlidePill(
+      target: widget.selected < 0 ? _pastKey : _key(widget.selected),
+      color: p.done,
+      child: Row(
+        children: [
+          // Grows in from Today's left, its label easing into view.
+          AnimatedBuilder(
+            animation: _pastOpen,
+            builder: (context, child) {
+              final t = Motion.morphCurve.transform(_pastOpen.value);
+              return ClipRect(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  widthFactor: t,
+                  child: Opacity(opacity: t, child: child),
+                ),
+              );
+            },
+            child: _pastLabel == null
+                ? const SizedBox.shrink()
+                : Row(
+                    children: [
+                      KeyedSubtree(
+                        key: _pastKey,
+                        child: _Tab(
+                          label: _pastLabel!,
+                          selected: widget.selected < 0,
+                          onTap: null,
+                          labelWidth: labelWidth,
                         ),
-                        const SizedBox(width: 2),
-                        divider,
-                      ],
-                    ),
-            ),
-            for (final (i, tab) in widget.tabs.indexed) ...[
-              // The gap sits outside the measured tab, so the pill centres on
-              // the label.
-              KeyedSubtree(key: _key(i), child: tab),
-              const SizedBox(width: 2),
-              // Today and Year stand apart from the months.
-              if (i == 0 || i == widget.tabs.length - 2) divider,
-            ],
+                      ),
+                      const SizedBox(width: 2),
+                      divider,
+                    ],
+                  ),
+          ),
+          for (final (i, tab) in widget.tabs.indexed) ...[
+            // The gap sits outside the measured tab, so the pill centres on
+            // the label.
+            KeyedSubtree(key: _key(i), child: tab),
+            const SizedBox(width: 2),
+            // Today and Year stand apart from the months.
+            if (i == 0 || i == widget.tabs.length - 2) divider,
           ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -489,8 +430,7 @@ class _Tab extends StatelessWidget {
 
   static const padding = 14.0;
 
-  /// The width a label takes in bold, which a tab keeps whether or not it
-  /// is selected.
+  /// The width a label takes.
   static double boldWidth(BuildContext context, String label) {
     final painter = TextPainter(
       text: TextSpan(text: label, style: _style(FontWeight.w600, const Color(0xFF000000))),
@@ -504,7 +444,7 @@ class _Tab extends StatelessWidget {
   }
 
   static TextStyle _style(FontWeight weight, Color color) =>
-      TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: weight, color: color, letterSpacing: 0.2);
+      TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: weight, color: color);
 
   /// Set for a tab whose label changes: the label area eases to this width
   /// while the old label fades through to the new one.
@@ -525,19 +465,13 @@ class _Tab extends StatelessWidget {
         : isCurrent
         ? p.accent
         : p.ink;
-    TextStyle style(FontWeight weight) => _style(weight, fg);
-    final text = Stack(
-      alignment: Alignment.center,
-      children: [
-        // Reserves the bold width, so selecting a tab never resizes the bar.
-        Visibility.maintain(visible: false, child: Text(label, style: style(FontWeight.w600))),
-        AnimatedDefaultTextStyle(
-          duration: context.themed(Motion.morph),
-          curve: Motion.morphCurve,
-          style: style(selected || isCurrent ? FontWeight.w600 : FontWeight.w500),
-          child: Text(label),
-        ),
-      ],
+    // Semibold whether or not selected, as Settings' ribbons are: only the
+    // colour eases as the pill arrives, so the bar never steps in weight.
+    final text = AnimatedDefaultTextStyle(
+      duration: context.themed(Motion.morph),
+      curve: Motion.morphCurve,
+      style: _style(FontWeight.w600, fg),
+      child: Text(label),
     );
     final width = labelWidth;
 
@@ -590,6 +524,7 @@ class _YearSwitcher extends StatelessWidget {
         children: [
           if (year > state.firstMonth.$1)
             IconButton(
+              tooltip: 'Previous year',
               iconSize: 18,
               // 40 tall, so the pill matches the tabs and the round buttons.
               visualDensity: VisualDensity.compact,
@@ -607,12 +542,12 @@ class _YearSwitcher extends StatelessWidget {
               fontSize: 15,
               fontWeight: FontWeight.w600,
               color: p.ink,
-              letterSpacing: 0.5,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
           if (year < state.today.year)
             IconButton(
+              tooltip: 'Next year',
               iconSize: 18,
               // 40 tall, so the pill matches the tabs and the round buttons.
               visualDensity: VisualDensity.compact,

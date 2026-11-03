@@ -82,7 +82,12 @@ class _DatedAddState extends State<_DatedAdd> {
             children: [
               if (due != null)
                 Flexible(
-                  child: Text(dayAndMonth(due, today: today), maxLines: 1, overflow: TextOverflow.ellipsis, style: note),
+                  child: Text(
+                    dayAndMonth(due, today: today),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: note,
+                  ),
                 ),
               if (time != null) ...[
                 const SizedBox(width: 6),

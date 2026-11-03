@@ -52,12 +52,7 @@ class YearView extends StatelessWidget {
 
   Widget _build(BuildContext context, double height) {
     final state = AppScope.watch(context, (s) => (s.habitsRevision, s.entriesRevision, s.today));
-    final header = TextStyle(
-      fontSize: 12,
-      letterSpacing: 1.2,
-      fontWeight: FontWeight.w500,
-      color: context.palette.inkMuted,
-    );
+    final header = capsLabel(context.palette.inkMuted);
 
     // Every ritual on a saved list this year, newest names and order first.
     final rituals = <int, Habit>{};
@@ -185,8 +180,7 @@ class _Table extends StatelessWidget {
     color: p.ink,
   );
 
-  static TextStyle labelStyle(Palette p) =>
-      TextStyle(fontFamily: Fonts.ui, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.6, color: p.inkMuted);
+  static TextStyle labelStyle(Palette p) => capsLabel(p.inkMuted);
 
   @override
   Widget build(BuildContext context) {
@@ -314,7 +308,7 @@ class _Cell extends StatelessWidget {
           r == null ? '–' : '${(r * 100).round()}%',
           style: TextStyle(
             fontFamily: Fonts.ui,
-            fontSize: strong ? 15 : 13.5,
+            fontSize: strong ? 15 : 14,
             fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
             color: r == null
                 ? p.inkMuted.withValues(alpha: future ? 0.25 : 0.5)

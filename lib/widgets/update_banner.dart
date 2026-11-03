@@ -51,13 +51,7 @@ class _Card extends StatelessWidget {
       children: [
         Text(
           title,
-          style: TextStyle(
-            fontFamily: Fonts.display,
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
-            letterSpacing: -0.2,
-            color: p.ink,
-          ),
+          style: cornerCardTitle(p.ink),
         ),
         if (detail != null && detail.isNotEmpty) ...[
           const SizedBox(height: 4),

@@ -131,7 +131,7 @@ class _SettingsSearchState extends State<SettingsSearch> {
                     isDense: true,
                     border: InputBorder.none,
                     hintText: 'Search tasks and journal',
-                    hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted.withValues(alpha: 0.65)),
+                    hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted),
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
@@ -153,7 +153,7 @@ class _SettingsSearchState extends State<SettingsSearch> {
                       ),
                       overlayColor: const WidgetStatePropertyAll(Colors.transparent),
                     ),
-                    icon: Icon(Icons.close_rounded, size: 16, color: p.inkMuted),
+                    icon: Icon(Icons.close_rounded, size: Scale.dismissIcon, color: p.inkMuted),
                   ),
                 ),
             ],
@@ -243,13 +243,7 @@ class _HitRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final caption = TextStyle(
-      fontFamily: Fonts.ui,
-      fontSize: 12,
-      fontWeight: FontWeight.w600,
-      letterSpacing: Scale.capsSpacing,
-      color: p.inkMuted,
-    );
+    final caption = capsLabel(p.inkMuted);
     final body = TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.4, color: hit.done ? p.inkMuted : p.ink);
     return FadeMenuRow(
       height: 56,

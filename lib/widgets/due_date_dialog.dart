@@ -146,10 +146,10 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
       onConfirm: _done,
       width: _taskDialogWidth,
       preserveButtons: false,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: dialogPadding,
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(localizations.cancelButtonLabel)),
-        TextButton(onPressed: _done, child: Text(localizations.okButtonLabel)),
+        DialogDismiss(label: localizations.cancelButtonLabel, onPressed: () => Navigator.pop(context)),
+        DialogConfirm(label: localizations.okButtonLabel, onPressed: _done),
       ],
       child: _RepeatPanel(
         first: widget.first,

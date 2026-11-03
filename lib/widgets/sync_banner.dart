@@ -186,13 +186,7 @@ class _Card extends StatelessWidget {
               children: [
                 Text(
                   'Updated from ${_from(incoming.from)}',
-                  style: TextStyle(
-                    fontFamily: Fonts.display,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
-                    color: p.ink,
-                  ),
+                  style: cornerCardTitle(p.ink),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -235,13 +229,7 @@ class _AskCard extends StatelessWidget {
             padding: const EdgeInsets.only(right: 8),
             child: Text(
               'Keep your journal in Drive',
-              style: TextStyle(
-                fontFamily: Fonts.display,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.2,
-                color: p.ink,
-              ),
+              style: cornerCardTitle(p.ink),
             ),
           ),
           const SizedBox(height: 4),
@@ -256,7 +244,7 @@ class _AskCard extends StatelessWidget {
                 fontFamily: Fonts.body,
                 fontSize: 14,
                 height: 1.4,
-                color: error != null && !signingIn ? p.missed : p.inkMuted,
+                color: error != null && !signingIn ? p.missedInk : p.inkMuted,
               ),
             ),
           ),
@@ -324,13 +312,7 @@ class _WaitingCard extends StatelessWidget {
             padding: const EdgeInsets.only(right: 8),
             child: Text(
               title,
-              style: TextStyle(
-                fontFamily: Fonts.display,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.2,
-                color: p.ink,
-              ),
+              style: cornerCardTitle(p.ink),
             ),
           ),
           if (newer) ...[

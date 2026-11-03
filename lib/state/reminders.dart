@@ -95,6 +95,7 @@ mixin _Reminders on ChangeNotifier {
   DateTime get today;
   DateTime Function() get _clock;
   ReminderNotifier? get notifier;
+  bool get closing;
   int get dayStartHour;
   void showFound(DateTime day, String target);
 
@@ -135,8 +136,22 @@ mixin _Reminders on ChangeNotifier {
     store.setSetting(_shownSetting, jsonEncode(keys.toList()..sort()));
   }
 
+  Future<void>? _held;
+
+  /// Holds reminders until [sync] ends, or for [limit] if it takes longer,
+  /// so a time changed on another computer doesn't go off as it was.
+  void holdReminders(Future<void> sync, {Duration limit = const Duration(seconds: 20)}) {
+    late final Future<void> held;
+    held = _held = sync.timeout(limit).catchError((Object _) {}).whenComplete(() {
+      if (!identical(_held, held)) return;
+      _held = null;
+      if (!closing) checkReminders();
+    });
+  }
+
   /// Sends the reminders due now.
   void checkReminders() {
+    if (_held != null) return;
     final now = _clock();
     final shown = _shownKeys();
     final due = dueReminders(_remindingTodos(), now, shown);

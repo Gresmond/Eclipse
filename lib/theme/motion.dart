@@ -15,6 +15,11 @@ abstract final class Motion {
   static const morph = Duration(milliseconds: 240);
   static const morphCurve = Curves.easeInOutCubic;
 
+  /// Something that opens and then fades in (or fades and then closes):
+  /// the room over the first half, the fade over the second.
+  static const firstHalf = Interval(0, 0.5, curve: morphCurve);
+  static const secondHalf = Interval(0.5, 1, curve: morphCurve);
+
   /// A page or month fading in under another: plain ease-in.
   static const fadeInCurve = Curves.easeIn;
 
@@ -34,6 +39,17 @@ abstract final class Motion {
 
   /// The Training page's corner turning over: a whole page, handled slowly.
   static const turn = Duration(milliseconds: 680);
+
+  /// The light on a task found by search: up, held, then away on
+  /// [glowFadeCurve]; [glowBrief] on a task whose subtask was found, and
+  /// the subtask's own after [glowDelay], once its task's has gone. One
+  /// built within [glowCatch] of the search (as its day fades in) still
+  /// lights.
+  static const glow = Duration(seconds: 4);
+  static const glowBrief = Duration(seconds: 1);
+  static const glowDelay = Duration(milliseconds: 700);
+  static const glowCatch = Duration(milliseconds: 1500);
+  static const glowFadeCurve = Curves.easeInOut;
 
   /// A fade-through, split in two: the old thing eases out over the first
   /// ~55% of [t] and the new one eases in over the last ~55%, so the two
