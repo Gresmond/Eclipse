@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import 'app_log.dart';
 import 'google_drive.dart';
 import 'safe_write.dart';
 import 'journal_drive.dart';
@@ -82,7 +83,9 @@ class SyncService extends ChangeNotifier {
     'accountId' ||
     'refresh' ||
     'journalFolder' ||
-    'journalChecked' => value is String,
+    'journalChecked' ||
+    'syncedAt' ||
+    'stopped' => value is String,
     'clock' || 'pushed' => value is int,
     'journalDrive' || 'journalFill' => value is bool,
     'down' ||
@@ -192,6 +195,35 @@ class SyncService extends ChangeNotifier {
   bool busy = false;
   DateTime? lastSynced;
   String? error;
+
+  /// How long sync can fail before a card says so.
+  static const staleAfter = Duration(days: 3);
+
+  /// When sync last worked, kept across restarts; while it's never worked
+  /// since this was first kept, when it first failed.
+  DateTime? get _syncedAt => DateTime.tryParse(_config['syncedAt'] as String? ?? '');
+
+  /// The days since sync last worked, once it's still failing after
+  /// [staleAfter]; null otherwise. A computer that was off doesn't count
+  /// until its first try back has failed.
+  int? get staleDays {
+    final since = _syncedAt;
+    if (!isOn || error == null || since == null) return null;
+    final gone = DateTime.now().difference(since);
+    return gone < staleAfter ? null : gone.inDays;
+  }
+
+  /// Why Eclipse stopped syncing by itself; null while it hasn't.
+  String? get stoppedWhy => _config['stopped'] as String?;
+
+  /// The last failure logged, so one that repeats each round is logged once.
+  String? _logged;
+
+  void _failed(Object why) {
+    if ('$why' == _logged) return;
+    _logged = '$why';
+    AppLog.failure('Sync failed', why);
+  }
 
   /// The last changes that came in, for the banner; bumped with each.
   Incoming? lastIncoming;
@@ -371,7 +403,8 @@ class SyncService extends ChangeNotifier {
       ..['accountId'] = account.identity
       ..['refresh'] = account.refreshToken
       ..['journalDrive'] = account.journalAccess
-      ..['pushed'] = 0;
+      ..['pushed'] = 0
+      ..remove('stopped');
     error = null;
     await _save();
     notifyListeners();
@@ -390,7 +423,8 @@ class SyncService extends ChangeNotifier {
     }
     _config
       ..['refresh'] = account.refreshToken
-      ..['journalDrive'] = true;
+      ..['journalDrive'] = true
+      ..remove('stopped');
     _drive = null;
     error = null;
     await _save();
@@ -412,6 +446,11 @@ class SyncService extends ChangeNotifier {
       ..remove('refresh')
       ..remove('email')
       ..remove('journalDrive');
+    if (error == null) {
+      _config.remove('stopped');
+    } else {
+      _config['stopped'] = error;
+    }
     await _save();
     this.error = error;
     notifyListeners();
@@ -533,7 +572,7 @@ class SyncService extends ChangeNotifier {
         _deliver(incoming);
       } catch (e) {
         merging = e;
-        debugPrint('Taking changes in failed: $e');
+        AppLog.failure('Taking changes in failed', e);
       }
       _checkNewer();
       engine.flush();
@@ -560,6 +599,13 @@ class SyncService extends ChangeNotifier {
       }
       lastSynced = DateTime.now();
       error = merging == null ? null : '$merging';
+      if (_logged != null) AppLog.note('Sync is working again');
+      _logged = null;
+      // Rewritten once an hour at most: this runs every few minutes.
+      if (DateTime.now().difference(_syncedAt ?? DateTime(2000)) > const Duration(hours: 1)) {
+        _config['syncedAt'] = lastSynced!.toIso8601String();
+        await _save();
+      }
     } on DriveError catch (e) {
       if (_stopped) return;
       if (e.signedOut) {
@@ -567,15 +613,25 @@ class SyncService extends ChangeNotifier {
       } else {
         error = e.message;
       }
-      debugPrint('Sync failed: ${e.message}');
+      _failed(e.message);
+      await _noteFirstFailure();
     } catch (e) {
       if (_stopped) return;
       error = '$e';
-      debugPrint('Sync failed: $error');
+      _failed(e);
+      await _noteFirstFailure();
     } finally {
       busy = false;
       if (!_stopped) notifyListeners();
     }
+  }
+
+  /// Starts the count towards [staleAfter] for a computer that has no last
+  /// time on record.
+  Future<void> _noteFirstFailure() async {
+    if (_syncedAt != null || !isOn) return;
+    _config['syncedAt'] = DateTime.now().toIso8601String();
+    await _save();
   }
 
   void _deliver(Incoming incoming) {

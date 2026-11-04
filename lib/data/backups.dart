@@ -1,31 +1,43 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart' show OpenMode, sqlite3;
 
 import '../models.dart';
+import 'app_log.dart';
+import 'journal_files.dart';
+import 'safe_write.dart';
 import 'store.dart';
 
 /// One saved copy of the database.
 class Backup {
-  Backup(this.file, this.day, {this.isBeforeJoin = false});
+  Backup(this.file, this.day, {this.isBeforeJoin = false, this.isBeforeUpdate = false});
 
   final File file;
 
   /// The day it was taken; null for the copies saved just before a restore
-  /// or before joining sync.
+  /// or before joining sync or updating.
   final DateTime? day;
 
   /// Saved just before joining sync replaced everything here.
   final bool isBeforeJoin;
 
-  bool get isBeforeRestore => day == null && !isBeforeJoin;
+  /// Saved just before an update changed the database's format.
+  final bool isBeforeUpdate;
+
+  bool get isBeforeRestore => day == null && !isBeforeJoin && !isBeforeUpdate;
 
   DateTime get modified => file.lastModifiedSync();
 }
 
+/// The database failed its check, so no copy of it was taken.
+class DataDamaged implements Exception {
+  const DataDamaged();
+}
+
 /// Daily copies of the database in one folder, newest [keep] kept, plus a
-/// copy of whatever was there before the last restore, and before joining
-/// sync.
+/// copy of whatever was there before the last restore, before joining sync
+/// and before the last update that changed its format.
 class Backups {
   Backups(this.dir, {this.keep = 30});
 
@@ -35,15 +47,19 @@ class Backups {
   static final _daily = RegExp(r'^productivity-(\d{4})-(\d{2})-(\d{2})\.db$');
   static const _beforeRestore = 'before-restore.db';
   static const _beforeJoin = 'before-join.db';
+  static const _beforeUpdate = 'before-update.db';
+
+  /// The copy before an update couldn't be made; the update went ahead.
+  bool updateCopyFailed = false;
 
   File _fileFor(DateTime day) => File(p.join(dir.path, 'productivity-${dateKey(day)}.db'));
 
-  /// The copies saved before the last restore and before joining sync
+  /// The copies saved before the last restore, joining sync and updating
   /// first, then newest day first.
   List<Backup> list() {
     if (!dir.existsSync()) return [];
     final daily = <Backup>[];
-    Backup? before, beforeJoin;
+    Backup? before, beforeJoin, beforeUpdate;
     for (final f in dir.listSync().whereType<File>()) {
       final name = p.basename(f.path);
       final m = _daily.firstMatch(name);
@@ -53,18 +69,28 @@ class Backups {
         before = Backup(f, null);
       } else if (name == _beforeJoin) {
         beforeJoin = Backup(f, null, isBeforeJoin: true);
+      } else if (name == _beforeUpdate) {
+        beforeUpdate = Backup(f, null, isBeforeUpdate: true);
       }
     }
     daily.sort((a, b) => b.day!.compareTo(a.day!));
-    return [?before, ?beforeJoin, ...daily];
+    return [?before, ?beforeJoin, ?beforeUpdate, ...daily];
   }
 
-  /// Saves today's copy if there isn't one yet, then drops the oldest.
+  /// Checks the database, then saves today's copy if there isn't one yet
+  /// and drops the oldest. Throws [DataDamaged] when the database fails its
+  /// check: nothing is saved over or dropped, as the older copies are the
+  /// way back.
   void daily(Store store, DateTime today) {
+    if (!store.isHealthy) throw const DataDamaged();
     final file = _fileFor(today);
     if (file.existsSync()) return;
     dir.createSync(recursive: true);
     store.saveCopy(file.path);
+    if (!isHealthy(file)) {
+      file.deleteSync();
+      throw StateError('Today’s copy failed its check');
+    }
     for (final old in list().where((b) => b.day != null).skip(keep)) {
       old.file.deleteSync();
     }
@@ -75,6 +101,87 @@ class Backups {
   void beforeJoining(Store store) {
     dir.createSync(recursive: true);
     store.saveCopy(p.join(dir.path, _beforeJoin));
+  }
+
+  /// Whether the copy at [file] is whole and is one of Eclipse's.
+  static bool isHealthy(File file) {
+    try {
+      final db = sqlite3.open(file.path, mode: OpenMode.readOnly);
+      try {
+        final version = db.select('PRAGMA user_version').first.columnAt(0) as int;
+        return version >= 1 &&
+            version <= Store.schemaVersion &&
+            db.select('PRAGMA quick_check').first.columnAt(0) == 'ok';
+      } finally {
+        db.close();
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Saves the database at [database] as it is, if this version of Eclipse
+  /// is about to change its format. Run before it's opened. A copy that can't
+  /// be made doesn't stop the update, and [updateCopyFailed] says so.
+  void beforeUpdating(String database) {
+    if (!File(database).existsSync()) return;
+    try {
+      final db = sqlite3.open(database);
+      try {
+        final version = db.select('PRAGMA user_version').first.columnAt(0) as int;
+        if (version < 1 || version >= Store.schemaVersion) return;
+        dir.createSync(recursive: true);
+        replaceSafelySync(p.join(dir.path, _beforeUpdate), (part) => db.execute('VACUUM INTO ?', [part.path]));
+        AppLog.note('Saved a copy before updating from database format $version to ${Store.schemaVersion}');
+      } finally {
+        db.close();
+      }
+    } catch (e) {
+      updateCopyFailed = true;
+      AppLog.failure('The copy before updating failed', e);
+    }
+  }
+
+  /// For when the database at [database] can't be used, with nothing open on
+  /// it: puts it aside in the backups folder and puts [backup] in its place.
+  /// The files of the [journal] hold writing newer than the copy, so that's kept
+  /// too, and sync brings back this computer's own edits from its change
+  /// files. If the copy can't be opened, the database goes back as it was.
+  void recover(Backup backup, String database, {JournalFiles? journal}) {
+    if (!isHealthy(backup.file)) throw StateError('That copy is damaged too');
+    final stamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[^0-9T]'), '').substring(0, 15);
+    final aside = Directory(p.join(dir.path, 'set-aside-$stamp'))..createSync(recursive: true);
+    final moved = <(File, String)>[];
+    for (final suffix in ['', '-wal', '-shm']) {
+      final file = File('$database$suffix');
+      if (!file.existsSync()) continue;
+      final to = p.join(aside.path, p.basename(file.path));
+      file.renameSync(to);
+      moved.add((File(to), file.path));
+    }
+    try {
+      replaceSafelySync(database, (part) => backup.file.copySync(part.path));
+      final store = Store.open(database);
+      try {
+        for (final MapEntry(key: day, value: text) in (journal?.readAllSync() ?? const <String, String>{}).entries) {
+          final kept = Store.keepWriting(store.journal(day), text);
+          if (kept != store.journal(day)) store.setJournal(day, kept);
+        }
+      } finally {
+        store.close();
+      }
+      AppLog.note('Recovered from a backup; the damaged data is in ${aside.path}');
+    } catch (_) {
+      for (final suffix in ['', '-wal', '-shm']) {
+        final file = File('$database$suffix');
+        if (file.existsSync()) file.deleteSync();
+      }
+      for (final (file, path) in moved) {
+        file.renameSync(path);
+      }
+      aside.deleteSync();
+      rethrow;
+    }
   }
 
   /// Replaces the database with [backup], keeping what was there as the

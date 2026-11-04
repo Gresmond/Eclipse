@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'hover_fill.dart';
 
 /// A card floating in the bottom-right corner. It slides up and fades in
@@ -98,6 +99,52 @@ class CornerButton extends StatelessWidget {
             color: filled ? p.onDone : p.inkMuted,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A card that says something and waits: a title, lines of text and buttons.
+class NoticeCard extends StatelessWidget {
+  const NoticeCard({super.key, required this.title, required this.lines, required this.actions});
+
+  final String title;
+  final List<String> lines;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final body = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted);
+    return Container(
+      width: cornerCardWidth,
+      padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
+      decoration: BoxDecoration(
+        color: p.tile,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: p.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(title, style: cornerCardTitle(p.ink)),
+          ),
+          for (final line in lines) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(line, style: body),
+            ),
+          ],
+          const SizedBox(height: 4),
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(alignment: WrapAlignment.end, children: actions),
+          ),
+        ],
       ),
     );
   }

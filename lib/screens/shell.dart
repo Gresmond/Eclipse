@@ -13,6 +13,7 @@ import '../theme/tokens.dart';
 import '../widgets/setting_rows.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/app_dialog.dart';
+import '../widgets/backup_card.dart';
 import '../widgets/day_picker.dart';
 import '../widgets/fade_menu.dart';
 import '../widgets/fade_through.dart';
@@ -38,12 +39,20 @@ class CornerCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sync = AppScope.watch(context, (s) => s.sync).sync;
+    final state = AppScope.watch(context, (s) => (s.sync, s.backupProblem));
+    final sync = state.sync;
     final updater = this.updater;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        BackupCard(
+          problem: state.backupProblem,
+          // Above the navigator here, so it opens from the navigator's context.
+          onSeeBackups: () {
+            if (appNavigator.currentContext case final context?) openSettings(context, ribbon: 1);
+          },
+        ),
         if (sync != null) SyncBanner(sync: sync),
         if (updater != null) UpdateBanner(updater: updater),
         const ReminderCards(),
@@ -566,32 +575,37 @@ class _YearSwitcher extends StatelessWidget {
   }
 }
 
-/// Opens Settings; confirms a restore once it's done.
+/// Opens Settings on [ribbon]; confirms a restore once it's done.
+Future<void> openSettings(BuildContext context, {int ribbon = 0}) async {
+  final p = context.palette;
+  final restored = await showAppDialog<Backup>(
+    context: context,
+    builder: (_) => SettingsDialog(ribbon: ribbon),
+  );
+  if (restored == null || !context.mounted) return;
+  final from = restored.isBeforeRestore
+      ? 'how things were before your last restore'
+      : restored.isBeforeJoin
+      ? 'how things were before joining sync'
+      : restored.isBeforeUpdate
+      ? 'how things were before your last update'
+      : '${restored.day!.day} ${monthNames[restored.day!.month - 1]}';
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      behavior: SnackBarBehavior.floating,
+      width: 520,
+      backgroundColor: p.ink,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      content: Text(
+        'Restored $from. What you had before is saved as a backup too.',
+        style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.tile),
+      ),
+    ),
+  );
+}
+
 class _SettingsButton extends StatelessWidget {
   const _SettingsButton();
-
-  Future<void> _open(BuildContext context) async {
-    final p = context.palette;
-    final restored = await showAppDialog<Backup>(context: context, builder: (_) => const SettingsDialog());
-    if (restored == null || !context.mounted) return;
-    final from = restored.isBeforeRestore
-        ? 'how things were before your last restore'
-        : restored.isBeforeJoin
-        ? 'how things were before joining sync'
-        : '${restored.day!.day} ${monthNames[restored.day!.month - 1]}';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        width: 520,
-        backgroundColor: p.ink,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Text(
-          'Restored $from. What you had before is saved as a backup too.',
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.tile),
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -604,7 +618,7 @@ class _SettingsButton extends StatelessWidget {
         child: InkWell(
           customBorder: const CircleBorder(),
           mouseCursor: SystemMouseCursors.click,
-          onTap: () => _open(context),
+          onTap: () => openSettings(context),
           child: Container(
             width: 46,
             height: 46,

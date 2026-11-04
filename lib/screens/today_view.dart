@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../data/platform_files.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
@@ -746,42 +747,6 @@ class _OpenFolderButton extends StatelessWidget {
   /// Why the files aren't being saved; null while they are.
   final String? problem;
 
-  Future<void> _open() async {
-    var folder = file.parent;
-    try {
-      await folder.create(recursive: true);
-    } on FileSystemException {
-      // The folder can't be made (the problem the tooltip names): show the
-      // nearest one that's there instead.
-      while (!folder.existsSync() && folder.parent.path != folder.path) {
-        folder = folder.parent;
-      }
-    }
-    final exists = file.existsSync();
-    if (Platform.isMacOS) {
-      await Process.run('open', exists ? ['-R', file.path] : [folder.path]);
-    } else if (Platform.isWindows) {
-      // Separate arguments: a path with a space gets quoted, and Explorer
-      // only reads /select, before the quotes, not inside them.
-      await Process.start(
-        'explorer.exe',
-        exists ? ['/select,', file.path] : [folder.path],
-        mode: ProcessStartMode.detached,
-      );
-    } else {
-      // Detached: Dolphin keeps running after it opens, and on its own.
-      try {
-        await Process.start(
-          'dolphin',
-          exists ? ['--select', file.path] : [folder.path],
-          mode: ProcessStartMode.detached,
-        );
-      } on ProcessException {
-        await Process.start('xdg-open', [folder.path], mode: ProcessStartMode.detached);
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final home = Platform.environment['HOME'];
@@ -791,7 +756,7 @@ class _OpenFolderButton extends StatelessWidget {
           ? 'Saved as $shown\nClick to show it in its folder'
           : '$problem\nYour journal is still kept safe in Eclipse.',
       icon: Icons.folder_open_rounded,
-      onPressed: _open,
+      onPressed: () => showInFiles(file),
     );
   }
 }

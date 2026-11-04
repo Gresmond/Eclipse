@@ -1,17 +1,19 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' show AppExitResponse;
+import 'dart:ui' show AppExitResponse, PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app_state.dart';
+import 'data/app_log.dart';
 import 'data/backups.dart';
 import 'data/data_folder.dart';
 import 'data/dev_install.dart';
 import 'data/journal_files.dart';
 import 'data/night_light.dart';
+import 'data/restart.dart';
 import 'data/store.dart';
 import 'data/sync_service.dart';
 import 'data/system_notifications.dart';
@@ -23,6 +25,7 @@ import 'screens/shell.dart';
 import 'screens/startup_error.dart';
 import 'screens/warm_up.dart';
 import 'theme/app_theme.dart';
+import 'widgets/app_dialog.dart';
 import 'widgets/undo_card.dart';
 
 Future<void> main() async {
@@ -31,34 +34,54 @@ Future<void> main() async {
   // ~/.local/share/dev.nicholas.productivity_app, unless you chose a folder.
   final dir = await getApplicationSupportDirectory();
   await dir.create(recursive: true);
+  AppLog.start(dir);
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    AppLog.failure('Drawing', details.exception, details.stack);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppLog.failure('Uncaught', error, stack);
+    return false;
+  };
+  final version = ReleaseUpdater.readInstalledVersion(Platform.resolvedExecutable);
+  AppLog.note('Opened Eclipse ${version ?? '(local build)'}, database format ${Store.schemaVersion}');
   final documents = await getApplicationDocumentsDirectory();
   final AppState state;
+  Store? opened;
   try {
     DataFolder.leaveSandbox(dir, documents);
     final data = DataFolder.load(dir, documents);
     await data.root.create(recursive: true);
-    final store = Store.open(data.database);
+    final backups = Backups(data.backups)..beforeUpdating(data.database);
+    final store = opened = Store.open(data.database);
     // Sync is optional: the app runs on its own without it.
     SyncService? sync;
     try {
       sync = SyncService.load(dir, store);
     } catch (error) {
-      debugPrint('Sync couldn’t start: $error');
+      AppLog.failure('Sync couldn’t start', error);
     }
     state = AppState(
       store,
-      backups: Backups(data.backups),
+      backups: backups,
       journalFiles: JournalFiles(data.journal),
       dataFolder: data,
       sync: sync,
       notifier: SystemNotifications(),
     );
-  } catch (error) {
-    String? theme;
+  } catch (error, stack) {
+    AppLog.failure('Couldn’t open the data', error, stack);
+    // Let go of it, as a backup may be put in its place.
     try {
-      theme = savedThemeName(DataFolder.load(dir, documents).database);
+      opened?.close();
     } catch (_) {}
-    _showStartupError(error, theme: theme);
+    String? theme;
+    DataFolder? data;
+    try {
+      data = DataFolder.load(dir, documents);
+      theme = savedThemeName(data.database);
+    } catch (_) {}
+    _showStartupError(error, theme: theme, data: data);
     return;
   }
   unawaited(refreshInstalledCopy(Store.schemaVersion));
@@ -85,7 +108,7 @@ Future<void> main() async {
 
 /// Shows why the data couldn't be opened, instead of a blank window, and
 /// offers the update when an older copy meets data from a newer one.
-void _showStartupError(Object error, {String? theme}) {
+void _showStartupError(Object error, {String? theme, DataFolder? data}) {
   final updater = Updater.forThisApp();
   if (updater != null && updater is! GitUpdater) unawaited(updater.check());
   if (Platform.isLinux || Platform.isWindows) {
@@ -94,7 +117,21 @@ void _showStartupError(Object error, {String? theme}) {
       if (call.method != 'quit') throw MissingPluginException();
     });
   }
-  runApp(StartupErrorApp(error: error, updater: updater, themeName: theme));
+  runApp(
+    StartupErrorApp(
+      error: error,
+      updater: updater,
+      themeName: theme,
+      recovery: data == null
+          ? null
+          : StartupRecovery(
+              backups: Backups(data.backups),
+              database: data.database,
+              journal: JournalFiles(data.journal),
+              reopen: () => restartApplication(beforeRestart: () async {}),
+            ),
+    ),
+  );
 }
 
 Future<void> _shutdown(AppState state) async {
@@ -261,6 +298,7 @@ class EclipseApp extends StatelessWidget {
         valueListenable: state.themeNotifier,
         builder: (context, themeName, _) => MaterialApp(
           title: 'Eclipse',
+          navigatorKey: appNavigator,
           debugShowCheckedModeBanner: false,
           theme: themeNamed(themeName),
           themeAnimationDuration: Motion.morph,

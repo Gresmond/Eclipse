@@ -99,7 +99,7 @@ extension on _SettingsDialogState {
               shrinkWrap: true,
               itemCount: _backups.length,
               separatorBuilder: (_, _) => const SizedBox(height: 6),
-              itemBuilder: (_, i) => _BackupRow(
+              itemBuilder: (_, i) => BackupRow(
                 backup: _backups[i],
                 today: state.today,
                 confirming: _confirming == _backups[i],
@@ -116,6 +116,28 @@ extension on _SettingsDialogState {
           Text(
             curlyQuotes(_error!),
             style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missedInk),
+          ),
+        ],
+        if (AppLog.file case final log?) ...[
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Eclipse notes any problems in a log file to help fix them. It never holds your journal or tasks.',
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted),
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: p.accent,
+                  side: BorderSide(color: p.accent.withValues(alpha: 0.4)),
+                ),
+                onPressed: () => showInFiles(log),
+                child: const Text('Show log file'),
+              ),
+            ],
           ),
         ],
       ],
@@ -302,102 +324,4 @@ extension on _SettingsDialogState {
 String _shortPath(String path) {
   final home = Platform.environment['HOME'];
   return home != null && path.startsWith(home) ? '~${path.substring(home.length)}' : path;
-}
-
-class _BackupRow extends StatelessWidget {
-  const _BackupRow({
-    required this.backup,
-    required this.today,
-    required this.confirming,
-    required this.restoring,
-    required this.enabled,
-    required this.onAsk,
-    required this.onCancel,
-    required this.onConfirm,
-  });
-
-  final Backup backup;
-  final DateTime today;
-  final bool confirming;
-  final bool restoring;
-  final bool enabled;
-  final VoidCallback onAsk;
-  final VoidCallback onCancel;
-  final VoidCallback onConfirm;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final (title, subtitle) = _describe(backup, today);
-
-    return AnimatedContainer(
-      duration: context.themed(Motion.hover),
-      curve: Motion.hoverCurve,
-      padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
-      decoration: BoxDecoration(
-        color: confirming ? p.accent.withValues(alpha: 0.08) : p.empty.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: confirming ? p.accent.withValues(alpha: 0.35) : p.borderSoft),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  confirming ? 'Replaces everything you have now, except journal writing.' : subtitle,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
-                ),
-              ],
-            ),
-          ),
-          if (restoring)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.done)),
-            )
-          else if (confirming) ...[
-            DialogDismiss(label: 'Cancel', onPressed: onCancel),
-            const SizedBox(width: 4),
-            DialogConfirm(label: 'Restore', onPressed: onConfirm),
-          ] else
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: p.accent,
-                side: BorderSide(color: p.accent.withValues(alpha: 0.4)),
-              ),
-              onPressed: enabled ? onAsk : null,
-              child: const Text('Restore'),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static (String, String) _describe(Backup b, DateTime today) {
-    if (b.day == null) {
-      final t = b.modified;
-      final time = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-      return (
-        b.isBeforeJoin ? 'Before joining sync' : 'Before your last restore',
-        'Saved ${t.day} ${monthNames[t.month - 1]}, $time',
-      );
-    }
-    final d = b.day!;
-    final year = d.year == today.year ? '' : ' ${d.year}';
-    final title = '${weekdayNames[d.weekday - 1]} ${d.day} ${monthNames[d.month - 1]}$year';
-    final days = daysBetween(d, today);
-    final ago = switch (days) {
-      0 => 'Today, as it was when you opened the app',
-      1 => 'Yesterday',
-      _ => '$days days ago',
-    };
-    return (title, ago);
-  }
 }

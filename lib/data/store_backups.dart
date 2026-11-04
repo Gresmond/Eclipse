@@ -7,6 +7,15 @@ extension StoreBackups on Store {
   /// Written beside it first and renamed, so a crash never leaves half a file.
   void saveCopy(String path) => replaceSafelySync(path, (part) => _db.execute('VACUUM INTO ?', [part.path]));
 
+  /// Whether the database passes SQLite's own check of its structure.
+  bool get isHealthy {
+    try {
+      return _db.select('PRAGMA quick_check').first.columnAt(0) == 'ok';
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Replaces everything in this database with the copy at [path], except
   /// that journal writing is never lost: a day the copy has no entry for
   /// keeps its text, and one written differently since keeps both.

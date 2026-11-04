@@ -81,7 +81,7 @@ mixin _Journal on ChangeNotifier {
       // a save made meanwhile, is tried again.
       if (_savesFiles && written && _journalFailures == failures) store.setSetting('journalFilesStale', '0');
     } catch (e) {
-      debugPrint('Rewriting journal files failed: $e');
+      AppLog.failure('Rewriting journal files failed', e);
     }
   }
 
@@ -176,7 +176,7 @@ mixin _Journal on ChangeNotifier {
     try {
       await files.write(day, text);
     } on FileSystemException catch (e) {
-      debugPrint('Saving journal file failed: $e');
+      AppLog.failure('Saving a journal file failed', e);
       // EPERM: macOS's privacy settings keep Eclipse out of Documents.
       problem = Platform.isMacOS && e.osError?.errorCode == 1
           ? "Eclipse isn’t allowed in your Documents folder, so the journal’s files aren’t being saved. "
@@ -219,7 +219,7 @@ mixin _Journal on ChangeNotifier {
       }
       store.setSetting('journalExported', '1');
     } catch (e) {
-      debugPrint('Exporting journal failed: $e');
+      AppLog.failure('Exporting the journal failed', e);
     }
   }
 

@@ -63,6 +63,20 @@ class JournalFiles {
     return found;
   }
 
+  /// The writing in every file here, by day key.
+  Map<String, String> readAllSync() {
+    final found = <String, String>{};
+    if (!dir.existsSync()) return found;
+    final entry = RegExp(r'^\d{4}-\d{2}-\d{2}\.md$');
+    for (final file in dir.listSync(recursive: true).whereType<File>()) {
+      if (!entry.hasMatch(p.basename(file.path))) continue;
+      final text = file.readAsStringSync();
+      final body = text.startsWith('# ') && text.contains('\n\n') ? text.substring(text.indexOf('\n\n') + 2) : text;
+      found[p.basenameWithoutExtension(file.path)] = body.endsWith('\n') ? body.substring(0, body.length - 1) : body;
+    }
+    return found;
+  }
+
   /// Saves the day's entry; an empty entry removes its file. Written beside
   /// the file first and renamed, so a crash never leaves half an entry.
   Future<void> _pending = Future.value();

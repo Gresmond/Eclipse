@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import 'app_log.dart';
 import 'restart.dart';
 import 'http_request.dart';
 import 'platform_files.dart';
@@ -191,6 +192,7 @@ class GitUpdater extends Updater {
         (l) => l.toLowerCase().contains('error'),
         orElse: () => output.isEmpty ? 'The install script stopped (exit code $code).' : output.last,
       );
+      AppLog.note('Update failed: exit code $code');
       set(UpdateStatus.failed);
       return;
     }
@@ -333,6 +335,7 @@ class ReleaseUpdater extends Updater {
       dismiss();
     } on ProcessException catch (e) {
       error = e.message;
+      AppLog.failure('Update failed', e);
       set(UpdateStatus.failed);
     }
   }
@@ -469,6 +472,7 @@ class LinuxUpdater extends ReleaseUpdater {
       await restart(beforeRestart: onRestart ?? () async {}, executable: p.join(installRoot, 'current', 'eclipse'));
     } catch (e) {
       error = e is ProcessException ? e.message : e.toString();
+      AppLog.failure('Update failed', e);
       set(UpdateStatus.failed);
     } finally {
       if (directory != null && await directory.exists()) await directory.delete(recursive: true);

@@ -4,9 +4,11 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 
+import 'data/app_log.dart';
 import 'data/backups.dart';
 import 'data/data_folder.dart';
 import 'data/journal_files.dart';
+import 'data/restart.dart';
 import 'data/search.dart';
 import 'data/store.dart';
 import 'data/sync.dart';
@@ -24,6 +26,9 @@ part 'state/reminders.dart';
 part 'state/settings.dart';
 part 'state/todos.dart';
 part 'state/undo.dart';
+
+/// What's gone wrong with backing up.
+enum BackupProblem { failed, damaged }
 
 /// App state backed by [Store]. Keeps habit entries and the current to-do
 /// lists in memory and writes every change straight to SQLite.
@@ -242,13 +247,21 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     notifyListeners();
   }
 
-  /// Today's copy, taken before anything changes today. A failed backup
-  /// must never stop the app opening.
+  /// What went wrong with the last backup; null when all is well.
+  BackupProblem? backupProblem;
+
+  /// Today's check and copy, taken before anything changes today. A failed
+  /// backup must never stop the app opening.
   void _backUp() {
     try {
       backups?.daily(store, today);
+      backupProblem = backups?.updateCopyFailed ?? false ? BackupProblem.failed : null;
+    } on DataDamaged {
+      backupProblem = BackupProblem.damaged;
+      AppLog.note('The database failed its daily check');
     } catch (e) {
-      debugPrint('Backup failed: $e');
+      backupProblem = BackupProblem.failed;
+      AppLog.failure('Backup failed', e);
     }
   }
 
@@ -278,11 +291,31 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   /// Replaces all data with [backup]. What was there before is kept as a
   /// backup of its own.
   Future<void> restore(Backup backup) async {
+    if (!store.isHealthy) return _recover(backup);
     if (sync != null) {
       await sync!.exclusive(() => _restore(backup));
     } else {
       await _restore(backup);
     }
+  }
+
+  /// A damaged database can't be restored over from inside: it's closed and
+  /// swapped for [backup], and Eclipse opens again. If the swap fails, the
+  /// database is put back, and it opens as it was.
+  Future<void> _recover(Backup backup) async {
+    if (!Backups.isHealthy(backup.file)) throw StateError('That copy is damaged too');
+    sync?.stop();
+    await flushFiles();
+    await restartApplication(
+      beforeRestart: () async {
+        store.close();
+        try {
+          backups!.recover(backup, dataFolder!.database, journal: journalFiles);
+        } catch (e) {
+          AppLog.failure('Recovering from a backup failed', e);
+        }
+      },
+    );
   }
 
   Future<void> _restore(Backup backup) async {
@@ -305,6 +338,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
       notifyListeners();
       rethrow;
     }
+    _backUp();
     // The journal's files follow: the restored entries written out, and
     // the files of days the copy has no entry for removed.
     final after = {for (final e in store.journalEntries()) e.day: e.text};

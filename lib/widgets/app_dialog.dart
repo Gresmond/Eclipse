@@ -81,6 +81,9 @@ Widget dialogTransition(Animation<double> animation, Widget child) => FadeTransi
   child: child,
 );
 
+/// The app's navigator, for what's drawn above it: the corner cards.
+final appNavigator = GlobalKey<NavigatorState>();
+
 /// Clicking anywhere in the dialog, a toggle or a button that opens one of
 /// its pages, leaves the cursor in its text field.
 Future<T?> showAppDialog<T>({required BuildContext context, required WidgetBuilder builder}) {

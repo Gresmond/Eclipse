@@ -21,7 +21,7 @@ jobs:
       build: ${{ steps.version.outputs.build }}
       new: ${{ steps.version.outputs.new }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Read version and check for an existing release
         id: version
         env:
@@ -58,8 +58,8 @@ jobs:
     steps:
       - name: Install native Arch dependencies
         run: pacman -Syu --noconfirm --needed git curl jq unzip xz clang cmake ninja pkgconf gtk3 libdbusmenu-glib sqlite libglvnd libx11 xdg-utils zstd xorg-server-xvfb dbus mesa desktop-file-utils
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: 3.47.8
@@ -115,7 +115,7 @@ jobs:
           set -e
           cat smoke.log
           test "$status" -eq 124
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Eclipse-Linux
           if-no-files-found: error
@@ -133,8 +133,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: 3.47.8
@@ -212,7 +212,7 @@ jobs:
           Start-Sleep -Seconds 20
           if ($app.HasExited) { throw "App exited during startup: $($app.ExitCode)" }
           Stop-Process -Id $app.Id
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Eclipse-${{ runner.os }}
           if-no-files-found: error
@@ -227,7 +227,7 @@ jobs:
     if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: Eclipse-*
           merge-multiple: true
@@ -239,7 +239,7 @@ jobs:
           test -s Eclipse.dmg
           test -s 'Eclipse.exe'
           sha256sum *.tar.zst *.dmg *.exe > SHA256SUMS
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
           name: Eclipse ${{ needs.version.outputs.version }}

@@ -15,8 +15,8 @@ jobs:
     steps:
       - name: Install native Arch build dependencies
         run: pacman -Syu --noconfirm --needed git curl jq unzip xz clang cmake ninja pkgconf gtk3 libdbusmenu-glib sqlite libglvnd libx11 xdg-utils zstd
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: 3.47.8
@@ -41,6 +41,7 @@ jobs:
             flutter pub get &&
             flutter analyze &&
             dart run tool/ci_test.dart &&
+            TZ=Australia/Adelaide dart run tool/ci_test.dart test/dates_test.dart &&
             flutter build linux --release
           '
       - name: Verify per-user packaging and installation

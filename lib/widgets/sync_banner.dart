@@ -14,8 +14,9 @@ import 'corner_card.dart';
 /// when changes come in from another computer, saying where from. Otherwise,
 /// cards that stay there until done or closed: one while some changes from
 /// another computer are waiting (they need a newer version, or couldn't be
-/// read), and one asking to sign in again while the sign-in is from before
-/// the journal went to Drive.
+/// read), one when sync has been failing for days or has stopped by itself,
+/// and one asking to sign in again while the sign-in is from before the
+/// journal went to Drive.
 class SyncBanner extends StatefulWidget {
   const SyncBanner({super.key, required this.sync});
 
@@ -46,6 +47,9 @@ class _SyncBannerState extends State<SyncBanner> {
 
   /// The waiting card, closed until Eclipse next opens.
   bool _waitingClosed = false;
+
+  /// The card saying sync has trouble, closed until Eclipse next opens.
+  bool _troubleClosed = false;
 
   /// The sign-in card: closed for now, waiting on the browser, or why
   /// signing in didn't work.
@@ -101,6 +105,8 @@ class _SyncBannerState extends State<SyncBanner> {
     // The waiting and sign-in cards make way while changes are shown.
     final waiting = !_visible && !_waitingClosed && (sync.newerFrom.isNotEmpty || sync.unreadFrom.isNotEmpty);
     final ask = !_visible && !_askClosed && sync.needsJournalSignIn;
+    final stale = sync.staleDays, stopped = sync.stoppedWhy;
+    final trouble = !_visible && !_troubleClosed && (stale != null || stopped != null);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -111,6 +117,19 @@ class _SyncBannerState extends State<SyncBanner> {
             newerFrom: sync.newerFrom,
             unreadFrom: sync.unreadFrom,
             onClose: () => setState(() => _waitingClosed = true),
+          ),
+        ),
+        CornerCard(
+          visible: trouble,
+          child: _TroubleCard(
+            title: stopped != null ? 'Sync has stopped' : 'Sync hasn’t worked for $stale days',
+            lines: stopped != null
+                ? [curlyQuotes(stopped), 'Your changes are safe here. To sync again, sign in under Settings, Data.']
+                : [
+                    'Your changes are safe here, but your other computers aren’t getting them.',
+                    curlyQuotes(sync.error ?? ''),
+                  ],
+            onClose: () => setState(() => _troubleClosed = true),
           ),
         ),
         CornerCard(
@@ -289,60 +308,45 @@ class _WaitingCard extends StatelessWidget {
         : newer
         ? 'Some changes need an update'
         : 'Some changes couldn’t be read';
-    final body = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted);
-    return Container(
-      width: cornerCardWidth,
-      padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
-      decoration: BoxDecoration(
-        color: p.tile,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Text(title, style: cornerCardTitle(p.ink)),
-          ),
-          if (newer) ...[
-            const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Text(
-                'Some changes from ${names(newerFrom)} need a newer version of Eclipse. '
-                'They come in once you update.',
-                style: body,
-              ),
-            ),
-          ],
-          if (unread) ...[
-            const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Text(
-                'Some changes from ${names(unreadFrom)} couldn’t be read, so they’re waiting. '
-                'Your own changes still go to your other computers.',
-                style: body,
-              ),
-            ),
-          ],
-          const SizedBox(height: 4),
-          SizedBox(
-            width: double.infinity,
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: onClose,
-                  child: Text('Not now', style: TextStyle(color: p.inkMuted)),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return NoticeCard(
+      title: title,
+      lines: [
+        if (newer)
+          'Some changes from ${names(newerFrom)} need a newer version of Eclipse. '
+              'They come in once you update.',
+        if (unread)
+          'Some changes from ${names(unreadFrom)} couldn’t be read, so they’re waiting. '
+              'Your own changes still go to your other computers.',
+      ],
+      actions: [
+        TextButton(
+          onPressed: onClose,
+          child: Text('Not now', style: TextStyle(color: p.inkMuted)),
+        ),
+      ],
+    );
+  }
+}
+
+/// Says sync has been failing for days, or has stopped altogether.
+class _TroubleCard extends StatelessWidget {
+  const _TroubleCard({required this.title, required this.lines, required this.onClose});
+
+  final String title;
+  final List<String> lines;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return NoticeCard(
+      title: title,
+      lines: lines,
+      actions: [
+        TextButton(
+          onPressed: onClose,
+          child: Text('Not now', style: TextStyle(color: context.palette.inkMuted)),
+        ),
+      ],
     );
   }
 }

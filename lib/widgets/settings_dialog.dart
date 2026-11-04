@@ -1,5 +1,6 @@
 import 'confirm_on_enter.dart';
 import 'app_dialog.dart';
+import 'backup_row.dart';
 
 import 'package:path/path.dart' as pth;
 
@@ -9,6 +10,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../data/app_log.dart';
 import '../data/backups.dart';
 import '../data/data_folder.dart';
 import '../data/google_drive.dart';
@@ -35,7 +37,10 @@ Widget settingsTransition(BuildContext context, Animation<double> animation, Wid
 /// Restoring a backup asks first, inline on its row. Pops with the
 /// restored [Backup], or nothing.
 class SettingsDialog extends StatefulWidget {
-  const SettingsDialog({super.key, this.tourRibbon, this.tourTargetKey});
+  const SettingsDialog({super.key, this.tourRibbon, this.tourTargetKey, this.ribbon = 0});
+
+  /// The ribbon it opens on.
+  final int ribbon;
 
   /// Shows the actual panel beneath the welcome tour's interaction barrier.
   final int? tourRibbon;
@@ -46,8 +51,8 @@ class SettingsDialog extends StatefulWidget {
 }
 
 class _SettingsDialogState extends State<SettingsDialog> {
-  /// 0 for General, 1 for Data. Always opens on General.
-  late int _ribbon = widget.tourRibbon ?? 0;
+  /// 0 for General, 1 for Data. Opens on General unless told otherwise.
+  late int _ribbon = widget.tourRibbon ?? widget.ribbon;
 
   final _search = SettingsSearchHandle();
 
