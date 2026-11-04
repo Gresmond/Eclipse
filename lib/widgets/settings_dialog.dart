@@ -218,67 +218,63 @@ class _SettingsDialogState extends State<SettingsDialog> {
           ? null
           // Opens the first result while searching, else closes.
           : () => _ribbon == 0 && _search.searching ? _search.openFirst() : Navigator.pop(context),
-      // Its top stays where it opened as a ribbon's page grows or shrinks,
-      // as the task dialogs' does.
-      child: KeepTop(
-        child: Dialog(
-          clipBehavior: Clip.antiAlias,
-          backgroundColor: p.tile,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
-          child: TourTarget(
-            key: widget.tourTargetKey,
-            spot: widget.tourRibbon == null ? TourSpot.settings : TourSpot.settingsPreview,
-            child: SizedBox(
-              width: 480,
-              // Scrolls when the window is too short for all of it.
-              child: SingleChildScrollView(
-                padding: dialogPadding,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(child: Text('Settings', style: dialogTitleStyle(p))),
-                        _Ribbons(
-                          labels: const ['General', 'Data'],
-                          selected: _ribbon,
-                          onSelect: (i) => setState(() {
-                            _ribbon = i;
-                            _error = null;
-                            _journalError = null;
-                          }),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // Clipped, so the old page never lies over Close as it fades.
-                    ClipRect(
-                      child: AnimatedSize(
-                        duration: Motion.morph,
-                        curve: Motion.morphCurve,
-                        alignment: Alignment.topCenter,
-                        clipBehavior: Clip.none,
-                        child: FadeThrough(
-                          layoutBuilder: FadeThrough.pinTop,
-                          child: KeyedSubtree(
-                            key: ValueKey(_ribbon),
-                            child: _ribbon == 0
-                                ? SettingsSearch(handle: _search, settings: _general(p))
-                                : _backupsAndSync(p),
-                          ),
+      child: Dialog(
+        clipBehavior: Clip.antiAlias,
+        backgroundColor: p.tile,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
+        child: TourTarget(
+          key: widget.tourTargetKey,
+          spot: widget.tourRibbon == null ? TourSpot.settings : TourSpot.settingsPreview,
+          child: SizedBox(
+            width: 480,
+            // Scrolls when the window is too short for all of it.
+            child: SingleChildScrollView(
+              padding: dialogPadding,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text('Settings', style: dialogTitleStyle(p))),
+                      _Ribbons(
+                        labels: const ['General', 'Data'],
+                        selected: _ribbon,
+                        onSelect: (i) => setState(() {
+                          _ribbon = i;
+                          _error = null;
+                          _journalError = null;
+                        }),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  // Clipped, so the old page never lies over Close as it fades.
+                  ClipRect(
+                    child: AnimatedSize(
+                      duration: Motion.morph,
+                      curve: Motion.morphCurve,
+                      alignment: Alignment.topCenter,
+                      clipBehavior: Clip.none,
+                      child: FadeThrough(
+                        layoutBuilder: FadeThrough.pinTop,
+                        child: KeyedSubtree(
+                          key: ValueKey(_ribbon),
+                          child: _ribbon == 0
+                              ? SettingsSearch(handle: _search, settings: _general(p))
+                              : _backupsAndSync(p),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        const Spacer(),
-                        DialogDismiss(label: 'Close', onPressed: _restoring ? null : () => Navigator.pop(context)),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      const Spacer(),
+                      DialogDismiss(label: 'Close', onPressed: _restoring ? null : () => Navigator.pop(context)),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
