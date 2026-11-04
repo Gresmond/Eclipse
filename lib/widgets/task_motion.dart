@@ -72,6 +72,10 @@ class _RenderSlidingColumn extends RenderBox
 
   final _clip = LayerHandle<ClipPathLayer>();
 
+  /// The row crossing the others as last painted, on top to the eye and so
+  /// to the pointer.
+  RenderBox? _lifted;
+
   Animation<double> _progress;
   set progress(Animation<double> value) {
     if (value == _progress) return;
@@ -159,6 +163,7 @@ class _RenderSlidingColumn extends RenderBox
       data.offset = Offset(0, y);
       if (t < 1 && up && down && lifted == null && distance > 0.5 && distance == furthest) lifted = child;
     }
+    _lifted = lifted;
     void paintOthers(PaintingContext context, Offset offset) {
       for (var child = firstChild; child != null; child = (child.parentData! as _SlideParentData).nextSibling) {
         if (child != lifted) context.paintChild(child, offset + (child.parentData! as _SlideParentData).offset);
@@ -183,8 +188,17 @@ class _RenderSlidingColumn extends RenderBox
   }
 
   @override
-  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
-      defaultHitTestChildren(result, position: position);
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    final lifted = _lifted;
+    final onLifted =
+        lifted != null &&
+        result.addWithPaintOffset(
+          offset: (lifted.parentData! as _SlideParentData).offset,
+          position: position,
+          hitTest: (result, transformed) => lifted.hitTest(result, position: transformed),
+        );
+    return onLifted || defaultHitTestChildren(result, position: position);
+  }
 }
 
 /// Shared timing and linear membership checks for task and subtask reorders.
@@ -348,6 +362,15 @@ class _RenderGlideRow extends RenderProxyBox {
   /// Where it lies now in the scroll's content, top left.
   Offset get _target => localToGlobal(Offset.zero) + Offset(0, position.pixels);
 
+  /// The row crossing this one, in this one's terms; null if there's none,
+  /// or this is it.
+  Rect? _crossingOver(Offset target) {
+    final crossing = progress.value < 1 ? group.crossing : null;
+    return crossing == null || crossing == this || !crossing.attached || !crossing.hasSize
+        ? null
+        : (crossing._at(crossing._target) - target) & crossing.size;
+  }
+
   /// Where it's drawn this frame, in the scroll's content.
   Offset _at(Offset target) {
     final from = _paintedGeneration == generation ? _from! : (_painted ?? target.dy);
@@ -367,12 +390,8 @@ class _RenderGlideRow extends RenderProxyBox {
     _translation = Offset(0, y - target.dy);
     final child = this.child;
     if (child == null) return;
-    final crossing = progress.value < 1 ? group.crossing : null;
     final mine = _translation & size;
-    // The crossing row, in this one's terms.
-    final over = crossing == null || crossing == this || !crossing.attached || !crossing.hasSize
-        ? null
-        : (crossing._at(crossing._target) - target) & crossing.size;
+    final over = _crossingOver(target);
     if (over == null || !over.overlaps(mine)) {
       _clip.layer = null;
       context.paintChild(child, offset + _translation);
@@ -394,11 +413,15 @@ class _RenderGlideRow extends RenderProxyBox {
   }
 
   @override
-  bool hitTest(BoxHitTestResult result, {required Offset position}) => result.addWithPaintOffset(
-    offset: _translation,
-    position: position,
-    hitTest: (result, transformed) => super.hitTest(result, position: transformed),
-  );
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    // Cut away under the crossing row, so a click there goes on to it.
+    if (_crossingOver(_target)?.contains(position) ?? false) return false;
+    return result.addWithPaintOffset(
+      offset: _translation,
+      position: position,
+      hitTest: (result, transformed) => super.hitTest(result, position: transformed),
+    );
+  }
 }
 
 /// [area] less the rounded row [cut], to clip the rows [cut] passes over.

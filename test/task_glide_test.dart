@@ -75,6 +75,56 @@ void main() {
     expect(top('Alpha'), closeTo(start, 0.01));
   });
 
+  // Rows are hit where they're drawn, and the crossing row is drawn on top.
+  for (final (direction, startTicked) in [('down', false), ('back up', true)]) {
+    testWidgets('a click mid-glide lands on the row that shows there, going $direction', (tester) async {
+      for (final name in ['Alpha', 'Bravo', 'Charlie', 'Delta']) {
+        state.addTodo(TodoScope.today, name);
+      }
+      await show(tester);
+      if (startTicked) {
+        await tester.tap(find.text('Alpha'));
+        await tester.pumpAndSettle();
+      }
+      bool ticked(String name) => state.todos[TodoScope.today]!.firstWhere((t) => t.text == name).done;
+
+      await tester.tap(find.text('Alpha'));
+      await tester.pump();
+      await tester.pump(Motion.reorder ~/ 2);
+      await tester.tap(find.text('Alpha'));
+      await tester.pumpAndSettle();
+
+      expect(ticked('Alpha'), startTicked);
+      for (final name in ['Bravo', 'Charlie', 'Delta']) {
+        expect(ticked(name), isFalse, reason: '$name was only passed under');
+      }
+    });
+  }
+
+  testWidgets('a click mid-glide lands on the subtask that shows there, going back up', (tester) async {
+    state.addTodo(TodoScope.today, 'Project');
+    state.setTodoSubtasks(TodoScope.today, state.todos[TodoScope.today]!.single, [
+      const TodoSubtask('Alpha step'),
+      const TodoSubtask('Bravo step'),
+      const TodoSubtask('Charlie step'),
+      const TodoSubtask('Delta step'),
+    ]);
+    await show(tester);
+    await tester.tap(find.byTooltip('Expand subtasks'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Alpha step'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Alpha step'));
+    await tester.pump();
+    await tester.pump(Motion.reorder ~/ 2);
+    await tester.tap(find.text('Alpha step'));
+    await tester.pumpAndSettle();
+
+    final ticked = {for (final s in state.todos[TodoScope.today]!.single.subtasks) s.text: s.done};
+    expect(ticked, {'Alpha step': true, 'Bravo step': false, 'Charlie step': false, 'Delta step': false});
+  });
+
   // MOTION-01: the panel's tint shows under gliding rows; no slab is drawn.
   testWidgets('rows glide with nothing painted behind them, the crossing one cutting the others away', (tester) async {
     for (final name in ['Alpha', 'Bravo', 'Charlie', 'Delta']) {

@@ -37,6 +37,22 @@ void main() {
     return found;
   }
 
+  test('widgets that ease their own colours stand still during a theme change', () {
+    final animated = RegExp(r'Animated(?:Container|DefaultTextStyle)\(');
+    final bad = <String>[];
+    var seen = 0;
+    for (final f in files) {
+      final code = f.readAsLinesSync().where((line) => !line.trimLeft().startsWith('//')).join('\n');
+      for (final m in animated.allMatches(code)) {
+        seen++;
+        final duration = RegExp(r'duration: ([^\n]*)').firstMatch(code.substring(m.end));
+        if (!(duration?.group(1)?.startsWith('context.themed(') ?? false)) bad.add('${f.path}  ${m.group(0)}');
+      }
+    }
+    expect(seen, greaterThan(0));
+    expect(bad, isEmpty, reason: 'give these duration: context.themed(...)');
+  });
+
   test('corner radii are on the scale', () {
     final bad = offenders(RegExp(r'Radius\.circular\(([0-9.]+)\)'), (v) => Scale.radii.contains(double.parse(v)));
     expect(bad, isEmpty);
