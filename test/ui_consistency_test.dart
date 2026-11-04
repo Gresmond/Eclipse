@@ -7,6 +7,7 @@ import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/theme/tokens.dart';
 import 'package:eclipse/widgets/progress_ring.dart';
+import 'package:eclipse/widgets/tile.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -236,7 +237,23 @@ void main() {
       }
     });
 
-    testWidgets('a checkbox centres in its row, with the badge and buttons, whatever is above or below the name', (tester) async {
+    testWidgets('every day of the week lines up with Today', (tester) async {
+      await pumpApp(tester);
+      try {
+        state.addTodo(TodoScope.tomorrow, 'A task tomorrow');
+        await tester.pumpAndSettle();
+        Finder inWeek(Finder text) => find.descendant(of: find.byType(WeekCard), matching: text);
+        double left(String text) => tester.getTopLeft(inWeek(find.textContaining(text)).first).dx;
+        final pills = inWeek(find.byType(StatusPill));
+        expect(left('A task tomorrow'), closeTo(left('A plain task'), 0.5));
+        expect(left('Tomorrow'), closeTo(left('Today'), 0.5));
+        expect(tester.getTopRight(pills.last).dx, closeTo(tester.getTopRight(pills.first).dx, 0.5));
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testWidgets('a checkbox centres in its row, whatever is above or below the name', (tester) async {
       await pumpApp(tester);
       try {
         for (final name in ['A plain task', 'A timed task']) {

@@ -369,7 +369,8 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
         child: sliver,
       ),
       child: SliverPadding(
-        padding: EdgeInsets.fromLTRB(i == 0 ? 18 : 0, i == 0 ? 18 : 0, i == 0 ? 18 : 8, i == 0 ? 12 : 0),
+        // The same sides on every day, so all their rows line up with Today's.
+        padding: EdgeInsets.fromLTRB(18, i == 0 ? 18 : 0, 18, i == 0 ? 12 : 0),
         sliver: group,
       ),
     );
