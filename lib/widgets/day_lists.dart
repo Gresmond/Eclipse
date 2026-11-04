@@ -274,6 +274,24 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
   }
 
   bool _hasDeparting(String group) => _departing.values.any((d) => d.group == group);
+
+  /// Each row as last built, with what it was built from.
+  final _rows = <Object, ({TodoItem? item, Object? from, Widget row})>{};
+
+  /// The row for [key], the last one's very widget while [item] has the same
+  /// content and [from] (what else it's built from) is the same, so a
+  /// change to one task rebuilds that task's row, not the whole list's.
+  Widget _row(Object key, TodoItem? item, Object? from, Widget Function() build) {
+    final last = _rows[key];
+    if (last != null &&
+        last.from == from &&
+        (identical(last.item, item) || (last.item != null && item != null && last.item!.sameContent(item)))) {
+      return last.row;
+    }
+    final row = build();
+    _rows[key] = (item: item, from: from, row: row);
+    return row;
+  }
 }
 
 /// Adds [text] as a task due on [day], in the list it belongs to now.

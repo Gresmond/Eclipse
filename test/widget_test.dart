@@ -19,6 +19,7 @@ import 'package:eclipse/data/sync_service.dart';
 import 'package:eclipse/data/updates.dart';
 import 'package:eclipse/data/windows_night_light.dart';
 import 'package:eclipse/main.dart';
+import 'package:eclipse/widgets/fade_through.dart';
 import 'package:eclipse/screens/today_view.dart';
 import 'package:eclipse/screens/month_view.dart';
 import 'package:eclipse/models.dart';
@@ -1274,7 +1275,7 @@ void main() {
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
 
-    Finder pillFor(String title) => find.ancestor(of: find.text(title), matching: find.byType(AnimatedSize)).first;
+    Finder pillFor(String title) => find.ancestor(of: find.text(title), matching: find.byType(PageSize)).first;
     final originalState = tester.state(pillFor('October'));
     final monthWidth = tester.getSize(pillFor('October')).width;
 
@@ -1282,7 +1283,8 @@ void main() {
     await tester.pump();
     expect(tester.state(pillFor('25 October')), same(originalState));
     expect(tester.getSize(pillFor('25 October')).width, closeTo(monthWidth, 0.01));
-    await tester.pump(const Duration(milliseconds: 210));
+    // A longer date's room opens first, as the old one fades.
+    await tester.pump(const Duration(milliseconds: 80));
     final growingWidth = tester.getSize(pillFor('25 October')).width;
     await tester.pumpAndSettle();
     final todayWidth = tester.getSize(pillFor('25 October')).width;
@@ -1292,7 +1294,8 @@ void main() {
     await tester.tap(find.text('Oct').hitTestable());
     await tester.pump();
     expect(tester.state(pillFor('October')), same(originalState));
-    await tester.pump(const Duration(milliseconds: 210));
+    // A shorter one's closes only once the old has faded.
+    await tester.pump(const Duration(milliseconds: 240));
     final shrinkingWidth = tester.getSize(pillFor('October')).width;
     expect(shrinkingWidth, greaterThan(monthWidth));
     expect(shrinkingWidth, lessThan(todayWidth));

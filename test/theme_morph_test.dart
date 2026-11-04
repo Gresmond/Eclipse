@@ -17,7 +17,9 @@ void main() {
           themeAnimationDuration: Motion.morph,
           themeAnimationCurve: Motion.morphCurve,
           builder: (context, child) => ThemeMorph(target: paletteNamed(themeName), child: child!),
-          home: const Scaffold(body: Center(child: StatusPill(label: '3 open'))),
+          home: const Scaffold(
+            body: Center(child: StatusPill(label: '3 open')),
+          ),
         ),
       ),
     );

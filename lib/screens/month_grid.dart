@@ -41,19 +41,16 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   late final _palette = ValueNotifier(context.palette);
   final _cells = <int, (Object, List<Widget>)>{};
 
-  List<Widget> _cellsFor(
-    Habit habit,
-    double size,
-    AppState state,
-    List<({int number, DateTime day, bool leaving})> columns,
-  ) {
+  /// Every square is built at [_maxCell], whatever size it's drawn at (see
+  /// [_ColumnsDelegate]), so resizing the window builds and lays out none
+  /// of them.
+  List<Widget> _cellsFor(Habit habit, AppState state, List<({int number, DateTime day, bool leaving})> columns) {
     final key = (
       widget.year,
       widget.month,
       _previous,
       habit,
       habit.days,
-      size,
       state.today,
       state.restWeekends,
       state.holidays,
@@ -69,7 +66,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
         StatusCell(
           day: c.day,
           habit: habit,
-          size: size,
+          size: _maxCell,
           enabled: !c.leaving && !c.day.isAfter(state.today) && habit.startedBy(c.day),
           rest: state.isRestDay(c.day),
           off: !habit.onDay(c.day),
@@ -233,7 +230,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
                     laidOut: cell,
                     layout: layout,
                     clickableDays: columns.where((c) => !c.leaving && !c.day.isAfter(state.today)).length,
-                    cells: _cellsFor(h, cell, state, columns),
+                    cells: _cellsFor(h, state, columns),
                   ),
                 ),
               ),
@@ -477,7 +474,7 @@ class _ColumnsDelegate extends FlowDelegate {
   final _ColumnLayout layout;
   final double height;
 
-  /// The squares as drawn over as laid out, while they ease to a new size.
+  /// The squares as drawn over as laid out (always at [_GridState._maxCell]).
   final double scale;
 
   @override

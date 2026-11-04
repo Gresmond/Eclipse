@@ -78,7 +78,9 @@ void main() {
     // scan held up a moment.
     store.setSetting('journalFilesStale', '1');
     files.gate = Completer<void>();
-    unawaited(files.scanning.future.then((_) => Future<void>.delayed(const Duration(milliseconds: 20), files.gate!.complete)));
+    unawaited(
+      files.scanning.future.then((_) => Future<void>.delayed(const Duration(milliseconds: 20), files.gate!.complete)),
+    );
     unawaited(state.setJournal(DateTime(2026, 11, 2), 'Last words'));
     // As quitting does: once this returns, the store can close.
     await state.flushFiles();

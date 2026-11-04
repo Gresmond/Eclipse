@@ -73,18 +73,16 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
                 padding: const EdgeInsets.only(left: 4, right: 12),
                 child: FadeThrough(
                   layoutBuilder: FadeThrough.fill,
-                  child: widget.firstCheckboxInset == null
-                      ? _LaterList(key: ValueKey(dateKey(day)), groups: groups, birthdays: birthdays, added: added)
-                      : ValueListenableBuilder<double>(
-                          valueListenable: widget.firstCheckboxInset!,
-                          builder: (context, inset, _) => _LaterList(
-                            key: ValueKey(dateKey(day)),
-                            groups: groups,
-                            birthdays: birthdays,
-                            added: added,
-                            topInset: inset,
+                  child: StagedHeight(
+                    key: ValueKey(dateKey(day)),
+                    child: widget.firstCheckboxInset == null
+                        ? _LaterList(groups: groups, birthdays: birthdays, added: added)
+                        : ValueListenableBuilder<double>(
+                            valueListenable: widget.firstCheckboxInset!,
+                            builder: (context, inset, _) =>
+                                _LaterList(groups: groups, birthdays: birthdays, added: added, topInset: inset),
                           ),
-                        ),
+                  ),
                 ),
               ),
             ),
@@ -106,7 +104,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
 /// One day's further-ahead list: each date's tasks, then the repeats due
 /// round on it; tasks without a day last.
 class _LaterList extends StatefulWidget {
-  const _LaterList({super.key, required this.groups, required this.birthdays, required this.added, this.topInset = 0});
+  const _LaterList({required this.groups, required this.birthdays, required this.added, this.topInset = 0});
 
   final List<(DateTime?, List<_Later>)> groups;
 
@@ -122,6 +120,22 @@ class _LaterList extends StatefulWidget {
 }
 
 class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
+  /// How many days' groups are built, in date order. A scroll view lays
+  /// out a row of every list in it however far off screen, so a long year's
+  /// worth would all be built on every change; more join as it's scrolled
+  /// near them.
+  var _built = _firstBuilt;
+  static const _firstBuilt = 16;
+  var _groupCount = 0;
+
+  void _buildMore() {
+    final scroll = _scroll;
+    if (!mounted || _built >= _groupCount || scroll == null || !scroll.hasClients) return;
+    final position = scroll.position;
+    if (!position.hasContentDimensions || position.extentAfter > position.viewportDimension * 2) return;
+    setState(() => _built += _firstBuilt);
+  }
+
   /// Birthdays were just shown or hidden: this build jumps to how it is.
   var _instant = false;
 
@@ -212,10 +226,15 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
     groups.sort((a, b) => a.date == null ? 1 : (b.date == null ? -1 : a.date!.compareTo(b.date!)));
     final shown = {for (final g in groups) g.key: _shown(g.key, g.tasks, fresh: widget.added)};
     _settle();
+    final sought = _sought;
     _reveal([
       for (final g in groups)
         for (final (_, item) in g.tasks) item.uid,
     ]);
+    // Search has opened one of these: it's somewhere in them all.
+    if (_sought != sought) _built = groups.length;
+    _groupCount = groups.length;
+    if (_built < groups.length) WidgetsBinding.instance.addPostFrameCallback((_) => _buildMore());
     if (groups.isEmpty) {
       // Where and as Week ahead says the same.
       return Align(
@@ -232,132 +251,156 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
       );
     }
     return SmoothTaskScroll(
-      builder: (context, controller) => CustomScrollView(
-        controller: _scroll = controller,
-        scrollCacheExtent: const ScrollCacheExtent.pixels(80),
-        slivers: [
-          SliverPadding(padding: EdgeInsets.only(top: widget.topInset)),
-          for (final g in groups)
-            SliverPadding(
-              key: ValueKey(g.key),
-              padding: const EdgeInsets.only(bottom: 24),
-              sliver: SliverCrossAxisGroup(
-                slivers: [
-                  SliverConstrainedCrossAxis(
-                    maxExtent: 56,
-                    sliver: SliverToBoxAdapter(
-                      child: Appear(
-                        animate: false,
-                        shown: current.contains(g.key),
-                        child: AnimatedPadding(
-                          duration: instant ? Duration.zero : Motion.morph,
-                          padding: EdgeInsets.zero,
-                          child: _UpcomingDateTile(date: g.date),
+      builder: (context, controller) => NotificationListener<ScrollUpdateNotification>(
+        onNotification: (_) {
+          _buildMore();
+          return false;
+        },
+        child: CustomScrollView(
+          controller: _scroll = controller,
+          scrollCacheExtent: const ScrollCacheExtent.pixels(80),
+          slivers: [
+            SliverPadding(padding: EdgeInsets.only(top: widget.topInset)),
+            for (final g in groups.take(_built))
+              SliverPadding(
+                key: ValueKey(g.key),
+                padding: const EdgeInsets.only(bottom: 24),
+                sliver: SliverCrossAxisGroup(
+                  slivers: [
+                    SliverConstrainedCrossAxis(
+                      maxExtent: 56,
+                      sliver: SliverToBoxAdapter(
+                        child: Appear(
+                          animate: false,
+                          shown: current.contains(g.key),
+                          child: AnimatedPadding(
+                            duration: instant ? Duration.zero : Motion.morph,
+                            padding: EdgeInsets.zero,
+                            child: _UpcomingDateTile(date: g.date),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  SliverConstrainedCrossAxis(maxExtent: 14, sliver: SliverToBoxAdapter(child: SizedBox.shrink())),
-                  SliverCrossAxisExpanded(
-                    flex: 1,
-                    sliver: SliverMainAxisGroup(
-                      slivers: [
-                        LazyTaskSliver(
-                          ids: [
-                            for (final s in shown[g.key]!) (s.task.$1, s.task.$2.id),
-                            for (final repeat in g.repeats) repeat.uid,
-                          ],
-                          itemBuilder: (context, index) {
-                            final tasks = shown[g.key]!;
-                            if (index >= tasks.length) {
-                              final repeat = g.repeats[index - tasks.length];
-                              final (fadeIn, leaving) = (false, hidden.contains(repeat.uid));
-                              if (repeat.birthday) {
-                                return _LaterRow(
+                    SliverConstrainedCrossAxis(maxExtent: 14, sliver: SliverToBoxAdapter(child: SizedBox.shrink())),
+                    SliverCrossAxisExpanded(
+                      flex: 1,
+                      sliver: SliverMainAxisGroup(
+                        slivers: [
+                          LazyTaskSliver(
+                            ids: [
+                              for (final s in shown[g.key]!) (s.task.$1, s.task.$2.id),
+                              for (final repeat in g.repeats) repeat.uid,
+                            ],
+                            itemBuilder: (context, index) {
+                              final tasks = shown[g.key]!;
+                              if (index >= tasks.length) {
+                                final repeat = g.repeats[index - tasks.length];
+                                final (fadeIn, leaving) = (false, hidden.contains(repeat.uid));
+                                Widget build() {
+                                  if (repeat.birthday) {
+                                    return _LaterRow(
+                                      day: day,
+                                      repeat: repeat,
+                                      date: g.date,
+                                      fadeIn: fadeIn,
+                                      leaving: leaving,
+                                    );
+                                  }
+                                  // Ticked like any other task, it's made first, then
+                                  // closes up here as it goes to Today: ticked.
+                                  final date = g.date!;
+                                  final made = leaving ? _made(state, '${repeat.uid}@${dateKey(date)}') : null;
+                                  TodoItem make() => state.occurrence(repeat, date);
+                                  return TaskRow(
+                                    upcomingDate: g.date,
+                                    key: ValueKey(repeat.uid),
+                                    scope: TodoScope.month,
+                                    item: made ?? repeat.unmade(date),
+                                    day: day,
+                                    readOnly: readOnly,
+                                    fadeIn: fadeIn,
+                                    leaving: leaving,
+                                    make: made == null ? make : null,
+                                    onRemove: () => state.removeTodo(TodoScope.month, make()),
+                                  );
+                                }
+
+                                // Leaving, it looks up how it ended.
+                                return leaving
+                                    ? build()
+                                    : _row(repeat.uid, null, (repeat, g.date, day, state.today, readOnly), build);
+                              }
+                              final (:task, :arriving, :leaving) = tasks[index];
+                              final (scope, item) = task;
+                              final fadeIn = widget.added.contains(item.id) || arriving;
+                              void remove() =>
+                                  _remove(g.key, task, () => state.removeTodo(scope, item, day: state.shownDay));
+                              Widget build() {
+                                if (item.birthday) {
+                                  return _LaterRow(
+                                    key: ValueKey((scope, item.id)),
+                                    day: day,
+                                    task: task,
+                                    date: g.date,
+                                    readOnly: readOnly,
+                                    fadeIn: fadeIn,
+                                    leaving: leaving,
+                                    onRemove: remove,
+                                  );
+                                }
+                                // Leaving because it was ticked, it closes up ticked.
+                                final latest = leaving ? _latest(state, item) : null;
+                                return TaskRow(
+                                  upcomingDate: g.date,
+                                  key: ValueKey((scope, item.id)),
+                                  scope: latest?.$1 ?? scope,
+                                  item: latest?.$2 ?? item,
                                   day: day,
-                                  repeat: repeat,
-                                  date: g.date,
+                                  readOnly: readOnly,
                                   fadeIn: fadeIn,
                                   leaving: leaving,
+                                  onRemove: remove,
+                                  order: _order(g.key),
                                 );
                               }
-                              // Ticked like any other task, it's made first, then
-                              // closes up here as it goes to Today: ticked.
-                              final date = g.date!;
-                              final made = leaving ? _made(state, '${repeat.uid}@${dateKey(date)}') : null;
-                              TodoItem make() => state.occurrence(repeat, date);
-                              return TaskRow(
-                                upcomingDate: g.date,
-                                key: ValueKey(repeat.uid),
-                                scope: TodoScope.month,
-                                item: made ?? repeat.unmade(date),
-                                day: day,
-                                readOnly: readOnly,
-                                fadeIn: fadeIn,
-                                leaving: leaving,
-                                make: made == null ? make : null,
-                                onRemove: () => state.removeTodo(TodoScope.month, make()),
-                              );
-                            }
-                            final (:task, :arriving, :leaving) = tasks[index];
-                            final (scope, item) = task;
-                            final fadeIn = widget.added.contains(item.id) || arriving;
-                            void remove() =>
-                                _remove(g.key, task, () => state.removeTodo(scope, item, day: state.shownDay));
-                            if (item.birthday) {
-                              return _LaterRow(
-                                key: ValueKey((scope, item.id)),
-                                day: day,
-                                task: task,
-                                date: g.date,
-                                readOnly: readOnly,
-                                fadeIn: fadeIn,
-                                leaving: leaving,
-                                onRemove: remove,
-                              );
-                            }
-                            // Leaving because it was ticked, it closes up ticked.
-                            final latest = leaving ? _latest(state, item) : null;
-                            return TaskRow(
-                              upcomingDate: g.date,
-                              key: ValueKey((scope, item.id)),
-                              scope: latest?.$1 ?? scope,
-                              item: latest?.$2 ?? item,
-                              day: day,
-                              readOnly: readOnly,
-                              fadeIn: fadeIn,
-                              leaving: leaving,
-                              onRemove: remove,
-                              order: _order(g.key),
-                            );
-                          },
-                        ),
-                        if (g.date != null && current.contains(g.key))
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.calendar_today_rounded, size: 12, color: p.inkMuted),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      'In ${daysBetween(state.today, g.date!)} days',
-                                      style: TextStyle(fontSize: 12, color: p.inkMuted),
+
+                              return leaving
+                                  ? build()
+                                  : _row(
+                                      (scope, item.id),
+                                      item,
+                                      (g.key, day, state.today, readOnly, fadeIn, state.repeatOf(item)),
+                                      build,
+                                    );
+                            },
+                          ),
+                          if (g.date != null && current.contains(g.key))
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.calendar_today_rounded, size: 12, color: p.inkMuted),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        'In ${daysBetween(state.today, g.date!)} days',
+                                        style: TextStyle(fontSize: 12, color: p.inkMuted),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 8)),
-        ],
+            const SliverPadding(padding: EdgeInsets.only(bottom: 8)),
+          ],
+        ),
       ),
     );
   }

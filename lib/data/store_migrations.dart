@@ -18,7 +18,8 @@ extension on Store {
     // short left tables made and the version not set. Each step now goes
     // whole or not at all, and makes only what isn't there yet.
     if (version < 1) {
-      transaction(() => _db.execute('''
+      transaction(
+        () => _db.execute('''
         CREATE TABLE IF NOT EXISTS habits (id INTEGER PRIMARY KEY AUTOINCREMENT);
 
         -- Each month has its own ordered list. habit_id ties a ritual across
@@ -55,13 +56,16 @@ extension on Store {
         CREATE TABLE IF NOT EXISTS journal (day TEXT PRIMARY KEY, text TEXT NOT NULL);
 
         PRAGMA user_version = 1;
-      '''));
+      '''),
+      );
     }
     if (version < 2) {
-      transaction(() => _db.execute('''
+      transaction(
+        () => _db.execute('''
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         PRAGMA user_version = 2;
-      '''));
+      '''),
+      );
     }
     if (version < 3) {
       transaction(() {
@@ -142,7 +146,8 @@ extension on Store {
       });
     }
     if (version < 7) {
-      transaction(() => _db.execute('''
+      transaction(
+        () => _db.execute('''
         -- Your own text for a sleep item's tooltip, from this month on until
         -- a later month has its own. Empty: show just the name.
         CREATE TABLE IF NOT EXISTS sleep_notes (
@@ -153,7 +158,8 @@ extension on Store {
           PRIMARY KEY (year, month, item)
         );
         PRAGMA user_version = 7;
-      '''));
+      '''),
+      );
     }
     if (version < 8) {
       transaction(() {

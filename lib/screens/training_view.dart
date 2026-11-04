@@ -105,10 +105,7 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'PROGRESS',
-                style: capsLabel(p.inkMuted),
-              ),
+              Text('PROGRESS', style: capsLabel(p.inkMuted)),
               const SizedBox(height: 4),
               Text(
                 'Training',

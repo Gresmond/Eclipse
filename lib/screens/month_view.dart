@@ -245,7 +245,7 @@ class _MonthHabitRow extends StatefulWidget {
   final double nameWidth;
 
   /// The squares' size as drawn, which eases between months, and the size
-  /// [cells] are laid out at.
+  /// it's easing to, which says how many lines a name can have.
   final Animation<double> cellSize;
   final double laidOut;
 
@@ -344,7 +344,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                   ),
                   // Each square is its own repaint boundary already.
                   Flow.unwrapped(
-                    delegate: _ColumnsDelegate(widget.layout, height, cellSize / widget.laidOut),
+                    delegate: _ColumnsDelegate(widget.layout, height, cellSize / _GridState._maxCell),
                     clipBehavior: Clip.none,
                     children: widget.cells,
                   ),

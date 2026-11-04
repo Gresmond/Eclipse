@@ -33,6 +33,18 @@ class TodayView extends StatefulWidget {
 class _TodayViewState extends State<TodayView> {
   final _firstCheckboxInset = ValueNotifier<double>(0);
 
+  // Made once, outside the LayoutBuilder, so resizing the window lays the
+  // cards out again without building them again. Opening the page, they
+  // build a frame apart: see [StagedBuild].
+  late final _rituals = StagedBuild(frames: 1, child: _HabitColumn(firstCheckboxInset: _firstCheckboxInset));
+  late final _further = StagedBuild(
+    frames: 2,
+    child: TourTarget(
+      spot: TourSpot.later,
+      child: FurtherAheadCard(firstCheckboxInset: _firstCheckboxInset),
+    ),
+  );
+
   @override
   void dispose() {
     _firstCheckboxInset.dispose();
@@ -61,23 +73,21 @@ class _TodayViewState extends State<TodayView> {
                 child: TourTarget(spot: TourSpot.week, child: WeekCard()),
               ),
               const SizedBox(width: TodayView._gap),
-              Expanded(flex: 19, child: _HabitColumn(firstCheckboxInset: _firstCheckboxInset)),
+              Expanded(flex: 19, child: _rituals),
               const SizedBox(width: TodayView._gap),
               Expanded(
                 flex: 17,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: TourTarget(
-                        spot: TourSpot.later,
-                        child: FurtherAheadCard(firstCheckboxInset: _firstCheckboxInset),
-                      ),
-                    ),
+                    Expanded(child: _further),
                     const SizedBox(height: TodayView._gap),
                     SizedBox(
                       height: sleepHeight,
-                      child: TourTarget(spot: TourSpot.journal, child: const _JournalCard()),
+                      child: const StagedBuild(
+                        frames: 2,
+                        child: TourTarget(spot: TourSpot.journal, child: _JournalCard()),
+                      ),
                     ),
                   ],
                 ),

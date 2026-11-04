@@ -14,19 +14,8 @@ void paintMark(Canvas canvas, Offset centre, IconData icon, double size, Color c
     canvas.save();
     canvas.translate(centre.dx, centre.dy);
     canvas.scale(0.6 + 0.4 * amount);
-    final path = Path();
-    if (icon == Icons.close_rounded) {
-      path.moveTo(-size * 0.23, -size * 0.23);
-      path.lineTo(size * 0.23, size * 0.23);
-      path.moveTo(size * 0.23, -size * 0.23);
-      path.lineTo(-size * 0.23, size * 0.23);
-    } else {
-      path.moveTo(-size * 0.28, 0);
-      path.lineTo(-size * 0.08, size * 0.20);
-      path.lineTo(size * 0.28, -size * 0.20);
-    }
     canvas.drawPath(
-      path,
+      _strokes.putIfAbsent((icon.codePoint, size), () => _strokesOf(icon, size)),
       Paint()
         ..color = color.withValues(alpha: color.a * amount)
         ..style = PaintingStyle.stroke
@@ -43,6 +32,24 @@ void paintMark(Canvas canvas, Offset centre, IconData icon, double size, Color c
   canvas.scale(0.6 + 0.4 * amount);
   g.paint(canvas, Offset(-g.width / 2, -g.height / 2));
   canvas.restore();
+}
+
+/// The stroked marks by glyph and size, shared by every square drawing one.
+final _strokes = LruCache<(int, double), Path>(16);
+
+Path _strokesOf(IconData icon, double size) {
+  final path = Path();
+  if (icon == Icons.close_rounded) {
+    path.moveTo(-size * 0.23, -size * 0.23);
+    path.lineTo(size * 0.23, size * 0.23);
+    path.moveTo(size * 0.23, -size * 0.23);
+    path.lineTo(-size * 0.23, size * 0.23);
+  } else {
+    path.moveTo(-size * 0.28, 0);
+    path.lineTo(-size * 0.08, size * 0.20);
+    path.lineTo(size * 0.28, -size * 0.20);
+  }
+  return path;
 }
 
 /// Laid-out marks by glyph, size and colour (alpha in 32 steps), so a fade

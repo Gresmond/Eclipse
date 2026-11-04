@@ -52,11 +52,9 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
                 padding: const EdgeInsets.only(left: 4, right: 12),
                 child: FadeThrough(
                   layoutBuilder: FadeThrough.fill,
-                  child: _WeekList(
+                  child: StagedHeight(
                     key: ValueKey(dateKey(day)),
-                    planned: planned,
-                    emptyDays: state.weekEmptyDays,
-                    added: added,
+                    child: _WeekList(planned: planned, emptyDays: state.weekEmptyDays, added: added),
                   ),
                 ),
               ),
@@ -149,7 +147,7 @@ class _CardDrop extends StatelessWidget {
 
 /// One day's week: the days' lists, with [emptyDays] those with none.
 class _WeekList extends StatefulWidget {
-  const _WeekList({super.key, required this.planned, required this.emptyDays, required this.added});
+  const _WeekList({required this.planned, required this.emptyDays, required this.added});
 
   final _Planned planned;
   final bool emptyDays;
@@ -313,19 +311,33 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
           itemBuilder: (context, index) {
             final (:task, :arriving, :leaving) = shown[index];
             final (scope, item) = task;
-            return _dropTarget(
-              i,
-              TaskRow(
-                key: ValueKey((scope, item.id)),
-                scope: scope,
-                item: item,
-                day: state.shownDay,
-                readOnly: readOnly,
-                fadeIn: added.contains(item.id) || arriving,
-                arriving: arriving,
-                leaving: leaving,
-                onRemove: () => _remove('$i', task, () => state.removeTodo(scope, item, day: state.shownDay)),
-                order: _order('$i'),
+            return _row(
+              (scope, item.id),
+              item,
+              (
+                i,
+                state.shownDay,
+                state.today,
+                readOnly,
+                added.contains(item.id),
+                arriving,
+                leaving,
+                state.repeatOf(item),
+              ),
+              () => _dropTarget(
+                i,
+                TaskRow(
+                  key: ValueKey((scope, item.id)),
+                  scope: scope,
+                  item: item,
+                  day: state.shownDay,
+                  readOnly: readOnly,
+                  fadeIn: added.contains(item.id) || arriving,
+                  arriving: arriving,
+                  leaving: leaving,
+                  onRemove: () => _remove('$i', task, () => state.removeTodo(scope, item, day: state.shownDay)),
+                  order: _order('$i'),
+                ),
               ),
             );
           },

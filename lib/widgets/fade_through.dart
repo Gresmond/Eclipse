@@ -40,7 +40,13 @@ class FadeThrough extends StatefulWidget {
   /// Whether [context] is in a page a [FadeThrough] with deferBuild is
   /// bringing in, built as it starts to show rather than there from the
   /// start: such a page can spread its first build over a few frames.
-  static bool arriving(BuildContext context) => context.getInheritedWidgetOfExactType<_Arriving>() != null;
+  ///
+  /// True only over its first frames, while it's all but invisible: a thing
+  /// mounted later (another day's list) is on show at once.
+  static bool arriving(BuildContext context) =>
+      (context.getInheritedWidgetOfExactType<_Arriving>()?.animation.value ?? 1) < _arrivingUntil;
+
+  static const _arrivingUntil = 0.75;
 
   // The outgoing child runs the same animation in reverse, so the two
   // halves follow [Motion.incoming] and [Motion.outgoing].
@@ -204,9 +210,80 @@ class _FadeThroughState extends State<FadeThrough> with TickerProviderStateMixin
   );
 }
 
+/// Part of a page a deferred [FadeThrough] is bringing in, built [frames]
+/// frames after the page's first: the page is still all but invisible
+/// then, so opening it never costs one long frame. A page that was simply
+/// there builds it at once. [placeholder] holds its place until then.
+class StagedBuild extends StatefulWidget {
+  const StagedBuild({super.key, required this.frames, this.placeholder = const SizedBox.shrink(), required this.child});
+
+  final int frames;
+  final Widget placeholder;
+  final Widget child;
+
+  @override
+  State<StagedBuild> createState() => _StagedBuildState();
+}
+
+class _StagedBuildState extends State<StagedBuild> {
+  late int _left = FadeThrough.arriving(context) ? widget.frames : 0;
+
+  void _next(Duration _) {
+    if (!mounted) return;
+    setState(() => _left--);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_left <= 0) return widget.child;
+    WidgetsBinding.instance.addPostFrameCallback(_next);
+    WidgetsBinding.instance.scheduleFrame();
+    return widget.placeholder;
+  }
+}
+
+/// A long list in a page a deferred [FadeThrough] is bringing in: gets
+/// only part of its height for its first [steps] frames, so a lazy list
+/// builds its rows a screenful-part at a time, while the page is still all
+/// but invisible, rather than all in one long frame.
+class StagedHeight extends StatefulWidget {
+  const StagedHeight({super.key, this.steps = 3, required this.child});
+
+  final int steps;
+  final Widget child;
+
+  @override
+  State<StagedHeight> createState() => _StagedHeightState();
+}
+
+class _StagedHeightState extends State<StagedHeight> {
+  late int _step = FadeThrough.arriving(context) ? 1 : widget.steps;
+
+  void _next(Duration _) {
+    if (!mounted) return;
+    setState(() => _step++);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_step < widget.steps) {
+      WidgetsBinding.instance.addPostFrameCallback(_next);
+      WidgetsBinding.instance.scheduleFrame();
+    }
+    // The same widgets throughout, so the list keeps its state as it opens.
+    return FractionallySizedBox(
+      heightFactor: _step / widget.steps,
+      alignment: Alignment.topCenter,
+      child: widget.child,
+    );
+  }
+}
+
 /// Marks a page that a deferred [FadeThrough] built as it began to show.
 class _Arriving extends InheritedWidget {
-  const _Arriving({required super.child});
+  const _Arriving({required this.animation, required super.child});
+
+  final Animation<double> animation;
 
   @override
   bool updateShouldNotify(_Arriving old) => false;
@@ -226,10 +303,11 @@ class _DeferredPageState extends State<_DeferredPage> {
   late bool _ready = widget.animation.value >= Motion.incoming.begin;
 
   /// Built because it began to show, not there from the start.
-  late final _arrived = !_ready;
+  late final bool _arrived;
   @override
   void initState() {
     super.initState();
+    _arrived = !_ready;
     widget.animation.addListener(_check);
   }
 
@@ -256,7 +334,7 @@ class _DeferredPageState extends State<_DeferredPage> {
   Widget build(BuildContext context) => !_ready
       ? const SizedBox.expand()
       : _arrived
-      ? _Arriving(child: widget.child)
+      ? _Arriving(animation: widget.animation, child: widget.child)
       : widget.child;
 }
 

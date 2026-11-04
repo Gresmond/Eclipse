@@ -21,6 +21,7 @@ import 'data/windows_night_light.dart';
 import 'models.dart';
 import 'screens/shell.dart';
 import 'screens/startup_error.dart';
+import 'screens/warm_up.dart';
 import 'theme/app_theme.dart';
 import 'widgets/undo_card.dart';
 
@@ -78,6 +79,7 @@ Future<void> main() async {
     Timer.periodic(updater.checkEvery, (_) => updater.check());
   }
 
+  WarmUp.enabled = true;
   runApp(EclipseApp(state: state, updater: updater));
 }
 

@@ -146,8 +146,26 @@ class Palette extends ThemeExtension<Palette> {
   );
 
   List<Color> get _colours => [
-    background, tile, tileBorder, ink, inkMuted, accent, onAccent, onDone, ...gradient,
-    today, onToday, done, missed, missedInk, other, otherInk, empty, shadow, todayPanel, todayPanelBorder,
+    background,
+    tile,
+    tileBorder,
+    ink,
+    inkMuted,
+    accent,
+    onAccent,
+    onDone,
+    ...gradient,
+    today,
+    onToday,
+    done,
+    missed,
+    missedInk,
+    other,
+    otherInk,
+    empty,
+    shadow,
+    todayPanel,
+    todayPanelBorder,
   ];
 
   bool _sameColours(Palette other) => listEquals(_colours, other._colours);
@@ -486,8 +504,7 @@ class ThemeMorph extends StatelessWidget {
       context.dependOnInheritedWidgetOfExactType<_ThemeMorphScope>()?.active ?? false;
 
   @override
-  Widget build(BuildContext context) =>
-      _ThemeMorphScope(active: !context.palette._sameColours(target), child: child);
+  Widget build(BuildContext context) => _ThemeMorphScope(active: !context.palette._sameColours(target), child: child);
 }
 
 class _ThemeMorphScope extends InheritedWidget {

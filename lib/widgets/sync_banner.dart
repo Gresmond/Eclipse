@@ -184,10 +184,7 @@ class _Card extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'Updated from ${_from(incoming.from)}',
-                  style: cornerCardTitle(p.ink),
-                ),
+                Text('Updated from ${_from(incoming.from)}', style: cornerCardTitle(p.ink)),
                 const SizedBox(height: 4),
                 Text(
                   detail,
@@ -227,10 +224,7 @@ class _AskCard extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: Text(
-              'Keep your journal in Drive',
-              style: cornerCardTitle(p.ink),
-            ),
+            child: Text('Keep your journal in Drive', style: cornerCardTitle(p.ink)),
           ),
           const SizedBox(height: 4),
           Padding(
@@ -310,10 +304,7 @@ class _WaitingCard extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: Text(
-              title,
-              style: cornerCardTitle(p.ink),
-            ),
+            child: Text(title, style: cornerCardTitle(p.ink)),
           ),
           if (newer) ...[
             const SizedBox(height: 4),

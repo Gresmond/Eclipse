@@ -164,9 +164,7 @@ void main() {
         state: state,
         child: MaterialApp(
           theme: buildTheme(palettes.first),
-          home: const Scaffold(
-            body: SizedBox(width: 420, height: 500, child: WeekCard()),
-          ),
+          home: const Scaffold(body: SizedBox(width: 420, height: 500, child: WeekCard())),
         ),
       ),
     );

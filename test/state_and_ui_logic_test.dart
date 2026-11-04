@@ -82,11 +82,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('This and future ones'));
     await tester.pumpAndSettle();
-    expect(
-      state.repeats.single.subtasks.map((s) => s.text),
-      ['Passport', 'Tickets', 'Charger'],
-      reason: 'the repeat’s checklist template (showed its steps: $showsSteps)',
-    );
+    expect(state.repeats.single.subtasks.map((s) => s.text), [
+      'Passport',
+      'Tickets',
+      'Charger',
+    ], reason: 'the repeat’s checklist template (showed its steps: $showsSteps)');
   });
 
   // LOGIC-02
@@ -105,7 +105,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.descendant(of: dialog, matching: find.text('22')));
     await tester.pump();
-    await tester.tap(find.descendant(of: dialog, matching: find.widgetWithText(TextButton, 'Add')));
+    await tester.tap(find.descendant(of: dialog, matching: find.text('Add')));
     await tester.pumpAndSettle();
     expect(state.holidays, hasLength(1), reason: 'it was added');
     expect(find.byTooltip('Remove holiday'), findsOneWidget, reason: 'but there is no way to see or remove it');
@@ -156,11 +156,7 @@ void main() {
     for (var i = 0; i < 40; i++) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-    expect(
-      find.text('Later task 15'),
-      findsOneWidget,
-      reason: 'search said it would scroll to the task and light it',
-    );
+    expect(find.text('Later task 15'), findsOneWidget, reason: 'search said it would scroll to the task and light it');
     expect(find.text('Later task 15').hitTestable(), findsOneWidget, reason: 'scrolled into view');
     await tester.pumpAndSettle();
   });
@@ -196,14 +192,7 @@ void main() {
     }
     TodoItem task(String name) => state.todos.values.expand((t) => t).firstWhere((t) => t.text == name);
     state.moveTodoTo(TodoScope.week, task('Dragged'), DateTime(2026, 11, 4));
-    state.editTodo(
-      TodoScope.week,
-      task('Edited'),
-      'Edited',
-      DateTime(2026, 11, 4),
-      time: 9 * 60,
-      reminders: dayBefore,
-    );
+    state.editTodo(TodoScope.week, task('Edited'), 'Edited', DateTime(2026, 11, 4), time: 9 * 60, reminders: dayBefore);
     state.checkReminders();
     final fired = state.reminderCards.map((a) => a.text).toSet();
     expect(fired.contains('Dragged'), fired.contains('Edited'), reason: 'fired: $fired');
@@ -221,12 +210,18 @@ void main() {
       Color foot(Palette p) => Color.lerp(p.tile, p.background, p.byDarkness(0.14, 0))!;
       double d(double a, double b) => (a - b).abs() * 255;
       final (x, y) = (foot(before), foot(after));
-      expect([d(x.r, y.r), d(x.g, y.g), d(x.b, y.b)].reduce((a, b) => a > b ? a : b), lessThan(0.1), reason: light.name);
+      expect(
+        [d(x.r, y.r), d(x.g, y.g), d(x.b, y.b)].reduce((a, b) => a > b ? a : b),
+        lessThan(0.1),
+        reason: light.name,
+      );
     }
   });
 
   // LOGIC-09
-  testWidgets('a reminder card that goes off while a dialog is open can be seen and clicked, as Undo can', (tester) async {
+  testWidgets('a reminder card that goes off while a dialog is open can be seen and clicked, as Undo can', (
+    tester,
+  ) async {
     open(DateTime(2026, 11, 3, 14));
     state.addTodo(TodoScope.today, 'Dentist', time: 15 * 60, reminders: 4);
     await show(tester);

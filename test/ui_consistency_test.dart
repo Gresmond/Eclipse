@@ -38,18 +38,12 @@ void main() {
   }
 
   test('corner radii are on the scale', () {
-    final bad = offenders(
-      RegExp(r'Radius\.circular\(([0-9.]+)\)'),
-      (v) => Scale.radii.contains(double.parse(v)),
-    );
+    final bad = offenders(RegExp(r'Radius\.circular\(([0-9.]+)\)'), (v) => Scale.radii.contains(double.parse(v)));
     expect(bad, isEmpty);
   });
 
   test('literal font sizes are on the scale', () {
-    final bad = offenders(
-      RegExp(r'fontSize: ([0-9.]+)'),
-      (v) => Scale.fontSizes.contains(double.parse(v)),
-    );
+    final bad = offenders(RegExp(r'fontSize: ([0-9.]+)'), (v) => Scale.fontSizes.contains(double.parse(v)));
     expect(bad, isEmpty);
   });
 
@@ -66,7 +60,9 @@ void main() {
         final expression = m.group(1)!;
         if (proportional.any(f.path.endsWith)) continue;
         final computed = RegExp(r'[*/]').hasMatch(expression);
-        final literals = RegExp(r'(?<![\w.])[0-9]+(?:\.[0-9]+)?').allMatches(expression).map((l) => double.parse(l.group(0)!));
+        final literals = RegExp(r'(?<![\w.])[0-9]+(?:\.[0-9]+)?')
+            .allMatches(expression)
+            .map((l) => double.parse(l.group(0)!));
         // A comparison's number isn't a size: `size >= 30 ? 14 : 12`.
         final sizes = expression.contains('?')
             ? RegExp(r'[?:]\s*([0-9.]+)').allMatches(expression).map((l) => double.parse(l.group(1)!))
@@ -91,7 +87,9 @@ void main() {
       final lines = f.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
         if (lines[i].trimLeft().startsWith('//')) continue;
-        final caps = lines[i].contains('.toUpperCase()') || RegExp(r"Text\(\s*'[A-Z]{2}[A-Z ]*'").hasMatch(lines[i]) ||
+        final caps =
+            lines[i].contains('.toUpperCase()') ||
+            RegExp(r"Text\(\s*'[A-Z]{2}[A-Z ]*'").hasMatch(lines[i]) ||
             RegExp(r"^\s*'[A-Z]{2}[A-Z ]*',$").hasMatch(lines[i]);
         if (!caps) continue;
         final next = lines.sublist(i, i + 4 > lines.length ? lines.length : i + 4).join(' ');
@@ -182,7 +180,13 @@ void main() {
       store.addHabit(2026, 11, 'Stretch');
       state.addTodo(TodoScope.today, 'A plain task');
       state.addTodo(TodoScope.today, 'A timed task', time: 600, location: 'Somewhere');
-      state.addTodo(TodoScope.month, 'Dentist', dueDate: DateTime(2026, 11, 20), time: 510, location: 'A very long street name that has to give way to the time');
+      state.addTodo(
+        TodoScope.month,
+        'Dentist',
+        dueDate: DateTime(2026, 11, 20),
+        time: 510,
+        location: 'A very long street name that has to give way to the time',
+      );
       await tester.pumpWidget(EclipseApp(state: state));
       await tester.pumpAndSettle();
     }

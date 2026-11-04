@@ -12,6 +12,8 @@ import 'package:eclipse/util/lru_cache.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:eclipse/widgets/lazy_motion.dart';
 import 'package:eclipse/screens/month_view.dart';
+import 'package:eclipse/screens/warm_up.dart';
+import 'package:eclipse/widgets/settings_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -58,6 +60,106 @@ void main() {
     state.setTheme('Lunar Eclipse');
     await tester.pumpAndSettle();
     expect(cells, 0, reason: 'theme frames repaint the grid without rebuilding its cells');
+  });
+
+  group('builds only what changed', () {
+    late Map<String, int> built;
+
+    void count() {
+      built = {};
+      debugOnRebuildDirtyWidget = (element, _) {
+        final type = element.widget.runtimeType.toString();
+        built[type] = (built[type] ?? 0) + 1;
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+    }
+
+    testWidgets('resizing the window builds no card again on Today, and no square on a month', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1500, 1000);
+      addTearDown(tester.view.reset);
+      await show(tester);
+      count();
+      tester.view.physicalSize = const Size(1400, 950);
+      await tester.pump();
+      expect(built['FurtherAheadCard'] ?? 0, 0);
+      expect(built['_WeekList'] ?? 0, 0);
+
+      state.showMonth(10);
+      await tester.pumpAndSettle();
+      built.clear();
+      tester.view.physicalSize = const Size(1300, 900);
+      await tester.pump();
+      expect(built['StatusCell'] ?? 0, 0);
+    });
+
+    testWidgets('ticking a task rebuilds its row, not the others in the list', (tester) async {
+      for (var i = 0; i < 12; i++) {
+        state.addTodo(TodoScope.today, 'Task $i');
+      }
+      await show(tester);
+      count();
+      state.toggleTodo(state.todos[TodoScope.today]!.first);
+      await tester.pump();
+      expect(built['_TodoRow'] ?? 0, lessThanOrEqualTo(1));
+    });
+
+    testWidgets('a long way ahead builds only its first days, and more as they near', (tester) async {
+      final today = state.today;
+      for (var i = 0; i < 60; i++) {
+        state.addTodo(TodoScope.month, 'Later $i', dueDate: DateTime(today.year, today.month, today.day + 10 + i));
+      }
+      await show(tester);
+      int tiles() => find.byWidgetPredicate((w) => w.runtimeType.toString() == '_UpcomingDateTile').evaluate().length;
+      final first = tiles();
+      expect(first, lessThan(30));
+      final list = find.byWidgetPredicate((w) => w.runtimeType.toString() == '_LaterList');
+      final scrollable = find.descendant(of: list, matching: find.byType(Scrollable)).first;
+      final position = tester.state<ScrollableState>(scrollable).position;
+      for (var i = 0; i < 30 && find.text('Later 59').evaluate().isEmpty; i++) {
+        position.jumpTo(position.maxScrollExtent);
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('Later 59'), findsOneWidget, reason: 'every one can be reached');
+    });
+
+    testWidgets('a page coming in builds its cards a frame apart', (tester) async {
+      state.showMonth(10);
+      await show(tester);
+      count();
+      state.showToday();
+      var frames = 0;
+      while ((built['WeekCard'] ?? 0) + (built['_WeekCardState'] ?? 0) == 0 && frames++ < 40) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(frames, lessThan(40), reason: 'the week card builds as the page starts to show');
+      expect(built['FurtherAheadCard'] ?? 0, 0, reason: 'not in the same frame');
+      await tester.pumpAndSettle();
+      expect(built['FurtherAheadCard'], 1);
+    });
+  });
+
+  testWidgets('warming up builds out of sight, takes no focus, and leaves nothing behind', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1500, 1000);
+    addTearDown(tester.view.reset);
+    WarmUp.enabled = true;
+    addTearDown(() => WarmUp.enabled = false);
+    await show(tester);
+    final before = FocusManager.instance.primaryFocus;
+    var built = <String>{};
+    debugOnRebuildDirtyWidget = (element, _) => built.add(element.widget.runtimeType.toString());
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+    await tester.pump(const Duration(seconds: 1));
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(FocusManager.instance.primaryFocus, before);
+      expect(find.byType(SettingsDialog), findsNothing, reason: 'only offstage, which finders skip');
+    }
+    expect(built, containsAll(<String>['MonthView', 'SettingsDialog', 'TimeWheel']));
+    expect(find.byType(MonthView, skipOffstage: false), findsNothing, reason: 'all gone again');
+    expect(find.byType(SettingsDialog, skipOffstage: false), findsNothing);
+    expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
   testWidgets('a long week builds only the rows on screen', (tester) async {

@@ -51,8 +51,11 @@ void main() {
     expect(() => Store.open(path).close(), returnsNormally, reason: 'version 2 again');
     for (final (version, made) in [
       (3, 'ALTER TABLE habits ADD COLUMN note TEXT'),
-      (6, 'CREATE TABLE sleep_notes (year INTEGER NOT NULL, month INTEGER NOT NULL, item TEXT NOT NULL, '
-          'note TEXT NOT NULL, PRIMARY KEY (year, month, item))'),
+      (
+        6,
+        'CREATE TABLE sleep_notes (year INTEGER NOT NULL, month INTEGER NOT NULL, item TEXT NOT NULL, '
+            'note TEXT NOT NULL, PRIMARY KEY (year, month, item))',
+      ),
     ]) {
       final file = '${dir.path}/v$version.db';
       final before = sqlite3.open(file);
@@ -112,7 +115,15 @@ void main() {
     // Kept only as registers while this computer was on version 33.
     store.raw.execute(
       'INSERT INTO sync_reg (kind, rowkey, field, value, ts, origin, vv, seq) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
-      ['holiday', '2026-12-20/2026-12-27', '_', 'true', 9000000, 'laptop', jsonEncode({'laptop': 3})],
+      [
+        'holiday',
+        '2026-12-20/2026-12-27',
+        '_',
+        'true',
+        9000000,
+        'laptop',
+        jsonEncode({'laptop': 3}),
+      ],
     );
     store.raw.execute('PRAGMA user_version = 33');
     store.close();

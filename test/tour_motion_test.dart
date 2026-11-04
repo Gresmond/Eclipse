@@ -100,7 +100,7 @@ void main() {
     }
     await tester.pump(); // Paint the final post-layout measurement.
     final resizedGuide = tester.getTopLeft(guide);
-    expect(maskHole().center.dy, closeTo(settingsHole.center.dy, 1), reason: 'Settings stays centred as it grows');
+    expect(maskHole().top, closeTo(settingsHole.top, 1), reason: 'Settings keeps its top as it grows');
     expect(maskHole().height, isNot(settingsHole.height));
     for (var frame = 1; frame < guidePositions.length; frame++) {
       expect(
@@ -143,7 +143,8 @@ void main() {
     await tester.pump(); // Apply the menu's final layout bounds.
     final destination = TourTarget.rectOf(TourSpot.appearancePreview, tourBox, layoutBounds: true)!;
     expect(maskHole(), syncHole);
-    await tester.pump(const Duration(milliseconds: 210));
+    // Before the menu's fade ends: it's full size a little ahead of that.
+    await tester.pump(const Duration(milliseconds: 150));
     expect(maskHole(), isNot(syncHole));
     expect(maskHole(), isNot(destination));
     expect(TourTarget.rectOf(TourSpot.appearancePreview, tourBox, layoutBounds: true), destination);
@@ -151,7 +152,7 @@ void main() {
     expect(tester.widget<FadeTransition>(fade).opacity.value, lessThan(1));
     expect(tester.widget<ScaleTransition>(scale).scale.value, greaterThan(0.96));
     expect(tester.widget<ScaleTransition>(scale).scale.value, lessThan(1));
-    await tester.pump(const Duration(milliseconds: 210));
+    await tester.pump(const Duration(milliseconds: 270));
     expect(maskHole(), destination);
     final guideAtArrival = tester.getTopLeft(guide.last);
     await tester.pump(const Duration(milliseconds: 230));

@@ -79,10 +79,38 @@ void main() {
       tick();
       pc.hear(laptop);
       laptop.hear(pc);
-      expect([pc.holidays, laptop.holidays], [
-        [december, january],
-        [december, january],
-      ]);
+      expect(
+        [pc.holidays, laptop.holidays],
+        [
+          [december, january],
+          [december, january],
+        ],
+      );
+    });
+
+    test('a list from an older Eclipse, with no register per holiday, is taken in and merged', () {
+      pc.store.setSetting('holidays', encodeHolidays([december]));
+      tick();
+      // How versions before 34 send them: the whole list, one register. Every
+      // computer reads that one's file for itself.
+      final older = [
+        [
+          'setting',
+          'holidays',
+          'value',
+          jsonEncode(encodeHolidays([november])),
+          _Pc.clock + 1000,
+          'old',
+          {'old': 1},
+        ],
+      ];
+      for (final c in [pc, laptop]) {
+        expect(c.engine.mergeAll([(older, 'old')]).failed, isEmpty);
+      }
+      expect(pc.holidays, [november, december], reason: 'its holiday joins the ones here, which stay');
+      tick();
+      laptop.hear(pc);
+      expect(laptop.holidays, [november, december], reason: 'and both computers end up the same');
     });
 
     test('a holiday from before they were synced one by one can still be taken away', () {
@@ -98,6 +126,63 @@ void main() {
       tick();
       pc.hear(laptop);
       expect(pc.holidays, isEmpty);
+    });
+  });
+
+  group('a repeat ended on one computer', () {
+    final today = DateTime(2026, 11, 3);
+
+    /// What each computer does when they sync: hear the other, then start
+    /// the day over what came in.
+    void meet() {
+      tick();
+      pc.hear(laptop);
+      pc.store.makeRepeats(today);
+      tick();
+      laptop.hear(pc);
+      laptop.store.makeRepeats(today);
+      tick();
+      pc.hear(laptop);
+    }
+
+    List<String> openAfter(_Pc c, String uid, String end) => [
+      for (final r in c.store.raw.select("SELECT uid FROM todos WHERE uid LIKE '$uid@%' AND done = 0"))
+        if ((r['uid'] as String).substring(uid.length + 1).compareTo(end) > 0) r['uid'] as String,
+    ];
+
+    late Repeat repeat;
+
+    setUp(() {
+      repeat = pc.store.addRepeat('Water plants', const RepeatRule.every(1), DateTime(2026, 11, 1));
+      pc.store.makeRepeats(today); // Up to 10 Nov.
+      tick();
+      laptop.hear(pc);
+      tick();
+      // The laptop's day is already the 4th, so it makes the 11th too.
+      laptop.store.makeRepeats(DateTime(2026, 11, 4));
+      tick();
+    });
+
+    test('leaves no open time after its end on either computer', () {
+      pc.store.endRepeat(repeat.uid, DateTime(2026, 11, 8), today);
+      meet();
+      for (final c in [pc, laptop]) {
+        expect(c.store.repeats().single.until, DateTime(2026, 11, 7));
+        expect(openAfter(c, repeat.uid, '2026-11-07'), isEmpty, reason: 'on ${c.name}');
+      }
+    });
+
+    test('a time ticked after the end stays', () {
+      final later = laptop.store.makeOccurrence(repeat, DateTime(2026, 11, 12));
+      laptop.store.setTodoDone(later.id, true, day: today);
+      tick();
+      pc.store.endRepeat(repeat.uid, DateTime(2026, 11, 8), today);
+      meet();
+      for (final c in [pc, laptop]) {
+        final ticked = c.store.raw.select('SELECT done FROM todos WHERE uid = ?', [later.uid]);
+        expect(ticked.single['done'], 1, reason: 'on ${c.name}: it was done, whenever the repeat ended');
+        expect(openAfter(c, repeat.uid, '2026-11-07'), isEmpty, reason: 'on ${c.name}');
+      }
     });
   });
 
@@ -127,7 +212,15 @@ void main() {
   });
 
   group('a task value this version can\'t read', () {
-    List<Object?> reg(String field, Object? v) => ['todo', 'bad1', field, jsonEncode(v), 2000000, 'pc', {'pc': 5}];
+    List<Object?> reg(String field, Object? v) => [
+      'todo',
+      'bad1',
+      field,
+      jsonEncode(v),
+      2000000,
+      'pc',
+      {'pc': 5},
+    ];
     final bad = {
       'period': '1',
       'position': 1.5,
@@ -166,7 +259,10 @@ void main() {
 
     test('taken in all the same, still lets the day start', () {
       final incoming = laptop.engine.mergeAll([
-        ([reg('_', true), reg('scope', 'tomorrow'), reg('period', '1'), reg('text', 'X'), reg('since', '2026-11-01')], 'pc'),
+        (
+          [reg('_', true), reg('scope', 'tomorrow'), reg('period', '1'), reg('text', 'X'), reg('since', '2026-11-01')],
+          'pc',
+        ),
         ([reg('position', 1.5)], 'pc'),
       ]);
       expect(incoming.failed, isEmpty);

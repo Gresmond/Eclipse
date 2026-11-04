@@ -25,6 +25,7 @@ import '../widgets/update_banner.dart';
 import '../widgets/welcome_tour.dart';
 import 'month_view.dart';
 import 'today_view.dart';
+import 'warm_up.dart';
 import 'training_view.dart';
 import 'year_view.dart';
 
@@ -96,6 +97,7 @@ class Shell extends StatelessWidget {
               back: const TrainingView(),
             ),
           ),
+          if (WarmUp.enabled) const Positioned.fill(child: WarmUp()),
           if (state.touring) Positioned.fill(child: WelcomeTour(appearanceBuilder: (_) => const _AppearanceMenu())),
         ],
       ),

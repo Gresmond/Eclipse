@@ -7,6 +7,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../util/lru_cache.dart';
 import 'app_dialog.dart';
 import 'confirm_on_enter.dart';
 import 'mark.dart';
@@ -280,6 +281,10 @@ class _SquarePainter extends CustomPainter {
   /// Drawn at this size and scaled, so every square shares its marks.
   static const _s = 34.0;
 
+  /// The squares' gradients by colour, shared. A theme's fade makes new
+  /// ones every frame, so only the latest are kept.
+  static final _gradients = LruCache<(Color, Color), Shader>(64);
+
   List<Color> _fill(_Look look, Color empty) {
     final base = switch (look.icon) {
       Icons.check_rounded => palette.done,
@@ -316,15 +321,23 @@ class _SquarePainter extends CustomPainter {
     final empty = palette.empty.withValues(alpha: 0.55 + 0.35 * h);
 
     final a = _fill(from, empty), b = _fill(to, empty);
-    canvas.drawRRect(
-      rrect,
-      Paint()
-        ..shader = LinearGradient(
+    final (top, bottom) = (Color.lerp(a[0], b[0], t)!, Color.lerp(a[1], b[1], t)!);
+    // A month repaints hundreds of squares, in only a few colours: a blank
+    // one needs no gradient, and the others share theirs.
+    final fill = Paint();
+    if (top == bottom) {
+      fill.color = top;
+    } else {
+      fill.shader = _gradients.putIfAbsent(
+        (top, bottom),
+        () => LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color.lerp(a[0], b[0], t)!, Color.lerp(a[1], b[1], t)!],
+          colors: [top, bottom],
         ).createShader(rect),
-    );
+      );
+    }
+    canvas.drawRRect(rrect, fill);
     canvas.drawRRect(
       rrect.deflate(0.5),
       Paint()

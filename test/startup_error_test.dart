@@ -35,9 +35,7 @@ void main() {
 
   testWidgets('data from a newer build explains itself and offers the rebuild', (tester) async {
     final updater = GitUpdater(repo: '/repo', installedCommit: 'abc', executable: '/repo/eclipse');
-    await tester.pumpWidget(
-      StartupErrorApp(error: const DatabaseTooNewException(), updater: updater),
-    );
+    await tester.pumpWidget(StartupErrorApp(error: const DatabaseTooNewException(), updater: updater));
     expect(find.text('This copy of Eclipse is older than your data'), findsOneWidget);
     expect(find.text(updater.actionLabel), findsOneWidget);
 

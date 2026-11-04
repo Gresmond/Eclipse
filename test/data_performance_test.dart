@@ -32,10 +32,12 @@ void main() {
     for (var d = 0; d < days; d++) {
       final day = dateKey(DateTime(today.year, today.month, today.day - days + d));
       for (var t = 0; t < 6; t++) {
-        store.raw.execute(
-          "INSERT INTO todos (uid, scope, period, text, done, since) VALUES (?, 'today', ?, ?, 1, ?)",
-          ['old$d-$t', day, 'Task $d $t', day],
-        );
+        store.raw.execute("INSERT INTO todos (uid, scope, period, text, done, since) VALUES (?, 'today', ?, ?, 1, ?)", [
+          'old$d-$t',
+          day,
+          'Task $d $t',
+          day,
+        ]);
         store.raw.execute('INSERT INTO todo_history VALUES (?, ?, ?)', [
           'old$d-$t',
           day,

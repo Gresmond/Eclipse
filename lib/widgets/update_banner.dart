@@ -49,10 +49,7 @@ class _Card extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title,
-          style: cornerCardTitle(p.ink),
-        ),
+        Text(title, style: cornerCardTitle(p.ink)),
         if (detail != null && detail.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(
