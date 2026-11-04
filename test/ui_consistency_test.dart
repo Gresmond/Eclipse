@@ -236,13 +236,13 @@ void main() {
       }
     });
 
-    testWidgets('a checkbox centres on its task’s name, whatever is above or below it', (tester) async {
+    testWidgets('a checkbox centres in its row, with the badge and buttons, whatever is above or below the name', (tester) async {
       await pumpApp(tester);
       try {
         for (final name in ['A plain task', 'A timed task']) {
           final check = find.ancestor(of: find.text(name), matching: find.byType(Row)).first;
           final paint = find.descendant(of: check, matching: find.byType(CustomPaint)).first;
-          expect(tester.getCenter(paint).dy, closeTo(tester.getCenter(find.text(name)).dy, 1));
+          expect(tester.getCenter(paint).dy, closeTo(tester.getCenter(check).dy, 1));
         }
       } finally {
         debugDefaultTargetPlatformOverride = null;

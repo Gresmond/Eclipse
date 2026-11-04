@@ -410,11 +410,6 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
     // Closing up after its repeat ended, it still shows the repeat.
     final repeat = widget.leaving ? _repeat : (_repeat = state.repeatOf(item));
 
-    // The caption above the name, and the subtask and repeat lines below it.
-    final captionLine = MediaQuery.textScalerOf(context).scale(12) * 1.35;
-    final linesAbove = item.dueTime != null || item.location != null ? 1 : 0;
-    final linesBelow = (item.subtasks.isNotEmpty ? 1 : 0) + (repeat != null && !item.birthday ? 1 : 0);
-
     final parentRow = Appear(
       animate: widget.fadeIn,
       shown: !widget.leaving && !_nestingOut,
@@ -445,11 +440,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                     child: Row(
                       children: [
                         if (widget.upcomingDate == null) ...[
-                          // On the name, not the middle of the lines round it.
-                          Transform.translate(
-                            offset: Offset(0, (linesAbove - linesBelow) * captionLine / 2),
-                            child: _Check(done: done, hover: _hover, pressed: _pressed),
-                          ),
+                          _Check(done: done, hover: _hover, pressed: _pressed),
                           const SizedBox(width: 12),
                         ],
                         Expanded(
