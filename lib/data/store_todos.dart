@@ -313,8 +313,17 @@ extension StoreTodos on Store {
     });
   }
 
-  void setTodoSubtasks(TodoScope scope, TodoItem item, List<TodoSubtask> children, DateTime day, {required bool live}) {
-    transaction(() => _setTodoSubtasks(scope, item, children, day, live: live));
+  /// Gives [item] the checklist [children] on [day]. On a day before [today]
+  /// it reaches the live task too, unless that was finished or reopened since
+  /// and so keeps its own.
+  void setTodoSubtasks(
+    TodoScope scope,
+    TodoItem item,
+    List<TodoSubtask> children,
+    DateTime day, {
+    required DateTime today,
+  }) {
+    transaction(() => _setTodoSubtasks(scope, item, children, day, today: today));
   }
 
   void _setTodoSubtasks(
@@ -322,15 +331,19 @@ extension StoreTodos on Store {
     TodoItem item,
     List<TodoSubtask> children,
     DateTime day, {
-    required bool live,
+    required DateTime today,
   }) {
     final encoded = TodoSubtask.encode(children);
     final done = children.isEmpty ? item.done : children.every((child) => child.done);
-    if (live) {
+    if (day == today) {
       _db.execute('UPDATE todos SET subtasks = ? WHERE id = ?', [encoded, item.id]);
       setTodoDone(item.id, done, day: day, cascade: false);
+    } else if (done != item.done) {
+      setPastTodoDone(scope, day, item, done, today, subtasks: encoded);
     } else {
       _editPastTodo(scope, day, item: item, subtasks: encoded, done: done);
+      _db.execute('UPDATE todos SET subtasks = ? WHERE uid = ? AND done = ?', [encoded, item.uid, done ? 1 : 0]);
+      if (_db.updatedRows > 0) _recordTodos(_db.select('SELECT * FROM todos WHERE uid = ?', [item.uid]), today);
     }
   }
 
@@ -342,7 +355,7 @@ extension StoreTodos on Store {
         target,
         [...target.subtasks, TodoSubtask(source.text, done: source.done, numbered: target.numbered)],
         day,
-        live: true,
+        today: day,
       );
       deleteTodo(source.id, day: day);
     });
@@ -488,9 +501,9 @@ extension StoreTodos on Store {
 
   /// Correct a completion and keep the live task in the appropriate period.
   /// Deleted tasks remain deleted; editing their history must not restore them.
-  void setPastTodoDone(TodoScope scope, DateTime day, TodoItem item, bool done, DateTime today) {
+  void setPastTodoDone(TodoScope scope, DateTime day, TodoItem item, bool done, DateTime today, {String? subtasks}) {
     transaction(() {
-      _editPastTodo(scope, day, item: item, done: done);
+      _editPastTodo(scope, day, item: item, subtasks: subtasks, done: done);
       final snapshot = jsonDecode(
         _db.select('SELECT snapshot FROM todo_history WHERE uid = ? AND day = ?', [
               item.uid,

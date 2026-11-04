@@ -2355,7 +2355,7 @@ void main() {
       task,
       const [TodoSubtask('Book flights'), TodoSubtask('Renew the passport')],
       day,
-      live: true,
+      today: day,
     );
     final state = AppState(store, clock: () => DateTime(2026, 10, 24));
     await tester.pumpWidget(EclipseApp(state: state));

@@ -124,7 +124,7 @@ mixin _Todos on ChangeNotifier {
   void setTodoSubtasks(TodoScope scope, TodoItem item, List<TodoSubtask> children, {DateTime? day}) {
     final target = day ?? today;
     if (!canEditDay(target)) return;
-    store.setTodoSubtasks(scope, item, children, target, live: target == today);
+    store.setTodoSubtasks(scope, item, children, target, today: today);
     _reloadTodos();
     _todosChanged();
   }
@@ -368,7 +368,7 @@ mixin _Todos on ChangeNotifier {
       store.deleteTodo(item.id, day: today);
       final ticked = item.subtasks.any((child) => child.done) ? repeat.next(first) : null;
       if (ticked case final day?) {
-        store.setTodoSubtasks(TodoScope.month, store.makeOccurrence(repeat, day), item.subtasks, today, live: true);
+        store.setTodoSubtasks(TodoScope.month, store.makeOccurrence(repeat, day), item.subtasks, today, today: today);
       }
       return repeat;
     });
@@ -413,7 +413,7 @@ mixin _Todos on ChangeNotifier {
     if (!canEditDay(target)) return;
     store.transaction(() {
       store.setRepeatSubtasks(repeat.uid, children, item.repeatDay ?? target, today);
-      store.setTodoSubtasks(scope, item, children, target, live: target == today);
+      store.setTodoSubtasks(scope, item, children, target, today: today);
     });
     _repeats = null;
     _reloadTodos();

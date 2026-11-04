@@ -92,7 +92,7 @@ void main() {
     addTearDown(() => dir.deleteSync(recursive: true));
     final disk = Store.open('${dir.path}/source.db');
     final item = disk.addTodo(TodoScope.tomorrow, today, 'Project');
-    disk.setTodoSubtasks(TodoScope.tomorrow, item, [const TodoSubtask('First')], today, live: true);
+    disk.setTodoSubtasks(TodoScope.tomorrow, item, [const TodoSubtask('First')], today, today: today);
     disk.saveCopy('${dir.path}/backup.db');
     disk.close();
     final reopened = Store.open('${dir.path}/source.db');
@@ -106,18 +106,80 @@ void main() {
     expect(store.todos(TodoScope.tomorrow, dateKey(today)).single.subtasks.single.text, 'First');
   });
 
-  test('yesterday subtask corrections preserve today and parent ticks update all children', () {
+  test('yesterday subtask corrections reach today and parent ticks update all children', () {
     final yesterday = DateTime(2026, 10, 24);
     final item = store.addTodo(TodoScope.today, yesterday, 'Historical project');
-    store.setTodoSubtasks(TodoScope.today, item, [const TodoSubtask('Original')], yesterday, live: true);
+    store.setTodoSubtasks(TodoScope.today, item, [const TodoSubtask('Original')], yesterday, today: yesterday);
     state.checkDate();
     final historical = store.todoListsOn(yesterday)[TodoScope.today]!.single;
     state.setTodoSubtasks(TodoScope.today, historical, [const TodoSubtask('Corrected', done: true)], day: yesterday);
     expect(store.todoListsOn(yesterday)[TodoScope.today]!.single.subtasks.single.text, 'Corrected');
-    expect(store.todos(TodoScope.today, dateKey(yesterday)).single.subtasks.single.text, 'Original');
+    expect(store.todos(TodoScope.today, dateKey(yesterday)).single.subtasks.single.text, 'Corrected');
     final corrected = store.todoListsOn(yesterday)[TodoScope.today]!.single;
     state.toggleTodo(corrected, day: yesterday);
     expect(store.todoListsOn(yesterday)[TodoScope.today]!.single.subtasks.single.done, isFalse);
+  });
+
+  group('a checklist changed on yesterday', () {
+    final yesterday = DateTime(2026, 10, 24);
+    late TodoItem live;
+    TodoItem then() => store.todoListsOn(yesterday)[TodoScope.today]!.single;
+    List<TodoItem> onToday() => store.todoListsOn(today)[TodoScope.today]!;
+
+    setUp(() {
+      final item = store.addTodo(TodoScope.today, yesterday, 'Ceremony');
+      store.setTodoSubtasks(
+        TodoScope.today,
+        item,
+        const [TodoSubtask('Flowers'), TodoSubtask('Card')],
+        yesterday,
+        today: yesterday,
+      );
+      // Opened today, the task has carried over from yesterday.
+      state.dispose();
+      state = AppState(store, clock: () => today);
+      live = task(TodoScope.today);
+    });
+
+    test('a tick shows on today, with the task still open', () {
+      state.setTodoSubtasks(TodoScope.today, then(), [
+        const TodoSubtask('Flowers', done: true),
+        const TodoSubtask('Card'),
+      ], day: yesterday);
+      expect(then().subtasks.first.done, isTrue);
+      expect(task(TodoScope.today).done, isFalse);
+      expect(task(TodoScope.today).subtasks.map((s) => s.done), [true, false]);
+      expect(onToday().single.subtasks.first.done, isTrue, reason: 'saved for today too');
+    });
+
+    test('ticking every step finishes it that day, off today, until one is unticked', () {
+      final ticked = [const TodoSubtask('Flowers', done: true), const TodoSubtask('Card', done: true)];
+      state.setTodoSubtasks(TodoScope.today, then(), ticked, day: yesterday);
+      expect(then().done, isTrue);
+      expect(state.todos[TodoScope.today], isEmpty);
+      expect(onToday(), isEmpty);
+
+      state.setTodoSubtasks(TodoScope.today, then(), [ticked.first, const TodoSubtask('Card')], day: yesterday);
+      expect(then().done, isFalse);
+      expect(task(TodoScope.today).done, isFalse);
+      expect(task(TodoScope.today).subtasks.map((s) => s.done), [true, false]);
+    });
+
+    test('renaming, adding and removing steps carry too', () {
+      state.setTodoSubtasks(TodoScope.today, then(), const [TodoSubtask('Roses'), TodoSubtask('Taxi')], day: yesterday);
+      expect(task(TodoScope.today).subtasks.map((s) => s.text), ['Roses', 'Taxi']);
+    });
+
+    test('a task finished since keeps its own steps', () {
+      state.toggleTodo(live);
+      state.setTodoSubtasks(TodoScope.today, then(), [
+        const TodoSubtask('Flowers', done: true),
+        const TodoSubtask('Card'),
+      ], day: yesterday);
+      expect(then().subtasks.map((s) => s.done), [true, false]);
+      expect(task(TodoScope.today).done, isTrue);
+      expect(task(TodoScope.today).subtasks.every((s) => s.done), isTrue);
+    });
   });
 
   Future<void> show(WidgetTester tester) async {
