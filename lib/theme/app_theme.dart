@@ -74,7 +74,7 @@ class Palette extends ThemeExtension<Palette> {
   /// option. Clears 4.5:1 on [done].
   final Color onDone;
 
-  /// Signature gradient for selected tabs, headers and the progress ring:
+  /// Signature gradient for selected tabs and headers:
   /// missed, other, then done, so it always ends on done.
   /// Always three stops, so themes can blend into each other.
   final List<Color> gradient;

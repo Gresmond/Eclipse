@@ -222,7 +222,6 @@ class _SetRowState extends State<_SetRow> {
               _NumberBox(
                 controller: _weight,
                 decimal: true,
-                hint: 'kg',
                 autofocus: widget.last && s.reps == 0 && s.weight == null,
                 onChanged: (v) {
                   final w = double.tryParse(v);
@@ -240,7 +239,6 @@ class _SetRowState extends State<_SetRow> {
             _NumberBox(
               controller: _reps,
               focusNode: _repsFocus,
-              hint: 'reps',
               autofocus: widget.last && s.reps == 0 && (widget.bodyweight || s.weight != null),
               onChanged: (v) => log.updateSet(s, reps: int.tryParse(v) ?? 0),
               // Enter on the last set's reps starts the next set.
@@ -277,7 +275,6 @@ class _SetRowState extends State<_SetRow> {
 class _NumberBox extends StatelessWidget {
   const _NumberBox({
     required this.controller,
-    required this.hint,
     required this.onChanged,
     required this.onSubmitted,
     this.focusNode,
@@ -287,7 +284,6 @@ class _NumberBox extends StatelessWidget {
 
   final TextEditingController controller;
   final FocusNode? focusNode;
-  final String hint;
   final bool decimal, autofocus;
   final ValueChanged<String> onChanged;
   final VoidCallback onSubmitted;

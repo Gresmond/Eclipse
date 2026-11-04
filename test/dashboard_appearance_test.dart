@@ -6,7 +6,6 @@ import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/theme/app_theme.dart';
-import 'package:eclipse/widgets/progress_ring.dart';
 import 'package:eclipse/widgets/rolling_number.dart';
 import 'package:eclipse/widgets/status_cell.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
@@ -166,7 +165,6 @@ void main() {
     expect(time.style!.fontSize, count.style!.fontSize);
     expect(time.style!.color, count.style!.color);
     expect(tester.getTopLeft(find.text('5:40 pm')).dy, lessThan(tester.getTopLeft(find.text('Timed task')).dy));
-    expect(find.byType(ProgressRing), findsNothing);
     expect(find.text('SATURDAY'), findsOneWidget);
     expect(find.text('31 October'), findsOneWidget);
     expect(tester.getTopLeft(find.text('SATURDAY')).dy, lessThan(tester.getTopLeft(find.text('31 October')).dy));

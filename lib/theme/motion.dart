@@ -23,9 +23,6 @@ abstract final class Motion {
   /// A page or month fading in under another: plain ease-in.
   static const fadeInCurve = Curves.easeIn;
 
-  /// The progress ring's overshoot as it completes.
-  static const bounce = Interval(0.55, 1.0, curve: Curves.easeInOutSine);
-
   /// How long hovering waits before a tooltip shows.
   static const tooltipDelay = Duration(milliseconds: 600);
 

@@ -6,7 +6,6 @@ import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/theme/tokens.dart';
-import 'package:eclipse/widgets/progress_ring.dart';
 import 'package:eclipse/widgets/tile.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:flutter/foundation.dart';
@@ -49,8 +48,8 @@ void main() {
   });
 
   test('font sizes in expressions are on the scale too', () {
-    // Sizes in proportion to a drawn shape: the ring's figures, a mark's glyph.
-    const proportional = ['widgets/progress_ring.dart', 'widgets/mark.dart'];
+    // Sizes in proportion to a drawn shape: a mark's glyph.
+    const proportional = ['widgets/mark.dart'];
     final bad = <String>[];
     for (final f in files) {
       final lines = f.readAsLinesSync();
@@ -192,11 +191,10 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    /// Every font size on screen but glyphs and the ring's own figures.
+    /// Every font size on screen but glyphs.
     Set<double> sizesOnScreen(WidgetTester tester) {
       final sizes = <double>{};
       for (final element in find.byType(RichText).evaluate()) {
-        if (element.findAncestorWidgetOfExactType<ProgressRing>() != null) continue;
         (element.widget as RichText).text.visitChildren((span) {
           final style = span.style;
           if (style?.fontSize != null && style!.fontFamily != 'MaterialIcons') sizes.add(style.fontSize!);

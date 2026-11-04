@@ -45,14 +45,11 @@ const cornerCardWidth = 360.0;
 const dialogRadius = 24.0;
 const dialogPadding = EdgeInsets.fromLTRB(28, 28, 28, 20);
 
-/// `tileBorder` in three strengths, so edges of the same rank match.
+/// `tileBorder` in two strengths, so edges of the same rank match.
 extension PaletteBorders on Palette {
   /// Hairlines inside a card: dividers, quiet outlines.
   Color get borderSoft => tileBorder.withValues(alpha: 0.55);
 
   /// The outline of a card, field or chip.
   Color get border => tileBorder.withValues(alpha: 0.85);
-
-  /// A deliberate edge, such as an unfilled control.
-  Color get borderStrong => tileBorder;
 }

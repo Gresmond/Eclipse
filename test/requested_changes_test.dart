@@ -6,7 +6,6 @@ import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/theme/app_theme.dart';
-import 'package:eclipse/widgets/progress_ring.dart';
 import 'package:eclipse/widgets/smooth_task_scroll.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:flutter/gestures.dart';
@@ -120,30 +119,6 @@ void main() {
     expect(store.monthScores(2026, 10)[habit.id], (1, 1));
     expect(store.habitBeforeYear(habit.id, 2026), isFalse);
     expect(store.habitBeforeYear(habit.id, 2027), isTrue);
-  });
-
-  testWidgets('completion celebrates immediately and fades when unticked', (tester) async {
-    Future<void> show(int done) => tester.pumpWidget(
-      MaterialApp(
-        theme: buildTheme(palettes.first),
-        home: Scaffold(body: ProgressRing(done: done, total: 1)),
-      ),
-    );
-    double solid() {
-      final paint = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .firstWhere((w) => w.painter.runtimeType.toString() == '_RingPainter');
-      return (paint.painter as dynamic).solid as double;
-    }
-
-    await show(0);
-    await tester.pumpAndSettle();
-    await show(1);
-    expect(solid(), 1);
-    await tester.pumpAndSettle();
-    await show(0);
-    await tester.pumpAndSettle();
-    expect(solid(), 0);
   });
 
   testWidgets('wheel and edge scrolling work during an actual task drag', (tester) async {
