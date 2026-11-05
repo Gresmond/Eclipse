@@ -45,6 +45,16 @@ flutter:
           weight: 600
         - asset: assets/fonts/matter/Matter-TRIAL-Bold.otf
           weight: 700
+    - family: Matter XH
+      fonts:
+        - asset: assets/fonts/matter_xh/MatterXH-TRIAL-Regular.otf
+          weight: 400
+        - asset: assets/fonts/matter_xh/MatterXH-TRIAL-Medium.otf
+          weight: 500
+        - asset: assets/fonts/matter_xh/MatterXH-TRIAL-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/matter_xh/MatterXH-TRIAL-Bold.otf
+          weight: 700
     - family: Haffer SemiMono
       fonts:
         - asset: assets/fonts/haffer/HafferSemiMono-TRIAL-Medium.otf
