@@ -194,7 +194,7 @@ extension on _SettingsDialogState {
         Row(
           children: [
             if (sync.busy) ...[
-              SizedBox.square(dimension: 12, child: CircularProgressIndicator(strokeWidth: 2, color: p.accent)),
+              SizedBox.square(dimension: 12, child: SmoothSpinner(color: p.accent)),
               const SizedBox(width: 8),
             ],
             Expanded(
@@ -278,7 +278,7 @@ extension on _SettingsDialogState {
               const SizedBox(width: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.done)),
+                child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.done)),
               ),
             ] else
               button('Sign in with Google', () => _signIn(sync), filled: true),

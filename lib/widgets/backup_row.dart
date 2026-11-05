@@ -5,6 +5,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'app_dialog.dart';
+import 'smooth_spinner.dart';
 
 /// One saved copy in a list of them, with its Restore button, which asks
 /// first in place.
@@ -77,7 +78,7 @@ class BackupRow extends StatelessWidget {
           else if (restoring)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.done)),
+              child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.done)),
             )
           else if (confirming) ...[
             DialogDismiss(label: 'Cancel', onPressed: onCancel),

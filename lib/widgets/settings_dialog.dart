@@ -25,6 +25,7 @@ import 'glide_pill.dart';
 import 'holidays.dart';
 import 'setting_rows.dart';
 import 'settings_search.dart';
+import 'smooth_spinner.dart';
 import 'welcome_tour.dart';
 
 part 'settings_data.dart';

@@ -602,24 +602,16 @@ class _SpotlightPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final frame = geometry();
-    canvas.save();
-    if (surface != null) {
-      final bounds = surface!();
-      if (bounds == null) {
-        canvas.restore();
-        return;
-      }
-      canvas.clipRRect(RRect.fromRectAndRadius(bounds, const Radius.circular(24)));
-    }
+    final hole = frame.hole;
+    final bounds = surface == null ? Offset.zero & size : surface!();
+    if (bounds == null) return;
     final radius = math.min(frame.radius, hole.shortestSide / 2);
-    // Even-odd fill avoids a path boolean operation on every animation frame.
-    canvas.drawPath(
-      Path()
-        ..fillType = PathFillType.evenOdd
-        ..addRect(Offset.zero & size)
-        ..addRRect(RRect.fromRectAndRadius(hole, Radius.circular(radius))),
-      Paint()..color = scrim,
-    );
+    final shade = Paint()..color = scrim;
+    // Impeller on Linux leaves a path's edge and a rounded clip jagged, but
+    // smooths solid rounded rects: the shade is one, with another cut from it.
+    canvas.saveLayer(bounds, Paint());
+    canvas.drawRRect(RRect.fromRectAndRadius(bounds, Radius.circular(surface == null ? 0 : 24)), shade);
+    canvas.drawRRect(RRect.fromRectAndRadius(hole, Radius.circular(radius)), Paint()..blendMode = BlendMode.dstOut);
     canvas.restore();
   }
 

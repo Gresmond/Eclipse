@@ -205,6 +205,12 @@ class _Fold {
   /// The lifted part, turned over onto the page.
   List<Offset> get flap => [for (final x in part(lifted: true)) reflect(x)];
 
+  /// Where the page bends: the lifted part's two points on the crease.
+  List<Offset> get crease => [
+    for (final x in part(lifted: true))
+      if (side(x).abs() < 0.01) x,
+  ];
+
   static Path path(List<Offset> pts) => pts.isEmpty ? Path() : (Path()..addPolygon(pts, true));
 }
 
@@ -262,11 +268,12 @@ class _FoldPainter extends CustomPainter {
 
     // The flap: lit paper, a little darker where it bends at the crease.
     final across = math.max(1.0, length * 0.5);
+    final bend = Color.lerp(paper, shadow, 0.16)!;
     canvas.drawPath(
       flapPath,
       Paint()
         ..shader = LinearGradient(
-          colors: [Color.lerp(paper, shadow, 0.16)!, paper, Color.lerp(paper, Colors.white, 0.4)!],
+          colors: [bend, paper, Color.lerp(paper, Colors.white, 0.4)!],
           stops: const [0, 0.35, 1],
         ).createShader(Rect.fromPoints(m, m - n * across)),
     );
@@ -277,6 +284,18 @@ class _FoldPainter extends CustomPainter {
         ..strokeWidth = 0.8
         ..color = shadow.withValues(alpha: 0.12),
     );
+    // Impeller on Linux leaves a path's edge jagged, but smooths lines, so one
+    // in the flap's colour there covers the steps along the crease.
+    if (fold.crease case [final a, final b]) {
+      canvas.drawLine(
+        a,
+        b,
+        Paint()
+          ..color = bend
+          ..strokeWidth = 1.5
+          ..strokeCap = StrokeCap.square,
+      );
+    }
   }
 
   @override

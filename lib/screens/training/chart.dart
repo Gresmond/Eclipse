@@ -243,31 +243,15 @@ class _ChartPainter extends CustomPainter {
       final colour = faded ? s.colour.withValues(alpha: 0.18) : s.colour;
       final pts = [for (final pt in s.points) Offset(x(pt.day), y(_value(s, pt)))];
       if (pts.length > 1) {
-        final path = Path()..addPolygon(pts, false);
-        _stroke(
-          canvas,
-          path,
-          s.dash,
-          Paint()
-            ..color = colour
-            ..strokeWidth = focus != null && !faded ? 2.6 : 2
-            ..style = PaintingStyle.stroke
-            ..strokeJoin = StrokeJoin.round
-            ..strokeCap = StrokeCap.round,
-        );
+        _stroke(canvas, pts, s.dash, colour, focus != null && !faded ? 2.6 : 2);
       }
       for (final (i, o) in pts.indexed) {
         final rough = s.points[i].rough;
         canvas.drawCircle(o, 3.6, Paint()..color = rough ? p.tile : colour);
         if (rough) {
-          canvas.drawCircle(
-            o,
-            3.6,
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.6
-              ..color = colour,
-          );
+          // A filled ring: a stroked circle comes out jagged under Impeller on Linux.
+          final ring = RRect.fromRectAndRadius(Rect.fromCircle(center: o, radius: 4.4), const Radius.circular(4.4));
+          canvas.drawDRRect(ring, ring.deflate(1.6), Paint()..color = colour);
         }
         if (!faded && pointer != null) {
           final d = (pointer! - o).distance;
@@ -338,20 +322,40 @@ class _ChartPainter extends CustomPainter {
         mag;
   }
 
-  static void _stroke(Canvas canvas, Path path, List<double> dash, Paint paint) {
-    if (dash.isEmpty) {
-      canvas.drawPath(path, paint);
-      return;
+  /// Draws lines through [pts], dashed if [dash] has any lengths. Impeller on
+  /// Linux leaves stroked paths jagged, but smooths lines. They overlap where
+  /// they meet, so a see-through colour draws them as one on a layer.
+  static void _stroke(Canvas canvas, List<Offset> pts, List<double> dash, Color colour, double width) {
+    final fading = colour.a < 1;
+    if (fading) {
+      var bounds = Rect.fromPoints(pts.first, pts.first);
+      for (final o in pts) {
+        bounds = bounds.expandToInclude(Rect.fromPoints(o, o));
+      }
+      canvas.saveLayer(bounds.inflate(width), Paint()..color = Color.fromRGBO(0, 0, 0, colour.a));
     }
-    for (final PathMetric m in path.computeMetrics()) {
-      var at = 0.0, i = 0;
-      while (at < m.length) {
-        final len = dash[i % dash.length];
-        if (i.isEven) canvas.drawPath(m.extractPath(at, math.min(at + len, m.length)), paint);
-        at += len;
-        i++;
+    final paint = Paint()
+      ..color = colour.withValues(alpha: 1)
+      ..strokeWidth = width
+      ..strokeCap = StrokeCap.round;
+    var i = 0;
+    var left = dash.isEmpty ? double.infinity : dash.first;
+    for (var s = 0; s + 1 < pts.length; s++) {
+      final a = pts[s], along = pts[s + 1] - a;
+      final length = along.distance;
+      var at = 0.0;
+      while (at < length) {
+        final step = math.min(left, length - at);
+        if (i.isEven) canvas.drawLine(a + along * (at / length), a + along * ((at + step) / length), paint);
+        at += step;
+        left -= step;
+        if (left <= 0) {
+          i++;
+          left = dash[i % dash.length];
+        }
       }
     }
+    if (fading) canvas.restore();
   }
 
   void _text(Canvas canvas, String text, Offset at, Color colour, {required Alignment align}) {
@@ -506,15 +510,10 @@ class _DashSample extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) => _ChartPainter._stroke(
     canvas,
-    Path()
-      ..moveTo(1, size.height / 2)
-      ..lineTo(size.width - 1, size.height / 2),
+    [Offset(1, size.height / 2), Offset(size.width - 1, size.height / 2)],
     dash,
-    Paint()
-      ..color = colour
-      ..strokeWidth = 2.2
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round,
+    colour,
+    2.2,
   );
 
   @override
