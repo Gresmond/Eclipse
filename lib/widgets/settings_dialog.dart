@@ -497,11 +497,14 @@ class _RibbonsState extends State<_Ribbons> {
                         child: AnimatedDefaultTextStyle(
                           duration: context.themed(Motion.morph),
                           curve: Motion.morphCurve,
-                          style: TextStyle(
-                            fontFamily: Fonts.ui,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: i == widget.selected ? p.onAccent : p.inkMuted,
+                          style: XHeight.apply(
+                            context,
+                            TextStyle(
+                              fontFamily: Fonts.ui,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: i == widget.selected ? p.onAccent : p.inkMuted,
+                            ),
                           ),
                           child: Text(label),
                         ),

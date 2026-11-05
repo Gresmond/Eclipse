@@ -142,11 +142,14 @@ class _DayStartPickerState extends State<DayStartPicker> {
                                 child: AnimatedDefaultTextStyle(
                                   duration: context.themed(Motion.morph),
                                   curve: Motion.morphCurve,
-                                  style: TextStyle(
-                                    fontFamily: Fonts.ui,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: hour == state.dayStartHour ? p.onAccent : p.inkMuted,
+                                  style: XHeight.apply(
+                                    context,
+                                    TextStyle(
+                                      fontFamily: Fonts.ui,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: hour == state.dayStartHour ? p.onAccent : p.inkMuted,
+                                    ),
                                   ),
                                   child: Text(hourLabel(hour)),
                                 ),

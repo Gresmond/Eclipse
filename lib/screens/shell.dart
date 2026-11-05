@@ -482,7 +482,7 @@ class _Tab extends StatelessWidget {
     final text = AnimatedDefaultTextStyle(
       duration: context.themed(Motion.morph),
       curve: Motion.morphCurve,
-      style: _style(FontWeight.w600, fg),
+      style: XHeight.apply(context, _style(FontWeight.w600, fg)),
       child: Text(label),
     );
     final width = labelWidth;

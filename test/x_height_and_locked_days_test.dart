@@ -1,6 +1,7 @@
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
+import 'package:eclipse/models.dart';
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/widgets/status_cell.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,31 @@ void main() {
     final context = tester.element(find.byType(Scaffold).first);
     expect(DefaultTextStyle.of(context).style.fontVariations, [const FontVariation('XHGT', 80)]);
     expect(XHeight.of(context), 80);
+    store.close();
+  });
+
+  testWidgets('every piece of Matter on the page takes the x-height', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    final today = DateTime(2026, 11, 5);
+    store.addTodo(TodoScope.today, today, 'A task title');
+    store.addTodo(TodoScope.today, today, 'A finished task', done: true);
+    final state = AppState(store, clock: () => DateTime(2026, 11, 5, 10))..xHeight.value = 80;
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('A task title'), findsOneWidget);
+    final matter = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .map((text) => text.text)
+        .whereType<TextSpan>()
+        .where((span) => span.style?.fontFamily == Fonts.body)
+        .toList();
+    expect(matter, isNotEmpty);
+    for (final span in matter) {
+      expect(span.style!.fontVariations, [const FontVariation('XHGT', 80)], reason: span.toPlainText());
+    }
     store.close();
   });
 

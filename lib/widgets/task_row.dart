@@ -447,13 +447,16 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                           child: AnimatedDefaultTextStyle(
                             duration: context.themed(Motion.click),
                             curve: Motion.clickCurve,
-                            style: TextStyle(
-                              fontFamily: Fonts.body,
-                              fontSize: 15,
-                              height: 1.35,
-                              color: done ? p.inkMuted : p.ink,
-                              decoration: done ? TextDecoration.lineThrough : null,
-                              decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                            style: XHeight.apply(
+                              context,
+                              TextStyle(
+                                fontFamily: Fonts.body,
+                                fontSize: 15,
+                                height: 1.35,
+                                color: done ? p.inkMuted : p.ink,
+                                decoration: done ? TextDecoration.lineThrough : null,
+                                decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                              ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -875,13 +878,16 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
                       child: AnimatedDefaultTextStyle(
                         duration: context.themed(Motion.click),
                         curve: Motion.clickCurve,
-                        style: TextStyle(
-                          fontFamily: Fonts.body,
-                          fontSize: 15,
-                          height: 1.35,
-                          color: done ? p.inkMuted : p.ink,
-                          decoration: done ? TextDecoration.lineThrough : null,
-                          decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                        style: XHeight.apply(
+                          context,
+                          TextStyle(
+                            fontFamily: Fonts.body,
+                            fontSize: 15,
+                            height: 1.35,
+                            color: done ? p.inkMuted : p.ink,
+                            decoration: done ? TextDecoration.lineThrough : null,
+                            decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                          ),
                         ),
                         // One paragraph, as a task's time and name, so the
                         // number keeps the text's baseline at any scale; two
