@@ -250,7 +250,8 @@ class _ChartPainter extends CustomPainter {
         canvas.drawCircle(o, 3.6, Paint()..color = rough ? p.tile : colour);
         if (rough) {
           // A filled ring: a stroked circle comes out jagged under Impeller on Linux.
-          final ring = RRect.fromRectAndRadius(Rect.fromCircle(center: o, radius: 4.4), const Radius.circular(4.4));
+          final circle = Rect.fromCircle(center: o, radius: 4.4);
+          final ring = RRect.fromRectAndRadius(circle, Radius.circular(circle.shortestSide / 2));
           canvas.drawDRRect(ring, ring.deflate(1.6), Paint()..color = colour);
         }
         if (!faded && pointer != null) {
