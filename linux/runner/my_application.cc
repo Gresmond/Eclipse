@@ -64,9 +64,8 @@ static void my_application_activate(GApplication* application) {
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
-  // Impeller's OpenGL backend leaves gradient-filled shapes (selected tabs,
-  // ticked cells) with jagged, un-antialiased edges. Skia draws them smoothly.
-  fl_dart_project_set_enable_impeller(project, FALSE);
+  // Trying Impeller for sharper text. Skia drew gradient-filled shapes more smoothly.
+  fl_dart_project_set_enable_impeller(project, TRUE);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
