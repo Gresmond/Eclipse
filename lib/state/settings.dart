@@ -54,6 +54,14 @@ mixin _Settings on ChangeNotifier {
 
   static const _themeNames = 4;
 
+  /// How tall Matter's lowercase stands, from 0 (standard) to 100 (Matter XH).
+  /// Kept on this device, like the theme.
+  late final ValueNotifier<int> xHeight = ValueNotifier(
+    (int.tryParse(store.setting('xHeight') ?? '') ?? 0).clamp(0, 100),
+  );
+
+  void saveXHeight() => store.setSetting('xHeight', '${xHeight.value}');
+
   void setTheme(String name) {
     themeName = name;
     themeNotifier.value = name;

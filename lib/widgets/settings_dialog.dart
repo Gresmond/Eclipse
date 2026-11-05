@@ -315,6 +315,8 @@ extension on _SettingsDialogState {
                 const FadeMenuDivider(),
                 const DayStartPicker(),
                 const FadeMenuDivider(),
+                const XHeightRow(),
+                const FadeMenuDivider(),
                 FadeMenuRow(
                   height: 50,
                   onTap: () {

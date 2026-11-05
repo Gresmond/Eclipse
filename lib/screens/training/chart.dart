@@ -137,6 +137,7 @@ class _ChartState extends State<_Chart> {
       child: CustomPaint(
         size: Size.infinite,
         painter: _ChartPainter(
+          xHeight: XHeight.of(context),
           series: widget.series,
           from: widget.from,
           to: widget.to,
@@ -151,7 +152,10 @@ class _ChartState extends State<_Chart> {
 }
 
 class _ChartPainter extends CustomPainter {
+  final int xHeight;
+
   _ChartPainter({
+    required this.xHeight,
     required this.series,
     required this.from,
     required this.to,
@@ -293,14 +297,14 @@ class _ChartPainter extends CustomPainter {
     final title = TextPainter(
       text: TextSpan(
         text: e.name,
-        style: _label(p, weight: FontWeight.w600),
+        style: _label(p, weight: FontWeight.w600).copyWith(fontVariations: XHeight.variations(xHeight)),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
     final body = TextPainter(
       text: TextSpan(
         text: '${_shortDate(pt.day)}  ·  $value$change',
-        style: _label(p, size: 14, color: p.inkMuted),
+        style: _label(p, size: 14, color: p.inkMuted).copyWith(fontVariations: XHeight.variations(xHeight)),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -358,7 +362,7 @@ class _ChartPainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: _label(palette, size: 12, color: colour),
+        style: _label(palette, size: 12, color: colour).copyWith(fontVariations: XHeight.variations(xHeight)),
       ),
       textDirection: TextDirection.ltr,
     )..layout();

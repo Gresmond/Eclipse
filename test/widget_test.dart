@@ -1410,7 +1410,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final weights = state.habits.firstWhere((h) => h.name == 'File notes');
-    final day = DateTime(2026, 10, 5);
+    final day = DateTime(2026, 10, 22);
     state.selectStatus(day, weights, HabitStatus.done);
     state.selectStatus(day, weights, HabitStatus.missed);
     state.setNote(day, weights, 'Rest day');
@@ -1823,7 +1823,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final weights = state.habits.firstWhere((h) => h.name == 'File notes');
-    final day = DateTime(2026, 10, 6);
+    final day = DateTime(2026, 10, 22);
     // Middle-click selects other directly and asks for an optional note.
     await tester.pumpAndSettle();
 
@@ -1851,7 +1851,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final habit = state.habits.firstWhere((h) => h.name == 'File notes');
-    final day = DateTime(2026, 10, 7);
+    final day = DateTime(2026, 10, 22);
     final square = find.byWidgetPredicate((w) => w is StatusCell && w.day == day && w.habit.id == habit.id);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);

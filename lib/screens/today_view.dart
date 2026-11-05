@@ -219,7 +219,7 @@ class _HabitsCard extends StatelessWidget {
           width - _HabitRow.fixedWidth(badge) - (trail ? _HabitRow.weekTrailWidth : 0) - cell.clamp(24, 32);
       double rowFor(String name) {
         final painter = TextPainter(
-          text: TextSpan(text: name, style: _HabitRow.nameStyle),
+          text: TextSpan(text: name, style: XHeight.apply(context, _HabitRow.nameStyle)),
           maxLines: _HabitRow.nameLines,
           textDirection: TextDirection.ltr,
           textScaler: scaler,
@@ -438,7 +438,7 @@ class _HabitRow extends StatelessWidget {
   /// The badge's slot: 44px, or wider when [streak] needs it.
   static double badgeFor(BuildContext context, int streak) {
     final painter = TextPainter(
-      text: TextSpan(text: '$streak', style: streakStyle(const Color(0xFF000000))),
+      text: TextSpan(text: '$streak', style: XHeight.apply(context, streakStyle(const Color(0xFF000000)))),
       textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),
       maxLines: 1,

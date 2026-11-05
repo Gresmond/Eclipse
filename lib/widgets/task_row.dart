@@ -967,7 +967,7 @@ class _Caption extends StatelessWidget {
     final scaler = MediaQuery.textScalerOf(context);
     double width(String text, TextStyle style) {
       final painter = TextPainter(
-        text: TextSpan(text: text, style: style),
+        text: TextSpan(text: text, style: XHeight.apply(context, style)),
         textDirection: TextDirection.ltr,
         textScaler: scaler,
         maxLines: 1,

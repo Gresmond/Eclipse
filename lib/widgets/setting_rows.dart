@@ -201,3 +201,68 @@ class SettingToggle extends StatelessWidget {
     );
   }
 }
+
+/// How tall Matter's lowercase stands. The app's text follows as you drag.
+class XHeightRow extends StatelessWidget {
+  const XHeightRow({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final state = AppScope.of(context);
+    return ValueListenableBuilder<int>(
+      valueListenable: state.xHeight,
+      builder: (context, value, _) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'X-height',
+                    style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w500, color: p.ink),
+                  ),
+                ),
+                Text(
+                  '$value',
+                  style: TextStyle(
+                    fontFamily: Fonts.ui,
+                    fontSize: 14,
+                    color: p.inkMuted,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'How tall lowercase letters stand. 0 is standard Matter, 100 is Matter XH.',
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.inkMuted),
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: p.accent,
+                inactiveTrackColor: p.empty,
+                thumbColor: p.accent,
+                overlayShape: SliderComponentShape.noOverlay,
+                trackHeight: 4,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Slider(
+                  value: value.toDouble(),
+                  max: 100,
+                  mouseCursor: SystemMouseCursors.click,
+                  onChanged: (next) => state.xHeight.value = next.round(),
+                  onChangeEnd: (_) => state.saveXHeight(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

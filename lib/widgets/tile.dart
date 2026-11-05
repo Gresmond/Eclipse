@@ -128,7 +128,7 @@ class TileHeader extends StatelessWidget {
   /// Used to align card contents even when text is enlarged.
   static double titleHeight(BuildContext context, String title) {
     final painter = TextPainter(
-      text: TextSpan(text: title, style: _titleStyle),
+      text: TextSpan(text: title, style: XHeight.apply(context, _titleStyle)),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
       maxLines: 1,
@@ -235,7 +235,7 @@ class _CaptionSwap extends StatelessWidget {
   /// The caption's width once settled, measured as [_Caption] lays it out.
   double _width(BuildContext context) {
     final parts = _CaptionParts(caption);
-    final style = this.style ?? _captionStyle(context);
+    final style = XHeight.apply(context, this.style ?? _captionStyle(context));
     final painter = TextPainter(
       text: TextSpan(
         children: [

@@ -296,30 +296,39 @@ class EclipseApp extends StatelessWidget {
       state: state,
       child: ValueListenableBuilder<String?>(
         valueListenable: state.themeNotifier,
-        builder: (context, themeName, _) => MaterialApp(
-          title: 'Eclipse',
-          navigatorKey: appNavigator,
-          debugShowCheckedModeBanner: false,
-          theme: themeNamed(themeName),
-          themeAnimationDuration: Motion.morph,
-          themeAnimationCurve: Motion.morphCurve,
-          // A line's extra height goes equally above and below it, which
-          // centres the fonts' capitals in their line, and so on the tick
-          // boxes and tints beside them.
-          builder: (context, child) => DefaultTextHeightBehavior(
-            textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
-            child: ThemeMorph(
-              target: paletteNamed(themeName),
-              child: UndoLayer(
-                cards: CornerCards(updater: updater),
-                child: child!,
+        builder: (context, themeName, _) => ValueListenableBuilder<int>(
+          valueListenable: state.xHeight,
+          builder: (context, xHeight, _) => MaterialApp(
+            title: 'Eclipse',
+            navigatorKey: appNavigator,
+            debugShowCheckedModeBanner: false,
+            theme: themeNamed(themeName, xHeight: xHeight),
+            themeAnimationDuration: Motion.morph,
+            themeAnimationCurve: Motion.morphCurve,
+            // A line's extra height goes equally above and below it, which
+            // centres the fonts' capitals in their line, and so on the tick
+            // boxes and tints beside them.
+            builder: (context, child) => DefaultTextHeightBehavior(
+              textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
+              child: XHeight(
+                value: xHeight,
+                child: DefaultTextStyle.merge(
+                  style: TextStyle(fontVariations: XHeight.variations(xHeight)),
+                  child: ThemeMorph(
+                    target: paletteNamed(themeName),
+                    child: UndoLayer(
+                      cards: CornerCards(updater: updater),
+                      child: child!,
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-          home: Builder(
-            builder: (context) => AbsorbPointer(
-              absorbing: AppScope.watch(context, (s) => s.closing).closing,
-              child: Shell(updater: updater),
+            home: Builder(
+              builder: (context) => AbsorbPointer(
+                absorbing: AppScope.watch(context, (s) => s.closing).closing,
+                child: Shell(updater: updater),
+              ),
             ),
           ),
         ),
