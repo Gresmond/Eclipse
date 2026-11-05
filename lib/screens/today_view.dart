@@ -152,7 +152,6 @@ class _HabitColumn extends StatelessWidget {
                 child: _HabitsCard(
                   title: 'Daily rituals',
                   habits: rituals,
-                  allDone: 'Every ritual done. Beautiful.',
                   cardHeight: constraints.maxHeight - sleepHeight - TodayView._gap,
                   firstCheckboxInset: firstCheckboxInset,
                 ),
@@ -166,7 +165,6 @@ class _HabitColumn extends StatelessWidget {
                 child: _HabitsCard(
                   title: 'Sleep schedule',
                   habits: sleep,
-                  allDone: 'Schedule kept. Sleep well.',
                   times: true,
                 ),
               ),
@@ -182,7 +180,6 @@ class _HabitsCard extends StatelessWidget {
   const _HabitsCard({
     required this.title,
     required this.habits,
-    required this.allDone,
     this.times = false,
     this.cardHeight,
     this.firstCheckboxInset,
@@ -195,9 +192,6 @@ class _HabitsCard extends StatelessWidget {
 
   /// The sleep schedule: each item's scheduled time is shown on hover.
   final bool times;
-
-  /// The line under the title once every one is done.
-  final String allDone;
 
   /// The card's height less its rows: padding, header and gap.
   static const chrome = 24.0 + 54 + 22 + 24;
@@ -273,14 +267,8 @@ class _HabitsCard extends StatelessWidget {
     );
     final day = state.shownDay;
     final readOnly = !state.canEditDay(day);
-    final done = state.doneOn(day, habits);
-    final total = habits.length;
-    // A holiday needs nothing tracked; all done still says so.
-    final subtitle = done == total && total > 0
-        ? allDone
-        : holidayOn(state.holidays, day) != null
-        ? 'On holiday'
-        : '';
+    // A holiday needs nothing tracked.
+    final subtitle = holidayOn(state.holidays, day) != null ? 'On holiday' : '';
 
     return Tile(
       padding: const EdgeInsets.all(24),

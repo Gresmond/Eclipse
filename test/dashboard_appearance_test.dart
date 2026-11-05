@@ -46,7 +46,7 @@ void main() {
     }
     await tester.pumpAndSettle();
     final calendar = find.ancestor(of: find.text('NOV'), matching: find.byType(Container)).first;
-    expect(find.text('Every ritual done. Beautiful.'), findsOneWidget);
+    expect(find.text('Every ritual done. Beautiful.'), findsNothing);
     expect(tester.getTopLeft(calendar).dy, closeTo(tester.getTopLeft(find.byType(StatusCell).first).dy, 0.1));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
