@@ -25,7 +25,11 @@ List<Color> _slots(Palette p) => [
 void main() {
   test('all 17 slots stay within each theme’s four main hue families', () {
     for (final p in palettes) {
-      final hues = [p.done, p.missed, p.other, p.today].map((c) => Oklch.of(c).h).toList();
+      final hues = [
+        ...[p.done, p.missed, p.other, p.today].map((c) => Oklch.of(c).h),
+        // Sunset's burnt orange surfaces sit between two of its statuses.
+        if (p.name == 'Sunset') 40.0,
+      ];
       expect(_slots(p), hasLength(17));
       for (final colour in _slots(p)) {
         final o = Oklch.of(colour);

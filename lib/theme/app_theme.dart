@@ -279,7 +279,10 @@ final sunrisePalette = const PaletteRecipe(
 final sunsetPalette = const PaletteRecipe(
   name: 'Sunset',
   brightness: Brightness.dark,
-  // Dark wine.
+  // Burnt orange, between the apricot and coral statuses. Dark orange reads
+  // brown until it's far lighter than the other night themes, and redder.
+  surfaceLift: 0.2325,
+  surfaceHue: 40,
   // A fire sky, soft: apricot, coral-pink and orchid.
   keyHue: 55,
   statusChroma: 0.10,
@@ -371,6 +374,9 @@ final plutosRevengePalette = derivePalette(
   other: const Oklch(0.69, 0.18, 8).toColor(),
   done: const Oklch(0.82, 0.10, 355).toColor(),
   today: const Oklch(0.92, 0.045, 340).toColor(),
+  // Lighter than the other night themes: a screen shows only a dim red at
+  // their darkness, and this one should look like blood.
+  surfaceLift: 0.0725,
   surfaceSource: PaletteSource.missed,
   accentSource: PaletteSource.missed,
 );

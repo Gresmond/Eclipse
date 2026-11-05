@@ -65,6 +65,7 @@ class PaletteRecipe {
     this.vivid = false,
     this.softness = 0,
     this.surfaceLift = 0,
+    this.surfaceHue,
     this.todayChroma,
     this.surfaceSource = PaletteSource.done,
     this.accentSource = PaletteSource.done,
@@ -91,6 +92,9 @@ class PaletteRecipe {
   /// How far a dark theme's surfaces sit above the usual night-time ladder,
   /// in OKLCH lightness: a dusk rather than a midnight.
   final double surfaceLift;
+
+  /// The hue of surfaces, when none of the main colours has the right one.
+  final double? surfaceHue;
 
   /// Today's chroma, when it shouldn't share [statusChroma]: cyan can hold
   /// far more colour than blue or pink at a pastel's lightness, so the
@@ -140,6 +144,7 @@ class PaletteRecipe {
       surfaceSource: surfaceSource,
       accentSource: accentSource,
       surfaceLift: surfaceLift,
+      surfaceHue: surfaceHue,
     );
   }
 }
@@ -158,6 +163,7 @@ Palette derivePalette({
   PaletteSource surfaceSource = PaletteSource.done,
   PaletteSource accentSource = PaletteSource.done,
   double surfaceLift = 0,
+  double? surfaceHue,
 }) {
   final dark = brightness == Brightness.dark;
   Color source(PaletteSource role) => switch (role) {
@@ -166,9 +172,9 @@ Palette derivePalette({
     PaletteSource.other => other,
     PaletteSource.today => today,
   };
-  final surface = Oklch.of(source(surfaceSource));
+  final surfaceH = surfaceHue ?? Oklch.of(source(surfaceSource)).h;
   final neutralChroma = dark ? _nightNeutralChroma : _dayNeutralChroma;
-  Color neutral(double l, [double chromaScale = 1]) => Oklch(l, neutralChroma * chromaScale, surface.h).toColor();
+  Color neutral(double l, [double chromaScale = 1]) => Oklch(l, neutralChroma * chromaScale, surfaceH).toColor();
   double night(double l) => l + surfaceLift;
 
   final ink = neutral(dark ? 0.955 : 0.24, 2);
@@ -184,11 +190,11 @@ Palette derivePalette({
   // Text on a done fill takes whichever ink reads best on it.
   final onDone = contrast(white, done) >= contrast(darkInk, done) ? white : darkInk;
   final backgroundL = dark ? night(_nightBackgroundL) : _dayBackground.$1;
-  final backgroundC = dark ? Oklch.maxChroma(backgroundL, surface.h) * _nightBackgroundShare : _dayBackground.$2;
-  final background = Oklch(backgroundL, backgroundC, surface.h).toColor();
+  final backgroundC = dark ? Oklch.maxChroma(backgroundL, surfaceH) * _nightBackgroundShare : _dayBackground.$2;
+  final background = Oklch(backgroundL, backgroundC, surfaceH).toColor();
   // Colour stays in the window's frame: cards sit near white by day and
   // below the background at night, with most of its colour.
-  final tile = dark ? Oklch(night(0.155), backgroundC * _nightTileShare, surface.h).toColor() : neutral(0.992, 0.5);
+  final tile = dark ? Oklch(night(0.155), backgroundC * _nightTileShare, surfaceH).toColor() : neutral(0.992, 0.5);
   // Runs from missed through other to done, so it ends on the goal. Labels
   // sit on it in [onAccent], so the whole run moves away from that ink,
   // in one lightness step, until its worst stop reads as text.
@@ -206,6 +212,8 @@ Palette derivePalette({
     shift += away * 0.005;
   }
 
+  final empty = neutral(dark ? night(0.255) : 0.94);
+
   return Palette(
     name: name,
     brightness: brightness,
@@ -215,7 +223,7 @@ Palette derivePalette({
     ink: ink,
     // Lifted surfaces need lighter muted text to keep its contrast.
     inkMuted: readable(neutral(dark ? 0.73 + surfaceLift / 2 : 0.52, 2), [background, tile], dark: dark),
-    accent: readable(Oklch(accentL, accentC, accent.h).toColor(), [background, tile], dark: dark),
+    accent: readable(Oklch(accentL, accentC, accent.h).toColor(), [background, tile, empty], dark: dark),
     onAccent: onAccent,
     onDone: onDone,
     gradient: shifted(),
@@ -226,7 +234,7 @@ Palette derivePalette({
     missedInk: readable(missed, [tile, background], dark: dark),
     other: other,
     otherInk: readable(other, [tile, background], dark: dark),
-    empty: neutral(dark ? night(0.255) : 0.94),
+    empty: empty,
     shadow: neutral(dark ? 0.12 : 0.35),
   );
 }
