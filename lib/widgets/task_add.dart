@@ -43,7 +43,8 @@ class _DatedAddState extends State<_DatedAdd> {
       location: choice?.location,
     );
     if (!mounted) return null;
-    if (picked != null) setState(() => _choice = picked);
+    // Cancelling clears all that was set up, back to the plain field.
+    setState(() => _choice = picked);
     if (picked != null || typing) _refocus(_focus, _controller, selection);
     return picked;
   }
@@ -61,10 +62,8 @@ class _DatedAddState extends State<_DatedAdd> {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final today = AppScope.read(context).today;
-    final due = _choice?.day, repeat = _choice?.repeat, time = _choice?.time, birthday = _choice?.birthday == true;
-    final note = TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted);
+    final choice = _choice, due = choice?.day;
     return Padding(
       padding: const EdgeInsets.only(top: 6, right: 6),
       child: _Field(
@@ -75,40 +74,7 @@ class _DatedAddState extends State<_DatedAdd> {
           icon: due == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
           onPressed: _pick,
         ),
-        trailing: Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (due != null)
-                Flexible(
-                  child: Text(
-                    dayAndMonth(due, today: today),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: note,
-                  ),
-                ),
-              if (time != null) ...[
-                const SizedBox(width: 6),
-                Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 12)),
-              ],
-              if (repeat != null) ...[
-                const SizedBox(width: 8),
-                Icon(birthday ? _birthdayIcon : Icons.repeat_rounded, size: 12, color: p.accent),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    birthday ? 'Birthday' : repeat.rule.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: note.copyWith(color: p.accent),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+        details: choice == null ? null : _ChosenDetails(choice: choice, today: today),
         onSubmitted: _submit,
       ),
     );
@@ -193,7 +159,7 @@ class _AddTaskState extends State<_AddTask> {
     );
     _picking = false;
     if (!mounted) return;
-    if (picked != null) setState(() => _choice = picked);
+    setState(() => _choice = picked);
     _refocus(_focus, _controller, selection);
   }
 
@@ -203,7 +169,6 @@ class _AddTaskState extends State<_AddTask> {
     final state = AppScope.read(context);
     final choice = _choice;
     final moved = choice != null && choice.day != widget.day;
-    final time = choice?.birthday == true ? null : choice?.time;
     // Its calendar only once it's been clicked, or while a day is picked.
     final timed = widget.past == null && (_focus.hasFocus || _picking || choice != null);
     return Padding(
@@ -229,74 +194,119 @@ class _AddTaskState extends State<_AddTask> {
               hover: _hover || _focus.hasFocus || _picking,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Row(
-                  children: [
-                    // Its buttons leave the cursor in the field; the + lines
-                    // up with the tick boxes above.
-                    TextFieldTapRegion(
-                      child: SizedBox(
-                        width: 20,
-                        height: _TaskAction.size,
-                        child: OverflowBox(
-                          maxWidth: _TaskAction.size,
-                          child: _TaskAction(icon: Icons.add_rounded, onPressed: () => _submit(state)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        focusNode: _focus,
-                        textCapitalization: TextCapitalization.sentences,
-                        inputFormatters: const [NoteInputFormatter()],
-                        // As a task's name, so the line is a task's height.
-                        style: _taskInputStyle(p),
-                        cursorColor: p.accent,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          border: InputBorder.none,
-                          hintText: 'Add task',
-                          hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        onSubmitted: (_) => _submit(state),
-                      ),
-                    ),
-                    if (timed)
-                      TextFieldTapRegion(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (moved)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: Text(
-                                  dayAndMonth(choice.day, today: widget.today),
-                                  style: TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted),
-                                ),
-                              ),
-                            if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 12)),
-                            if (choice?.repeat != null) ...[
-                              const SizedBox(width: 6),
-                              Icon(choice!.birthday ? _birthdayIcon : Icons.repeat_rounded, size: 12, color: p.accent),
-                            ],
-                            _TaskAction(
-                              tooltip: choice == null
-                                  ? 'Pick a day'
-                                  : 'Due ${dayAndMonth(choice.day)}, click to change',
-                              icon: choice == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
-                              onPressed: _pick,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth;
+                    return Row(
+                      children: [
+                        // Its buttons leave the cursor in the field; the + lines
+                        // up with the tick boxes above.
+                        TextFieldTapRegion(
+                          child: SizedBox(
+                            width: 20,
+                            height: _TaskAction.size,
+                            child: OverflowBox(
+                              maxWidth: _TaskAction.size,
+                              child: _TaskAction(icon: Icons.add_rounded, onPressed: () => _submit(state)),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                  ],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            focusNode: _focus,
+                            textCapitalization: TextCapitalization.sentences,
+                            inputFormatters: const [NoteInputFormatter()],
+                            // As a task's name, so the line is a task's height.
+                            style: _taskInputStyle(p),
+                            cursorColor: p.accent,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              border: InputBorder.none,
+                              hintText: 'Add task',
+                              hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            onSubmitted: (_) => _submit(state),
+                          ),
+                        ),
+                        if (timed)
+                          TextFieldTapRegion(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (choice != null)
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(maxWidth: _detailsRoom(width - 32 - _TaskAction.size)),
+                                    child: _ChosenDetails(choice: choice, today: widget.today, showDay: moved),
+                                  ),
+                                _TaskAction(
+                                  tooltip: choice == null
+                                      ? 'Pick a day'
+                                      : 'Due ${dayAndMonth(choice.day)}, click to change',
+                                  icon: choice == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
+                                  onPressed: _pick,
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// How wide a field's details may be when [width] is left beside its
+/// buttons: the name gives way to them, keeping enough to read what's typed.
+double _detailsRoom(double width) => (width - 120).clamp(0, double.infinity);
+
+/// What's chosen for a new task, all of it on one line: its day, unless
+/// [showDay] is off, its time, where it is and how it repeats. It shrinks
+/// rather than cut any of them off when the field can't hold them.
+class _ChosenDetails extends StatelessWidget {
+  const _ChosenDetails({required this.choice, required this.today, this.showDay = true});
+
+  final _DayChoice choice;
+  final DateTime today;
+  final bool showDay;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final note = TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted);
+    final (time, location, repeat) = (choice.time, choice.location, choice.repeat);
+    Widget label(IconData icon, String text, Color color) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(text, style: note.copyWith(color: color)),
+      ],
+    );
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 8,
+        children: [
+          if (showDay) Text(dayAndMonth(choice.day, today: today), style: note),
+          if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 12)),
+          if (location != null) label(Icons.place_rounded, location, p.inkMuted),
+          if (repeat != null)
+            label(
+              choice.birthday ? _birthdayIcon : Icons.repeat_rounded,
+              choice.birthday ? 'Birthday' : _repeatLabel(repeat),
+              p.accent,
+            ),
+        ],
       ),
     );
   }
@@ -314,13 +324,14 @@ class _Field extends StatelessWidget {
     required this.controller,
     required this.focus,
     required this.leading,
-    required this.trailing,
+    this.details,
     required this.onSubmitted,
   });
 
   final TextEditingController controller;
   final FocusNode focus;
-  final Widget leading, trailing;
+  final Widget leading;
+  final Widget? details;
   final VoidCallback onSubmitted;
 
   @override
@@ -335,35 +346,43 @@ class _Field extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: focus.hasFocus ? p.accent.withValues(alpha: 0.45) : Colors.transparent),
         ),
-        child: Row(
-          children: [
-            // Its buttons leave the cursor in the field.
-            TextFieldTapRegion(child: leading),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                focusNode: focus,
-                textCapitalization: TextCapitalization.sentences,
-                inputFormatters: const [NoteInputFormatter()],
-                style: _taskInputStyle(p),
-                cursorColor: p.accent,
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  hintText: 'Add task',
-                  hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Row(
+            children: [
+              // Its buttons leave the cursor in the field.
+              TextFieldTapRegion(child: leading),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  focusNode: focus,
+                  textCapitalization: TextCapitalization.sentences,
+                  inputFormatters: const [NoteInputFormatter()],
+                  style: _taskInputStyle(p),
+                  cursorColor: p.accent,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: 'Add task',
+                    hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  onSubmitted: (_) => onSubmitted(),
                 ),
-                onSubmitted: (_) => onSubmitted(),
               ),
-            ),
-            // Its buttons and labels keep to the end, the name taking the rest.
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 180),
-              child: TextFieldTapRegion(child: trailing),
-            ),
-          ],
+              // Its details keep to the end, the name taking the rest.
+              if (details case final details?)
+                TextFieldTapRegion(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: _detailsRoom(constraints.maxWidth - _TaskAction.size - 16)),
+                      child: details,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

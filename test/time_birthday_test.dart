@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
@@ -361,5 +362,54 @@ void main() {
     await tester.pumpAndSettle();
     final task = state.todos[TodoScope.week]!.singleWhere((t) => t.text == 'Call the bank');
     expect(task.dueDate, DateTime(2026, 10, 25));
+  });
+
+  group('a new task\'s chosen details', () {
+    Future<(AppState, Finder)> show(WidgetTester tester, double width) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final store = Store.memory();
+      addTearDown(store.close);
+      final state = AppState(store, clock: () => DateTime(2026, 10, 23, 9));
+      await tester.pumpWidget(EclipseApp(state: state));
+      await tester.pumpAndSettle();
+      return (state, find.byType(WeekCard));
+    }
+
+    Future<void> chooseAll(WidgetTester tester, Finder picker) async {
+      await tester.tap(picker);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Add a location'), 'Parramatta Town Hall');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('show the location whole in the card-foot pill, even in the narrowest window', (tester) async {
+      for (final width in [750.0, 1440.0]) {
+        final (_, week) = await show(tester, width);
+        await chooseAll(tester, find.descendant(of: week, matching: find.byTooltip('Pick a day')).last);
+        final place = find.descendant(of: week, matching: find.text('Parramatta Town Hall'));
+        expect(place, findsOneWidget);
+        expect(tester.renderObject<RenderParagraph>(place).didExceedMaxLines, isFalse);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
+    testWidgets('Cancel takes the card-foot pill back to how it starts and keeps the name', (tester) async {
+      final (_, week) = await show(tester, 1440);
+      await chooseAll(tester, find.descendant(of: week, matching: find.byTooltip('Pick a day')).last);
+      final name = find.descendant(of: week, matching: find.byType(TextField)).last;
+      await tester.enterText(name, 'Dentist');
+      await tester.tap(find.descendant(of: week, matching: find.byIcon(Icons.event_available_rounded)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: week, matching: find.text('Parramatta Town Hall')), findsNothing);
+      expect(find.descendant(of: week, matching: find.byIcon(Icons.event_available_rounded)), findsNothing);
+      expect(find.descendant(of: week, matching: find.text('Dentist')), findsOneWidget);
+    });
   });
 }
