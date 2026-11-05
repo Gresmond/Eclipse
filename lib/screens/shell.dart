@@ -445,7 +445,7 @@ class _Tab extends StatelessWidget {
   /// The width a label takes.
   static double boldWidth(BuildContext context, String label) {
     final painter = TextPainter(
-      text: TextSpan(text: label, style: XHeight.apply(context, _style(FontWeight.w600, const Color(0xFF000000)))),
+      text: TextSpan(text: label, style: _style(FontWeight.w600, const Color(0xFF000000))),
       textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),
       maxLines: 1,
@@ -482,7 +482,7 @@ class _Tab extends StatelessWidget {
     final text = AnimatedDefaultTextStyle(
       duration: context.themed(Motion.morph),
       curve: Motion.morphCurve,
-      style: XHeight.apply(context, _style(FontWeight.w600, fg)),
+      style: _style(FontWeight.w600, fg),
       child: Text(label),
     );
     final width = labelWidth;

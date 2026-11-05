@@ -37,14 +37,18 @@ flutter:
           weight: 700
     - family: Matter
       fonts:
-        - asset: assets/fonts/matter/Matter-TRIAL-Regular.ttf
+        - asset: assets/fonts/matter/MatterXH-TRIAL-Regular.ttf
           weight: 400
-        - asset: assets/fonts/matter/Matter-TRIAL-Medium.ttf
+        - asset: assets/fonts/matter/MatterXH-TRIAL-Medium.ttf
           weight: 500
-        - asset: assets/fonts/matter/Matter-TRIAL-SemiBold.ttf
+        - asset: assets/fonts/matter/MatterXH-TRIAL-SemiBold.ttf
           weight: 600
-        - asset: assets/fonts/matter/Matter-TRIAL-Bold.ttf
+        - asset: assets/fonts/matter/MatterXH-TRIAL-Bold.ttf
           weight: 700
+    - family: Matter XH SemiMono
+      fonts:
+        - asset: assets/fonts/matter/MatterXHSemiMono-TRIAL-Regular.ttf
+          weight: 400
     - family: Haffer SemiMono
       fonts:
         - asset: assets/fonts/haffer/HafferSemiMono-TRIAL-Medium.otf

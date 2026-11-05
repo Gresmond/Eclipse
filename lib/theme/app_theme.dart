@@ -20,28 +20,12 @@ abstract final class Fonts {
   /// Labels, day numerals, stats. Same as [body] for now.
   static const ui = body;
 
+  /// What goes above and below a task's name: its weekday, time, place,
+  /// repeat and so on.
+  static const detail = 'Matter XH SemiMono';
+
   /// The sleep schedule's times.
   static const time = 'Haffer SemiMono';
-}
-
-/// How tall Matter's lowercase stands, from 0 (standard) to 100 (Matter XH),
-/// for text that doesn't inherit it from the theme: text measured or painted
-/// directly. Using it rebuilds the caller when the setting changes.
-class XHeight extends InheritedWidget {
-  const XHeight({super.key, required this.value, required super.child});
-
-  final int value;
-
-  static int of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<XHeight>()?.value ?? 0;
-
-  /// [style] at the x-height chosen.
-  static TextStyle apply(BuildContext context, TextStyle style) =>
-      style.copyWith(fontVariations: variations(of(context)));
-
-  static List<FontVariation>? variations(int value) => value == 0 ? null : [FontVariation('XHGT', value.toDouble())];
-
-  @override
-  bool updateShouldNotify(XHeight old) => old.value != value;
 }
 
 /// Every colour the app draws with. Each theme is one instance of this.
@@ -434,33 +418,7 @@ Palette paletteNamed(String? name) => palettes.firstWhere((p) => p.name == name,
 final _themes = {for (final p in palettes) p.name: buildTheme(p)};
 
 /// The cached ThemeData for a palette name (Sunrise when unknown).
-ThemeData themeNamed(String? name, {int xHeight = 0}) {
-  final theme = _themes[paletteNamed(name).name]!;
-  if (xHeight == 0) return theme;
-  final variations = XHeight.variations(xHeight);
-  TextTheme tall(TextTheme t) {
-    TextStyle? style(TextStyle? s) => s?.copyWith(fontVariations: variations);
-    return t.copyWith(
-      displayLarge: style(t.displayLarge),
-      displayMedium: style(t.displayMedium),
-      displaySmall: style(t.displaySmall),
-      headlineLarge: style(t.headlineLarge),
-      headlineMedium: style(t.headlineMedium),
-      headlineSmall: style(t.headlineSmall),
-      titleLarge: style(t.titleLarge),
-      titleMedium: style(t.titleMedium),
-      titleSmall: style(t.titleSmall),
-      bodyLarge: style(t.bodyLarge),
-      bodyMedium: style(t.bodyMedium),
-      bodySmall: style(t.bodySmall),
-      labelLarge: style(t.labelLarge),
-      labelMedium: style(t.labelMedium),
-      labelSmall: style(t.labelSmall),
-    );
-  }
-
-  return theme.copyWith(textTheme: tall(theme.textTheme), primaryTextTheme: tall(theme.primaryTextTheme));
-}
+ThemeData themeNamed(String? name) => _themes[paletteNamed(name).name]!;
 
 ThemeData buildTheme(Palette p) {
   final scheme = ColorScheme.fromSeed(

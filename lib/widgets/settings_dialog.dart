@@ -315,8 +315,6 @@ extension on _SettingsDialogState {
                 const FadeMenuDivider(),
                 const DayStartPicker(),
                 const FadeMenuDivider(),
-                const XHeightRow(),
-                const FadeMenuDivider(),
                 FadeMenuRow(
                   height: 50,
                   onTap: () {
@@ -497,14 +495,11 @@ class _RibbonsState extends State<_Ribbons> {
                         child: AnimatedDefaultTextStyle(
                           duration: context.themed(Motion.morph),
                           curve: Motion.morphCurve,
-                          style: XHeight.apply(
-                            context,
-                            TextStyle(
-                              fontFamily: Fonts.ui,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: i == widget.selected ? p.onAccent : p.inkMuted,
-                            ),
+                          style: TextStyle(
+                            fontFamily: Fonts.ui,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: i == widget.selected ? p.onAccent : p.inkMuted,
                           ),
                           child: Text(label),
                         ),

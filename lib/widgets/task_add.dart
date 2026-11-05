@@ -281,7 +281,7 @@ class _ChosenDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final note = TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted);
+    final note = _detailStyle(p);
     final (time, location, repeat) = (choice.time, choice.location, choice.repeat);
     Widget label(IconData icon, String text, Color color) => Row(
       mainAxisSize: MainAxisSize.min,
@@ -298,7 +298,7 @@ class _ChosenDetails extends StatelessWidget {
         spacing: 8,
         children: [
           if (showDay) Text(dayAndMonth(choice.day, today: today), style: note),
-          if (time != null) Text(clockLabel(time), style: _timeStyle(p).copyWith(fontSize: 12)),
+          if (time != null) Text(clockLabel(time), style: note),
           if (location != null) label(Icons.place_rounded, location, p.inkMuted),
           if (repeat != null)
             label(
@@ -312,8 +312,12 @@ class _ChosenDetails extends StatelessWidget {
   }
 }
 
-/// A task's time, in the sleep schedule's semi-mono.
+/// A subtask's number, in the sleep schedule's semi-mono.
 TextStyle _timeStyle(Palette p) => SleepName.timeStyle(p);
+
+/// What goes above and below a task's name.
+TextStyle _detailStyle(Palette p) =>
+    TextStyle(fontFamily: Fonts.detail, fontSize: 12, color: p.inkMuted, decoration: TextDecoration.none);
 
 /// Both task-entry fields use the same typography as the tasks they create.
 TextStyle _taskInputStyle(Palette p) => TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink);
