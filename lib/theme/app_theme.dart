@@ -220,12 +220,12 @@ final solarEclipsePalette = const PaletteRecipe(
 final lunarEclipsePalette = const PaletteRecipe(
   name: 'Lunar Eclipse',
   brightness: Brightness.dark,
-  // Violet surfaces derived from the missed status.
+  // Blue surfaces derived from the done status, as in Solar Eclipse.
   keyHue: 255,
   statusChroma: 0.12,
   statusLightness: 0.58,
   harmony: Harmony.analogous,
-  surfaceSource: PaletteSource.missed,
+  surfaceSource: PaletteSource.done,
   accentSource: PaletteSource.done,
 ).build();
 
@@ -240,14 +240,15 @@ final morningPastelPalette = const PaletteRecipe(
   // today as soft as the statuses look.
   todayChroma: 0.06,
   swapDoneAndOther: true,
-  surfaceSource: PaletteSource.other,
+  // Aqua surfaces derived from today.
+  surfaceSource: PaletteSource.today,
   accentSource: PaletteSource.other,
 ).build();
 
 final eveningPastelPalette = const PaletteRecipe(
   name: 'Evening Pastel',
   brightness: Brightness.dark,
-  // Midnight blue.
+  // Deep teal surfaces derived from today, as in Morning Pastel.
   keyHue: 265,
   statusChroma: 0.09,
   statusLightness: 0.76,
@@ -256,7 +257,7 @@ final eveningPastelPalette = const PaletteRecipe(
   // today as soft as the statuses look.
   todayChroma: 0.06,
   swapDoneAndOther: true,
-  surfaceSource: PaletteSource.other,
+  surfaceSource: PaletteSource.today,
   accentSource: PaletteSource.other,
 ).build();
 
@@ -306,14 +307,15 @@ final orchardDawnPalette = const PaletteRecipe(
 final orchardDuskPalette = const PaletteRecipe(
   name: 'Orchard Dusk',
   brightness: Brightness.dark,
-  // Orange-tinted surfaces, lighter than the other night themes.
+  // Red-coral surfaces derived from the missed status, lighter than the
+  // other night themes: dark orange reads brown.
   surfaceLift: 0.17,
   // Pastel apples: green done, orange other, red missed.
   keyHue: 135,
   statusChroma: 0.095,
   statusLightness: 0.78,
   harmony: Harmony.orchard,
-  surfaceSource: PaletteSource.other,
+  surfaceSource: PaletteSource.missed,
   accentSource: PaletteSource.done,
 ).build();
 
@@ -358,7 +360,7 @@ final plutosHeartbreakPalette = derivePalette(
   other: const Oklch(0.71, 0.13, 8).toColor(),
   done: const Oklch(0.86, 0.065, 355).toColor(),
   today: const Oklch(0.94, 0.035, 340).toColor(),
-  surfaceSource: PaletteSource.other,
+  surfaceSource: PaletteSource.today,
   accentSource: PaletteSource.missed,
 );
 

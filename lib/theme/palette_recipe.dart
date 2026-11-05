@@ -145,9 +145,9 @@ class PaletteRecipe {
 }
 
 /// The only colour inputs to the 17 palette slots are the four main colours.
-/// Source selectors refer to those inputs; brightness and surface lift set
-/// lightness, never an independent hue or chroma. All tint strengths are
-/// shared across themes, and sRGB fitting preserves each source's hue.
+/// Source selectors refer to those inputs for hue; brightness and surface
+/// lift set lightness. Surface chroma and all tint strengths are shared
+/// across themes, and sRGB fitting preserves each source's hue.
 Palette derivePalette({
   required String name,
   required Brightness brightness,
@@ -167,7 +167,7 @@ Palette derivePalette({
     PaletteSource.today => today,
   };
   final surface = Oklch.of(source(surfaceSource));
-  final neutralChroma = surface.c * (dark ? 0.30 : 0.20);
+  final neutralChroma = dark ? _nightNeutralChroma : _dayNeutralChroma;
   Color neutral(double l, [double chromaScale = 1]) => Oklch(l, neutralChroma * chromaScale, surface.h).toColor();
   double night(double l) => l + surfaceLift;
 
@@ -183,8 +183,14 @@ Palette derivePalette({
   final onToday = contrast(white, today) >= contrast(darkInk, today) ? white : darkInk;
   // Text on a done fill takes whichever ink reads best on it.
   final onDone = contrast(white, done) >= contrast(darkInk, done) ? white : darkInk;
-  final background = neutral(dark ? night(0.165) : 0.965);
-  final tile = neutral(dark ? night(0.205) : 0.992, dark ? 1 : 0.5);
+  final background = Oklch(
+    dark ? night(_nightBackground.$1) : _dayBackground.$1,
+    dark ? _nightBackground.$2 : _dayBackground.$2,
+    surface.h,
+  ).toColor();
+  // Colour stays in the window's frame: cards sit near white by day and
+  // below the background at night.
+  final tile = neutral(dark ? night(0.155) : 0.992, dark ? 1 : 0.5);
   // Runs from missed through other to done, so it ends on the goal. Labels
   // sit on it in [onAccent], so the whole run moves away from that ink,
   // in one lightness step, until its worst stop reads as text.
@@ -210,8 +216,8 @@ Palette derivePalette({
     tileBorder: neutral(dark ? night(0.285) : 0.905),
     ink: ink,
     // Lifted surfaces need lighter muted text to keep its contrast.
-    inkMuted: neutral(dark ? 0.73 + surfaceLift / 2 : 0.52, 2),
-    accent: Oklch(accentL, accentC, accent.h).toColor(),
+    inkMuted: readable(neutral(dark ? 0.73 + surfaceLift / 2 : 0.52, 2), [background, tile], dark: dark),
+    accent: readable(Oklch(accentL, accentC, accent.h).toColor(), [background, tile], dark: dark),
     onAccent: onAccent,
     onDone: onDone,
     gradient: shifted(),
@@ -226,6 +232,15 @@ Palette derivePalette({
     shadow: neutral(dark ? 0.12 : 0.35),
   );
 }
+
+/// Every theme's background, as OKLCH lightness and chroma, so all of them
+/// are equally colourful whatever their hue (sRGB holds a deep teal slightly
+/// under this chroma).
+const _dayBackground = (0.9325, 0.03), _nightBackground = (0.1875, 0.04);
+
+/// The chroma of cards, borders and muted ink, below the background's so the
+/// colour stays in the window's frame.
+const _dayNeutralChroma = 0.017, _nightNeutralChroma = 0.03;
 
 /// WCAG AA for body text.
 const _textContrast = 4.5;
