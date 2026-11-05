@@ -15,7 +15,7 @@ abstract final class Fonts {
   static const display = 'Greed';
 
   /// To-dos, ritual names, labels.
-  static const body = 'Reckless';
+  static const body = 'Matter';
 
   /// Labels, day numerals, stats. Same as [body] for now.
   static const ui = body;
