@@ -73,6 +73,34 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('changes show a card when the first notification after mounting is the one that raised the count', (
+    tester,
+  ) async {
+    final home = Directory.systemTemp.createTempSync('eclipse-sync-first');
+    final store = Store.memory();
+    final sync = SyncService.load(home, store);
+    addTearDown(() {
+      sync.dispose();
+      store.close();
+      home.deleteSync(recursive: true);
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: themeNamed(null),
+        home: Scaffold(body: SyncBanner(sync: sync)),
+      ),
+    );
+
+    sync.lastIncoming = Incoming({('journal', '2026-10-24')}, {'Remote laptop'});
+    sync.incomingCount++;
+    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    sync.notifyListeners();
+    await tester.pump();
+    expect(find.text('Updated from Remote laptop'), findsOneWidget);
+    expect(find.text('1 change brought in.'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('a sign-in from before the journal went to Drive asks to sign in again, until put off', (tester) async {
     final home = Directory.systemTemp.createTempSync('eclipse-sync-ask');
     File('${home.path}/sync.json').writeAsStringSync('{"refresh": "old", "email": "me@example.com"}');

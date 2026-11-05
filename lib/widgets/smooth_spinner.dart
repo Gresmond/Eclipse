@@ -51,6 +51,10 @@ class _SpinnerPainter extends CustomPainter {
   /// Short enough on these small rings that the lines read as a curve.
   static const _step = math.pi / 12;
 
+  /// The arc at its shortest. Any shorter and it can land on the pixel grid as
+  /// a hard-edged dot, with no soft edge at all.
+  static const _shortest = 0.2;
+
   @override
   void paint(Canvas canvas, Size size) {
     final tail = _tail.evaluate(turn), head = _head.evaluate(turn);
@@ -59,7 +63,7 @@ class _SpinnerPainter extends CustomPainter {
         tail * 3 / 2 * math.pi +
         _rotation.evaluate(turn) * math.pi * 2 +
         _offset.evaluate(turn) * 0.5 * math.pi;
-    final sweep = math.max((head - tail) * 3 / 2 * math.pi, 0.001);
+    final sweep = math.max((head - tail) * 3 / 2 * math.pi, _shortest);
     final centre = size.center(Offset.zero);
     final radius = size.shortestSide / 2;
     Offset at(double angle) => centre + Offset(math.cos(angle), math.sin(angle)) * radius;

@@ -278,7 +278,7 @@ extension on _SettingsDialogState {
               const SizedBox(width: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.done)),
+                child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.accent)),
               ),
             ] else
               button('Sign in with Google', () => _signIn(sync), filled: true),

@@ -27,7 +27,7 @@ class SyncBanner extends StatefulWidget {
 }
 
 class _SyncBannerState extends State<SyncBanner> {
-  late int _seen = widget.sync.incomingCount;
+  late int _seen;
   Incoming? _shown;
   bool _visible = false;
   Timer? _hide;
@@ -35,6 +35,7 @@ class _SyncBannerState extends State<SyncBanner> {
   @override
   void initState() {
     super.initState();
+    _seen = widget.sync.incomingCount;
     widget.sync.addListener(_changed);
   }
 

@@ -78,7 +78,7 @@ class BackupRow extends StatelessWidget {
           else if (restoring)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.done)),
+              child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.accent)),
             )
           else if (confirming) ...[
             DialogDismiss(label: 'Cancel', onPressed: onCancel),
