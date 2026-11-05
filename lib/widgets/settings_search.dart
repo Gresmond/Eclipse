@@ -167,10 +167,13 @@ class _SettingsSearchState extends State<SettingsSearch> {
               : SizedBox(
                   key: const ValueKey('results'),
                   height: SettingsSearch.height,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: ColoredBox(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
                       color: p.empty.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
                       child: words.isEmpty
                           ? _message(p, 'Find any task or journal entry, from any day.')
                           : hits.isEmpty

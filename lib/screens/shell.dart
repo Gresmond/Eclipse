@@ -211,8 +211,9 @@ class _Header extends StatelessWidget {
                     borderRadius: BorderRadius.circular(30),
                     border: Border.all(color: p.border),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
+                  // Straight: a rounded clip's edge is jagged under Impeller, and
+                  // would cut the tab pill's end at this end of the bar.
+                  child: ClipRect(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       clipBehavior: Clip.none,
@@ -623,7 +624,7 @@ class _SettingsButton extends StatelessWidget {
           child: Container(
             width: 46,
             height: 46,
-            decoration: BoxDecoration(
+            decoration: SmoothGradientDecoration(
               color: p.tile.withValues(alpha: 0.8),
               shape: BoxShape.circle,
               border: Border.all(color: p.border),
@@ -652,7 +653,7 @@ class _ThemeButton extends StatelessWidget {
           onTap: () => showFadeMenu(context, builder: (_) => const _AppearanceMenu()),
           child: Container(
             padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
+            decoration: SmoothGradientDecoration(
               color: p.tile.withValues(alpha: 0.8),
               shape: BoxShape.circle,
               border: Border.all(color: p.border),

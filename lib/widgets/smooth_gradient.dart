@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 /// A [BoxDecoration] whose gradient keeps a smooth edge under Impeller on
 /// Linux, which leaves gradient-filled shapes jagged. Draws the shape in a
-/// solid colour, which it antialiases, then lays the gradient inside it. Box
-/// shadows aren't supported.
+/// solid colour, which it antialiases, then lays the gradient inside it. Keeps
+/// a circle's border smooth too. Box shadows aren't supported.
 class SmoothGradientDecoration extends BoxDecoration {
   const SmoothGradientDecoration({super.color, super.border, super.borderRadius, super.gradient, super.shape})
     : assert(gradient != null || color != null || border != null);
@@ -39,34 +39,44 @@ class _SmoothGradientPainter extends BoxPainter {
 
   final SmoothGradientDecoration decoration;
 
-  /// Everything but the gradient. Paints the border over it.
+  /// A border of one colour and width, drawn here as a filled ring: a stroked
+  /// circle comes out jagged.
+  late final BorderSide? _ring = switch (decoration.border) {
+    final Border border when border.isUniform && border.top.style != BorderStyle.none => border.top,
+    _ => null,
+  };
+
+  /// Everything else but the gradient. Paints a border over it.
   late final BoxPainter _rest = BoxDecoration(
     color: decoration.gradient == null ? decoration.color : null,
-    border: decoration.border,
+    border: _ring == null ? decoration.border : null,
     borderRadius: decoration.borderRadius,
     shape: decoration.shape,
   ).createBoxPainter(onChanged);
 
-  void _drawShape(Canvas canvas, Rect rect, TextDirection? direction, Paint paint) {
-    if (decoration.shape == BoxShape.circle) {
-      canvas.drawCircle(rect.center, rect.shortestSide / 2, paint);
-    } else {
-      canvas.drawRRect((decoration.borderRadius?.resolve(direction) ?? BorderRadius.zero).toRRect(rect), paint);
-    }
-  }
+  RRect _shape(Rect rect, TextDirection? direction) => decoration.shape == BoxShape.circle
+      ? RRect.fromRectAndRadius(
+          Rect.fromCircle(center: rect.center, radius: rect.shortestSide / 2),
+          Radius.circular(rect.shortestSide / 2),
+        )
+      : (decoration.borderRadius?.resolve(direction) ?? BorderRadius.zero).toRRect(rect);
 
   @override
   void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
     final rect = offset & configuration.size!;
     final direction = configuration.textDirection;
+    final shape = _shape(rect, direction);
     final gradient = decoration.gradient;
+    final ring = _ring;
     if (gradient != null) {
+      // Stops under the ring's middle, so none of it shows round the outside.
+      final fill = ring == null ? shape : shape.deflate(ring.width / 2);
       final first = gradient.colors.first;
       if (gradient.colors.every((c) => c == first)) {
-        _drawShape(canvas, rect, direction, Paint()..color = first);
+        canvas.drawRRect(fill, Paint()..color = first);
       } else {
         canvas.saveLayer(rect.inflate(1), Paint());
-        _drawShape(canvas, rect, direction, Paint()..color = const Color(0xFFFFFFFF));
+        canvas.drawRRect(fill, Paint()..color = const Color(0xFFFFFFFF));
         canvas.drawRect(
           rect.inflate(1),
           Paint()
@@ -77,6 +87,7 @@ class _SmoothGradientPainter extends BoxPainter {
       }
     }
     _rest.paint(canvas, offset, configuration);
+    if (ring != null) canvas.drawDRRect(shape, shape.deflate(ring.width), Paint()..color = ring.color);
   }
 
   @override

@@ -785,14 +785,9 @@ class _CheckPainter extends CustomPainter {
 
     // The ring fades as the fill arrives, so there's never a hard swap.
     final ring = Color.lerp(p.inkMuted.withValues(alpha: 0.38), p.accent.withValues(alpha: 0.6), h)!;
-    canvas.drawCircle(
-      centre,
-      r - 0.75,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..color = ring.withValues(alpha: ring.a * (1 - t)),
-    );
+    // A filled ring: a stroked circle comes out jagged under Impeller on Linux.
+    final outer = RRect.fromRectAndRadius(Rect.fromCircle(center: centre, radius: r), Radius.circular(r));
+    canvas.drawDRRect(outer, outer.deflate(1.5), Paint()..color = ring.withValues(alpha: ring.a * (1 - t)));
     if (t > 0) {
       canvas.drawCircle(centre, r, Paint()..color = p.done.withValues(alpha: t));
     }
