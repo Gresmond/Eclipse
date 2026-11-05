@@ -192,9 +192,12 @@ Palette derivePalette({
   final backgroundL = dark ? night(_nightBackgroundL) : _dayBackground.$1;
   final backgroundC = dark ? Oklch.maxChroma(backgroundL, surfaceH) * _nightBackgroundShare : _dayBackground.$2;
   final background = Oklch(backgroundL, backgroundC, surfaceH).toColor();
+  // Night surfaces carry most of the background's colour, so none of them
+  // turns grey beside a strong one.
+  Color nightSurface(double l) => Oklch(night(l), backgroundC * _nightSurfaceShare, surfaceH).toColor();
   // Colour stays in the window's frame: cards sit near white by day and
-  // below the background at night, with most of its colour.
-  final tile = dark ? Oklch(night(0.155), backgroundC * _nightTileShare, surfaceH).toColor() : neutral(0.992, 0.5);
+  // below the background at night.
+  final tile = dark ? nightSurface(0.155) : neutral(0.992, 0.5);
   // Runs from missed through other to done, so it ends on the goal. Labels
   // sit on it in [onAccent], so the whole run moves away from that ink,
   // in one lightness step, until its worst stop reads as text.
@@ -212,14 +215,14 @@ Palette derivePalette({
     shift += away * 0.005;
   }
 
-  final empty = neutral(dark ? night(0.255) : 0.94);
+  final empty = dark ? nightSurface(0.255) : neutral(0.94);
 
   return Palette(
     name: name,
     brightness: brightness,
     background: background,
     tile: tile,
-    tileBorder: neutral(dark ? night(0.285) : 0.905),
+    tileBorder: dark ? nightSurface(0.285) : neutral(0.905),
     ink: ink,
     // Lifted surfaces need lighter muted text to keep its contrast.
     inkMuted: readable(neutral(dark ? 0.73 + surfaceLift / 2 : 0.52, 2), [background, tile], dark: dark),
@@ -248,11 +251,13 @@ const _dayBackground = (0.9325, 0.03);
 /// orange looking grey beside blue and violet.
 const _nightBackgroundL = 0.1875, _nightBackgroundShare = 0.8;
 
-/// A dark theme's cards, as a share of its background's chroma.
-const _nightTileShare = 0.75;
+/// A dark theme's cards, borders, chips and panels, as a share of its
+/// background's chroma.
+const _nightSurfaceShare = 0.75;
 
-/// The chroma of borders and muted ink, and of cards by day, below the
-/// background's so the colour stays in the window's frame.
+/// The chroma of ink and shadows, and by day of every surface but the
+/// background, below the background's so the colour stays in the window's
+/// frame.
 const _dayNeutralChroma = 0.017, _nightNeutralChroma = 0.03;
 
 /// WCAG AA for body text.
