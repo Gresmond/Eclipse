@@ -20,9 +20,8 @@ abstract final class Fonts {
   /// Labels, day numerals, stats. Same as [body] for now.
   static const ui = body;
 
-  /// What goes above and below a task's name: its weekday, time, place,
-  /// repeat and so on.
-  static const detail = 'Matter XH SemiMono';
+  /// A task's time.
+  static const taskTime = 'Matter XH SemiMono';
 
   /// The sleep schedule's times.
   static const time = 'Haffer SemiMono';

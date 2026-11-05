@@ -161,8 +161,8 @@ void main() {
 
     final time = tester.widget<Text>(find.text('5:40 pm'));
     final count = tester.widget<Text>(find.text('0 of 3 subtasks complete'));
-    expect(time.style!.fontFamily, Fonts.detail);
-    expect(count.style!.fontFamily, Fonts.detail);
+    expect(time.style!.fontFamily, Fonts.taskTime);
+    expect(count.style!.fontFamily, isNot(Fonts.taskTime));
     expect(time.style!.fontSize, count.style!.fontSize);
     expect(time.style!.color, count.style!.color);
     expect(tester.getTopLeft(find.text('5:40 pm')).dy, lessThan(tester.getTopLeft(find.text('Timed task')).dy));

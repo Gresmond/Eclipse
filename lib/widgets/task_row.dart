@@ -484,7 +484,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                 if (item.subtasks.isNotEmpty)
                                   Text(
                                     '${item.subtasks.where((child) => child.done).length} of ${item.subtasks.length} subtasks complete',
-                                    style: _detailStyle(p),
+                                    style: TextStyle(fontSize: 12, color: p.inkMuted, decoration: TextDecoration.none),
                                   ),
                                 // A birthday looks like any other task here.
                                 if (repeat != null && !item.birthday)
@@ -497,7 +497,11 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                           repeat.rule.label,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: _detailStyle(p),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: p.inkMuted,
+                                            decoration: TextDecoration.none,
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -955,10 +959,10 @@ class _Caption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final plain = _detailStyle(p);
+    final plain = TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted);
     final dot = Text('  ·  ', style: plain);
     final (weekday, time, location) = (this.weekday, this.time, this.location);
-    final timeStyle = plain.copyWith(height: 1.35);
+    final timeStyle = _taskTimeStyle(p).copyWith(height: 1.35);
     final scaler = MediaQuery.textScalerOf(context);
     double width(String text, TextStyle style) {
       final painter = TextPainter(

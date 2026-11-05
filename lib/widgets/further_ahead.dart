@@ -385,7 +385,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
                                     Flexible(
                                       child: Text(
                                         'In ${daysBetween(state.today, g.date!)} days',
-                                        style: _detailStyle(p),
+                                        style: TextStyle(fontSize: 12, color: p.inkMuted),
                                       ),
                                     ),
                                   ],
@@ -502,7 +502,7 @@ class _LaterRowState extends State<_LaterRow> {
                         if (item.subtasks.isNotEmpty)
                           Text(
                             '${item.subtasks.where((s) => s.done).length} of ${item.subtasks.length} subtasks complete',
-                            style: _detailStyle(p),
+                            style: TextStyle(fontSize: 12, color: p.inkMuted),
                           ),
                       ],
                     ),
