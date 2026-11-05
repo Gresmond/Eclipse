@@ -21,6 +21,7 @@ import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/page_turn.dart';
 import '../widgets/reminder_cards.dart';
+import '../widgets/smooth_gradient.dart';
 import '../widgets/sync_banner.dart';
 import '../widgets/update_banner.dart';
 import '../widgets/welcome_tour.dart';
@@ -741,7 +742,7 @@ class _Swatch extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
+      decoration: SmoothGradientDecoration(
         shape: BoxShape.circle,
         border: Border.all(color: palette.tile, width: size * 0.08),
         gradient: SweepGradient(colors: [...palette.gradient, palette.gradient.first]),

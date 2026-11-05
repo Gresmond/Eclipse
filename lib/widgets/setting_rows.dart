@@ -4,6 +4,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import 'fade_menu.dart';
+import 'smooth_gradient.dart';
 
 /// A setting you flip by clicking anywhere on its row.
 class SettingSwitchRow extends StatelessWidget {
@@ -117,7 +118,7 @@ class _DayStartPickerState extends State<DayStartPicker> {
                           widthFactor: pill.dy,
                           heightFactor: 1,
                           child: DecoratedBox(
-                            decoration: BoxDecoration(
+                            decoration: SmoothGradientDecoration(
                               borderRadius: BorderRadius.circular(16),
                               gradient: LinearGradient(colors: p.gradient.skip(1).toList()),
                             ),
@@ -185,7 +186,7 @@ class SettingToggle extends StatelessWidget {
         height: 22,
         padding: const EdgeInsets.all(4),
         alignment: Alignment.lerp(Alignment.centerLeft, Alignment.centerRight, t),
-        decoration: BoxDecoration(
+        decoration: SmoothGradientDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(colors: [for (final c in p.gradient.skip(1)) Color.lerp(p.empty, c, t)!]),
           border: Border.all(color: p.tileBorder.withValues(alpha: 1 - t)),

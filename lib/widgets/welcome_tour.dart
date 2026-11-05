@@ -12,6 +12,7 @@ import 'fade_through.dart';
 import 'hover_fill.dart';
 import 'settings_dialog.dart';
 import 'fade_menu.dart';
+import 'smooth_gradient.dart';
 
 /// The parts of the app the welcome tour points at.
 enum TourSpot {
@@ -656,7 +657,7 @@ class _Card extends StatelessWidget {
                   width: i == index ? 20 : 6,
                   height: 6,
                   margin: const EdgeInsets.only(right: 4),
-                  decoration: BoxDecoration(
+                  decoration: SmoothGradientDecoration(
                     borderRadius: BorderRadius.circular(4),
                     color: i < index ? p.done : (i == index ? null : p.empty),
                     gradient: i == index ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
@@ -771,7 +772,7 @@ class _PillButton extends StatelessWidget {
         curve: Motion.hoverCurve,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          decoration: BoxDecoration(
+          decoration: SmoothGradientDecoration(
             borderRadius: BorderRadius.circular(20),
             gradient: LinearGradient(colors: p.gradient.skip(1).toList()),
           ),

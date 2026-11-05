@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'corner_card.dart';
 import 'fade_through.dart';
+import 'smooth_gradient.dart';
 
 /// A small card floating over the bottom-right corner when a newer version
 /// is out, naming it: one click updates and reopens source/Linux installs, or
@@ -122,7 +123,7 @@ class _Mark extends StatelessWidget {
       width: 30,
       height: 30,
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
+      decoration: SmoothGradientDecoration(
         shape: BoxShape.circle,
         gradient: SweepGradient(colors: [...palette.gradient, palette.gradient.first]),
       ),

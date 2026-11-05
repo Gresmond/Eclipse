@@ -337,7 +337,14 @@ class _SquarePainter extends CustomPainter {
         ).createShader(rect),
       );
     }
-    canvas.drawRRect(rrect, fill);
+    // Impeller on Linux leaves a gradient's edge jagged, so a solid square in
+    // about the same colour gives the smooth edge, with the gradient inside it.
+    if (top == bottom) {
+      canvas.drawRRect(rrect, fill);
+    } else {
+      canvas.drawRRect(rrect, Paint()..color = Color.lerp(top, bottom, 0.5)!);
+      canvas.drawRRect(rrect.deflate(1), fill);
+    }
     canvas.drawRRect(
       rrect.deflate(0.5),
       Paint()

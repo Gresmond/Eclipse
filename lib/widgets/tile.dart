@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_through.dart';
 import 'rolling_number.dart';
+import 'smooth_gradient.dart';
 
 /// Identical hit target, icon and hover pill for card-header actions.
 class HeaderIconButton extends StatelessWidget {
@@ -79,7 +80,7 @@ class Tile extends StatelessWidget {
     final p = context.palette;
     return Container(
       padding: padding,
-      decoration: BoxDecoration(
+      decoration: SmoothGradientDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
