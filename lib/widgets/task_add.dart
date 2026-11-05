@@ -340,11 +340,10 @@ class _Field extends StatelessWidget {
     return ListenableBuilder(
       listenable: focus,
       builder: (context, _) => Container(
-        padding: const EdgeInsets.only(left: 10, right: 4),
+        padding: const EdgeInsets.fromLTRB(11, 1, 5, 1),
         decoration: BoxDecoration(
           color: p.empty.withValues(alpha: focus.hasFocus ? 0.65 : 0.45),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: focus.hasFocus ? p.accent.withValues(alpha: 0.45) : Colors.transparent),
         ),
         child: LayoutBuilder(
           builder: (context, constraints) => Row(
