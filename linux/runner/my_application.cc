@@ -64,7 +64,8 @@ static void my_application_activate(GApplication* application) {
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
-  // Trying Impeller for sharper text. Skia drew gradient-filled shapes more smoothly.
+  // Impeller's text is far sharper than Skia's. It leaves gradient fills and
+  // stroked paths jagged here, so SmoothGradientDecoration and paintMark avoid them.
   fl_dart_project_set_enable_impeller(project, TRUE);
 
   FlView* view = fl_view_new(project);
