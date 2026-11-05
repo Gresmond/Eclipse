@@ -178,9 +178,11 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     _scaleTarget = scaleTarget;
     final opacityTarget = widget.off
         ? 0.0
+        : status != HabitStatus.none
+        ? 1.0
         : !enabled
         ? 0.35
-        : (widget.rest && status == HabitStatus.none ? 0.45 : 1.0);
+        : (widget.rest ? 0.45 : 1.0);
     final opacity = _ease(
       _opacity,
       _opacityTarget,
@@ -272,7 +274,8 @@ class _SquarePainter extends CustomPainter {
   /// Lifted on hover, dipped while pressed, about the centre.
   final Animation<double> scale;
 
-  /// Below 1 while disabled, or blank on a rest day.
+  /// Below 1 while blank and disabled, or blank on a rest day. A marked
+  /// square keeps its full colour, however old its day.
   final Animation<double> opacity;
   final Palette basePalette;
   final ValueListenable<Palette>? paletteAnimation;
