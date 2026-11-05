@@ -307,15 +307,15 @@ final orchardDawnPalette = const PaletteRecipe(
 final orchardDuskPalette = const PaletteRecipe(
   name: 'Orchard Dusk',
   brightness: Brightness.dark,
-  // Red-coral surfaces derived from the missed status, lighter than the
-  // other night themes: dark orange reads brown.
-  surfaceLift: 0.17,
+  // Chestnut surfaces derived from the orange status, as in Orchard Dawn,
+  // a little lighter than the other night themes: a dusk, not a midnight.
+  surfaceLift: 0.08,
   // Pastel apples: green done, orange other, red missed.
   keyHue: 135,
   statusChroma: 0.095,
   statusLightness: 0.78,
   harmony: Harmony.orchard,
-  surfaceSource: PaletteSource.missed,
+  surfaceSource: PaletteSource.other,
   accentSource: PaletteSource.done,
 ).build();
 

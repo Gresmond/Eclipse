@@ -183,14 +183,12 @@ Palette derivePalette({
   final onToday = contrast(white, today) >= contrast(darkInk, today) ? white : darkInk;
   // Text on a done fill takes whichever ink reads best on it.
   final onDone = contrast(white, done) >= contrast(darkInk, done) ? white : darkInk;
-  final background = Oklch(
-    dark ? night(_nightBackground.$1) : _dayBackground.$1,
-    dark ? _nightBackground.$2 : _dayBackground.$2,
-    surface.h,
-  ).toColor();
+  final backgroundL = dark ? night(_nightBackgroundL) : _dayBackground.$1;
+  final backgroundC = dark ? Oklch.maxChroma(backgroundL, surface.h) * _nightBackgroundShare : _dayBackground.$2;
+  final background = Oklch(backgroundL, backgroundC, surface.h).toColor();
   // Colour stays in the window's frame: cards sit near white by day and
-  // below the background at night.
-  final tile = neutral(dark ? night(0.155) : 0.992, dark ? 1 : 0.5);
+  // below the background at night, with most of its colour.
+  final tile = dark ? Oklch(night(0.155), backgroundC * _nightTileShare, surface.h).toColor() : neutral(0.992, 0.5);
   // Runs from missed through other to done, so it ends on the goal. Labels
   // sit on it in [onAccent], so the whole run moves away from that ink,
   // in one lightness step, until its worst stop reads as text.
@@ -233,13 +231,20 @@ Palette derivePalette({
   );
 }
 
-/// Every theme's background, as OKLCH lightness and chroma, so all of them
-/// are equally colourful whatever their hue (sRGB holds a deep teal slightly
-/// under this chroma).
-const _dayBackground = (0.9325, 0.03), _nightBackground = (0.1875, 0.04);
+/// Every light theme's background, as OKLCH lightness and chroma.
+const _dayBackground = (0.9325, 0.03);
 
-/// The chroma of cards, borders and muted ink, below the background's so the
-/// colour stays in the window's frame.
+/// Every dark theme's background lightness, and its share of the chroma sRGB
+/// can hold at that lightness and hue, so all of them are equally colourful
+/// relative to what their hue can reach. One fixed chroma leaves red and
+/// orange looking grey beside blue and violet.
+const _nightBackgroundL = 0.1875, _nightBackgroundShare = 0.8;
+
+/// A dark theme's cards, as a share of its background's chroma.
+const _nightTileShare = 0.75;
+
+/// The chroma of borders and muted ink, and of cards by day, below the
+/// background's so the colour stays in the window's frame.
 const _dayNeutralChroma = 0.017, _nightNeutralChroma = 0.03;
 
 /// WCAG AA for body text.
