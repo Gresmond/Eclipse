@@ -19,6 +19,7 @@ APP_ID='dev.nicholas.productivity_app'
 LINUX=[16,22,24,32,48,64,96,128,256,512,1024]
 WINDOWS=[16,20,24,32,40,48,64,128,256]
 MAC=[16,32,64,128,256,512,1024]
+ANDROID={'mdpi':1,'hdpi':1.5,'xhdpi':2,'xxhdpi':3,'xxxhdpi':4}
 SIZES=sorted(set(LINUX+WINDOWS+MAC+[2048]))
 NS='http://www.w3.org/2000/svg'
 ET.register_namespace('',NS)
@@ -42,6 +43,27 @@ def mac_source():
         if child.tag!=f'{{{NS}}}title':
             art.append(copy.deepcopy(child))
     return ET.tostring(doc,encoding='utf-8',xml_declaration=True)
+
+def android_foreground():
+    # An adaptive icon's top layer: the sun and moon alone on a 108dp canvas,
+    # over a red background layer (android/.../values/colors.xml). The red
+    # tile would span the 72dp a launcher shows, so they sit where they do in
+    # the circle whatever shape the launcher cuts.
+    original=ET.parse(SOURCE).getroot()
+    doc=ET.Element(f'{{{NS}}}svg',width='432',height='432',viewBox='0 0 108 108')
+    art=ET.SubElement(doc,f'{{{NS}}}g',transform='translate(18 18) scale(1.125)')
+    for child in original.find(f'{{{NS}}}g'):
+        if child.get('fill')!='#C44430':
+            art.append(copy.deepcopy(child))
+    return ET.tostring(doc,encoding='utf-8',xml_declaration=True)
+
+def android_assets(source):
+    foreground=android_foreground()
+    assets={}
+    for density,scale in ANDROID.items():
+        assets[f'mipmap-{density}/ic_launcher.png']=render(source,round(48*scale))
+        assets[f'mipmap-{density}/ic_launcher_foreground.png']=render(foreground,round(108*scale))
+    return assets
 
 def frame(data):
     return Image.open(io.BytesIO(data)).convert('RGBA')
@@ -95,6 +117,9 @@ def update_project():
     source=ROOT/'windows/app_icon.ico'
     dest=repo/'windows/runner/resources/app_icon.ico'
     write(dest,source.read_bytes());copied.append((source,dest))
+    for source in (ROOT/'android/res').rglob('*.png'):
+        dest=repo/'android/app/src/main/res'/source.relative_to(ROOT/'android/res')
+        write(dest,source.read_bytes());copied.append((source,dest))
     for source,dest in copied:
         assert source.read_bytes()==dest.read_bytes()
     return len(copied)
@@ -116,6 +141,8 @@ def build(install=False):
     write(ROOT/f'linux/icons/hicolor/scalable/apps/{APP_ID}.svg',source)
     for size in WINDOWS:
         write(ROOT/f'windows/png/eclipse-{size}.png',png[size])
+    for name,data in android_assets(source).items():
+        write(ROOT/'android/res'/name,data)
     ico=ROOT/'windows/app_icon.ico'
     frames[256].save(ico,format='ICO',sizes=[(s,s) for s in WINDOWS],append_images=[frames[s] for s in WINDOWS if s!=256])
     with Image.open(ico) as image:

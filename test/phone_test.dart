@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:eclipse/app_state.dart';
+import 'package:eclipse/data/google_drive.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/phone/phone_app.dart';
@@ -70,6 +73,20 @@ void main() {
     expect(state.todos.values.expand((list) => list).map((t) => t.text), contains('Call Sam'));
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('sign-in waits for the phone to come back from the browser', (tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    var back = false;
+    unawaited(whenBackFromBrowser().then((_) => back = true));
+    await tester.pump();
+    expect(back, isFalse);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(back, isTrue);
   });
 
   test('upcoming reminders list what\'s still to go off, soonest first', () {

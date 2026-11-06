@@ -4,12 +4,13 @@ The approved adjusted First Contact design: the original ivory moon is 5% smalle
 
 ## Assets
 
-Only `source/`, `build.py` and this README are kept in git. Everything else below is written by `build.py` (see Rebuild) and ignored; the app's own copies live in `linux/icons`, `macos/Runner/Assets.xcassets` and `windows/runner/resources`.
+Only `source/`, `build.py` and this README are kept in git. Everything else below is written by `build.py` (see Rebuild) and ignored; the app's own copies live in `linux/icons`, `macos/Runner/Assets.xcassets`, `windows/runner/resources` and `android/app/src/main/res`.
 
 - `source/eclipse.svg`: editable master, with transparent corners around its circular red tile.
 - `png/`: native vector renders at 16, 20, 22, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024 and 2048 pixels.
 - `linux/icons/hicolor/`: scalable SVG and eleven PNG sizes, named `dev.nicholas.productivity_app` to match this app's Linux application ID and desktop entry.
 - `windows/app_icon.ico`: nine RGBA representations at 16, 20, 24, 32, 40, 48, 64, 128 and 256 pixels; individual PNGs are also included.
+- `android/res/`: the phone's launcher icon at five densities: the circle, and the sun and moon alone as an adaptive icon's top layer over the red in the app's `values/colors.xml`.
 - `macos/Eclipse.icns`: eleven standard and Retina representations, up to 1024 pixels.
 - `macos/AppIcon.appiconset/`: Xcode catalog with all ten macOS 1x/2x slots and `Contents.json`.
 - `macos/Eclipse.iconset/`: standard iconset filenames for rebuilding with Apple's `iconutil`.
@@ -33,7 +34,7 @@ Inside the app repository, regenerate and copy the icons into the app with:
 ECLIPSE_ICON_PYTHON=python3 bash tool/make_icons.sh
 ```
 
-That updates `linux/icons/hicolor`, `macos/Runner/Assets.xcassets/AppIcon.appiconset`, and `windows/runner/resources/app_icon.ico`. Linux launcher/tray lookup, Windows executable/tray/installer resources, and the macOS app icon already reference those locations. Rebuild the app on each OS to include the new assets. This does not install a new application binary into the operating system.
+That updates `linux/icons/hicolor`, `macos/Runner/Assets.xcassets/AppIcon.appiconset`, `windows/runner/resources/app_icon.ico`, and the PNGs in `android/app/src/main/res`. Linux launcher/tray lookup, Windows executable/tray/installer resources, and the macOS app icon already reference those locations. Rebuild the app on each OS to include the new assets. This does not install a new application binary into the operating system.
 
 The builder verifies every PNG's dimensions and transparency, decodes every ICO/ICNS representation and compares it to its render, checks Xcode slots and palette, and verifies copied project assets and the ZIP archive. Native macOS and Windows application builds must run on their respective platforms; container-format checks on Linux do not replace those builds.
 

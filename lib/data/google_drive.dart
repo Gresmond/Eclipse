@@ -5,6 +5,8 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import 'google_client.dart';
 import 'http_request.dart';
@@ -34,7 +36,7 @@ class GoogleAccount {
 
 /// Something went wrong talking to Google, in words to show.
 class DriveError implements Exception {
-  const DriveError(this.message, {this.signedOut = false, this.notFound = false});
+  const DriveError(this.message, {this.signedOut = false, this.notFound = false, this.unreachable = false});
 
   final String message;
 
@@ -43,6 +45,9 @@ class DriveError implements Exception {
 
   /// The sign-in no longer works (taken back, or expired): sign in again.
   final bool signedOut;
+
+  /// The request never got to Google.
+  final bool unreachable;
 
   @override
   String toString() => message;
@@ -100,7 +105,8 @@ Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
       throw DriveError(query['error'] == 'access_denied' ? 'Sign-in was cancelled in the browser.' : 'Google said no.');
     }
 
-    final tokens = await _post(_token, {
+    await whenBackFromBrowser();
+    final tokens = await _swapCode({
       'code': code,
       'client_id': googleClientId,
       'client_secret': googleClientSecret,
@@ -121,6 +127,35 @@ Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
     );
   } finally {
     await server.close(force: true);
+  }
+}
+
+/// A phone can cut an app in the background off from the network, though the
+/// browser still reaches its one-off address, so the code is only swapped once
+/// the person is back. A computer's app is never cut off, so it doesn't wait.
+Future<void> whenBackFromBrowser() async {
+  if (defaultTargetPlatform != TargetPlatform.android) return;
+  if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) return;
+  final back = Completer<void>();
+  final listener = AppLifecycleListener(
+    onResume: () {
+      if (!back.isCompleted) back.complete();
+    },
+  );
+  await back.future;
+  listener.dispose();
+}
+
+/// Swaps the browser's code for the lasting sign-in. A phone just back in
+/// front can take a moment to get its network back, so it tries again.
+Future<Map<String, dynamic>> _swapCode(Map<String, String> form) async {
+  for (var tries = defaultTargetPlatform == TargetPlatform.android ? 3 : 1; ; tries--) {
+    try {
+      return await _post(_token, form);
+    } on DriveError catch (e) {
+      if (!e.unreachable || tries <= 1) rethrow;
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
   }
 }
 
@@ -183,9 +218,9 @@ Future<(int, Uint8List)> _send(String method, Uri uri, {List<int>? body, String?
   try {
     return await sendHttpRequest(method, uri, body: body, type: type, bearer: bearer);
   } on SocketException {
-    throw const DriveError('Can’t reach Google. Are you online?');
+    throw const DriveError('Can’t reach Google. Are you online?', unreachable: true);
   } on HandshakeException {
-    throw const DriveError('Can’t reach Google. Are you online?');
+    throw const DriveError('Can’t reach Google. Are you online?', unreachable: true);
   } on TimeoutException {
     throw const DriveError('Google took too long to answer.');
   }
