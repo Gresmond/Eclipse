@@ -187,7 +187,7 @@ class SettingToggle extends StatelessWidget {
         padding: const EdgeInsets.all(4),
         alignment: Alignment.lerp(Alignment.centerLeft, Alignment.centerRight, t),
         decoration: SmoothGradientDecoration(
-          borderRadius: BorderRadius.circular(11),
+          borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(colors: [for (final c in p.gradient.skip(1)) Color.lerp(p.empty, c, t)!]),
           border: Border.all(color: p.tileBorder.withValues(alpha: 1 - t)),
         ),

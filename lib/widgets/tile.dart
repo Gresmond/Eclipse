@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
+import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_through.dart';
@@ -66,7 +67,9 @@ class StatusPill extends StatelessWidget {
       child: Center(
         widthFactor: 1,
         heightFactor: 1,
-        child: _CaptionSwap(caption: label.toUpperCase(), day: day, style: capsLabel(complete ? p.ink : p.inkMuted)),
+        child: PixelFit(
+          child: _CaptionSwap(caption: label.toUpperCase(), day: day, style: capsLabel(complete ? p.ink : p.inkMuted)),
+        ),
       ),
     );
   }

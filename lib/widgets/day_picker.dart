@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'hover_fill.dart';
@@ -78,7 +79,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
+        PixelRow(
           children: [
             const SizedBox(width: 6),
             Expanded(
@@ -92,7 +93,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           ],
         ),
         const SizedBox(height: 4),
-        Row(
+        PixelRow(
           children: [
             for (final name in weekdayNames)
               Expanded(
@@ -102,7 +103,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         ),
         const SizedBox(height: 4),
         for (var week = 0; week < 6; week++)
-          Row(
+          PixelRow(
             children: [
               for (var col = 0; col < 7; col++)
                 if (week * 7 + col - lead + 1 case final d when d >= 1 && d <= days)

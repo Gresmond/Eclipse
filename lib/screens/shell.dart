@@ -8,6 +8,7 @@ import '../app_state.dart';
 import '../data/backups.dart';
 import '../data/updates.dart';
 import '../models.dart';
+import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/setting_rows.dart';
@@ -160,7 +161,7 @@ class _Header extends StatelessWidget {
     return Padding(
       // On macOS the window buttons float over the top of the content.
       padding: EdgeInsets.fromLTRB(32, Platform.isMacOS ? 27 : 15, 32, 11),
-      child: Row(
+      child: PixelRow(
         children: [
           // Fit the visible date, easing the right edge as its length changes.
           TourTarget(
@@ -501,7 +502,7 @@ class _Tab extends StatelessWidget {
           color: !selected && hover ? p.empty : p.empty.withValues(alpha: 0),
         ),
         child: width == null
-            ? text
+            ? PixelFit(child: text)
             : SizedBox(
                 width: width,
                 child: OverflowBox(

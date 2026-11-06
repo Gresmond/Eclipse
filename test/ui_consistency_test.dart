@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:eclipse/theme/pixels.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
@@ -271,7 +272,7 @@ void main() {
       await pumpApp(tester);
       try {
         for (final name in ['A plain task', 'A timed task']) {
-          final check = find.ancestor(of: find.text(name), matching: find.byType(Row)).first;
+          final check = find.ancestor(of: find.text(name), matching: find.byType(PixelRow)).first;
           final paint = find.descendant(of: check, matching: find.byType(CustomPaint)).first;
           expect(tester.getCenter(paint).dy, closeTo(tester.getCenter(check).dy, 1));
         }

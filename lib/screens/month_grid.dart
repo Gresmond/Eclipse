@@ -118,7 +118,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   /// across the card allows, and no taller than [maxCell].
   static double cellFor(double width, double nameWidth, double maxCell) {
     final col = ((nameWidth + 31 * _minCol).clamp(width, double.infinity) - nameWidth) / 31;
-    return [col - 6, maxCell, _maxCell].reduce((a, b) => a < b ? a : b).clamp(_minCol - 6, _maxCell);
+    return pixelFloor([col - 6, maxCell, _maxCell].reduce((a, b) => a < b ? a : b)).clamp(_minCol - 6, _maxCell);
   }
 
   @override
@@ -263,15 +263,14 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
               animation: _shown,
               builder: (context, _) {
                 final shown = _shown.value;
-                final col = colFor(shown);
                 return Row(
                   children: [
                     SizedBox(width: nameWidth),
                     for (final c in columns)
                       if (shown > c.number - 1)
                         _Column(
-                          width: col * (shown - c.number + 1).clamp(0.0, 1.0),
-                          full: col,
+                          width: layout.widthOf(c.number) * layout.fraction(c.number),
+                          full: layout.widthOf(c.number),
                           child: headers[c.number]!,
                         ),
                   ],
@@ -378,7 +377,8 @@ class _MonthScore extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: p.borderSoft),
         ),
-        child: Row(
+        child: PixelFit(
+          child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             TweenAnimationBuilder<double>(
@@ -402,6 +402,7 @@ class _MonthScore extends StatelessWidget {
               style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.inkMuted),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -433,6 +434,23 @@ class _ColumnLayout {
   final List<int> days;
 
   double get col => colFor(shown.value);
+
+  /// Whether the columns have stopped moving. They're on whole pixels then,
+  /// their gaps differing by a pixel so they still fill the card; a column in
+  /// motion would step from pixel to pixel if it stayed on them.
+  bool get resting => shown.value == shown.value.roundToDouble();
+
+  /// Where the column after the first [count] starts.
+  double edge(num count) => resting ? pixelRound(count * col) : count * col;
+
+  /// The width of column [d].
+  double widthOf(int d) => edge(d) - edge(d - 1);
+
+  /// Where a square [cell] wide starts in column [d].
+  double squareLeft(int d, double cell) {
+    final left = edge(d - 1) + (widthOf(d) - cell) / 2;
+    return resting ? pixelFloor(left) : left;
+  }
 
   /// How much of column [d] is showing, 0 to 1.
   double fraction(int d) => (shown.value - d + 1).clamp(0.0, 1.0);
@@ -488,17 +506,15 @@ class _ColumnsDelegate extends FlowDelegate {
 
   @override
   void paintChildren(FlowPaintingContext context) {
-    final col = layout.col;
+    final cell = _GridState._maxCell * scale;
     for (var i = 0; i < context.childCount; i++) {
       final d = layout.days[i];
       final fraction = layout.fraction(d);
       if (fraction == 0) continue;
-      final size = context.getChildSize(i)!;
       context.paintChild(
         i,
-        transform: Matrix4.translationValues((d - 1) * col + col / 2, height / 2, 0)
-          ..scaleByDouble(scale, scale, 1, 1)
-          ..translateByDouble(-size.width / 2, -size.height / 2, 0, 1),
+        transform: Matrix4.translationValues(layout.squareLeft(d, cell), pixelFloor((height - cell) / 2), 0)
+          ..scaleByDouble(scale, scale, 1, 1),
         opacity: Motion.fadeInCurve.transform(fraction),
       );
     }
@@ -529,8 +545,15 @@ class _HighlightPainter extends CustomPainter {
     if (clickableDays == 0) return;
     final col = layout.col;
     final inset = (col - cellSize) / 2;
-    final clickable = clickableDays.clamp(0, layout.shown.value) * col;
-    final rect = Rect.fromLTWH(inset - pad, 0, clickable - 2 * inset + 2 * pad, size.height);
+    final clickable = clickableDays.clamp(0, layout.shown.value);
+    final rect = layout.resting
+        ? Rect.fromLTRB(
+            layout.squareLeft(1, cellSize) - pad,
+            0,
+            layout.squareLeft(clickable.toInt(), cellSize) + cellSize + pad,
+            size.height,
+          )
+        : Rect.fromLTRB(inset - pad, 0, clickable * col - inset + pad, size.height);
     canvas.drawRRect(RRect.fromRectAndRadius(rect, Radius.circular(cellSize * 0.28 + pad)), Paint()..color = color);
   }
 
@@ -568,7 +591,6 @@ class _RestBandPainter extends CustomPainter {
   }
 
   void _bands(Canvas canvas, Size size, List<bool> weekend, Color color) {
-    final col = layout.col;
     final paint = Paint()..color = color;
     double? start;
     var end = 0.0;
@@ -581,10 +603,10 @@ class _RestBandPainter extends CustomPainter {
     }
 
     for (final (i, d) in layout.days.indexed) {
-      final width = col * layout.fraction(d);
+      final width = layout.widthOf(d) * layout.fraction(d);
       if (weekend[i] && width > 0) {
-        start ??= (d - 1) * col;
-        end = (d - 1) * col + width;
+        start ??= layout.edge(d - 1);
+        end = layout.edge(d - 1) + width;
       } else {
         band();
         start = null;

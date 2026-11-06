@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 
 /// Every dialog's title: Settings' Greed heading.
@@ -141,12 +142,13 @@ class _RenderKeepTop extends RenderShiftedBox {
     // With no height limit the dialog is only as tall as it is.
     child.layout(constraints.loosen().copyWith(maxHeight: double.infinity), parentUsesSize: true);
     if (child.size.height > size.height) child.layout(constraints.loosen(), parentUsesSize: true);
-    final spare = size.height - child.size.height;
+    final spare = size - child.size as Offset;
+    final centre = const PixelCentre().alongOffset(spare);
     if (_top == null || _room != size.height) {
-      _top = spare / 2;
+      _top = centre.dy;
       _room = size.height;
     }
-    _top = _top!.clamp(0.0, spare);
-    (child.parentData! as BoxParentData).offset = Offset((size.width - child.size.width) / 2, _top!);
+    _top = _top!.clamp(0.0, spare.dy);
+    (child.parentData! as BoxParentData).offset = Offset(centre.dx, _top!);
   }
 }

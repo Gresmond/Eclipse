@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../data/platform_files.dart';
 import '../app_state.dart';
 import '../models.dart';
+import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/fade_through.dart';
@@ -67,7 +68,7 @@ class _TodayViewState extends State<TodayView> {
           final minContentWidth = 1216.0 * max(1.0, textScale);
           final sleepHeight = _HabitColumn.sleepHeight(state, day, constraints.maxHeight);
 
-          final content = Row(
+          final content = PixelRow(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Expanded(
@@ -128,7 +129,7 @@ class _HabitColumn extends StatelessWidget {
     final rows = height - 2 * _HabitsCard.chrome - TodayView._gap;
     final count = rituals + sleep;
     final share = count == 0 ? _HabitsCard._maxRow : rows / count;
-    return _HabitsCard.chrome + sleep * share.clamp(_HabitsCard._minRow, _HabitsCard._maxRow);
+    return pixelRound(_HabitsCard.chrome + sleep * share.clamp(_HabitsCard._minRow, _HabitsCard._maxRow));
   }
 
   @override
@@ -241,9 +242,15 @@ class _HabitsCard extends StatelessWidget {
         if (share == extent) break;
         extent = share;
       }
+      // Each row's edge on a whole pixel; together they still fill the card.
+      var bottom = 0.0;
+      final edges = [
+        0.0,
+        for (final n in needed) pixelRound(bottom += n > extent ? n : extent),
+      ];
       return (
-        heights: [for (final n in needed) n > extent ? n : extent],
-        cell: (extent - 10).clamp(24.0, 32.0),
+        heights: [for (var i = 0; i < needed.length; i++) edges[i + 1] - edges[i]],
+        cell: pixelFloor(extent - 10).clamp(24.0, 32.0),
         trail: trail,
       );
     }
@@ -315,10 +322,10 @@ class _HabitsCard extends StatelessWidget {
                   // subtitle and the space inside its first row add an inset.
                   final headerHeight = TileHeader.titleHeight(context, title);
                   final normalChrome = 2 * (24.0 + 1) + headerHeight + 22;
-                  final inset = max(
+                  final inset = pixelRound(max(
                     0.0,
                     cardHeight! - constraints.maxHeight - normalChrome + (rows.heights.first - rows.cell) / 2,
-                  );
+                  ));
                   if ((alignment.value - inset).abs() > 0.01) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (context.mounted && (alignment.value - inset).abs() > 0.01) alignment.value = inset;
@@ -469,7 +476,7 @@ class _HabitRow extends StatelessWidget {
       divider: divider,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
+        child: PixelRow(
           children: [
             Expanded(
               child: Tooltip(

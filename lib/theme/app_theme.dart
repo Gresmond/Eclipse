@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'palette_recipe.dart';
+import 'pixels.dart';
 import 'oklch.dart';
 import 'colour_warmth.dart';
 import 'motion.dart';
@@ -428,6 +429,7 @@ ThemeData buildTheme(Palette p) {
   final theme = ThemeData(
     useMaterial3: true,
     dialogTheme: DialogThemeData(
+      alignment: const PixelCentre(),
       elevation: 0,
       backgroundColor: p.tile,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
@@ -447,10 +449,16 @@ ThemeData buildTheme(Palette p) {
     // Flutter's buttons keep the arrow on desktop; everything clickable
     // here shows the hand.
     iconButtonTheme: const IconButtonThemeData(style: _clickable),
-    textButtonTheme: const TextButtonThemeData(style: _clickable),
+    // Whole-pixel padding, in place of Material's, which follows the text size.
+    textButtonTheme: TextButtonThemeData(
+      style: _clickable.copyWith(
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+      ),
+    ),
     // Every filled button is a yes, in the done colour.
     filledButtonTheme: FilledButtonThemeData(
       style: _clickable.copyWith(
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 23)),
         backgroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.disabled) ? p.done.withValues(alpha: 0.45) : p.done,
         ),
@@ -459,7 +467,9 @@ ThemeData buildTheme(Palette p) {
         ),
       ),
     ),
-    outlinedButtonTheme: const OutlinedButtonThemeData(style: _clickable),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: _clickable.copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 23))),
+    ),
     elevatedButtonTheme: const ElevatedButtonThemeData(style: _clickable),
     extensions: [p],
   );
@@ -493,7 +503,11 @@ ThemeData buildTheme(Palette p) {
   );
 }
 
-const _clickable = ButtonStyle(mouseCursor: WidgetStateMouseCursor.clickable);
+const _clickable = ButtonStyle(mouseCursor: WidgetStateMouseCursor.clickable, foregroundBuilder: _onWholePixels);
+
+/// A button is as wide as its label, which comes in any width.
+Widget _onWholePixels(BuildContext context, Set<WidgetState> states, Widget? child) =>
+    child == null ? const SizedBox.shrink() : PixelFit(child: child);
 
 extension PaletteContext on BuildContext {
   Palette get palette => Theme.of(this).extension<Palette>()!;

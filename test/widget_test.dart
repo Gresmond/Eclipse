@@ -1487,7 +1487,8 @@ void main() {
     expect(weekRect.right, lessThan(ritualsRect.left));
     expect(weekRect.width, greaterThan(ritualsRect.width), reason: 'the week keeps the widest column');
     expect(laterRect.left, greaterThan(ritualsRect.right));
-    expect(laterRect.width, closeTo(ritualsRect.width * 17 / 19, 0.5));
+    // Each column ends on a whole pixel, so the shares are within a pixel.
+    expect(laterRect.width, closeTo(ritualsRect.width * 17 / 19, 1));
     expect(laterRect.bottom, closeTo(ritualsRect.bottom, 0.5));
     expect(journalRect.top, closeTo(sleepRect.top, 0.5));
     expect(journalRect.height, closeTo(sleepRect.height, 0.5));

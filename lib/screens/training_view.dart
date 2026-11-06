@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/oklch.dart';
@@ -37,14 +38,14 @@ class TrainingView extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
-              child: Column(
+              child: PixelColumn(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: const [
                   Expanded(flex: 11, child: _ChartTile()),
                   SizedBox(height: 20),
                   Expanded(
                     flex: 9,
-                    child: Row(
+                    child: PixelRow(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Expanded(flex: 3, child: _SessionTile()),

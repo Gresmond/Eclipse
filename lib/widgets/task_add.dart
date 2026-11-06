@@ -200,7 +200,7 @@ class _AddTaskState extends State<_AddTask> {
                     // A task's height, so the line sits a task's distance below the last.
                     return ConstrainedBox(
                       constraints: const BoxConstraints(minHeight: 43),
-                      child: Row(
+                      child: PixelRow(
                         children: [
                           // Its buttons leave the cursor in the field; the + lines
                           // up with the tick boxes above.
@@ -236,7 +236,7 @@ class _AddTaskState extends State<_AddTask> {
                           ),
                           if (timed)
                             TextFieldTapRegion(
-                              child: Row(
+                              child: PixelRow(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   if (choice != null)
@@ -299,7 +299,7 @@ class _ChosenDetails extends StatelessWidget {
     );
     return FittedBox(
       fit: BoxFit.scaleDown,
-      child: Row(
+      child: PixelRow(
         mainAxisSize: MainAxisSize.min,
         spacing: 8,
         children: [
@@ -356,7 +356,7 @@ class _Field extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: LayoutBuilder(
-          builder: (context, constraints) => Row(
+          builder: (context, constraints) => PixelRow(
             children: [
               // Its buttons leave the cursor in the field.
               TextFieldTapRegion(child: leading),

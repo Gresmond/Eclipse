@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/oklch.dart';
@@ -42,7 +43,7 @@ class YearView extends StatelessWidget {
     for (var tall = 0; tall < sorted.length; tall++) {
       final rest = sorted.length - tall;
       final cell = (room - sorted.skip(rest).fold(0.0, (a, b) => a + b)) / rest;
-      if (cell >= sorted[rest - 1]) return math.max(cell, _minCell);
+      if (cell >= sorted[rest - 1]) return pixelFloor(math.max(cell, _minCell));
     }
     return _minCell;
   }
@@ -210,7 +211,7 @@ class _Table extends StatelessWidget {
     Widget row(String name, List<_Score> months, {Habit? habit, bool total = false}) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
+        child: PixelRow(
           children: [
             SizedBox(
               width: _nameWidth,

@@ -437,7 +437,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                   padding: EdgeInsets.symmetric(horizontal: widget.upcomingDate == null ? 8 : 0, vertical: 4),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(minHeight: widget.upcomingDate == null ? 43 : 0),
-                    child: Row(
+                    child: PixelRow(
                       children: [
                         if (widget.upcomingDate == null) ...[
                           _Check(done: done, hover: _hover, pressed: _pressed),
@@ -488,7 +488,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                   ),
                                 // A birthday looks like any other task here.
                                 if (repeat != null && !item.birthday)
-                                  Row(
+                                  PixelRow(
                                     children: [
                                       Icon(Icons.repeat_rounded, size: 12, color: p.inkMuted),
                                       const SizedBox(width: 4),
@@ -543,7 +543,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                 child: !_actions
                                     // The three buttons' room, so the text never reflows.
                                     ? const SizedBox(width: 3 * _TaskAction.size, height: _TaskAction.size)
-                                    : Row(
+                                    : PixelRow(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           _TaskAction(
@@ -595,7 +595,8 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                   left: 0,
                   top: 0,
                   bottom: 0,
-                  child: Center(
+                  child: Align(
+                    alignment: const PixelCentre(),
                     child: _TaskAction(
                       tooltip: _expanded ? 'Collapse subtasks' : 'Expand subtasks',
                       icon: _expanded ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
@@ -862,7 +863,7 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
               hover: _hover,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Row(
+                child: PixelRow(
                   children: [
                     _Check(done: done, hover: _hover, pressed: _pressed),
                     const SizedBox(width: 12),
@@ -909,7 +910,7 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
                             child: !_actions
                                 // The two buttons' room, so the text never reflows.
                                 ? const SizedBox(width: 2 * _TaskAction.size, height: _TaskAction.size)
-                                : Row(
+                                : PixelRow(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       _TaskAction(
@@ -986,7 +987,7 @@ class _Caption extends StatelessWidget {
               // The glyph before what gives way.
               (location != null || birthday ? scaler.scale(19) : 0);
           Widget part(Widget text) => whole > constraints.maxWidth ? Flexible(child: text) : text;
-          return Row(
+          return PixelRow(
             children: [
               if (weekday != null) part(Text(weekday, maxLines: 1, overflow: TextOverflow.ellipsis, style: plain)),
               if (time != null) ...[

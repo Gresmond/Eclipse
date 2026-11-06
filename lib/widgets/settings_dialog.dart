@@ -17,6 +17,7 @@ import '../data/google_drive.dart';
 import '../data/platform_files.dart';
 import '../data/sync_service.dart';
 import '../models.dart';
+import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_menu.dart';
@@ -240,7 +241,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  PixelRow(
                     children: [
                       Expanded(child: Text('Settings', style: dialogTitleStyle(p))),
                       _Ribbons(

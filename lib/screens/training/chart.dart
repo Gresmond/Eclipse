@@ -556,9 +556,11 @@ class _Segments extends StatelessWidget {
                     color: p.done.withValues(alpha: i == selected ? 1 : 0),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Text(
-                    label,
-                    style: _label(p, size: 14, weight: FontWeight.w600, color: i == selected ? p.onAccent : p.inkMuted),
+                  child: PixelFit(
+                    child: Text(
+                      label,
+                      style: _label(p, size: 14, weight: FontWeight.w600, color: i == selected ? p.onAccent : p.inkMuted),
+                    ),
                   ),
                 ),
               ),

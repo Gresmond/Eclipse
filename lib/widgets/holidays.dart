@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'app_dialog.dart';
@@ -36,7 +37,7 @@ class HolidaysRow extends StatelessWidget {
     Widget row(Holiday h, {required bool over}) => Padding(
       key: ValueKey(h),
       padding: const EdgeInsets.only(top: 4),
-      child: Row(
+      child: PixelRow(
         children: [
           Icon(Icons.beach_access_rounded, size: 16, color: over ? p.inkMuted : p.accent),
           const SizedBox(width: 8),
@@ -62,7 +63,7 @@ class HolidaysRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          PixelRow(
             children: [
               Expanded(
                 child: Column(

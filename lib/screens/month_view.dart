@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart' show OverflowBoxFit;
 import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import '../widgets/appear.dart';
 import '../widgets/confirm_on_enter.dart';
@@ -272,7 +273,6 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
 
   Widget _build(BuildContext context, Widget? _) {
     final p = context.palette;
-    const pad = _HighlightPainter.pad;
     final cellSize = widget.cellSize.value;
     final height = cellSize + 5;
     final nameStyle = TextStyle(
@@ -325,8 +325,9 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    top: 2.5 - pad + 1,
-                    bottom: 2.5 - pad + 1,
+                    // Round the squares, 2 above and 3 below, less the padding.
+                    top: 0,
+                    bottom: 1,
                     child: IgnorePointer(
                       child: AnimatedOpacity(
                         opacity: _hover ? 1 : 0,
@@ -384,16 +385,18 @@ class _PillButton extends StatelessWidget {
             gradient: filled ? LinearGradient(colors: p.gradient) : null,
             border: filled ? null : Border.all(color: p.tileBorder),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: Scale.rowActionIcon, color: fg),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: fg),
-              ),
-            ],
+          child: PixelFit(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: Scale.rowActionIcon, color: fg),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: fg),
+                ),
+              ],
+            ),
           ),
         ),
       ),
