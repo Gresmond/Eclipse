@@ -104,3 +104,6 @@ sync.json
 /journal-*.md
 /Eclipse Journal/
 /Eclipse Journals/
+
+# Cloudflare's tool
+.wrangler/

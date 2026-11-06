@@ -109,7 +109,7 @@ class BackupRow extends StatelessWidget {
             : b.isBeforeJoin
             ? 'Before joining sync'
             : 'Before your last restore',
-        'Saved ${t.day} ${monthNames[t.month - 1]}, $time',
+        'Saved ${t.day} ${monthNames[t.month - 1]}, $time${b is DriveBackup ? ', in Google Drive' : ''}',
       );
     }
     final d = b.day!;
@@ -117,10 +117,10 @@ class BackupRow extends StatelessWidget {
     final title = '${weekdayNames[d.weekday - 1]} ${d.day} ${monthNames[d.month - 1]}$year';
     final days = daysBetween(d, today);
     final ago = switch (days) {
-      0 => 'Today, as it was when you opened the app',
+      0 => b is DriveBackup ? 'Today' : 'Today, as it was when you opened the app',
       1 => 'Yesterday',
       _ => '$days days ago',
     };
-    return (title, ago);
+    return (title, b is DriveBackup ? '$ago, in Google Drive from ${b.from}' : ago);
   }
 }

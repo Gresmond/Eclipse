@@ -42,6 +42,12 @@ class _Drive implements SyncDrive {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// A daily copy as older versions saved them here.
+void saveDaily(Backups backups, Store store, String day) {
+  backups.dir.createSync(recursive: true);
+  store.saveCopy(p.join(backups.dir.path, 'productivity-$day.db'));
+}
+
 void main() {
   Directory temporary() {
     final temp = Directory.systemTemp.createTempSync('eclipse-recovery');
@@ -75,31 +81,36 @@ void main() {
   }
 
   group('the daily check', () {
-    test('a good copy is checked and saved, and the oldest dropped', () {
+    test('good data passes today\'s check and saves nothing here', () {
       final dir = temporary();
       final store = Store.open(database(dir));
       addTearDown(store.close);
-      final backups = Backups(Directory(p.join(dir.path, 'backups')), keep: 2);
-      for (final day in [1, 2, 3]) {
-        backups.daily(store, DateTime(2026, 11, day));
-      }
-      expect(backups.list().map((b) => b.day), [DateTime(2026, 11, 3), DateTime(2026, 11, 2)]);
-      expect(Backups.isHealthy(backups.list().first.file), isTrue);
+      final backups = Backups(Directory(p.join(dir.path, 'backups')));
+      backups.check(store);
+      expect(backups.list(), isEmpty);
     });
 
-    test('damaged data makes no copy and drops none', () {
+    test('damaged data fails today\'s check', () {
       final dir = temporary();
       final path = database(dir);
-      final backups = Backups(Directory(p.join(dir.path, 'backups')), keep: 1);
-      final good = Store.open(path);
-      backups.daily(good, DateTime(2026, 11, 1));
-      good.close();
+      Store.open(path).close();
       damage(path, lightly: true);
       final store = Store.open(path);
       addTearDown(store.close);
-      expect(store.isHealthy, isFalse);
-      expect(() => backups.daily(store, DateTime(2026, 11, 2)), throwsA(isA<DataDamaged>()));
-      expect(backups.list().map((b) => b.day), [DateTime(2026, 11, 1)]);
+      final backups = Backups(Directory(p.join(dir.path, 'backups')));
+      expect(() => backups.check(store), throwsA(isA<DataDamaged>()));
+    });
+
+    test('dropping the daily copies keeps the one-off ones', () {
+      final dir = temporary();
+      final store = Store.open(database(dir));
+      addTearDown(store.close);
+      final backups = Backups(Directory(p.join(dir.path, 'backups')));
+      saveDaily(backups, store, '2026-11-01');
+      saveDaily(backups, store, '2026-11-02');
+      backups.beforeJoining(store);
+      backups.dropDaily();
+      expect(backups.list().single.isBeforeJoin, isTrue);
     });
 
     test('a file that is damaged or not a database fails the check', () {
@@ -117,9 +128,12 @@ void main() {
       final dir = temporary();
       final store = Store.open(database(dir));
       addTearDown(store.close);
-      // A file where the backups folder should be: copies can't be saved.
-      final blocked = File(p.join(dir.path, 'blocked'))..writeAsStringSync('');
-      final failing = AppState(store, backups: Backups(Directory(blocked.path)), clock: () => DateTime(2026, 11, 4));
+      // The copy before an update couldn't be made.
+      final failing = AppState(
+        store,
+        backups: Backups(Directory(p.join(dir.path, 'blocked')))..updateCopyFailed = true,
+        clock: () => DateTime(2026, 11, 4),
+      );
       addTearDown(failing.dispose);
       expect(failing.backupProblem, BackupProblem.failed);
 
@@ -194,7 +208,7 @@ void main() {
       path = database(dir);
       backups = Backups(Directory(p.join(dir.path, 'backups')));
       final store = Store.open(path);
-      backups.daily(store, DateTime(2026, 11, 1));
+      saveDaily(backups, store, '2026-11-01');
       store.close();
       copy = backups.list().single;
     });
@@ -249,6 +263,79 @@ void main() {
       expect(reopened, 1);
     });
 
+    group('copies in Drive', () {
+      late Directory home;
+      setUp(() {
+        home = Directory(p.join(dir.path, 'home'))..createSync();
+        File(p.join(home.path, 'sync.json')).writeAsStringSync(
+          jsonEncode({
+            'refresh': 'A',
+            'machine': 'one',
+            'names': {'two': 'Laptop'},
+          }),
+        );
+      });
+
+      testWidgets('are offered when the data won\'t open, and one comes back', (tester) async {
+        final drive = _Drive();
+        var reopened = 0;
+        await tester.runAsync(() async {
+          await drive.upload('backup_two_2026-11-01.db', File(copy.file.path).readAsBytesSync());
+          await drive.upload('sync_change.json', [1]);
+          backups.dropDaily();
+          damage(path);
+        });
+        await tester.pumpWidget(
+          StartupErrorApp(
+            error: const FileSystemException('Disk is damaged'),
+            recovery: StartupRecovery(
+              backups: backups,
+              database: path,
+              driveCopies: SyncService.copiesAt(home, connect: (_) => drive),
+              reopen: () async => reopened++,
+            ),
+          ),
+        );
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('in Google Drive from Laptop'), findsOneWidget);
+        await tester.tap(find.text('Restore'));
+        await tester.pumpAndSettle();
+        await tester.runAsync(() async {
+          await tester.tap(find.text('Restore'));
+          await tester.pump();
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        });
+        expect(reopened, 1);
+        expect(Backups.isHealthy(File(path)), isTrue);
+      });
+
+      testWidgets('say so when they can\'t be reached', (tester) async {
+        final drive = _Drive()..failing = const DriveError('Offline');
+        await tester.runAsync(() async => backups.dropDaily());
+        await tester.pumpWidget(
+          StartupErrorApp(
+            error: const FileSystemException('Disk is damaged'),
+            recovery: StartupRecovery(
+              backups: backups,
+              database: path,
+              driveCopies: SyncService.copiesAt(home, connect: (_) => drive),
+              reopen: () async {},
+            ),
+          ),
+        );
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('couldn’t be reached'), findsOneWidget);
+        expect(find.text('Restore'), findsNothing);
+      });
+
+      test('aren\'t looked for without a sign-in', () {
+        final empty = Directory(p.join(dir.path, 'empty'))..createSync();
+        expect(SyncService.copiesAt(empty), isNull);
+      });
+    });
+
     testWidgets('data too new is no reason to restore', (tester) async {
       await tester.pumpWidget(
         StartupErrorApp(
@@ -270,7 +357,7 @@ void main() {
       store.flushToDisk();
       // A copy from before the edit, as the backup would be.
       final old = Backups(Directory(p.join(dir.path, 'older')));
-      old.daily(store, DateTime(2026, 11, 1));
+      saveDaily(old, store, '2026-11-01');
       store.setJournal('2026-11-03', 'Synced before the damage');
       await sync.run();
       sync.stop();

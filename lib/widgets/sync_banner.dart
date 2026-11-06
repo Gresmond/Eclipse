@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../data/host.dart';
 import '../data/sync.dart';
 import '../data/sync_service.dart';
 import '../models.dart';
@@ -162,7 +162,7 @@ class _Card extends StatelessWidget {
   /// The other computer's name, unless it's the same as this one's (two
   /// installs of the same setup), when it can't tell them apart.
   static String _from(Set<String> names) {
-    final others = names.where((n) => n != Platform.localHostname).toList();
+    final others = names.where((n) => n != computerName).toList();
     return others.length == 1 && names.length == 1 ? curlyQuotes(others.first) : 'your other computer';
   }
 

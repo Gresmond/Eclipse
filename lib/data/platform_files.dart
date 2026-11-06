@@ -1,10 +1,15 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import '../web/browser.dart';
 
 /// Opens a URL or folder with the operating system's default application.
 Future<void> openExternal(String target) async {
-  if (Platform.isAndroid) {
+  if (kIsWeb) {
+    openTab(target);
+  } else if (Platform.isAndroid) {
     await const MethodChannel('eclipse/phone').invokeMethod<void>('openUrl', target);
   } else if (Platform.isWindows) {
     await Process.start('explorer.exe', [target], mode: ProcessStartMode.detached);

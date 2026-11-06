@@ -263,6 +263,32 @@ jobs:
           if-no-files-found: error
           path: build/Eclipse.apk
 
+  # Puts the web version on Cloudflare Pages, once CLOUDFLARE_PROJECT is set as
+  # a repository variable; it never holds up the downloads.
+  web:
+    needs: version
+    if: (needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch') && vars.CLOUDFLARE_PROJECT != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - name: Build
+        run: |
+          cp lib/data/google_client.example.dart lib/data/google_client.dart
+          flutter pub get
+          bash tool/build_web.sh
+      - name: Publish
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.CLOUDFLARE_PROJECT }}
+        # From the top folder, so Pages finds functions/ beside the site.
+        run: npx --yes wrangler@4 pages deploy build/web --project-name="$PROJECT" --branch=main --commit-dirty=true
+
   publish:
     needs: [version, arch, desktop, android]
     # A manual run publishes too, replacing the downloads of a release that

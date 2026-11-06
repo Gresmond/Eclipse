@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:sqlite3/sqlite3.dart' show OpenMode, sqlite3;
 
+import '../data/sqlite.dart' show OpenMode, placeDatabase, removeDatabase, sqlite3;
+
+import '../data/app_log.dart';
 import '../data/backups.dart';
 import '../data/journal_files.dart';
 import '../data/store.dart' show DatabaseTooNewException;
+import '../data/sync_service.dart';
 import '../data/updates.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
@@ -32,11 +36,20 @@ String? savedThemeName(String database) {
 
 /// What the error screen needs to offer a way back from a backup.
 class StartupRecovery {
-  const StartupRecovery({required this.backups, required this.database, this.journal, required this.reopen});
+  const StartupRecovery({
+    required this.backups,
+    required this.database,
+    this.journal,
+    this.driveCopies,
+    required this.reopen,
+  });
 
   final Backups backups;
   final String database;
   final JournalFiles? journal;
+
+  /// The copies in Drive; null when not signed in.
+  final DriveCopies? driveCopies;
 
   /// Opens Eclipse again once a copy is in place.
   final Future<void> Function() reopen;
@@ -110,7 +123,7 @@ class StartupErrorApp extends StatelessWidget {
   }
 }
 
-/// The saved copies, newest first, to bring back in place of data that
+/// The saved copies here then in Drive, newest first, to bring back in place of data that
 /// won't open. What's there is put aside rather than deleted.
 class _RecoveryList extends StatefulWidget {
   const _RecoveryList(this.recovery);
@@ -123,9 +136,35 @@ class _RecoveryList extends StatefulWidget {
 
 class _RecoveryListState extends State<_RecoveryList> {
   late final _backups = [for (final backup in widget.recovery.backups.list()) (backup, Backups.isHealthy(backup.file))];
+  List<DriveBackup> _driveCopies = const [];
+  late bool _looking = widget.recovery.driveCopies != null;
+  bool _driveFailed = false;
   Backup? _confirming;
   bool _restoring = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_looking) unawaited(_listDrive());
+  }
+
+  Future<void> _listDrive() async {
+    List<DriveBackup> copies = const [];
+    var failed = false;
+    try {
+      copies = await widget.recovery.driveCopies!.list();
+    } catch (e) {
+      failed = true;
+      AppLog.failure('Couldn’t list the copies in Drive', e);
+    }
+    if (!mounted) return;
+    setState(() {
+      _driveCopies = copies;
+      _driveFailed = failed;
+      _looking = false;
+    });
+  }
 
   Future<void> _restore(Backup backup) async {
     setState(() {
@@ -134,7 +173,16 @@ class _RecoveryListState extends State<_RecoveryList> {
     });
     final recovery = widget.recovery;
     try {
-      recovery.backups.recover(backup, recovery.database, journal: recovery.journal);
+      if (backup is DriveBackup) {
+        final path = placeDatabase(await recovery.driveCopies!.fetch(backup));
+        try {
+          recovery.backups.recover(Backup(File(path), backup.day), recovery.database, journal: recovery.journal);
+        } finally {
+          removeDatabase(path);
+        }
+      } else {
+        recovery.backups.recover(backup, recovery.database, journal: recovery.journal);
+      }
       await recovery.reopen();
     } catch (_) {
       if (mounted) {
@@ -148,43 +196,52 @@ class _RecoveryListState extends State<_RecoveryList> {
 
   @override
   Widget build(BuildContext context) {
-    if (_backups.isEmpty) return const SizedBox.shrink();
+    final rows = [..._backups, for (final copy in _driveCopies) (copy, true)];
+    final note = _looking
+        ? 'Looking for your backups in Google Drive…'
+        : _driveFailed
+        ? 'Your backups in Google Drive couldn’t be reached. Check your connection and open Eclipse again.'
+        : null;
+    if (rows.isEmpty && note == null) return const SizedBox.shrink();
     final p = context.palette;
     final now = DateTime.now();
     return PixelColumn(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 16),
-        Text(
-          'You can go back to a saved copy. What’s there now is set aside, not deleted, '
-          'and your journal writing is kept.',
-          style: _body(p),
-        ),
-        const SizedBox(height: 12),
-        // Three days show; the rest scroll, as in Settings.
-        ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: 3 * (20 + MediaQuery.textScalerOf(context).scale(50)) + 2 * 6),
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: _backups.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 6),
-            itemBuilder: (_, i) {
-              final (backup, healthy) = _backups[i];
-              return BackupRow(
-                backup: backup,
-                today: now,
-                damaged: !healthy,
-                confirming: _confirming == backup,
-                restoring: _restoring && _confirming == backup,
-                enabled: !_restoring,
-                confirmText: 'Sets aside what’s there and goes back to this copy.',
-                onAsk: () => setState(() => _confirming = backup),
-                onCancel: () => setState(() => _confirming = null),
-                onConfirm: () => _restore(backup),
-              );
-            },
+        if (rows.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'You can go back to a saved copy. What’s there now is set aside, not deleted, '
+            'and your journal writing is kept.',
+            style: _body(p),
           ),
-        ),
+          const SizedBox(height: 12),
+          // Three days show; the rest scroll, as in Settings.
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: 3 * (20 + MediaQuery.textScalerOf(context).scale(50)) + 2 * 6),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: rows.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 6),
+              itemBuilder: (_, i) {
+                final (backup, healthy) = rows[i];
+                return BackupRow(
+                  backup: backup,
+                  today: now,
+                  damaged: !healthy,
+                  confirming: _confirming == backup,
+                  restoring: _restoring && _confirming == backup,
+                  enabled: !_restoring,
+                  confirmText: 'Sets aside what’s there and goes back to this copy.',
+                  onAsk: () => setState(() => _confirming = backup),
+                  onCancel: () => setState(() => _confirming = null),
+                  onConfirm: () => _restore(backup),
+                );
+              },
+            ),
+          ),
+        ],
+        if (note != null) ...[const SizedBox(height: 12), Text(note, style: _body(p).copyWith(color: p.inkMuted))],
         if (_error != null) ...[
           const SizedBox(height: 12),
           Text(_error!, style: _body(p).copyWith(color: p.missedInk)),

@@ -51,3 +51,20 @@ jobs:
           tar --zstd -xf build/Eclipse.tar.zst -C /tmp/eclipse-install
           chown -R tester:tester /tmp/eclipse-install
           runuser -u tester -- bash /tmp/eclipse-install/Eclipse/install.sh
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - name: Test the sign-in functions
+        run: node --test test/web/
+      - name: Build
+        run: |
+          cp lib/data/google_client.example.dart lib/data/google_client.dart
+          flutter pub get
+          bash tool/build_web.sh

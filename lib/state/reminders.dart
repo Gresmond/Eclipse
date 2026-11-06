@@ -88,6 +88,15 @@ abstract interface class ReminderNotifier {
   set onOpen(void Function(String uid)? open);
 }
 
+/// Whether a reminder may show outside the app, where that's the person's
+/// say: in a browser.
+enum ReminderAccess { notAsked, allowed, blocked }
+
+abstract interface class ReminderPermission {
+  ReminderAccess get access;
+  Future<void> ask();
+}
+
 /// Tasks' reminders: checked every so often (the corner card's layer asks),
 /// each shown once, by the system and in the window.
 mixin _Reminders on ChangeNotifier {

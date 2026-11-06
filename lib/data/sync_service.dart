@@ -6,12 +6,17 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import '../models.dart' show dateKey;
 import 'app_log.dart';
+import 'backups.dart';
 import 'google_drive.dart';
+import 'host.dart';
 import 'safe_write.dart';
+import 'sqlite.dart' show copyOfDatabase;
 import 'journal_drive.dart';
 import 'store.dart';
 import 'sync.dart';
+import 'sync_disk.dart';
 
 /// Runs sync: copies this computer's change files up to Eclipse's hidden
 /// folder in the Google Drive signed in to, everyone else's down, and
@@ -21,9 +26,9 @@ import 'sync.dart';
 /// Set up once per computer: it lives in the app's own folder, as
 /// sync.json, so a restored backup or a moved data folder doesn't change it.
 class SyncService extends ChangeNotifier {
-  SyncService._(this.home, this.store, this._config, this._connect, this._signIn) {
+  SyncService._(this._settings, SyncDisk disk, this.store, this._config, this._connect, this._signIn) {
     engine = SyncEngine(store, machine)..offset = _config['clock'] as int? ?? 0;
-    folder = SyncFolder(Directory(p.join(home.path, 'sync')), machine, Platform.isAndroid ? 'Phone' : Platform.localHostname);
+    folder = SyncFolder.on(disk, machine, computerName);
     journal = JournalFolder(_config, _save);
     _checkNewer();
   }
@@ -34,13 +39,23 @@ class SyncService extends ChangeNotifier {
     Store store, {
     SyncDrive Function(String refreshToken)? connect,
     Future<GoogleAccount> Function({Future<void>? cancel})? signIn,
+  }) => loadFrom(_FileSettings(home), FolderDisk(p.join(home.path, 'sync')), store, connect: connect, signIn: signIn);
+
+  /// As [load], with its settings and change files kept in [settings] and
+  /// [disk].
+  static SyncService loadFrom(
+    SyncSettings settings,
+    SyncDisk disk,
+    Store store, {
+    SyncDrive Function(String refreshToken)? connect,
+    Future<GoogleAccount> Function({Future<void>? cancel})? signIn,
   }) {
-    final file = File(p.join(home.path, 'sync.json'));
     var config = <String, dynamic>{};
     var damaged = false;
     try {
-      if (file.existsSync()) {
-        final json = jsonDecode(file.readAsStringSync());
+      final contents = settings.read();
+      if (contents != null) {
+        final json = jsonDecode(contents);
         if (json is Map<String, dynamic>) {
           config = json;
           final bad = [
@@ -57,19 +72,19 @@ class SyncService extends ChangeNotifier {
       // A damaged or unreadable file: set up again.
       damaged = true;
     }
-    if (damaged) {
-      // Kept for a look, as it's overwritten on the next save.
-      try {
-        file.copySync('${file.path}.damaged');
-      } on FileSystemException {
-        // Nothing to keep.
-      }
-    }
+    if (damaged) settings.keepDamaged();
     if (config['machine'] is! String) {
       final random = Random.secure();
       config['machine'] = List.generate(8, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
     }
-    final service = SyncService._(home, store, config, connect ?? AppDataFolder.new, signIn ?? signInWithGoogle);
+    final service = SyncService._(
+      settings,
+      disk,
+      store,
+      config,
+      connect ?? AppDataFolder.new,
+      signIn ?? signInWithGoogle,
+    );
     if (damaged) service.error = 'Sync’s settings were damaged. Sign in again if sync is off.';
     return service;
   }
@@ -84,6 +99,7 @@ class SyncService extends ChangeNotifier {
     'refresh' ||
     'journalFolder' ||
     'journalChecked' ||
+    'copied' ||
     'syncedAt' ||
     'stopped' => value is String,
     'clock' || 'pushed' => value is int,
@@ -99,7 +115,7 @@ class SyncService extends ChangeNotifier {
     _ => true,
   };
 
-  final Directory home;
+  final SyncSettings _settings;
   final Store store;
   final Map<String, dynamic> _config;
   final SyncDrive Function(String refreshToken) _connect;
@@ -114,6 +130,9 @@ class SyncService extends ChangeNotifier {
   /// The Google account synced through; null while sync is off.
   String? get email => isOn ? _config['email'] as String? : null;
   bool get isOn => _config['refresh'] is String;
+
+  /// The address of the account this computer last synced with, on or off.
+  String? get accountEmail => _config['accountEmail'] as String?;
 
   /// Account identity survives signing out; sync history belongs to it.
   /// A computer that hasn't synced yet isn't returning, whatever the
@@ -155,26 +174,19 @@ class SyncService extends ChangeNotifier {
   /// this one's by size and time here.
   Map<String, dynamic> _seen(String key) => (_config[key] ??= <String, dynamic>{}) as Map<String, dynamic>;
 
-  /// Only this person can read it: it holds the lasting sign-in.
   Future<void> _saving = Future.value();
 
   Future<void> _save() {
     final contents = jsonEncode(_config);
-    final path = p.join(home.path, 'sync.json');
-    return _saving = _saving
-        .catchError((Object _) {})
-        .then(
-          (_) => replaceSafely(path, (part) async {
-            // Protected while still empty, so the sign-in is never readable by others.
-            await part.writeAsString('');
-            if (!Platform.isWindows) {
-              final result = await Process.run('chmod', ['600', part.path]);
-              if (result.exitCode != 0) throw FileSystemException('Cannot protect sync credentials', part.path);
-            }
-            await part.writeAsString(contents, flush: true);
-          }),
-        );
+    return _saving = _saving.catchError((Object _) {}).then((_) => _settings.write(contents));
   }
+
+  /// Waits until saves so far have really been stored; only a browser, whose
+  /// saves go there a moment later, needs it.
+  Future<void> Function()? persist;
+
+  /// Whether this copy of Eclipse keeps a daily copy of the database in Drive.
+  bool copiesToDrive = false;
 
   /// Called with each round's changes from other computers, after they're
   /// in the database: to redraw, and write journal files.
@@ -187,6 +199,10 @@ class SyncService extends ChangeNotifier {
   /// Called before joining replaces everything here, to save a copy of it
   /// first. If it throws, nothing is replaced.
   void Function()? beforeJoin;
+
+  /// Called once today's copy is in Drive, to remove the daily copies from
+  /// before they went there.
+  void Function()? afterDriveCopy;
 
   /// Called before joining with the journal days that were here, to remove
   /// their files.
@@ -334,7 +350,7 @@ class SyncService extends ChangeNotifier {
   /// Looks in [account]'s Drive before turning sync on: true if another
   /// computer already keeps its data there, to join rather than start it.
   Future<bool> look(GoogleAccount account) async {
-    if (folder.dir.existsSync()) folder.dir.deleteSync(recursive: true);
+    folder.disk.clear();
     _config
       ..remove('down')
       ..remove('up')
@@ -471,14 +487,13 @@ class SyncService extends ChangeNotifier {
       if (who == null || day == null) continue;
       // Two files of one name (Drive's list lagged behind a new one): each
       // is read.
-      final file = File(
-        p.join(folder.dir.path, who, copies[f.name]! > 1 ? '${p.basenameWithoutExtension(day)}~${f.id}.json' : day),
-      );
-      if (!p.isWithin(folder.dir.path, file.path)) continue;
+      final name = copies[f.name]! > 1 ? '${p.basenameWithoutExtension(day)}~${f.id}.json' : day;
+      final disk = folder.disk;
+      if (!disk.holds(who, name)) continue;
       if (who == machine) {
         if (mine[f.name] == null || f.id == ids[f.name]) mine[f.name] = f.id;
-        if (await file.exists()) continue;
-      } else if (down[f.id] == f.modified && await file.exists()) {
+        if (disk.exists(who, name)) continue;
+      } else if (down[f.id] == f.modified && disk.exists(who, name)) {
         seen[f.id] = f.modified;
         continue;
       }
@@ -488,8 +503,7 @@ class SyncService extends ChangeNotifier {
       } on FormatException {
         continue; // cut short: fetched again next round
       }
-      await file.parent.create(recursive: true);
-      await replaceSafely(file.path, (part) => part.writeAsBytes(bytes, flush: true));
+      await disk.writeBytes(who, name, bytes);
       if (who != machine) seen[f.id] = f.modified;
     }
     // By id, as names can repeat; files gone from Drive are forgotten.
@@ -501,14 +515,13 @@ class SyncService extends ChangeNotifier {
   /// made here is remembered, so one Drive doesn't list yet isn't made twice.
   Future<void> _push(SyncDrive drive, Map<String, String> there) async {
     final up = _seen('up'), ids = _seen('ids');
-    if (!folder.mine.existsSync()) return;
-    for (final f in folder.mine.listSync().whereType<File>()) {
-      if (!f.path.endsWith('.json') || p.basename(f.path).contains('~')) continue;
-      final name = '${machine}_${p.basename(f.path)}';
-      final stat = f.statSync();
-      final stamp = '${stat.size}:${stat.modified.millisecondsSinceEpoch}';
+    final disk = folder.disk;
+    for (final f in disk.files()) {
+      if (f.who != machine || f.name.contains('~')) continue;
+      final name = '${machine}_${f.name}';
+      final stamp = disk.stamp(f.key);
       if (up[name] == stamp && there.containsKey(name)) continue;
-      final bytes = await f.readAsBytes(), id = there[name] ?? ids[name] as String?;
+      final bytes = disk.readBytes(f.key), id = there[name] ?? ids[name] as String?;
       final sent = DateTime.now();
       DriveFile made;
       try {
@@ -580,6 +593,7 @@ class SyncService extends ChangeNotifier {
       // On the disk before it's recorded as sent, so a power cut can't leave
       // the others with edits this computer has lost.
       store.flushToDisk();
+      await persist?.call();
       await folder.write(engine, _pushed);
       if (_stopped) return;
       await _push(drive, mine);
@@ -597,6 +611,8 @@ class SyncService extends ChangeNotifier {
         );
         if (_stopped) return;
       }
+      await _copyToDrive(drive);
+      if (_stopped) return;
       lastSynced = DateTime.now();
       error = merging == null ? null : '$merging';
       if (_logged != null) AppLog.note('Sync is working again');
@@ -626,6 +642,110 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  // Copies of the database in Drive
+
+  /// A copy of the database in Drive's hidden folder, from a computer. Sync
+  /// passes over them: their names aren't change files'.
+  static final _copyName = RegExp(r'^backup_([A-Za-z0-9-]+)_(\d{4}-\d{2}-\d{2}|before-restore)\.db$');
+  static const _keepCopies = 30;
+
+  /// Today's copy goes up once. Failing doesn't stop sync, and it's tried
+  /// again next round.
+  Future<void> _copyToDrive(SyncDrive drive) async {
+    if (!copiesToDrive || drive is! CopiesDrive) return;
+    final today = dateKey(DateTime.now());
+    try {
+      if (_config['copied'] != today) {
+        if (!store.isHealthy) throw StateError('The database failed its check');
+        final files = await drive.list();
+        final name = 'backup_${machine}_$today.db';
+        final had = files.where((f) => f.name == name).firstOrNull;
+        await drive.upload(name, copyOfDatabase(store.raw), id: had?.id);
+        final mine = [
+          for (final f in files)
+            if (_copyName.firstMatch(f.name) case final m? when m[1] == machine && m[2] != 'before-restore') f,
+        ]..sort((a, b) => b.name.compareTo(a.name));
+        // Today's is new when none had its name.
+        for (final old in mine.skip(had == null ? _keepCopies - 1 : _keepCopies)) {
+          await (drive as CopiesDrive).delete(old.id);
+        }
+        _config['copied'] = today;
+        await _save();
+      }
+      afterDriveCopy?.call();
+    } catch (e) {
+      AppLog.failure('The copy to Drive failed', e);
+    }
+  }
+
+  /// The copies in Drive, every computer's, newest first; the copy before a
+  /// restore from here comes first.
+  Future<List<DriveBackup>> driveCopies() async {
+    if (!isOn || !copiesToDrive) return [];
+    return _copiesIn(await _signedIn.list(), machine, _config['names'] as Map<String, dynamic>? ?? const {});
+  }
+
+  static List<DriveBackup> _copiesIn(List<DriveFile> files, String machine, Map<String, dynamic> names) {
+    final copies = <DriveBackup>[];
+    for (final f in files) {
+      final m = _copyName.firstMatch(f.name);
+      if (m == null) continue;
+      final who = m[1]!;
+      if (m[2] == 'before-restore' && who != machine) continue;
+      copies.add(
+        DriveBackup(
+          id: f.id,
+          name: f.name,
+          day: m[2] == 'before-restore' ? null : DateTime.tryParse(m[2]!),
+          saved: DateTime.tryParse(f.modified)?.toLocal() ?? DateTime.now(),
+          from: who == machine ? 'this computer' : names[who] as String? ?? 'another computer',
+        ),
+      );
+    }
+    final later = copies.where((c) => c.day != null).toList()
+      ..sort((a, b) => b.name.substring(b.name.length - 13).compareTo(a.name.substring(a.name.length - 13)));
+    return [...copies.where((c) => c.day == null), ...later];
+  }
+
+  /// The copies in Drive of the sign-in kept in [home], for when the data
+  /// won't open and so sync can't start. Null when there's no sign-in there.
+  static DriveCopies? copiesAt(Directory home, {SyncDrive Function(String refreshToken)? connect}) {
+    try {
+      final config = jsonDecode(_FileSettings(home).read() ?? '{}') as Map<String, dynamic>;
+      final (refresh, machine) = (config['refresh'], config['machine']);
+      if (refresh is! String || machine is! String) return null;
+      final names = config['names'];
+      return DriveCopies._(
+        (connect ?? AppDataFolder.new)(refresh),
+        machine,
+        names is Map<String, dynamic> ? names : const {},
+      );
+    } on Object {
+      return null;
+    }
+  }
+
+  /// The database as [copy] holds it.
+  Future<List<int>> fetchCopy(DriveBackup copy) => _signedIn.download(copy.id);
+
+  /// Saves everything here to Drive, as the way back from a restore where
+  /// there's no folder to keep it in.
+  Future<void> copyBeforeRestore() async {
+    final drive = _signedIn;
+    final name = 'backup_${machine}_before-restore.db';
+    final had = (await drive.list()).where((f) => f.name == name).firstOrNull;
+    await drive.upload(name, copyOfDatabase(store.raw), id: had?.id);
+  }
+
+  /// Back from signing in again: whether the journal may go to Drive may
+  /// have changed.
+  Future<void> updateAccess({required bool journalAccess}) async {
+    if (!isOn || _config['journalDrive'] == journalAccess) return;
+    _config['journalDrive'] = journalAccess;
+    await _save();
+    notifyListeners();
+  }
+
   /// Starts the count towards [staleAfter] for a computer that has no last
   /// time on record.
   Future<void> _noteFirstFailure() async {
@@ -640,4 +760,49 @@ class SyncService extends ChangeNotifier {
     lastIncoming = incoming;
     incomingCount++;
   }
+}
+
+/// sync.json, in the app's own folder. Only this person can read it: it
+/// holds the lasting sign-in.
+/// The copies in Drive, reached without the database.
+class DriveCopies {
+  DriveCopies._(this._drive, this._machine, this._names);
+
+  final SyncDrive _drive;
+  final String _machine;
+  final Map<String, dynamic> _names;
+
+  Future<List<DriveBackup>> list() async => SyncService._copiesIn(await _drive.list(), _machine, _names);
+
+  /// The database as [copy] holds it.
+  Future<List<int>> fetch(DriveBackup copy) => _drive.download(copy.id);
+}
+
+class _FileSettings implements SyncSettings {
+  _FileSettings(Directory home) : _file = File(p.join(home.path, 'sync.json'));
+
+  final File _file;
+
+  @override
+  String? read() => _file.existsSync() ? _file.readAsStringSync() : null;
+
+  @override
+  void keepDamaged() {
+    try {
+      _file.copySync('${_file.path}.damaged');
+    } on FileSystemException {
+      // Nothing to keep.
+    }
+  }
+
+  @override
+  Future<void> write(String contents) => replaceSafely(_file.path, (part) async {
+    // Protected while still empty, so the sign-in is never readable by others.
+    await part.writeAsString('');
+    if (!Platform.isWindows) {
+      final result = await Process.run('chmod', ['600', part.path]);
+      if (result.exitCode != 0) throw FileSystemException('Cannot protect sync credentials', part.path);
+    }
+    await part.writeAsString(contents, flush: true);
+  });
 }

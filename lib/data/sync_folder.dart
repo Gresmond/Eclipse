@@ -1,38 +1,31 @@
 part of 'sync.dart';
 
-/// A sync folder on disk: this computer's change files, written here, and
-/// copies of the others', brought down by [Remote].
-///
-/// `<folder>/<computer id>/2026-10-24.json`
+/// Sync's change files: this computer's, written here, and copies of the
+/// others', brought down from Drive.
 class SyncFolder {
-  SyncFolder(this.dir, this.me, this.name);
+  SyncFolder(Directory dir, String me, String name) : this.on(FolderDisk(dir.path), me, name);
 
-  final Directory dir;
+  SyncFolder.on(this.disk, this.me, this.name);
+
+  final SyncDisk disk;
   final String me;
 
   /// This computer's name, shown on the others.
   final String name;
-
-  Directory get mine => Directory(p.join(dir.path, me));
 
   /// Writes this computer's edits since [since], a file per day, away from
   /// the UI isolate. Returns whether anything was written.
   Future<bool> write(SyncEngine engine, int since) async {
     final days = engine.changesSince(since);
     if (days.isEmpty) return false;
-    final root = dir.path, machine = me, computer = name;
-    await Isolate.run(() => _writeDays(root, machine, computer, days));
+    final machine = me, computer = name;
+    await disk.away((d) => _writeDays(d, machine, computer, days));
     return true;
   }
 
-  static void _writeDays(String root, String machine, String computer, Map<String, List<List<Object?>>> days) {
+  static void _writeDays(SyncDisk disk, String machine, String computer, Map<String, List<List<Object?>>> days) {
     for (final MapEntry(key: day, value: regs) in days.entries) {
-      final file = File(p.join(root, machine, '$day.json'));
-      file.parent.createSync(recursive: true);
-      replaceSafelySync(
-        file.path,
-        (part) => part.writeAsStringSync(jsonEncode({'version': 1, 'name': computer, 'registers': regs}), flush: true),
-      );
+      disk.writeText(machine, '$day.json', jsonEncode({'version': 1, 'name': computer, 'registers': regs}));
     }
   }
 
@@ -41,21 +34,9 @@ class SyncFolder {
 
   /// The other computers that have left changes here, by id.
   Set<String> get computers => {
-    for (final f in _files())
-      if (p.basename(f.parent.path) != me) p.basename(f.parent.path),
+    for (final f in disk.files())
+      if (f.who != me) f.who,
   };
-
-  /// Every change file here, this computer's own too: read back, they
-  /// return any of its edits the database here has lost (to a power cut,
-  /// say).
-  List<File> _files() {
-    if (!dir.existsSync()) return [];
-    return [
-      for (final d in dir.listSync().whereType<Directory>())
-        for (final f in d.listSync().whereType<File>())
-          if (f.path.endsWith('.json')) f,
-    ]..sort((a, b) => a.path.compareTo(b.path));
-  }
 
   /// The latest edit in each computer's files here, by id: its time, and
   /// its number in that computer's count. The number says what went
@@ -63,11 +44,11 @@ class SyncFolder {
   /// times.
   Map<String, ({int ts, int seq})> latestSent() {
     final latest = <String, ({int ts, int seq})>{};
-    for (final file in _files()) {
+    for (final file in disk.files()) {
       try {
-        final json = jsonDecode(file.readAsStringSync());
+        final json = jsonDecode(disk.readText(file.key));
         if (json is! Map || json['registers'] is! List) continue;
-        final who = p.basename(file.parent.path);
+        final who = file.who;
         for (final r in json['registers'] as List) {
           if (r is! List || r.length < 5 || r[4] is! int) continue;
           final seq = r.length > 6 && r[6] is Map && (r[6] as Map)[who] is int ? (r[6] as Map)[who] as int : 0;
@@ -98,30 +79,29 @@ class SyncFolder {
       row['file'] as String: row['stamp'] as String,
   };
 
-  Incoming read(SyncEngine engine) => _mergeFiles(engine, _readFiles(dir.path, me, _seen(engine)));
+  Incoming read(SyncEngine engine) => _mergeFiles(engine, _readFiles(disk, me, _seen(engine)));
 
   /// Disk reads and JSON parsing do not compete with animation frames.
   /// Drafts are saved only after preparation, immediately before the merge.
   Future<Incoming> readAsync(SyncEngine engine, {void Function()? beforeMerge, bool Function()? canMerge}) async {
-    final root = dir.path, machine = me, seen = _seen(engine);
-    final prepared = await Isolate.run(() => _readFiles(root, machine, seen));
+    final machine = me, seen = _seen(engine);
+    final prepared = await disk.away((d) => _readFiles(d, machine, seen));
     if (canMerge != null && !canMerge()) return Incoming({}, {});
     beforeMerge?.call();
     return _mergeFiles(engine, prepared);
   }
 
-  static _Files _readFiles(String root, String machine, Map<String, String> seen) {
+  static _Files _readFiles(SyncDisk disk, String machine, Map<String, String> seen) {
     final read = _Files();
-    for (final file in SyncFolder(Directory(root), machine, '')._files()) {
-      final key = p.relative(file.path, from: root);
-      final stat = file.statSync();
-      final stamp = '${stat.size}:${stat.modified.millisecondsSinceEpoch}';
+    for (final file in disk.files()) {
+      final key = file.key;
+      final stamp = disk.stamp(key);
       if (seen[key] == stamp) continue;
-      final who = p.basename(file.parent.path);
+      final who = file.who;
       // A file that can't be read (cut short, say) is skipped, never
       // stopping the rest, and tried again next time.
       try {
-        final json = jsonDecode(file.readAsStringSync());
+        final json = jsonDecode(disk.readText(key));
         if (json is! Map) {
           if (who != machine) read.unreadIds.add(who);
           continue;

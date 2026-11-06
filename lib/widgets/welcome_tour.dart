@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../app_state.dart';
+import '../data/host.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_through.dart';
@@ -123,7 +125,7 @@ List<_Step> _steps(AppState state) => [
   ),
   _Step(
     'Daily rituals',
-    Platform.isMacOS
+    isMacApp
         ? 'Click a square for done, right-click for not done, or Option-click for other. '
               'Repeat the same click to clear the mark. '
               'Done days build each streak and fill the ring.'
@@ -178,16 +180,20 @@ List<_Step> _steps(AppState state) => [
     TourSpot.settingsPreview,
     0,
   ),
-  const _Step(
+  _Step(
     'Data and backups',
-    'Data shows your data folder and the last 30 daily backups. Restore '
-        'a copy there if you need to go back.',
+    kIsWeb
+        ? 'Data shows the last 30 daily backups in your Google Drive. Restore a copy there if you need to go back.'
+        : 'Data shows your data folder and, once you sign in to Google, the last 30 '
+              'daily backups in your Drive. Restore a copy there if you need to go back.',
     TourSpot.settingsPreview,
     1,
   ),
-  const _Step(
+  _Step(
     'Google sync',
-    'Sign in with Google to sync your Eclipse data across all of your devices.',
+    kIsWeb
+        ? 'You’re signed in with Google, so Eclipse syncs across your devices. Sign out here to erase this browser’s copy.'
+        : 'Sign in with Google to sync your Eclipse data across all of your devices.',
     TourSpot.googleSync,
     1,
   ),

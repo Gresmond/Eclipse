@@ -8,8 +8,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
-import 'google_client.dart';
-import 'http_request.dart';
+import 'google_client.dart' if (dart.library.js_interop) 'google_client_web.dart';
+import 'http_request.dart' if (dart.library.js_interop) 'http_request_web.dart';
 import 'platform_files.dart';
 
 /// Eclipse's own hidden folder in Drive, and the files it makes there
@@ -58,7 +58,7 @@ class DriveError implements Exception {
 /// swapped for the lasting sign-in. Stops waiting when [cancel] completes.
 Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
   if (googleClientId.startsWith('SET-ME') || googleClientSecret == 'SET-ME') {
-    throw const DriveError('Google sync is not configured for this build. Local data and backups still work.');
+    throw const DriveError('Google sync is not configured for this build. Local data still works.');
   }
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   try {
@@ -248,6 +248,11 @@ abstract class SyncDrive {
   Future<DriveFile> upload(String name, List<int> bytes, {String? id});
 }
 
+/// Removing a file for good: only old copies of the database are.
+abstract class CopiesDrive {
+  Future<void> delete(String id);
+}
+
 /// The journal's folder in Drive, which you can see: a folder of year
 /// folders of Markdown files. Eclipse sees only the ones it made. In Drive
 /// it's [AppDataFolder]; tests use one in memory.
@@ -277,15 +282,24 @@ abstract class JournalDrive {
 
 /// Eclipse's hidden app folder in the Drive of the account signed in, and
 /// the journal's folder there.
-class AppDataFolder implements SyncDrive, JournalDrive {
-  AppDataFolder(this.refreshToken);
+class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
+  AppDataFolder(this.refreshToken, {this.accessToken});
 
   final String refreshToken;
+
+  /// Where a sign-in held elsewhere gets its access from, with the seconds it
+  /// lasts: in a browser, [refreshToken] stays on Eclipse's server.
+  final Future<(String, int)> Function()? accessToken;
   String? _access;
   DateTime _expires = DateTime(0);
 
   Future<String> _bearer() async {
     if (_access != null && DateTime.now().isBefore(_expires)) return _access!;
+    if (accessToken case final fetch?) {
+      final (token, seconds) = await fetch();
+      _expires = DateTime.now().add(Duration(seconds: seconds - 120));
+      return _access = token;
+    }
     final tokens = await _post(_token, {
       'client_id': googleClientId,
       'client_secret': googleClientSecret,
@@ -383,6 +397,15 @@ class AppDataFolder implements SyncDrive, JournalDrive {
         type: 'multipart/related; boundary=$boundary',
       ),
     );
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    try {
+      await _call('DELETE', _files.replace(path: '${_files.path}/$id'));
+    } on DriveError catch (e) {
+      if (!e.notFound) rethrow;
+    }
   }
 
   // The journal's folder

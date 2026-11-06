@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
 import '../app_state.dart';
+import '../data/host.dart';
 import '../data/backups.dart';
 import '../data/updates.dart';
 import '../models.dart';
@@ -171,7 +172,7 @@ class _Header extends StatelessWidget {
 
     return Padding(
       // On macOS the window buttons float over the top of the content.
-      padding: EdgeInsets.fromLTRB(32, Platform.isMacOS ? 27 : 15, 32, 11),
+      padding: EdgeInsets.fromLTRB(32, isMacApp ? 27 : 15, 32, 11),
       child: PixelRow(
         children: [
           // Fit the visible date, easing the right edge as its length changes.

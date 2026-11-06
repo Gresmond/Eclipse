@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:sqlite3/sqlite3.dart' show OpenMode, sqlite3;
 
-import '../models.dart';
+import 'sqlite.dart' show OpenMode, sqlite3;
+
 import 'app_log.dart';
 import 'journal_files.dart';
 import 'safe_write.dart';
@@ -30,19 +30,35 @@ class Backup {
   DateTime get modified => file.lastModifiedSync();
 }
 
+/// A saved copy in Google Drive, rather than a file here.
+class DriveBackup extends Backup {
+  DriveBackup({required this.id, required this.name, required DateTime? day, required this.saved, required this.from})
+    : super(File(name), day);
+
+  final String id;
+  final String name;
+  final DateTime saved;
+
+  /// The computer it's from.
+  final String from;
+
+  @override
+  DateTime get modified => saved;
+}
+
 /// The database failed its check, so no copy of it was taken.
 class DataDamaged implements Exception {
   const DataDamaged();
 }
 
-/// Daily copies of the database in one folder, newest [keep] kept, plus a
-/// copy of whatever was there before the last restore, before joining sync
-/// and before the last update that changed its format.
+/// Copies of the database in one folder: whatever was there before the last
+/// restore, before joining sync and before the last update that changed its
+/// format. The daily copies go to Drive (see [SyncService]); the daily ones
+/// here are from before that, until the first has gone up.
 class Backups {
-  Backups(this.dir, {this.keep = 30});
+  Backups(this.dir);
 
   final Directory dir;
-  final int keep;
 
   static final _daily = RegExp(r'^productivity-(\d{4})-(\d{2})-(\d{2})\.db$');
   static const _beforeRestore = 'before-restore.db';
@@ -51,8 +67,6 @@ class Backups {
 
   /// The copy before an update couldn't be made; the update went ahead.
   bool updateCopyFailed = false;
-
-  File _fileFor(DateTime day) => File(p.join(dir.path, 'productivity-${dateKey(day)}.db'));
 
   /// The copies saved before the last restore, joining sync and updating
   /// first, then newest day first.
@@ -77,21 +91,14 @@ class Backups {
     return [?before, ?beforeJoin, ?beforeUpdate, ...daily];
   }
 
-  /// Checks the database, then saves today's copy if there isn't one yet
-  /// and drops the oldest. Throws [DataDamaged] when the database fails its
-  /// check: nothing is saved over or dropped, as the older copies are the
-  /// way back.
-  void daily(Store store, DateTime today) {
+  /// Today's check of the database. Throws [DataDamaged] when it fails.
+  void check(Store store) {
     if (!store.isHealthy) throw const DataDamaged();
-    final file = _fileFor(today);
-    if (file.existsSync()) return;
-    dir.createSync(recursive: true);
-    store.saveCopy(file.path);
-    if (!isHealthy(file)) {
-      file.deleteSync();
-      throw StateError('Today’s copy failed its check');
-    }
-    for (final old in list().where((b) => b.day != null).skip(keep)) {
+  }
+
+  /// Removes the daily copies from before they went to Drive.
+  void dropDaily() {
+    for (final old in list().where((b) => b.day != null)) {
       old.file.deleteSync();
     }
   }

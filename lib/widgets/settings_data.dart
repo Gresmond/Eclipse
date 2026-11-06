@@ -12,6 +12,9 @@ extension on _SettingsDialogState {
   /// Sync, where the journal is saved, and saved copies to restore.
   Widget _backupsAndSync(Palette p) {
     final state = AppScope.of(context);
+    final sync = state.sync;
+    if (sync != null && sync.isOn && !_askedDrive) unawaited(_listDriveCopies(sync));
+    final copies = <Backup>[..._backups, ..._driveCopies];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -76,11 +79,13 @@ extension on _SettingsDialogState {
         ),
         const SizedBox(height: 6),
         Text(
-          'A copy of everything is saved each day you use the app, and the last 30 are kept.',
+          sync?.isOn ?? false
+              ? 'A copy of everything is saved to your Google Drive each day you use the app, and the last 30 are kept.'
+              : 'Sign in to Google to save a copy of everything to your Drive each day you use the app.',
           style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.45, color: p.inkMuted),
         ),
         const SizedBox(height: 14),
-        if (_backups.isEmpty)
+        if (copies.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
             child: Center(
@@ -97,17 +102,17 @@ extension on _SettingsDialogState {
             constraints: BoxConstraints(maxHeight: 3 * (20 + MediaQuery.textScalerOf(context).scale(50)) + 2 * 6),
             child: ListView.separated(
               shrinkWrap: true,
-              itemCount: _backups.length,
+              itemCount: copies.length,
               separatorBuilder: (_, _) => const SizedBox(height: 6),
               itemBuilder: (_, i) => BackupRow(
-                backup: _backups[i],
+                backup: copies[i],
                 today: state.today,
-                confirming: _confirming == _backups[i],
-                restoring: _restoring && _confirming == _backups[i],
+                confirming: _confirming == copies[i],
+                restoring: _restoring && _confirming == copies[i],
                 enabled: !_restoring,
-                onAsk: () => _ask(_backups[i]),
+                onAsk: () => _ask(copies[i]),
                 onCancel: () => _ask(null),
-                onConfirm: () => _restore(_backups[i]),
+                onConfirm: () => _restore(copies[i]),
               ),
             ),
           ),
@@ -126,6 +131,7 @@ extension on _SettingsDialogState {
   /// hidden folder in Google Drive.
   Widget _sync(Palette p, SyncService sync) {
     final small = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted);
+    final signOut = AppScope.of(context).signOut;
 
     // Saying yes to sync wears the tick's colour, even before it can be pressed.
     Widget button(String label, VoidCallback? onTap, {bool filled = false}) => filled
@@ -204,9 +210,26 @@ extension on _SettingsDialogState {
                   ? button('Cancel', _stopSigningIn)
                   : button('Sign in again', () => _signInForJournal(sync), filled: true),
             const SizedBox(width: 4),
-            button('Turn off', sync.busy ? null : sync.turnOff),
+            if (signOut == null)
+              button('Turn off', sync.busy ? null : sync.turnOff)
+            else
+              button(
+                _signingOut
+                    ? 'Signing out…'
+                    : _signOutProblem != null
+                    ? 'Sign out anyway'
+                    : 'Sign out',
+                _signingOut ? null : () => _signOut(force: _signOutProblem != null),
+              ),
           ],
         ),
+        if (signOut != null)
+          Text(
+            _signOutProblem != null
+                ? 'Couldn’t sync first, so changes made here would be lost: $_signOutProblem'
+                : 'Signing out syncs, then erases the copy in this browser. Your data stays in your Drive.',
+            style: _signOutProblem != null ? small.copyWith(color: p.missedInk) : small,
+          ),
       ];
     } else if (_joining case final account?) {
       body = [

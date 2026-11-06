@@ -56,6 +56,41 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
 
   late List<Backup> _backups = AppScope.of(context).backups?.list() ?? [];
+
+  /// The copies in Drive, listed after those here once they've been asked for.
+  List<DriveBackup> _driveCopies = [];
+  bool _askedDrive = false;
+
+  /// Why signing out would lose something, waiting for a yes.
+  String? _signOutProblem;
+  bool _signingOut = false;
+
+  void _refresh() => setState(() {});
+
+  Future<void> _listDriveCopies(SyncService sync) async {
+    _askedDrive = true;
+    try {
+      final copies = await sync.driveCopies();
+      if (mounted) setState(() => _driveCopies = copies);
+    } catch (_) {
+      // Offline: only those here show.
+    }
+  }
+
+  Future<void> _signOut({bool force = false}) async {
+    final state = AppScope.read(context);
+    setState(() {
+      _signingOut = true;
+      _signOutProblem = null;
+    });
+    final problem = await state.signOut!(force: force);
+    if (mounted) {
+      setState(() {
+        _signingOut = false;
+        _signOutProblem = problem;
+      });
+    }
+  }
   Backup? _confirming;
   bool _restoring = false;
   String? _error;
@@ -310,6 +345,21 @@ extension on _SettingsDialogState {
                 const HolidaysRow(),
                 const FadeMenuDivider(),
                 const DayStartPicker(),
+                if (state.notifier case final ReminderPermission permission) ...[
+                  const FadeMenuDivider(),
+                  SettingSwitchRow(
+                    title: 'Browser notifications',
+                    subtitle: permission.access == ReminderAccess.blocked
+                        ? 'Blocked in this browser’s site settings. Reminders still show inside Eclipse.'
+                        : 'Reminders only go off while Eclipse is open in a tab.',
+                    on: permission.access == ReminderAccess.allowed,
+                    onTap: () async {
+                      if (permission.access != ReminderAccess.notAsked) return;
+                      await permission.ask();
+                      if (mounted) _refresh();
+                    },
+                  ),
+                ],
                 const FadeMenuDivider(),
                 FadeMenuRow(
                   height: 50,

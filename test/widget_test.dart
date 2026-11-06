@@ -110,6 +110,12 @@ Future<void> _shoot(WidgetTester tester, String name) async {
   });
 }
 
+/// A daily copy as older versions saved them here.
+void _saveDaily(Backups backups, Store store, DateTime day) {
+  backups.dir.createSync(recursive: true);
+  store.saveCopy('${backups.dir.path}/productivity-${dateKey(day)}.db');
+}
+
 void main() {
   group('persistence', () {
     late Directory dir;
@@ -368,7 +374,8 @@ void main() {
       await state.setJournal(now, 'The 22nd, as first written');
 
       now = DateTime(2026, 10, 23);
-      state.checkDate(); // the 23rd's copy has the 22nd's entry
+      state.checkDate();
+      _saveDaily(backups, store, now); // has the 22nd's entry
       await state.setJournal(DateTime(2026, 10, 22), 'The 22nd, rewritten');
       await state.setJournal(now, 'The 23rd');
 
@@ -918,23 +925,13 @@ void main() {
     setUp(() => dir = Directory.systemTemp.createTempSync('productivity_backups'));
     tearDown(() => dir.deleteSync(recursive: true));
 
-    test('one copy a day, the newest 30 kept', () {
+    test('no daily copies are kept here', () {
       final backups = Backups(Directory('${dir.path}/backups'));
       var now = DateTime(2026, 10, 23);
       final state = AppState(_fillTestStore(Store.open('${dir.path}/app.db')), backups: backups, clock: () => now);
-      expect(backups.list().map((b) => b.day), [DateTime(2026, 10, 23)]);
-
-      state.checkDate(); // same day: nothing new
-      expect(backups.list(), hasLength(1));
-
-      for (var i = 1; i <= 40; i++) {
-        now = DateTime(2026, 10, 23 + i); // crosses into November and over the clock change
-        state.checkDate();
-      }
-      final days = backups.list().map((b) => b.day!).toList();
-      expect(days, hasLength(30));
-      expect(days.first, DateTime(2026, 12, 2));
-      expect(days.last, DateTime(2026, 11, 3));
+      now = DateTime(2026, 10, 24);
+      state.checkDate();
+      expect(backups.list(), isEmpty);
       state.store.close();
     });
 
@@ -947,7 +944,8 @@ void main() {
       state.setTheme('Sunset');
 
       now = DateTime(2026, 10, 24);
-      state.checkDate(); // the 24th's copy has File notes done
+      state.checkDate();
+      _saveDaily(backups, state.store, now); // has File notes done
       state.selectStatus(DateTime(2026, 10, 23), weights, HabitStatus.missed);
       state.addTodo(TodoScope.today, 'After the backup');
 
@@ -973,6 +971,7 @@ void main() {
       final backups = Backups(Directory('${dir.path}/backups'));
       final day = DateTime(2026, 10, 23);
       final state = AppState(_fillTestStore(Store.open('${dir.path}/app.db')), backups: backups, clock: () => day);
+      _saveDaily(backups, state.store, day);
       final copy = backups.list().single;
       copy.file.writeAsStringSync('not a database');
       final weights = state.habits.firstWhere((h) => h.name == 'File notes');
@@ -1008,6 +1007,7 @@ void main() {
       for (var d = 21; d <= 23; d++) {
         now = DateTime(2026, 10, d);
         state.checkDate();
+        _saveDaily(backups, store, now);
       }
     });
     final weights = state.habits.firstWhere((h) => h.name == 'File notes');

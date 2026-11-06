@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show AppExitResponse, PlatformDispatcher;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -17,21 +18,34 @@ import 'data/restart.dart';
 import 'data/store.dart';
 import 'data/sync_service.dart';
 import 'data/system_notifications.dart';
-import 'data/system_time_zone.dart';
+import 'data/system_time_zone.dart' if (dart.library.js_interop) 'data/system_time_zone_web.dart';
 import 'data/updates.dart';
-import 'data/windows_night_light.dart';
+import 'data/windows_night_light.dart' if (dart.library.js_interop) 'data/windows_night_light_web.dart';
 import 'models.dart';
 import 'phone/phone_app.dart';
 import 'screens/shell.dart';
 import 'screens/startup_error.dart';
 import 'screens/warm_up.dart';
 import 'theme/app_theme.dart';
+import 'web/web_app.dart';
+import 'web/web_screens.dart';
 import 'widgets/app_dialog.dart';
 import 'widgets/todo_panel.dart' show addTaskAnywhere;
 import 'widgets/undo_card.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    return webMain(
+      app: (state, updater) => EclipseApp(state: state, updater: updater),
+      watch: (state) {
+        _watchWindow(state);
+        _watchDate(state);
+        _watchReminders(state);
+        WarmUp.enabled = true;
+      },
+    );
+  }
   if (Platform.isAndroid) return phoneMain();
   SystemTimeZone.instance?.sync();
   // ~/.local/share/dev.nicholas.productivity_app, unless you chose a folder.
@@ -60,7 +74,7 @@ Future<void> main() async {
     // Sync is optional: the app runs on its own without it.
     SyncService? sync;
     try {
-      sync = SyncService.load(dir, store);
+      sync = SyncService.load(dir, store)..copiesToDrive = true;
     } catch (error) {
       AppLog.failure('Sync couldn’t start', error);
     }
@@ -84,7 +98,7 @@ Future<void> main() async {
       data = DataFolder.load(dir, documents);
       theme = savedThemeName(data.database);
     } catch (_) {}
-    _showStartupError(error, theme: theme, data: data);
+    _showStartupError(error, theme: theme, data: data, home: dir);
     return;
   }
   unawaited(refreshInstalledCopy(Store.schemaVersion));
@@ -111,7 +125,7 @@ Future<void> main() async {
 
 /// Shows why the data couldn't be opened, instead of a blank window, and
 /// offers the update when an older copy meets data from a newer one.
-void _showStartupError(Object error, {String? theme, DataFolder? data}) {
+void _showStartupError(Object error, {String? theme, DataFolder? data, required Directory home}) {
   final updater = Updater.forThisApp();
   if (updater != null && updater is! GitUpdater) unawaited(updater.check());
   if (Platform.isLinux || Platform.isWindows) {
@@ -131,6 +145,7 @@ void _showStartupError(Object error, {String? theme, DataFolder? data}) {
               backups: Backups(data.backups),
               database: data.database,
               journal: JournalFiles(data.journal),
+              driveCopies: SyncService.copiesAt(home),
               reopen: () => restartApplication(beforeRestart: () async {}),
             ),
     ),
@@ -202,7 +217,7 @@ void _watchWindow(AppState state) {
     },
   );
   // The tray's Quit (Linux and Windows), which saves before the app closes.
-  if (Platform.isLinux || Platform.isWindows) {
+  if (!kIsWeb && (Platform.isLinux || Platform.isWindows)) {
     const MethodChannel('eclipse/lifecycle').setMethodCallHandler((call) async {
       if (call.method != 'quit') throw MissingPluginException();
       await _shutdown(state);
@@ -325,10 +340,17 @@ class EclipseApp extends StatelessWidget {
                   const SingleActivator(LogicalKeyboardKey.keyN, control: true): _newTask,
                   const SingleActivator(LogicalKeyboardKey.keyN, meta: true): _newTask,
                 },
-                child: UndoLayer(
-                  cards: CornerCards(updater: updater),
-                  child: child!,
-                ),
+                child: kIsWeb
+                    ? WindowSizeGate(
+                        child: UndoLayer(
+                          cards: CornerCards(updater: updater),
+                          child: child!,
+                        ),
+                      )
+                    : UndoLayer(
+                        cards: CornerCards(updater: updater),
+                        child: child!,
+                      ),
               ),
             ),
           ),

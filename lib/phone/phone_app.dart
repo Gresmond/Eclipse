@@ -29,7 +29,7 @@ Future<void> phoneMain() async {
   await data.root.create(recursive: true);
   final backups = Backups(data.backups)..beforeUpdating(data.database);
   final store = Store.open(data.database);
-  final sync = SyncService.load(dir, store);
+  final sync = SyncService.load(dir, store)..copiesToDrive = true;
   final state = AppState(store, backups: backups, journalFiles: JournalFiles(data.journal), dataFolder: data, sync: sync);
   state.endTour();
   sync.start();

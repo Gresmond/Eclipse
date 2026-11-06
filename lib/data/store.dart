@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:sqlite3/sqlite3.dart';
+import 'sqlite.dart';
 
 import '../models.dart';
 import '../training.dart';

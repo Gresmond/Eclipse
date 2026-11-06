@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'data/app_log.dart';
@@ -10,6 +11,7 @@ import 'data/data_folder.dart';
 import 'data/journal_files.dart';
 import 'data/restart.dart';
 import 'data/search.dart';
+import 'data/sqlite.dart' show copyOfDatabase, placeDatabase, removeDatabase;
 import 'data/store.dart';
 import 'data/sync.dart';
 import 'data/sync_service.dart';
@@ -48,6 +50,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     sync?.onIncoming = _takeIncoming;
     sync?.beforeMerge = saveDrafts;
     sync?.beforeJoin = () => backups?.beforeJoining(store);
+    sync?.afterDriveCopy = () => backups?.dropDaily();
     sync?.addListener(_checkJournalFiles);
     sync?.onClear = (days) {
       for (final day in days) {
@@ -62,7 +65,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     // added to your history.
     firstRun = store.isEmpty && !(sync?.isOn ?? false);
     if (firstRun) _seed();
-    _backUp();
+    _checkData();
     _savesFiles = savesJournalFiles;
     _initialExport = _exportJournal().then((_) => _savesFiles ? _rewriteStaleJournal() : null);
     _load();
@@ -70,6 +73,11 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
 
   @override
   final Store store;
+
+  /// Ends the sign-in and erases this browser's copy, once what's here has
+  /// synced; if it can't, says why, unless [force]. Only the web version has
+  /// this: signing in isn't optional there, so it can't be turned off.
+  Future<String?> Function({bool force})? signOut;
 
   /// Null where nothing is shown outside the app (tests).
   @override
@@ -242,7 +250,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     _forgetRemovals();
     _previewHabits.clear();
     _streaks.clear();
-    _backUp();
+    _checkData();
     _startDay();
     notifyListeners();
   }
@@ -250,11 +258,11 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   /// What went wrong with the last backup; null when all is well.
   BackupProblem? backupProblem;
 
-  /// Today's check and copy, taken before anything changes today. A failed
-  /// backup must never stop the app opening.
-  void _backUp() {
+  /// Today's check, before anything changes today. It must never stop the
+  /// app opening.
+  void _checkData() {
     try {
-      backups?.daily(store, today);
+      backups?.check(store);
       backupProblem = backups?.updateCopyFailed ?? false ? BackupProblem.failed : null;
     } on DataDamaged {
       backupProblem = BackupProblem.damaged;
@@ -291,11 +299,44 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   /// Replaces all data with [backup]. What was there before is kept as a
   /// backup of its own.
   Future<void> restore(Backup backup) async {
+    if (backup is DriveBackup) return _restoreFromDrive(backup);
     if (!store.isHealthy) return _recover(backup);
+    Future<void> swap(void Function() check) => backups!.restore(store, backup, check: check);
     if (sync != null) {
-      await sync!.exclusive(() => _restore(backup));
+      await sync!.exclusive(() => _restore(swap));
     } else {
-      await _restore(backup);
+      await _restore(swap);
+    }
+  }
+
+  /// Fetches the copy, then restores it as one saved here. A browser has no
+  /// folder for the copy of what was there, so that goes to Drive.
+  Future<void> _restoreFromDrive(DriveBackup copy) async {
+    final path = placeDatabase(await sync!.fetchCopy(copy));
+    try {
+      if (!kIsWeb && !store.isHealthy) return await _recover(Backup(File(path), copy.day));
+      await sync!.exclusive(
+        () => _restore((check) async {
+          if (backups case final local?) {
+            return local.restore(store, Backup(File(path), copy.day), check: check);
+          }
+          await sync!.copyBeforeRestore();
+          final before = placeDatabase(copyOfDatabase(store.raw));
+          try {
+            await store.restoreFrom(path);
+            try {
+              check();
+            } catch (_) {
+              await store.restoreFrom(before);
+              rethrow;
+            }
+          } finally {
+            removeDatabase(before);
+          }
+        }),
+      );
+    } finally {
+      removeDatabase(path);
     }
   }
 
@@ -318,27 +359,23 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     );
   }
 
-  Future<void> _restore(Backup backup) async {
+  Future<void> _restore(Future<void> Function(void Function() check) swap) async {
     saveDrafts(); // so it's in the before-restore copy
     await flushFiles();
     final before = {for (final e in store.journalEntries()) e.day};
     try {
       // Loaded before its files are written, so a copy the app can't open
       // goes back untouched.
-      await backups!.restore(
-        store,
-        backup,
-        check: () {
-          _load();
-          checkDate(); // the backup may start its days at another hour
-        },
-      );
+      await swap(() {
+        _load();
+        checkDate(); // the backup may start its days at another hour
+      });
     } catch (_) {
       _load();
       notifyListeners();
       rethrow;
     }
-    _backUp();
+    _checkData();
     // The journal's files follow: the restored entries written out, and
     // the files of days the copy has no entry for removed.
     final after = {for (final e in store.journalEntries()) e.day: e.text};
