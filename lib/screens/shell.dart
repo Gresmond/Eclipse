@@ -22,6 +22,7 @@ import '../widgets/fade_through.dart';
 import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/reminder_cards.dart';
+import '../widgets/search_dialog.dart';
 import '../widgets/smooth_gradient.dart';
 import '../widgets/sync_banner.dart';
 import '../widgets/update_banner.dart';
@@ -32,9 +33,9 @@ import 'warm_up.dart';
 import 'training_view.dart';
 import 'year_view.dart';
 
-/// Whether the header offers the Calendar and Training buttons, the only ways
-/// to those pages. Both are built and tested; set this true to bring them back.
-bool pageButtonsEnabled = false;
+/// Whether the header offers the Calendar button, the only way to that page.
+/// It's built and tested; set this true to bring it back.
+bool calendarButtonEnabled = false;
 
 /// The corner cards over the window and its dialogs: sync, an update and
 /// reminders, stacked above the undo card.
@@ -227,7 +228,8 @@ class _Header extends StatelessWidget {
                         shown: state.showingCalendar,
                         child: const Padding(padding: EdgeInsets.only(right: 10), child: _MonthSwitcher()),
                       ),
-                      if (pageButtonsEnabled) ...[const _PageButtons(), const SizedBox(width: 10)],
+                      const _PageButtons(),
+                      const SizedBox(width: 10),
                       TourTarget(
                         spot: TourSpot.tabs,
                         child: Container(
@@ -354,8 +356,9 @@ class _Fold extends StatelessWidget {
   );
 }
 
-/// Calendar and Training: their own pill, left of the tabs, each opening
-/// over the view you're on and, clicked again, going back to it.
+/// Training and search, with Calendar when it's on: their own pill, left of
+/// the tabs. A page opens over the view you're on and, clicked again, goes
+/// back to it; search opens its dialog.
 class _PageButtons extends StatefulWidget {
   const _PageButtons();
 
@@ -386,16 +389,18 @@ class _PageButtonsState extends State<_PageButtons> {
         color: p.done,
         child: Row(
           children: [
-            KeyedSubtree(
-              key: _calendar,
-              child: _IconTab(
-                icon: Icons.calendar_month_rounded,
-                tooltip: 'Calendar',
-                selected: state.showingCalendar,
-                onTap: state.toggleCalendar,
+            if (calendarButtonEnabled) ...[
+              KeyedSubtree(
+                key: _calendar,
+                child: _IconTab(
+                  icon: Icons.calendar_month_rounded,
+                  tooltip: 'Calendar',
+                  selected: state.showingCalendar,
+                  onTap: state.toggleCalendar,
+                ),
               ),
-            ),
-            const SizedBox(width: 2),
+              const SizedBox(width: 2),
+            ],
             KeyedSubtree(
               key: _training,
               child: _IconTab(
@@ -404,6 +409,13 @@ class _PageButtonsState extends State<_PageButtons> {
                 selected: state.showingTraining,
                 onTap: state.toggleTraining,
               ),
+            ),
+            const SizedBox(width: 2),
+            _IconTab(
+              icon: Icons.search_rounded,
+              tooltip: 'Search',
+              selected: false,
+              onTap: () => showAppDialog<void>(context: context, builder: (_) => const SearchDialog()),
             ),
           ],
         ),

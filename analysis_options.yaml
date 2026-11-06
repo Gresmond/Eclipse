@@ -6,6 +6,7 @@ analyzer:
     - linux/**
     - macos/**
     - windows/**
+    - android/**
 
 formatter:
   page_width: 120

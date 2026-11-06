@@ -386,6 +386,14 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     _todosChanged();
   }
 
+  /// Holidays pause repeats: every holiday change puts their times right.
+  @override
+  void holidaysChanged() {
+    store.applyHolidays(today);
+    _startDay();
+    _todosChanged();
+  }
+
   @override
   void _startDay() {
     _repeats = null;

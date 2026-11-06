@@ -866,6 +866,60 @@ extension StoreTodos on Store {
   /// again.
   static const walkedSetting = 'repeatsWalked';
 
+  /// The holidays [makeRepeats] last looked at, on this computer only.
+  static const walkedHolidaysSetting = 'repeatsWalkedHolidays';
+
+  /// Times a holiday took away here, by uid, to bring back if it's removed.
+  static const pausedTimesSetting = 'repeatsPausedTimes';
+
+  /// Whether a holiday pauses [repeat] on [day]: every repeat but birthdays.
+  static bool pausedOn(Repeat repeat, DateTime day, List<Holiday> holidays) =>
+      !repeat.birthday && holidayOn(holidays, day) != null;
+
+  /// After you change the holidays: takes away the open times they now
+  /// cover, and brings back from [today] on those they took away and no
+  /// longer cover. Your own edits, so sync sends them as any others.
+  void applyHolidays(DateTime today) => transaction(() {
+    final holidays = decodeHolidays(setting('holidays'));
+    final byUid = {for (final repeat in repeats()) repeat.uid: repeat};
+    final paused = switch (_decodeJson(setting(pausedTimesSetting))) {
+      final List<dynamic> l => l.whereType<String>().toSet(),
+      _ => <String>{},
+    };
+    for (final uid in paused.toList()) {
+      final at = uid.lastIndexOf('@');
+      final repeat = at < 0 ? null : byUid[uid.substring(0, at)];
+      final day = at < 0 ? null : DateTime.tryParse(uid.substring(at + 1));
+      if (repeat == null || day == null || day.isBefore(today)) {
+        paused.remove(uid);
+      } else if (holidayOn(holidays, day) == null) {
+        paused.remove(uid);
+        if (_db.select('SELECT 1 FROM todos WHERE uid = ?', [uid]).isEmpty) _makeOccurrence(repeat, day);
+      }
+    }
+    paused.addAll(_takeAwayPaused(today, holidays));
+    setSetting(pausedTimesSetting, jsonEncode(paused.toList()));
+  });
+
+  /// Takes away the open times of repeats, not moved to another day, on a
+  /// holiday, and says which.
+  List<String> _takeAwayPaused(DateTime today, List<Holiday> holidays) {
+    if (holidays.isEmpty) return const [];
+    final gone = <String>[];
+    for (final r in _db.select('''
+      SELECT t.id, t.uid, substr(t.uid, length(p.uid) + 2) AS day FROM todo_repeats p
+        JOIN todos t ON t.uid >= p.uid || '@' AND t.uid < p.uid || 'A'
+      WHERE t.done = 0 AND t.category IS NOT 'birthday' AND t.due_date = substr(t.uid, length(p.uid) + 2)
+    ''')) {
+      final day = DateTime.tryParse(r['day'] as String);
+      if (day != null && holidayOn(holidays, day) != null) {
+        deleteTodo(r['id'] as int, day: today);
+        gone.add(r['uid'] as String);
+      }
+    }
+    return gone;
+  }
+
   /// The days [makeRepeats] has looked at, for tests: each later call looks
   /// only at the days after those it looked at before.
   static int debugRepeatDaysWalked = 0;
@@ -887,6 +941,10 @@ extension StoreTodos on Store {
     };
     final walked = <String, List<String>>{};
     final all = repeats();
+    final holidays = decodeHolidays(setting('holidays'));
+    // Holidays changed: days they've let go of are walked again, today on.
+    final holidaysMark = encodeHolidays(holidays);
+    final holidaysMoved = holidaysMark != (setting(walkedHolidaysSetting) ?? encodeHolidays(const []));
     final marks = {
       for (final repeat in all)
         repeat.uid: [
@@ -915,10 +973,11 @@ extension StoreTodos on Store {
     for (final repeat in all) {
       final mark = marks[repeat.uid]!;
       final through = walkedThrough(repeat);
-      final from = through == null ? repeat.start : DateTime(through.year, through.month, through.day + 1);
+      final after = through == null ? repeat.start : DateTime(through.year, through.month, through.day + 1);
+      final from = holidaysMoved && through != null && after.isAfter(today) ? today : after;
       if (!from.isAfter(last)) {
         final key = dateKey(from);
-        final made = common.contains(key) && through != null
+        final made = !holidaysMoved && common.contains(key) && through != null
             ? batches.putIfAbsent(key, () => madeOccurrencesFrom(from))[repeat.uid] ?? const <String>{}
             : madeOccurrences(repeat.uid, from: from);
         for (
@@ -927,12 +986,17 @@ extension StoreTodos on Store {
           day = repeat.next(DateTime(day.year, day.month, day.day + 1))
         ) {
           debugRepeatDaysWalked++;
-          if (!made.contains('${repeat.uid}@${dateKey(day)}')) _makeOccurrence(repeat, day);
+          if (!made.contains('${repeat.uid}@${dateKey(day)}') && !pausedOn(repeat, day, holidays)) {
+            _makeOccurrence(repeat, day);
+          }
         }
       }
       walked[repeat.uid] = [...mark, dateKey(through != null && through.isAfter(last) ? through : last)];
     }
     _takeAwayEnded(today);
+    // Made on another computer before it heard of the holiday.
+    _takeAwayPaused(today, holidays);
+    if (holidaysMoved) setSetting(walkedHolidaysSetting, holidaysMark);
     final encoded = jsonEncode(walked);
     if (encoded != setting(walkedSetting)) setSetting(walkedSetting, encoded);
   });

@@ -2020,10 +2020,11 @@ void main() {
     expect(find.text('80%'), findsWidgets, reason: 'Sketch so far: 16 of 20');
     await _shoot(tester, 'year');
 
-    // Only the months since the first one logged, up to this one.
-    expect(find.text('JUL'), findsNothing);
-    expect(find.text('AUG'), findsWidgets);
-    expect(find.text('NOV'), findsNothing);
+    // The tables show only the months since the first one logged, up to this
+    // one; the year's card above them always has all twelve.
+    expect(find.text('JUL'), findsOneWidget);
+    expect(find.text('AUG'), findsNWidgets(3));
+    expect(find.text('NOV'), findsOneWidget);
     expect(find.byIcon(Icons.chevron_left_rounded), findsNothing, reason: 'no earlier year to go to');
     expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
 
@@ -2253,12 +2254,14 @@ void main() {
     await tester.tap(find.text('Data').hitTestable());
     await tester.pumpAndSettle();
     await sweep('Settings, Backups and sync');
-    await tester.tap(find.text('General').hitTestable());
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'dentist');
     await tester.pumpAndSettle();
     expect(find.textContaining('TASK'), findsWidgets);
-    await sweep('Settings, search results');
+    await sweep('Search results');
     await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Appearance'));
@@ -2287,7 +2290,7 @@ void main() {
     expect(missing, isEmpty);
   });
 
-  testWidgets('Settings search finds an old task and opens its day', (tester) async {
+  testWidgets('Search finds an old task and opens its day', (tester) async {
     await _loadFonts();
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
@@ -2300,18 +2303,15 @@ void main() {
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Settings'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
-    expect(find.text('Weekends as rest days'), findsOneWidget, reason: 'General under an empty search');
     await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
     await tester.pumpAndSettle();
-    expect(find.text('Weekends as rest days'), findsNothing, reason: 'typing swaps the settings for results');
     expect(find.textContaining('JOURNAL'), findsOneWidget);
     expect(find.textContaining('TASK'), findsOneWidget);
     await _shoot(tester, 'settings_search');
     await tester.tap(find.byTooltip('Clear'));
     await tester.pumpAndSettle();
-    expect(find.text('Weekends as rest days'), findsOneWidget, reason: 'clearing brings them back');
     expect(find.byTooltip('Clear'), findsNothing, reason: 'only shown with something to clear');
     await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
     await tester.pumpAndSettle();
@@ -2326,12 +2326,11 @@ void main() {
     }
     await _shoot(tester, 'settings_search_found');
     await tester.pumpAndSettle();
-    expect(find.text('Settings'), findsNothing);
+    expect(find.text('Search'), findsNothing);
 
-    // Settings opens with an empty search again; a click opens a result.
-    await tester.tap(find.byTooltip('Settings'));
+    // Search opens empty again; a click opens a result.
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
-    expect(find.text('Weekends as rest days'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'renew');
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Renew the'));
@@ -2362,7 +2361,7 @@ void main() {
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Settings'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
     await tester.pumpAndSettle();

@@ -9,8 +9,9 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/oklch.dart';
 import '../widgets/tile.dart';
+import 'year_heatmap.dart';
 
-/// The year at a glance: each ritual's month percentages side by side, then
+/// The year at a glance: its days, then each ritual's month percentages side by side, then
 /// the year so far. Months are worked out as on their own tabs (ticks out
 /// of logged days).
 class YearView extends StatelessWidget {
@@ -49,9 +50,9 @@ class YearView extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) => _build(context, c.maxHeight));
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) => _build(context, c.maxHeight, c.maxWidth));
 
-  Widget _build(BuildContext context, double height) {
+  Widget _build(BuildContext context, double height, double width) {
     final state = AppScope.watch(context, (s) => (s.habitsRevision, s.entriesRevision, s.today));
     final header = capsLabel(context.palette.inkMuted);
 
@@ -87,13 +88,16 @@ class YearView extends StatelessWidget {
       name('Whole schedule', total: true),
     ];
     final chrome = 32 + 20 + (rituals.isEmpty ? title + 48 + _line(context, empty) : table) + table + names.length * 8;
-    final cell = _fill(height - chrome, names);
+    // The year's card, and its gap, come off the top when there's a year to show.
+    final heatmap = rituals.isEmpty ? 0.0 : YearHeatmap.heightFor(year, width - 64, _line(context, header)) + 20;
+    final cell = _fill(height - chrome - heatmap, names);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (rituals.isNotEmpty) ...[YearHeatmap(year: year, rituals: inMonth), const SizedBox(height: 20)],
           Tile(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

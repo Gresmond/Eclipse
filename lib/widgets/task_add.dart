@@ -1,5 +1,17 @@
 part of 'todo_panel.dart';
 
+/// A new task from anywhere, for Ctrl+N: its name, day (today to start with)
+/// and details in one dialog; saved, you stay where you were.
+Future<void> addTaskAnywhere(BuildContext context) async {
+  final state = AppScope.read(context);
+  var name = '';
+  final choice = await showAppDialog<_DayChoice>(
+    context: context,
+    builder: (_) => _DueDateDialog(first: state.today, birthdays: true, onName: (text) => name = text),
+  );
+  if (choice != null) _addChosen(state, name, choice.day, choice);
+}
+
 /// The field at a card's foot for a new task on a day between [first] and
 /// [last]. The calendar button picks the day, its time, how it repeats and,
 /// with [birthdays], whether it's a birthday; Enter without a day asks for

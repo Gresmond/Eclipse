@@ -7,6 +7,7 @@ mixin _Settings on ChangeNotifier {
   LruCache<int, (int, int)> get _streaks;
   DateTime get today;
   void checkDate();
+  void holidaysChanged();
 
   /// The hour a new day starts: 0 for midnight or 4 for night owls.
   late int dayStartHour = int.tryParse(store.setting('dayStartHour') ?? '') ?? 0;
@@ -176,6 +177,7 @@ mixin _Settings on ChangeNotifier {
     holidays = decodeHolidays(encodeHolidays(next));
     store.setSetting('holidays', encodeHolidays(holidays));
     _streaks.clear();
+    holidaysChanged();
     notifyListeners();
   }
 

@@ -12,12 +12,12 @@ void main() {
   late AppState state;
 
   setUp(() {
-    pageButtonsEnabled = true;
+    calendarButtonEnabled = true;
     store = Store.memory();
     state = AppState(store, clock: () => today)..endTour();
   });
   tearDown(() {
-    pageButtonsEnabled = false;
+    calendarButtonEnabled = false;
     state.dispose();
     store.close();
   });
@@ -30,11 +30,12 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('switched off, the header offers neither page', (tester) async {
-    pageButtonsEnabled = false;
+  testWidgets('switched off, the header offers only Training and Search', (tester) async {
+    calendarButtonEnabled = false;
     await show(tester);
     expect(find.byTooltip('Calendar'), findsNothing);
-    expect(find.byTooltip('Training'), findsNothing);
+    expect(find.byTooltip('Training'), findsOneWidget);
+    expect(find.byTooltip('Search'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

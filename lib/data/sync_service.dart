@@ -23,7 +23,7 @@ import 'sync.dart';
 class SyncService extends ChangeNotifier {
   SyncService._(this.home, this.store, this._config, this._connect, this._signIn) {
     engine = SyncEngine(store, machine)..offset = _config['clock'] as int? ?? 0;
-    folder = SyncFolder(Directory(p.join(home.path, 'sync')), machine, Platform.localHostname);
+    folder = SyncFolder(Directory(p.join(home.path, 'sync')), machine, Platform.isAndroid ? 'Phone' : Platform.localHostname);
     journal = JournalFolder(_config, _save);
     _checkNewer();
   }

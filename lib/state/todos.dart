@@ -6,6 +6,7 @@ mixin _Todos on ChangeNotifier {
   Store get store;
   DateTime get today;
   void _startDay();
+  List<Holiday> get holidays;
   void _removed(String label, List<RowsBefore> before);
   void _quietReminders(bool Function(String uid) which);
 
@@ -297,7 +298,7 @@ mixin _Todos on ChangeNotifier {
     final made = _madeFrom(repeat, from);
     for (var day = repeat.next(from); day != null; day = repeat.next(DateTime(day.year, day.month, day.day + 1))) {
       final uid = '${repeat.uid}@${dateKey(day)}';
-      if (kept.contains(uid) || !made.contains(uid)) return day;
+      if (kept.contains(uid) || (!made.contains(uid) && !StoreTodos.pausedOn(repeat, day, holidays))) return day;
     }
     return null;
   }
@@ -313,7 +314,7 @@ mixin _Todos on ChangeNotifier {
         day != null && !day.isAfter(to);
         day = repeat.next(DateTime(day.year, day.month, day.day + 1))
       )
-        if (!made.contains('${repeat.uid}@${dateKey(day)}')) day,
+        if (!made.contains('${repeat.uid}@${dateKey(day)}') && !StoreTodos.pausedOn(repeat, day, holidays)) day,
     ];
   }
 

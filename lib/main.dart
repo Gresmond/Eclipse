@@ -21,15 +21,18 @@ import 'data/system_time_zone.dart';
 import 'data/updates.dart';
 import 'data/windows_night_light.dart';
 import 'models.dart';
+import 'phone/phone_app.dart';
 import 'screens/shell.dart';
 import 'screens/startup_error.dart';
 import 'screens/warm_up.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_dialog.dart';
+import 'widgets/todo_panel.dart' show addTaskAnywhere;
 import 'widgets/undo_card.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isAndroid) return phoneMain();
   SystemTimeZone.instance?.sync();
   // ~/.local/share/dev.nicholas.productivity_app, unless you chose a folder.
   final dir = await getApplicationSupportDirectory();
@@ -290,6 +293,13 @@ class EclipseApp extends StatelessWidget {
   final AppState state;
   final Updater? updater;
 
+  /// Ctrl+N, unless a dialog or the tour is open.
+  void _newTask() {
+    final navigator = appNavigator.currentState;
+    if (navigator == null || navigator.canPop() || state.touring || state.closing) return;
+    addTaskAnywhere(navigator.context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppScope(
@@ -310,9 +320,15 @@ class EclipseApp extends StatelessWidget {
             textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
             child: ThemeMorph(
               target: paletteNamed(themeName),
-              child: UndoLayer(
-                cards: CornerCards(updater: updater),
-                child: child!,
+              child: CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(LogicalKeyboardKey.keyN, control: true): _newTask,
+                  const SingleActivator(LogicalKeyboardKey.keyN, meta: true): _newTask,
+                },
+                child: UndoLayer(
+                  cards: CornerCards(updater: updater),
+                  child: child!,
+                ),
               ),
             ),
           ),

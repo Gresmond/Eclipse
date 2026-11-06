@@ -24,7 +24,6 @@ import 'fade_through.dart';
 import 'glide_pill.dart';
 import 'holidays.dart';
 import 'setting_rows.dart';
-import 'settings_search.dart';
 import 'smooth_spinner.dart';
 import 'welcome_tour.dart';
 
@@ -34,7 +33,7 @@ part 'settings_data.dart';
 Widget settingsTransition(BuildContext context, Animation<double> animation, Widget child) =>
     dialogTransition(animation, child);
 
-/// Settings, in two ribbons: General, with search atop it, and Data.
+/// Settings, in two ribbons: General and Data.
 /// Restoring a backup asks first, inline on its row. Pops with the
 /// restored [Backup], or nothing.
 class SettingsDialog extends StatefulWidget {
@@ -55,7 +54,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
   /// 0 for General, 1 for Data. Opens on General unless told otherwise.
   late int _ribbon = widget.tourRibbon ?? widget.ribbon;
 
-  final _search = SettingsSearchHandle();
 
   late List<Backup> _backups = AppScope.of(context).backups?.list() ?? [];
   Backup? _confirming;
@@ -222,8 +220,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     return ConfirmOnEnter(
       onConfirm: _restoring || _moving || _signingIn || _confirming != null || _newJournal != null || _joining != null
           ? null
-          // Opens the first result while searching, else closes.
-          : () => _ribbon == 0 && _search.searching ? _search.openFirst() : Navigator.pop(context),
+          : () => Navigator.pop(context),
       child: Dialog(
         clipBehavior: Clip.antiAlias,
         backgroundColor: p.tile,
@@ -266,9 +263,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         layoutBuilder: FadeThrough.pinTop,
                         child: KeyedSubtree(
                           key: ValueKey(_ribbon),
-                          child: _ribbon == 0
-                              ? SettingsSearch(handle: _search, settings: _general(p))
-                              : _backupsAndSync(p),
+                          child: _ribbon == 0 ? _general(p) : _backupsAndSync(p),
                         ),
                       ),
                     ),

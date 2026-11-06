@@ -371,13 +371,16 @@ void main() {
       }, shows: 'Cancel');
       close();
       await settle();
-      await scene('Settings, search', () async {
+      await scene('Settings, Data', () => tap(find.text('Data')));
+      close();
+      await settle();
+      await scene('Search', () => tap(find.byTooltip('Search')));
+      await scene('Search, results', () async {
         await t.enterText(find.byType(EditableText).first, 'theme');
       });
-      await scene('Settings, search cleared', () async {
+      await scene('Search, cleared', () async {
         await t.enterText(find.byType(EditableText).first, '');
       });
-      await scene('Settings, Data', () => tap(find.text('Data')));
       close();
       await settle();
 

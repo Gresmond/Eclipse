@@ -5,22 +5,15 @@ import '../data/search.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import 'app_dialog.dart';
+import 'confirm_on_enter.dart';
 import 'fade_menu.dart';
-import 'fade_through.dart';
 import '../theme/pixels.dart';
 
-/// The search bar atop Settings' General ribbon: every task and journal
-/// entry, any day, found as you type. Typing fades [settings] away for the
-/// results; a result opens its day and lights it there.
-class SettingsSearch extends StatefulWidget {
-  const SettingsSearch({super.key, required this.settings, this.handle});
-
-  /// Lets the dialog ask, for Enter, whether it's searching and open the
-  /// first result.
-  final SettingsSearchHandle? handle;
-
-  /// General's settings, under the bar while it's empty.
-  final Widget settings;
+/// Every task and journal entry, any day, found as you type; a result
+/// opens its day and lights it there.
+class SearchDialog extends StatefulWidget {
+  const SearchDialog({super.key});
 
   /// The results' box keeps one height, so the dialog doesn't jump as you
   /// type.
@@ -30,22 +23,10 @@ class SettingsSearch extends StatefulWidget {
   static const shown = 100;
 
   @override
-  State<SettingsSearch> createState() => _SettingsSearchState();
+  State<SearchDialog> createState() => _SearchDialogState();
 }
 
-/// The search a dialog shows now: the one built last, even while an
-/// earlier one fades out.
-class SettingsSearchHandle {
-  _SettingsSearchState? _search;
-
-  /// Whether anything's typed, so the results show in place of the settings.
-  bool get searching => _search?.searching ?? false;
-
-  /// Opens the first result, for Enter.
-  void openFirst() => _search?.openFirst();
-}
-
-class _SettingsSearchState extends State<SettingsSearch> {
+class _SearchDialogState extends State<SearchDialog> {
   final _controller = TextEditingController();
   late final _state = AppScope.read(context);
   final _focus = FocusNode();
@@ -58,21 +39,10 @@ class _SettingsSearchState extends State<SettingsSearch> {
     super.initState();
     _state.saveDrafts();
     _index = _state.searchIndex;
-    widget.handle?._search = this;
-  }
-
-  @override
-  void didUpdateWidget(SettingsSearch old) {
-    super.didUpdateWidget(old);
-    if (old.handle != widget.handle) {
-      if (old.handle?._search == this) old.handle!._search = null;
-      widget.handle?._search = this;
-    }
   }
 
   @override
   void dispose() {
-    if (widget.handle?._search == this) widget.handle!._search = null;
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -92,9 +62,6 @@ class _SettingsSearchState extends State<SettingsSearch> {
     _focus.requestFocus();
   }
 
-  /// Whether anything's typed, so the results show in place of the settings.
-  bool get searching => _controller.text.isNotEmpty;
-
   /// Opens the first result, for Enter.
   void openFirst() {
     if (_hits.isNotEmpty) _open(_hits.first);
@@ -108,10 +75,8 @@ class _SettingsSearchState extends State<SettingsSearch> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    // The results as built: fading out after a clear, they keep showing
-    // what they showed.
     final hits = _hits, words = _words;
-    return Column(
+    final field = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
@@ -164,13 +129,8 @@ class _SettingsSearchState extends State<SettingsSearch> {
           ),
         ),
         const SizedBox(height: 10),
-        FadeThrough(
-          layoutBuilder: FadeThrough.pinTop,
-          child: !searching
-              ? KeyedSubtree(key: const ValueKey('settings'), child: widget.settings)
-              : SizedBox(
-                  key: const ValueKey('results'),
-                  height: SettingsSearch.height,
+        SizedBox(
+                  height: SearchDialog.height,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: p.empty.withValues(alpha: 0.45),
@@ -187,14 +147,14 @@ class _SettingsSearchState extends State<SettingsSearch> {
                               child: ListView.separated(
                                 padding: const EdgeInsets.symmetric(vertical: 4),
                                 itemCount:
-                                    hits.length.clamp(0, SettingsSearch.shown) +
-                                    (hits.length > SettingsSearch.shown ? 1 : 0),
+                                    hits.length.clamp(0, SearchDialog.shown) +
+                                    (hits.length > SearchDialog.shown ? 1 : 0),
                                 separatorBuilder: (_, _) => const FadeMenuDivider(),
-                                itemBuilder: (context, i) => i == SettingsSearch.shown
+                                itemBuilder: (context, i) => i == SearchDialog.shown
                                     ? Padding(
                                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                                         child: Text(
-                                          'Showing the newest ${SettingsSearch.shown} of ${hits.length}. Add a word to narrow it.',
+                                          'Showing the newest ${SearchDialog.shown} of ${hits.length}. Add a word to narrow it.',
                                           style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
                                         ),
                                       )
@@ -209,8 +169,38 @@ class _SettingsSearchState extends State<SettingsSearch> {
                     ),
                   ),
                 ),
-        ),
       ],
+    );
+    return ConfirmOnEnter(
+      // Opens the first result while searching, else closes.
+      onConfirm: () => _controller.text.isEmpty ? Navigator.pop(context) : openFirst(),
+      child: Dialog(
+        clipBehavior: Clip.antiAlias,
+        backgroundColor: p.tile,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
+        child: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            padding: dialogPadding,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Search', style: dialogTitleStyle(p)),
+                const SizedBox(height: dialogTitleGap),
+                field,
+                const SizedBox(height: dialogActionsGap),
+                Row(
+                  children: [
+                    const Spacer(),
+                    DialogDismiss(label: 'Close', onPressed: () => Navigator.pop(context)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

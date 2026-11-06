@@ -220,8 +220,51 @@ jobs:
             build/Eclipse.dmg
             build/Eclipse.exe
 
+  android:
+    needs: version
+    if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - name: Write Google sign-in client
+        env:
+          SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          test -n "$SECRET" || { echo '::error::Missing GOOGLE_CLIENT_SECRET'; exit 1; }
+          printf "const googleClientId = '972544414239-80se3hktkrmo65umjut0fvpj12nvsa9k.apps.googleusercontent.com';\nconst googleClientSecret = '%s';\n" "$SECRET" > lib/data/google_client.dart
+      - name: Write signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE" && test -n "$PASSWORD" || { echo '::error::Missing ANDROID_KEYSTORE_BASE64 or ANDROID_KEYSTORE_PASSWORD'; exit 1; }
+          printf '%s' "$KEYSTORE" | base64 -d > android/eclipse.keystore
+          printf 'storeFile=eclipse.keystore\nstorePassword=%s\nkeyAlias=eclipse\nkeyPassword=%s\n' "$PASSWORD" "$PASSWORD" > android/key.properties
+      - name: Build the APK
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD: ${{ needs.version.outputs.build }}
+        run: |
+          # 26.11.4, revision 1, is 261100401: always higher for a later release.
+          IFS=. read -r year month release <<< "$VERSION"
+          code=$(( year * 10000000 + month * 100000 + release * 100 + BUILD ))
+          flutter pub get
+          flutter build apk --release --target-platform android-arm64 --build-number "$code"
+          mkdir -p build
+          cp build/app/outputs/flutter-apk/app-release.apk build/Eclipse.apk
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Eclipse-Android
+          if-no-files-found: error
+          path: build/Eclipse.apk
+
   publish:
-    needs: [version, arch, desktop]
+    needs: [version, arch, desktop, android]
     # A manual run publishes too, replacing the downloads of a release that
     # already has this version (move its tag to the commit first).
     if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
@@ -238,7 +281,8 @@ jobs:
           test -s 'Eclipse.tar.zst'
           test -s Eclipse.dmg
           test -s 'Eclipse.exe'
-          sha256sum *.tar.zst *.dmg *.exe > SHA256SUMS
+          test -s Eclipse.apk
+          sha256sum *.tar.zst *.dmg *.exe *.apk > SHA256SUMS
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
@@ -256,9 +300,12 @@ jobs:
 
             macOS: open the .dmg and drag Eclipse to Applications.
 
+            Android: open Eclipse.apk on your phone and allow the install.
+
             SHA256SUMS contains checksums for all downloads.
           files: |
             dist/*.tar.zst
             dist/Eclipse.dmg
             dist/*.exe
+            dist/Eclipse.apk
             dist/SHA256SUMS

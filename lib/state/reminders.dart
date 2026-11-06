@@ -184,6 +184,34 @@ mixin _Reminders on ChangeNotifier {
     _keepShown(shown);
   }
 
+  /// Every reminder still to go off, soonest first and at most [limit], for
+  /// a phone to set as alarms.
+  List<({String key, DateTime at, String title, String body})> upcomingReminders({int limit = 100}) {
+    final now = _clock();
+    final all = <({String key, DateTime at, String title, String body})>[];
+    for (final (item, day) in _remindingTodos()) {
+      final uid = item.uid;
+      if (uid == null) continue;
+      final time = item.birthday ? null : item.dueTime;
+      final bits = Reminder.allowed(item.reminders, birthday: item.birthday, time: time);
+      for (final reminder in Reminder.of(bits)) {
+        final at = reminder.at(day, time);
+        if (!at.isAfter(now)) continue;
+        final alert = ReminderAlert(
+          uid: uid,
+          text: item.text,
+          day: day,
+          time: time,
+          birthday: item.birthday,
+          reminder: reminder,
+        );
+        all.add((key: alert.key, at: at, title: item.text, body: alert.body(at)));
+      }
+    }
+    all.sort((a, b) => a.at.compareTo(b.at));
+    return all.take(limit).toList();
+  }
+
   /// The time now, for what a card says is left.
   DateTime get reminderNow => _clock();
 

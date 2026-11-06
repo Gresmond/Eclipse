@@ -100,13 +100,13 @@ void main() {
     late AppState state;
 
     setUp(() {
-      pageButtonsEnabled = true;
+      calendarButtonEnabled = true;
       store = Store.memory();
       state = AppState(store, clock: () => today);
       state.endTour();
     });
     tearDown(() {
-      pageButtonsEnabled = false;
+      calendarButtonEnabled = false;
       state.dispose();
       store.close();
     });

@@ -39,3 +39,12 @@ the new `Eclipse.exe`; run it to update.
 **Updating:** Eclipse checks GitHub on startup and every few hours.
 When a new version is out, the bottom-right card's **Download** button opens
 the new `Eclipse.dmg`; drag Eclipse onto Applications again to update.
+
+## Installing on an Android phone
+
+Open the [latest release](https://github.com/Gresmond/Eclipse/releases/latest) on your phone,
+download `Eclipse.apk`, open it and allow the install. Then sign in with the same Google account
+as your computers. The phone shows today's rituals, sleep schedule and tasks, adds tasks and
+sends their reminders.
+
+**Updating:** a card at the top of the app downloads and installs a new version.
