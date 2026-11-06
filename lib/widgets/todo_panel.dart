@@ -92,21 +92,23 @@ class _TaskAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return IconButton(
-      tooltip: tooltip,
-      icon: Icon(icon, size: 14),
-      onPressed: onPressed,
-      constraints: const BoxConstraints.tightFor(width: size, height: size),
-      padding: EdgeInsets.zero,
-      style: ButtonStyle(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: const WidgetStatePropertyAll(Size(size, size)),
-        shape: const WidgetStatePropertyAll(CircleBorder()),
-        foregroundColor: WidgetStatePropertyAll(p.inkMuted),
-        backgroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+    return PixelTooltip(
+      message: tooltip ?? '',
+      child: IconButton(
+        icon: Icon(icon, size: 14),
+        onPressed: onPressed,
+        constraints: const BoxConstraints.tightFor(width: size, height: size),
+        padding: EdgeInsets.zero,
+        style: ButtonStyle(
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          minimumSize: const WidgetStatePropertyAll(Size(size, size)),
+          shape: const WidgetStatePropertyAll(CircleBorder()),
+          foregroundColor: WidgetStatePropertyAll(p.inkMuted),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+          ),
+          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         ),
-        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
     );
   }

@@ -13,6 +13,7 @@ import 'hover_fill.dart';
 import 'settings_dialog.dart';
 import 'fade_menu.dart';
 import 'smooth_gradient.dart';
+import '../theme/pixels.dart';
 
 /// The parts of the app the welcome tour points at.
 enum TourSpot {
@@ -345,13 +346,14 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
     const height = 250.0;
     double clampX(double x) => x.clamp(_margin, math.max(_margin, size.width - width - _margin));
     double clampY(double y) => y.clamp(_margin, math.max(_margin, size.height - height - _margin));
-    return switch (_guideSide(spot, width, size)) {
+    final at = switch (_guideSide(spot, width, size)) {
       _GuideSide.center => Offset((size.width - width) / 2, (size.height - height) / 2 - 20),
       _GuideSide.below => Offset(clampX(spot!.right - width), spot.bottom + _gap),
       _GuideSide.right => Offset(spot!.right + _gap, clampY(spot.top)),
       _GuideSide.left => Offset(spot!.left - _gap - width, clampY(spot.top)),
       _GuideSide.above => Offset(clampX(spot!.left), clampY(spot.top - _gap - height)),
     };
+    return Offset(pixelRound(at.dx), pixelRound(at.dy));
   }
 
   @override
@@ -737,9 +739,11 @@ class _TextButton extends StatelessWidget {
           color: p.empty.withValues(alpha: hover ? 0.8 : 0),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(
-          label,
-          style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.inkMuted),
+        child: PixelFit(
+          child: Text(
+            label,
+            style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.inkMuted),
+          ),
         ),
       ),
     );
@@ -758,19 +762,22 @@ class _PillButton extends StatelessWidget {
     final p = context.palette;
     return Hoverable(
       onTap: onTap,
-      builder: (hover) => AnimatedSlide(
-        offset: Offset(0, hover ? -0.04 : 0),
+      builder: (hover) => TweenAnimationBuilder<double>(
+        tween: Tween(end: hover ? -1 : 0),
         duration: Motion.hover,
         curve: Motion.hoverCurve,
+        builder: (_, lift, child) => Transform.translate(offset: Offset(0, lift), child: child),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
           decoration: SmoothGradientDecoration(
             borderRadius: BorderRadius.circular(20),
             gradient: LinearGradient(colors: p.gradient.skip(1).toList()),
           ),
-          child: Text(
-            label,
-            style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.onAccent),
+          child: PixelFit(
+            child: Text(
+              label,
+              style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.onAccent),
+            ),
           ),
         ),
       ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/backups.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import 'app_dialog.dart';
 import 'smooth_spinner.dart';
@@ -51,7 +52,7 @@ class BackupRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: confirming ? p.accent.withValues(alpha: 0.35) : p.borderSoft),
       ),
-      child: Row(
+      child: PixelRow(
         children: [
           Expanded(
             child: Column(

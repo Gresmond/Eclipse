@@ -89,11 +89,11 @@ class _ExerciseBlock extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                PixelRow(
                   children: [
                     // The name and group take what the remove button leaves.
                     Expanded(
-                      child: Row(
+                      child: PixelRow(
                         children: [
                           Flexible(
                             child: _InlineName(
@@ -207,7 +207,7 @@ class _SetRowState extends State<_SetRow> {
       onExit: (_) => setState(() => _hover = false),
       child: SizedBox(
         height: 36,
-        child: Row(
+        child: PixelRow(
           children: [
             SizedBox(
               width: 22,
@@ -379,7 +379,7 @@ class _InlineNameState extends State<_InlineName> {
         ),
       );
     }
-    return Tooltip(
+    return PixelTooltip(
       message: 'Rename',
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -420,9 +420,11 @@ class _GroupPill extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: colour.withValues(alpha: selected ? 0.6 : 0.25)),
           ),
-          child: Text(
-            group.label.toUpperCase(),
-            style: _label(p, size: 12, weight: FontWeight.w700, color: colour).copyWith(letterSpacing: 1.2),
+          child: PixelFit(
+            child: Text(
+              group.label.toUpperCase(),
+              style: _label(p, size: 12, weight: FontWeight.w700, color: colour).copyWith(letterSpacing: 1.2),
+            ),
           ),
         ),
       ),
@@ -599,9 +601,11 @@ class _Chip extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: colour.withValues(alpha: on ? 0.55 : 0.3)),
           ),
-          child: Text(
-            label,
-            style: _label(p, size: 14, weight: FontWeight.w600, color: on ? p.ink : p.inkMuted),
+          child: PixelFit(
+            child: Text(
+              label,
+              style: _label(p, size: 14, weight: FontWeight.w600, color: on ? p.ink : p.inkMuted),
+            ),
           ),
         ),
       ),
@@ -630,9 +634,11 @@ class _TextButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[Icon(icon, size: 16, color: p.accent), const SizedBox(width: 4)],
-              Text(
-                label,
-                style: _label(p, size: 14, weight: FontWeight.w600, color: p.accent),
+              PixelFit(
+                child: Text(
+                  label,
+                  style: _label(p, size: 14, weight: FontWeight.w600, color: p.accent),
+                ),
               ),
             ],
           ),
@@ -652,7 +658,7 @@ class _IconAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Tooltip(
+    return PixelTooltip(
       message: tooltip,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,

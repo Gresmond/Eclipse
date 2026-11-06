@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'corner_card.dart';
 import 'fade_through.dart';
+import '../theme/pixels.dart';
 
 /// Over everything, dialogs too: the card naming what was just removed,
 /// with Undo, in the bottom-right corner, with the other corner [cards]
@@ -155,12 +156,14 @@ class _Card extends StatelessWidget {
                 page: label,
                 child: FadeThrough(
                   layoutBuilder: FadeThrough.pinTop,
-                  child: Text(
-                    label,
+                  child: PixelFit(
                     key: ValueKey(label),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.ink),
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.ink),
+                    ),
                   ),
                 ),
               ),

@@ -151,11 +151,9 @@ class _SubPage extends StatelessWidget {
       Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            tooltip: 'Back',
-            iconSize: Scale.navIcon,
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded),
+          PixelTooltip(
+            message: 'Back',
+            child: IconButton(iconSize: Scale.navIcon, onPressed: onBack, icon: const Icon(Icons.arrow_back_rounded)),
           ),
           const SizedBox(width: 4),
           Text(title, style: Theme.of(context).textTheme.titleMedium),

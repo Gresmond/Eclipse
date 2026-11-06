@@ -518,7 +518,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                               color: p.missed.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: Tooltip(
+                            child: PixelTooltip(
                               message: 'Originally planned for ${shortDay(item.since, today: widget.day)}',
                               child: Icon(Icons.history_rounded, size: 12, color: p.missedInk),
                             ),

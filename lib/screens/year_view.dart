@@ -31,7 +31,7 @@ class YearView extends StatelessWidget {
     )..layout(maxWidth: width);
     final height = painter.height;
     painter.dispose();
-    return height;
+    return pixelCeil(height);
   }
 
   /// The cell height whose rows, each as tall as it or its name, add up to

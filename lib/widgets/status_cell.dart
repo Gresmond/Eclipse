@@ -12,6 +12,7 @@ import 'app_dialog.dart';
 import 'confirm_on_enter.dart';
 import 'mark.dart';
 import 'note_input.dart';
+import '../theme/pixels.dart';
 
 /// A habit-day square: left-click done, right-click not done, middle-click
 /// or Option/Alt-click other (trackpads have no middle button). Repeat the
@@ -228,7 +229,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     );
 
     if (note != null && !widget.off) {
-      cell = Tooltip(message: note, child: cell);
+      cell = PixelTooltip(message: note, child: cell);
     }
 
     // The same widgets whether enabled or not, so a square that becomes a
@@ -333,13 +334,22 @@ class _SquarePainter extends CustomPainter {
       // The whole square fades as one, as an opacity layer would.
       canvas.saveLayer((Offset.zero & size).inflate(size.width * 0.1), Paint()..color = Color.fromRGBO(0, 0, 0, fade));
     }
-    final grow = scale.value;
+    // At rest a lifted square grows by whole pixels each side, so its edges
+    // stay on them.
+    var grow = scale.value;
+    if (grow != 1 && !scale.isAnimating) {
+      final side = pixelRound(size.width * (grow - 1) / 2);
+      final least = grow > 1 ? pixelCeil(0.001) : -pixelCeil(0.001);
+      grow = 1 + 2 * (side == 0 ? least : side) / size.width;
+    }
     if (grow != 1) {
       canvas.translate(size.width / 2, size.height / 2);
       canvas.scale(grow);
       canvas.translate(-size.width / 2, -size.height / 2);
     }
     canvas.scale(size.width / _s);
+    // The edge and its inside on whole pixels, whatever size this is drawn at.
+    final edge = pixelRound(size.width / _s) * _s / size.width;
     const rect = Rect.fromLTWH(0, 0, _s, _s);
     final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(_s * 0.28));
     final empty = palette.empty.withValues(alpha: 0.55 + 0.35 * h);
@@ -372,13 +382,13 @@ class _SquarePainter extends CustomPainter {
       canvas.drawRRect(rrect, fill);
     } else {
       canvas.drawRRect(rrect, Paint()..color = Color.lerp(top, bottom, 0.5)!);
-      canvas.drawRRect(rrect.deflate(1), fill);
+      canvas.drawRRect(rrect.deflate(edge), fill);
     }
     canvas.drawRRect(
-      rrect.deflate(0.5),
+      rrect.deflate(edge / 2),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
+        ..strokeWidth = edge
         ..color = between(_border(from, h), _border(to, h), _border(const _Look(null, null), h)),
     );
 

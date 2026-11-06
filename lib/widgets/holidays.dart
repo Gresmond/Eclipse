@@ -47,13 +47,15 @@ class HolidaysRow extends StatelessWidget {
               style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: over ? p.inkMuted : p.ink),
             ),
           ),
-          IconButton(
-            tooltip: 'Remove holiday',
-            iconSize: Scale.dismissIcon,
-            visualDensity: VisualDensity.compact,
-            color: p.inkMuted,
-            onPressed: () => state.removeHoliday(h),
-            icon: const Icon(Icons.close_rounded),
+          PixelTooltip(
+            message: 'Remove holiday',
+            child: IconButton(
+              iconSize: Scale.dismissIcon,
+              visualDensity: VisualDensity.compact,
+              color: p.inkMuted,
+              onPressed: () => state.removeHoliday(h),
+              icon: const Icon(Icons.close_rounded),
+            ),
           ),
         ],
       ),

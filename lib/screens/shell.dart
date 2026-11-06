@@ -180,16 +180,18 @@ class _Header extends StatelessWidget {
                     layoutBuilder: FadeThrough.pinTopLeft,
                     // Tooltip enablement belongs to each fading label, so it
                     // cannot remount the pill's size or fade animations.
-                    child: Tooltip(
+                    child: PixelTooltip(
                       key: ValueKey((kicker, title)),
                       message: month == null && !state.viewingYear ? 'Look back at another day' : '',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ...[Text(kicker.toUpperCase(), style: capsLabel(p.inkMuted)), const SizedBox(height: 4)],
-                          Text(title, style: titleStyle),
-                        ],
+                      child: PixelFit(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ...[Text(kicker.toUpperCase(), style: capsLabel(p.inkMuted)), const SizedBox(height: 4)],
+                            Text(title, style: titleStyle),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -454,7 +456,7 @@ class _Tab extends StatelessWidget {
     )..layout();
     final width = painter.width;
     painter.dispose();
-    return width;
+    return pixelCeil(width);
   }
 
   static TextStyle _style(FontWeight weight, Color color) =>
@@ -537,14 +539,16 @@ class _YearSwitcher extends StatelessWidget {
       child: Row(
         children: [
           if (year > state.firstMonth.$1)
-            IconButton(
-              tooltip: 'Previous year',
-              iconSize: 18,
-              // 40 tall, so the pill matches the tabs and the round buttons.
-              visualDensity: VisualDensity.compact,
-              color: p.inkMuted,
-              onPressed: () => state.shiftYear(-1),
-              icon: const Icon(Icons.chevron_left_rounded),
+            PixelTooltip(
+              message: 'Previous year',
+              child: IconButton(
+                iconSize: 18,
+                // 40 tall, so the pill matches the tabs and the round buttons.
+                visualDensity: VisualDensity.compact,
+                color: p.inkMuted,
+                onPressed: () => state.shiftYear(-1),
+                icon: const Icon(Icons.chevron_left_rounded),
+              ),
             )
           else
             // Holds the arrow's height, so the pill keeps its size.
@@ -560,14 +564,16 @@ class _YearSwitcher extends StatelessWidget {
             ),
           ),
           if (year < state.today.year)
-            IconButton(
-              tooltip: 'Next year',
-              iconSize: 18,
-              // 40 tall, so the pill matches the tabs and the round buttons.
-              visualDensity: VisualDensity.compact,
-              color: p.inkMuted,
-              onPressed: () => state.shiftYear(1),
-              icon: const Icon(Icons.chevron_right_rounded),
+            PixelTooltip(
+              message: 'Next year',
+              child: IconButton(
+                iconSize: 18,
+                // 40 tall, so the pill matches the tabs and the round buttons.
+                visualDensity: VisualDensity.compact,
+                color: p.inkMuted,
+                onPressed: () => state.shiftYear(1),
+                icon: const Icon(Icons.chevron_right_rounded),
+              ),
             )
           else
             // Holds the arrow's height, so the pill keeps its size.
@@ -613,7 +619,7 @@ class _SettingsButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Tooltip(
+    return PixelTooltip(
       message: 'Settings',
       child: Material(
         color: Colors.transparent,
@@ -646,7 +652,7 @@ class _ThemeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Tooltip(
+    return PixelTooltip(
       message: 'Appearance',
       child: MouseRegion(
         cursor: SystemMouseCursors.click,

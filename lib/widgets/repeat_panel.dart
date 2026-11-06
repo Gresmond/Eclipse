@@ -208,7 +208,8 @@ class _RepeatPanelState extends State<_RepeatPanel> {
         // Each row shrinks only when text too large for the dialog's one
         // width would otherwise cut it off. The rows are centred; the notes
         // line up with the switch's text.
-        Center(
+        Align(
+          alignment: const PixelCentre(),
           child: _ScaleDown(
             alignment: Alignment.center,
             child: Row(
@@ -458,7 +459,7 @@ class _DateTags extends StatelessWidget {
       fontWeight: FontWeight.w600,
       color: context.palette.inkMuted,
     );
-    return Tooltip(
+    return PixelTooltip(
       message: 'Left-click to set a start date. Right-click to set an end date.',
       child: Text('$starts  ·  $ends', style: style),
     );
@@ -503,13 +504,15 @@ class _Pills extends StatelessWidget {
                     color: p.done.withValues(alpha: _on(i) ? 1 : 0),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Text(
-                    option,
-                    style: TextStyle(
-                      fontFamily: Fonts.ui,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: _on(i) ? p.onDone : p.inkMuted,
+                  child: PixelFit(
+                    child: Text(
+                      option,
+                      style: TextStyle(
+                        fontFamily: Fonts.ui,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _on(i) ? p.onDone : p.inkMuted,
+                      ),
                     ),
                   ),
                 ),
@@ -686,7 +689,8 @@ class _NotifyRow extends StatelessWidget {
             open: kept != 0,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(0, 6, 0, 8),
-              child: Center(
+              child: Align(
+                alignment: const PixelCentre(),
                 child: _ScaleDown(
                   alignment: Alignment.center,
                   child: _Pills(

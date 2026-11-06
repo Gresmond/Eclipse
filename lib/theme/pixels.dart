@@ -1,5 +1,5 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/widgets.dart';
 
 double get _scale => WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
 
@@ -156,9 +156,62 @@ class _RenderPixelFit extends RenderShiftedBox {
     child.layout(constraints.loosen(), parentUsesSize: true);
     size = _fit(child.size);
     // The extra goes equally either side, so text stays centred in a button.
-    (child.parentData! as BoxParentData).offset = Offset((size.width - child.size.width) / 2, (size.height - child.size.height) / 2);
+    (child.parentData! as BoxParentData).offset = Offset(
+      (size.width - child.size.width) / 2,
+      (size.height - child.size.height) / 2,
+    );
   }
 }
 
 /// [logical] on the whole pixel at or below it.
 double pixelFloor(double logical) => (logical * _scale + 0.001).floorToDouble() / _scale;
+
+/// A [Tooltip] on whole pixels: Flutter's fits its box to the text, however
+/// wide that comes out, and centres it under what it's for.
+class PixelTooltip extends Tooltip {
+  const PixelTooltip({super.key, required String super.message, super.child});
+
+  @override
+  State<Tooltip> createState() => _PixelTooltipState();
+}
+
+class _PixelTooltipState extends State<Tooltip> {
+  @override
+  Widget build(BuildContext context) {
+    final message = widget.message!;
+    final child = widget.child ?? const SizedBox.shrink();
+    if (message.isEmpty || !TooltipVisibility.of(context)) return child;
+    final theme = TooltipTheme.of(context);
+    final box = ConstrainedBox(
+      constraints: theme.constraints ?? const BoxConstraints(minHeight: 24),
+      child: Container(
+        decoration: theme.decoration,
+        padding: theme.padding,
+        child: Center(
+          widthFactor: 1,
+          heightFactor: 1,
+          child: PixelFit(
+            child: Text(message, style: theme.textStyle, textAlign: theme.textAlign),
+          ),
+        ),
+      ),
+    );
+    return RawTooltip(
+      semanticsTooltip: message,
+      tooltipBuilder: (context, animation) => FadeTransition(opacity: animation, child: box),
+      hoverDelay: theme.waitDuration ?? Duration.zero,
+      positionDelegate: (place) {
+        final at = positionDependentBox(
+          size: place.overlaySize,
+          childSize: place.tooltipSize,
+          target: place.target,
+          verticalOffset: theme.verticalOffset ?? 24,
+          preferBelow: theme.preferBelow ?? true,
+        );
+        return Offset(pixelRound(at.dx), pixelRound(at.dy));
+      },
+      ignorePointer: true,
+      child: MouseRegion(cursor: MouseCursor.defer, child: child),
+    );
+  }
+}

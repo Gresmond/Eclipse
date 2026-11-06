@@ -19,23 +19,25 @@ class HeaderIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-      padding: EdgeInsets.zero,
-      style: ButtonStyle(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: const WidgetStatePropertyAll(Size.square(28)),
-        maximumSize: const WidgetStatePropertyAll(Size.square(28)),
-        shape: const WidgetStatePropertyAll(CircleBorder()),
-        foregroundColor: WidgetStatePropertyAll(p.inkMuted.withValues(alpha: 0.8)),
-        backgroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+    return PixelTooltip(
+      message: tooltip ?? '',
+      child: IconButton(
+        onPressed: onPressed,
+        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+        padding: EdgeInsets.zero,
+        style: ButtonStyle(
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          minimumSize: const WidgetStatePropertyAll(Size.square(28)),
+          maximumSize: const WidgetStatePropertyAll(Size.square(28)),
+          shape: const WidgetStatePropertyAll(CircleBorder()),
+          foregroundColor: WidgetStatePropertyAll(p.inkMuted.withValues(alpha: 0.8)),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+          ),
+          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         ),
-        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        icon: Icon(icon, size: 16),
       ),
-      icon: Icon(icon, size: 16),
     );
   }
 }
@@ -167,17 +169,17 @@ class TileHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: p.borderSoft),
           ),
-          child: _CaptionSwap(caption: caption!),
+          child: PixelFit(child: _CaptionSwap(caption: caption!)),
         ),
     ];
     // Every header is as tall as one with a button, so its title sits the same
     // distance from the card's corner whatever else is in the row.
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 30),
-      child: Row(
+      child: PixelRow(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          if (trailingAtEnd) Expanded(child: Row(children: lead)) else ...lead,
+          if (trailingAtEnd) Expanded(child: PixelRow(children: lead)) else ...lead,
           ?trailing,
         ],
       ),

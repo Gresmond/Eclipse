@@ -244,10 +244,7 @@ class _HabitsCard extends StatelessWidget {
       }
       // Each row's edge on a whole pixel; together they still fill the card.
       var bottom = 0.0;
-      final edges = [
-        0.0,
-        for (final n in needed) pixelRound(bottom += n > extent ? n : extent),
-      ];
+      final edges = [0.0, for (final n in needed) pixelRound(bottom += n > extent ? n : extent)];
       return (
         heights: [for (var i = 0; i < needed.length; i++) edges[i + 1] - edges[i]],
         cell: pixelFloor(extent - 10).clamp(24.0, 32.0),
@@ -322,10 +319,9 @@ class _HabitsCard extends StatelessWidget {
                   // subtitle and the space inside its first row add an inset.
                   final headerHeight = TileHeader.titleHeight(context, title);
                   final normalChrome = 2 * (24.0 + 1) + headerHeight + 22;
-                  final inset = pixelRound(max(
-                    0.0,
-                    cardHeight! - constraints.maxHeight - normalChrome + (rows.heights.first - rows.cell) / 2,
-                  ));
+                  final inset = pixelRound(
+                    max(0.0, cardHeight! - constraints.maxHeight - normalChrome + (rows.heights.first - rows.cell) / 2),
+                  );
                   if ((alignment.value - inset).abs() > 0.01) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (context.mounted && (alignment.value - inset).abs() > 0.01) alignment.value = inset;
@@ -479,7 +475,7 @@ class _HabitRow extends StatelessWidget {
         child: PixelRow(
           children: [
             Expanded(
-              child: Tooltip(
+              child: PixelTooltip(
                 message: names != null
                     ? (habit.minutes == null ? '' : clockLabel(habit.minutes!))
                     : habit.description ?? habit.name,
@@ -548,7 +544,7 @@ class _StreakBadgeState extends State<_StreakBadge> {
     return FadeThrough(
       duration: _withDay ? Motion.page : Motion.click,
       scaleFrom: _withDay ? 1.0 : 0.85,
-      child: Tooltip(
+      child: PixelTooltip(
         key: ValueKey(streak == 0),
         message: streak == 0
             ? (best > 0 ? 'Best streak: $best days' : 'No streak yet')

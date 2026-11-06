@@ -215,14 +215,14 @@ class _ChartPainter extends CustomPainter {
       ..strokeWidth = 1;
     for (var v = lo; v <= hi + step / 2; v += step) {
       final yy = y(v);
-      canvas.drawLine(Offset(plot.left, yy), Offset(plot.right, yy), grid);
+      canvas.drawLine(Offset(plot.left, _crisp(yy)), Offset(plot.right, _crisp(yy)), grid);
       final text = percent ? '${v > 0 ? '+' : ''}${v.toStringAsFixed(step < 1 ? 1 : 0)}%' : _kg(v);
       _text(canvas, text, Offset(plot.left - 10, yy), p.inkMuted, align: Alignment.centerRight);
     }
     if (percent && lo < 0 && hi > 0) {
       canvas.drawLine(
-        Offset(plot.left, y(0)),
-        Offset(plot.right, y(0)),
+        Offset(plot.left, _crisp(y(0))),
+        Offset(plot.right, _crisp(y(0))),
         Paint()
           ..color = p.inkMuted.withValues(alpha: 0.5)
           ..strokeWidth = 1,
@@ -289,17 +289,19 @@ class _ChartPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    final w = math.max(title.width, body.width) + 24, h = title.height + body.height + 18;
+    final w = pixelCeil(math.max(title.width, body.width) + 24), h = pixelCeil(title.height + body.height + 18);
     var origin = hit.at + const Offset(12, -12) - Offset(0, h);
     if (origin.dx + w > size.width) origin = Offset(hit.at.dx - 12 - w, origin.dy);
     if (origin.dy < 0) origin = Offset(origin.dx, hit.at.dy + 12);
+    origin = Offset(pixelRound(origin.dx), pixelRound(origin.dy));
     final box = RRect.fromRectAndRadius(origin & Size(w, h), const Radius.circular(12));
     canvas.drawShadow(Path()..addRRect(box), p.shadow.withValues(alpha: 0.4), 6, false);
     canvas.drawRRect(box, Paint()..color = p.tile);
     canvas.drawRRect(
-      box,
+      box.deflate(0.5),
       Paint()
         ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
         ..color = p.tileBorder,
     );
     canvas.drawCircle(hit.at, 5.5, Paint()..color = hit.series.colour.withValues(alpha: 0.3));
@@ -326,6 +328,10 @@ class _ChartPainter extends CustomPainter {
   /// Draws lines through [pts], dashed if [dash] has any lengths. Impeller on
   /// Linux leaves stroked paths jagged, but smooths lines. They overlap where
   /// they meet, so a see-through colour draws them as one on a layer.
+  /// Where a one-wide line goes to fill the row of pixels nearest [at], rather
+  /// than blur across two.
+  static double _crisp(double at) => pixelRound(at - 0.5) + 0.5;
+
   static void _stroke(Canvas canvas, List<Offset> pts, List<double> dash, Color colour, double width) {
     final fading = colour.a < 1;
     if (fading) {
@@ -427,14 +433,16 @@ class _Legend extends StatelessWidget {
                     off: hidden.contains('g:${g.name}'),
                     onHover: onHover,
                     onToggle: onToggle,
-                    child: Text(
-                      g.label.toUpperCase(),
-                      style: _label(
-                        p,
-                        size: 12,
-                        weight: FontWeight.w700,
-                        color: groupColour(g, p),
-                      ).copyWith(letterSpacing: 1.2),
+                    child: PixelFit(
+                      child: Text(
+                        g.label.toUpperCase(),
+                        style: _label(
+                          p,
+                          size: 12,
+                          weight: FontWeight.w700,
+                          color: groupColour(g, p),
+                        ).copyWith(letterSpacing: 1.2),
+                      ),
                     ),
                   ),
                   for (final e in list)
@@ -451,7 +459,7 @@ class _Legend extends StatelessWidget {
                             painter: _DashSample(groupColour(g, p), dash[e.uid] ?? const []),
                           ),
                           const SizedBox(width: 6),
-                          Text(e.name, style: _label(p, size: 14)),
+                          PixelFit(child: Text(e.name, style: _label(p, size: 14))),
                         ],
                       ),
                     ),
@@ -514,7 +522,7 @@ class _DashSample extends CustomPainter {
     [Offset(1, size.height / 2), Offset(size.width - 1, size.height / 2)],
     dash,
     colour,
-    2.2,
+    2,
   );
 
   @override
@@ -559,7 +567,12 @@ class _Segments extends StatelessWidget {
                   child: PixelFit(
                     child: Text(
                       label,
-                      style: _label(p, size: 14, weight: FontWeight.w600, color: i == selected ? p.onAccent : p.inkMuted),
+                      style: _label(
+                        p,
+                        size: 14,
+                        weight: FontWeight.w600,
+                        color: i == selected ? p.onAccent : p.inkMuted,
+                      ),
                     ),
                   ),
                 ),

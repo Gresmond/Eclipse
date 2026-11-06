@@ -294,7 +294,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
             // lines: then it's cut short, whole on hover.
             child: widget.names != null
                 ? SleepName(habit: widget.habit, names: widget.names!, style: nameStyle)
-                : Tooltip(
+                : PixelTooltip(
                     message: widget.habit.description ?? widget.habit.name,
                     child: SizedBox(
                       height: height,

@@ -66,14 +66,16 @@ class _MonthCalendarState extends State<MonthCalendar> {
     final lead = _month.weekday - 1; // Monday first
     final days = daysInMonth(_month.year, _month.month);
 
-    Widget arrow(IconData icon, String tooltip, VoidCallback? onTap) => IconButton(
-      tooltip: tooltip,
-      iconSize: Scale.navIcon,
-      visualDensity: VisualDensity.compact,
-      color: p.inkMuted,
-      disabledColor: p.inkMuted.withValues(alpha: 0.25),
-      onPressed: onTap,
-      icon: Icon(icon),
+    Widget arrow(IconData icon, String tooltip, VoidCallback? onTap) => PixelTooltip(
+      message: tooltip,
+      child: IconButton(
+        iconSize: Scale.navIcon,
+        visualDensity: VisualDensity.compact,
+        color: p.inkMuted,
+        disabledColor: p.inkMuted.withValues(alpha: 0.25),
+        onPressed: onTap,
+        icon: Icon(icon),
+      ),
     );
 
     return Column(

@@ -350,12 +350,14 @@ class _EditableRowState extends State<_EditableRow> {
               ],
             ),
           ),
-          IconButton(
-            tooltip: 'Remove from ${monthNames[widget.month - 1]}',
-            iconSize: 18,
-            color: p.missedInk,
-            onPressed: () => state.removeHabit(widget.year, widget.month, widget.habit),
-            icon: const Icon(Icons.remove_circle_outline_rounded),
+          PixelTooltip(
+            message: 'Remove from ${monthNames[widget.month - 1]}',
+            child: IconButton(
+              iconSize: 18,
+              color: p.missedInk,
+              onPressed: () => state.removeHabit(widget.year, widget.month, widget.habit),
+              icon: const Icon(Icons.remove_circle_outline_rounded),
+            ),
           ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/pixels.dart';
 
 /// Two pages, one over the other, turned by the folded corner at the
 /// bottom right. Turning peels [front] away from that corner, folding it
@@ -111,7 +112,7 @@ class _PageTurnState extends State<PageTurn> with TickerProviderStateMixin {
                 bottom: 0,
                 width: _Fold.hoverLift * 1.6,
                 height: _Fold.hoverLift * 1.6,
-                child: Tooltip(
+                child: PixelTooltip(
                   message: widget.tooltip,
                   child: MouseRegion(
                     cursor: SystemMouseCursors.click,

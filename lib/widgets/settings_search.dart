@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_menu.dart';
 import 'fade_through.dart';
+import '../theme/pixels.dart';
 
 /// The search bar atop Settings' General ribbon: every task and journal
 /// entry, any day, found as you type. Typing fades [settings] away for the
@@ -138,22 +139,25 @@ class _SettingsSearchState extends State<SettingsSearch> {
               ),
               if (_controller.text.isNotEmpty)
                 TextFieldTapRegion(
-                  child: IconButton(
-                    tooltip: 'Clear',
-                    onPressed: _clear,
-                    constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-                    padding: EdgeInsets.zero,
-                    style: ButtonStyle(
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      minimumSize: const WidgetStatePropertyAll(Size(28, 28)),
-                      shape: const WidgetStatePropertyAll(CircleBorder()),
-                      backgroundColor: WidgetStateProperty.resolveWith(
-                        (states) =>
-                            states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+                  child: PixelTooltip(
+                    message: 'Clear',
+                    child: IconButton(
+                      onPressed: _clear,
+                      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                      padding: EdgeInsets.zero,
+                      style: ButtonStyle(
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        minimumSize: const WidgetStatePropertyAll(Size(28, 28)),
+                        shape: const WidgetStatePropertyAll(CircleBorder()),
+                        backgroundColor: WidgetStateProperty.resolveWith(
+                          (states) => states.contains(WidgetState.hovered)
+                              ? p.empty.withValues(alpha: 0.8)
+                              : Colors.transparent,
+                        ),
+                        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
                       ),
-                      overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+                      icon: Icon(Icons.close_rounded, size: Scale.dismissIcon, color: p.inkMuted),
                     ),
-                    icon: Icon(Icons.close_rounded, size: Scale.dismissIcon, color: p.inkMuted),
                   ),
                 ),
             ],

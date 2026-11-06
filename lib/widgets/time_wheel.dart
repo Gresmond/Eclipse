@@ -11,6 +11,7 @@ import 'fade_through.dart';
 import 'hover_fill.dart';
 import 'rolling_number.dart';
 import 'sleep_time.dart';
+import '../theme/pixels.dart';
 
 /// Opens a [TimeWheel] over [anchor] for [minutes], or [start] when there's
 /// no time, with Cancel and Save. The saved time, or null when it was
@@ -113,28 +114,32 @@ class TimePill extends StatelessWidget {
         child: FadeThrough(
           duration: Motion.click,
           child: minutes == null
-              ? Text(
-                  placeholder,
+              ? PixelFit(
                   key: const ValueKey(false),
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                  child: Text(
+                    placeholder,
+                    style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                  ),
                 )
               // "9:05 pm", as a count's digits roll.
               : Semantics(
                   key: const ValueKey(true),
                   label: clockLabel(minutes),
                   excludeSemantics: true,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      RollingNumber(value: (minutes ~/ 60 + 11) % 12 + 1, style: style),
-                      _Colon(style: style),
-                      RollingNumber(value: minutes % 60, digits: 2, style: style),
-                      Text(' ', style: style),
-                      FadeThrough(
-                        duration: Motion.morph,
-                        child: Text(minutes < 12 * 60 ? 'am' : 'pm', key: ValueKey(minutes < 12 * 60), style: style),
-                      ),
-                    ],
+                  child: PixelFit(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        RollingNumber(value: (minutes ~/ 60 + 11) % 12 + 1, style: style),
+                        _Colon(style: style),
+                        RollingNumber(value: minutes % 60, digits: 2, style: style),
+                        Text(' ', style: style),
+                        FadeThrough(
+                          duration: Motion.morph,
+                          child: Text(minutes < 12 * 60 ? 'am' : 'pm', key: ValueKey(minutes < 12 * 60), style: style),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
         ),

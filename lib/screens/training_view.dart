@@ -220,7 +220,9 @@ class _HistoryRow extends StatelessWidget {
                           decoration: BoxDecoration(color: groupColour(e.group, p), shape: BoxShape.circle),
                         ),
                         const SizedBox(width: 4),
-                        Text('${e.name} ×${sets.length}', style: _label(p, size: 14, color: p.inkMuted)),
+                        PixelFit(
+                          child: Text('${e.name} ×${sets.length}', style: _label(p, size: 14, color: p.inkMuted)),
+                        ),
                       ],
                     ),
                 ],

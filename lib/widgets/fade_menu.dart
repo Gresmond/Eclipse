@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/pixels.dart';
 import 'hover_fill.dart';
 
 /// Opens [builder]'s panel under [anchor] (over it with [above]), right
@@ -21,10 +22,10 @@ Future<void> showFadeMenu(
   final rect = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
   return Navigator.of(anchor).push(
     _FadeMenuRoute(
-      top: above ? null : rect.bottom + gap,
-      bottom: above ? overlay.size.height - rect.top + gap : null,
-      left: alignLeft ? rect.left : null,
-      right: alignLeft ? null : overlay.size.width - rect.right,
+      top: above ? null : pixelRound(rect.bottom + gap),
+      bottom: above ? pixelRound(overlay.size.height - rect.top + gap) : null,
+      left: alignLeft ? pixelRound(rect.left) : null,
+      right: alignLeft ? null : pixelRound(overlay.size.width - rect.right),
       width: width,
       builder: builder,
       barrierLabel: MaterialLocalizations.of(anchor).modalBarrierDismissLabel,

@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'corner_card.dart';
 import 'hover_fill.dart';
+import '../theme/pixels.dart';
 
 /// A card in the bottom-right corner for each reminder that goes off while
 /// the window is open, newest at the bottom. Each stays up as long as the
@@ -162,11 +163,13 @@ class _Card extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
-              IconButton(
-                tooltip: 'Dismiss',
-                onPressed: onClose,
-                visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.close_rounded, size: Scale.dismissIcon, color: p.inkMuted),
+              PixelTooltip(
+                message: 'Dismiss',
+                child: IconButton(
+                  onPressed: onClose,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.close_rounded, size: Scale.dismissIcon, color: p.inkMuted),
+                ),
               ),
             ],
           ),

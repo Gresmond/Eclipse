@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'hover_fill.dart';
+import '../theme/pixels.dart';
 
 /// A card floating in the bottom-right corner. It slides up and fades in
 /// while [visible], and back down and out when not, still showing what it
@@ -90,13 +91,15 @@ class CornerButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(30),
           color: filled ? p.done : (hover ? p.empty : p.empty.withValues(alpha: 0)),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: Fonts.ui,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: filled ? p.onDone : p.inkMuted,
+        child: PixelFit(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: Fonts.ui,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: filled ? p.onDone : p.inkMuted,
+            ),
           ),
         ),
       ),

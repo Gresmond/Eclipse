@@ -379,30 +379,30 @@ class _MonthScore extends StatelessWidget {
         ),
         child: PixelFit(
           child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TweenAnimationBuilder<double>(
-              tween: Tween(end: logged == 0 ? 0 : done * 100 / logged),
-              duration: Motion.morph,
-              curve: Motion.morphCurve,
-              builder: (context, percent, _) => Text(
-                '${percent.round()}%',
-                style: TextStyle(
-                  fontFamily: Fonts.display,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: p.ink,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TweenAnimationBuilder<double>(
+                tween: Tween(end: logged == 0 ? 0 : done * 100 / logged),
+                duration: Motion.morph,
+                curve: Motion.morphCurve,
+                builder: (context, percent, _) => Text(
+                  '${percent.round()}%',
+                  style: TextStyle(
+                    fontFamily: Fonts.display,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: p.ink,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.inkMuted),
-            ),
-          ],
-        ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w500, color: p.inkMuted),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -441,7 +441,11 @@ class _ColumnLayout {
   bool get resting => shown.value == shown.value.roundToDouble();
 
   /// Where the column after the first [count] starts.
-  double edge(num count) => resting ? pixelRound(count * col) : count * col;
+  double edge(num count) {
+    if (!resting) return count * col;
+    // The last one down, or rounding at a fractional scale overflows the card.
+    return count >= shown.value ? pixelFloor(count * col) : pixelRound(count * col);
+  }
 
   /// The width of column [d].
   double widthOf(int d) => edge(d) - edge(d - 1);

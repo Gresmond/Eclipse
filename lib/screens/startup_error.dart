@@ -9,6 +9,7 @@ import '../data/store.dart' show DatabaseTooNewException;
 import '../data/updates.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/pixels.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/backup_row.dart';
 
@@ -68,13 +69,14 @@ class StartupErrorApp extends StatelessWidget {
         builder: (context) {
           final p = context.palette;
           return Scaffold(
-            body: Center(
+            body: Align(
+              alignment: const PixelCentre(),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 440),
                 // A long error and its backups can outgrow a small window.
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
-                  child: Column(
+                  child: PixelColumn(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -149,7 +151,7 @@ class _RecoveryListState extends State<_RecoveryList> {
     if (_backups.isEmpty) return const SizedBox.shrink();
     final p = context.palette;
     final now = DateTime.now();
-    return Column(
+    return PixelColumn(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
@@ -205,7 +207,7 @@ class _UpdateRow extends StatelessWidget {
     final busy = updater.status == UpdateStatus.updating || updater.status == UpdateStatus.restarting;
     // A source install can always be rebuilt; a release needs one on offer.
     final canUpdate = updater is GitUpdater || updater.status == UpdateStatus.available;
-    return Column(
+    return PixelColumn(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (busy)
@@ -213,7 +215,7 @@ class _UpdateRow extends StatelessWidget {
         else if (updater.error case final error?)
           Text(curlyQuotes(error), style: _body(p).copyWith(color: p.missedInk)),
         const SizedBox(height: 12),
-        Row(
+        PixelRow(
           children: [
             if (canUpdate) DialogConfirm(label: updater.actionLabel, onPressed: busy ? null : updater.update),
             const SizedBox(width: 12),

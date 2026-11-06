@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../theme/app_theme.dart';
+import '../theme/pixels.dart';
 
 /// The weekdays a ritual or repeating task is on, Monday first: filled
 /// when on. The last one on can't be turned off.
@@ -34,7 +35,7 @@ class DayToggles extends StatelessWidget {
                 final bit = weekdayBit(weekday);
                 final on = bits & bit != 0;
                 final last = on && bits == bit;
-                return Tooltip(
+                return PixelTooltip(
                   message: last ? lastReason : weekdayNames[weekday - 1],
                   child: MouseRegion(
                     cursor: last ? MouseCursor.defer : SystemMouseCursors.click,

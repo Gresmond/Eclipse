@@ -1672,7 +1672,7 @@ void main() {
     double opacity(Finder action) =>
         tester.widget<AnimatedOpacity>(find.ancestor(of: action, matching: find.byType(AnimatedOpacity)).first).opacity;
     Color background(Finder action) => tester
-        .widget<IconButton>(find.ancestor(of: action, matching: find.byType(IconButton)).first)
+        .widget<IconButton>(find.descendant(of: action, matching: find.byType(IconButton)).first)
         .style!
         .backgroundColor!
         .resolve({WidgetState.hovered})!;
@@ -1689,7 +1689,7 @@ void main() {
     expect(tester.getRect(find.text('Hover first')), original, reason: 'the buttons take the room kept for them');
     expect(background(edits.at(0)), background(removes.at(0)));
     final editButton = tester.widget<IconButton>(
-      find.ancestor(of: edits.at(0), matching: find.byType(IconButton)).first,
+      find.descendant(of: edits.at(0), matching: find.byType(IconButton)).first,
     );
     expect(editButton.style!.backgroundColor!.resolve({}), Colors.transparent);
     expect(editButton.style!.backgroundColor!.resolve({WidgetState.hovered})!.a, greaterThan(0));
