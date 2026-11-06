@@ -23,6 +23,11 @@ schema="$(sed -n 's/.*static const schemaVersion = \([0-9]*\);.*/\1/p' lib/data/
 rm -rf "$dest"
 mkdir -p "$dest"
 cp -R build/linux/x64/release/bundle/. "$dest/"
+# The whole icon font, not the build's cut-down one: a repeat build can keep an
+# old cut that lacks a newly used icon, and the desktop then borrows another
+# font's symbol for it.
+cp "$(dirname "$(readlink -f "$flutter")")/cache/artifacts/material_fonts/MaterialIcons-Regular.otf" \
+  "$dest/data/flutter_assets/fonts/MaterialIcons-Regular.otf"
 
 # Lets the app notice when this folder has newer commits than it was
 # built from, and offer to run this script again.
