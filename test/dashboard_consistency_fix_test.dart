@@ -110,6 +110,34 @@ void main() {
     }
   });
 
+  testWidgets('Further ahead only says nothing but birthdays when some are hidden', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1680, 1160);
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    final state = AppState(store, clock: () => DateTime(2026, 10, 31));
+    addTearDown(() {
+      state.dispose();
+      store.close();
+    });
+    for (final scope in TodoScope.values) {
+      for (final task in [...state.todos[scope]!]) {
+        state.removeTodo(scope, task);
+      }
+    }
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    expect(find.text('Nothing planned.'), findsOneWidget);
+    state.toggleLaterBirthdays();
+    await tester.pumpAndSettle();
+    expect(find.text('Nothing planned.'), findsOneWidget);
+    state.addTodo(TodoScope.month, 'Ana', dueDate: DateTime(2026, 12, 20), birthday: true);
+    await tester.pumpAndSettle();
+    expect(find.text('Nothing but birthdays.'), findsOneWidget);
+    expect(find.text('Nothing planned.'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('empty states and task-entry hints stay readable and share typography in every theme', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1680, 1160);
@@ -141,8 +169,9 @@ void main() {
           expect(contrast(hint.color!, surface), greaterThanOrEqualTo(4.5), reason: palette.name);
         }
       }
-      for (final label in ['Nothing due.', 'Nothing more than a week away.']) {
+      for (final label in ['Nothing due.', 'Nothing planned.']) {
         final text = tester.widget<Text>(find.text(label));
+        expect(text.style!.fontSize, 15);
         expect(contrast(text.style!.color!, palette.tile), greaterThanOrEqualTo(4.5), reason: palette.name);
       }
       expect(tester.takeException(), isNull);

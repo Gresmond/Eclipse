@@ -20,7 +20,9 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
     final planned = state.fromTodos((_Planned, dateKey(day), past), () => _Planned(state, day, past: past));
     // Birthdays are only known from today on, so a past day leaves them out.
     final birthdays = state.laterBirthdays && !past;
-    bool shows(_Later later) => birthdays || !(later.item?.birthday ?? later.repeat!.birthday);
+    bool isBirthday(_Later later) => later.item?.birthday ?? later.repeat!.birthday;
+    bool shows(_Later later) => birthdays || !isBirthday(later);
+    final hiding = !birthdays && !past && [...planned.later.expand((l) => l.$2), ...planned.undated].any(isBirthday);
     final groups = [
       for (final (date, items) in [
         for (final (date, items) in planned.later) (date as DateTime?, items),
@@ -76,11 +78,16 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
                   child: StagedHeight(
                     key: ValueKey(dateKey(day)),
                     child: widget.firstCheckboxInset == null
-                        ? _LaterList(groups: groups, birthdays: birthdays, added: added)
+                        ? _LaterList(groups: groups, birthdays: birthdays, hiding: hiding, added: added)
                         : ValueListenableBuilder<double>(
                             valueListenable: widget.firstCheckboxInset!,
-                            builder: (context, inset, _) =>
-                                _LaterList(groups: groups, birthdays: birthdays, added: added, topInset: inset),
+                            builder: (context, inset, _) => _LaterList(
+                              groups: groups,
+                              birthdays: birthdays,
+                              hiding: hiding,
+                              added: added,
+                              topInset: inset,
+                            ),
                           ),
                   ),
                 ),
@@ -104,12 +111,21 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
 /// One day's further-ahead list: each date's tasks, then the repeats due
 /// round on it; tasks without a day last.
 class _LaterList extends StatefulWidget {
-  const _LaterList({required this.groups, required this.birthdays, required this.added, this.topInset = 0});
+  const _LaterList({
+    required this.groups,
+    required this.birthdays,
+    required this.hiding,
+    required this.added,
+    this.topInset = 0,
+  });
 
   final List<(DateTime?, List<_Later>)> groups;
 
   /// Whether birthdays show: shown or hidden, they pop in or out at once.
   final bool birthdays;
+
+  /// Whether any birthdays are hidden, which is what it says when they're all there is.
+  final bool hiding;
 
   /// Tasks just added, which fade in.
   final Set<int> added;
@@ -236,17 +252,10 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
     _groupCount = groups.length;
     if (_built < groups.length) WidgetsBinding.instance.addPostFrameCallback((_) => _buildMore());
     if (groups.isEmpty) {
-      // Where and as Week ahead says the same.
-      return Align(
-        alignment: Alignment.topLeft,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(26, widget.topInset + 6, 0, 2),
-          child: Text(
-            widget.birthdays || AppScope.read(context).viewDay != null
-                ? 'Nothing more than a week away.'
-                : 'Nothing but birthdays.',
-            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
-          ),
+      return Center(
+        child: Text(
+          widget.hiding ? 'Nothing but birthdays.' : 'Nothing planned.',
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted),
         ),
       );
     }

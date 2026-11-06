@@ -197,61 +197,67 @@ class _AddTaskState extends State<_AddTask> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final width = constraints.maxWidth;
-                    return Row(
-                      children: [
-                        // Its buttons leave the cursor in the field; the + lines
-                        // up with the tick boxes above.
-                        TextFieldTapRegion(
-                          child: SizedBox(
-                            width: 20,
-                            height: _TaskAction.size,
-                            child: OverflowBox(
-                              maxWidth: _TaskAction.size,
-                              child: _TaskAction(icon: Icons.add_rounded, onPressed: () => _submit(state)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _controller,
-                            focusNode: _focus,
-                            textCapitalization: TextCapitalization.sentences,
-                            inputFormatters: const [NoteInputFormatter()],
-                            // As a task's name, so the line is a task's height.
-                            style: _taskInputStyle(p),
-                            cursorColor: p.accent,
-                            decoration: InputDecoration(
-                              isDense: true,
-                              border: InputBorder.none,
-                              hintText: 'Add task',
-                              hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                            onSubmitted: (_) => _submit(state),
-                          ),
-                        ),
-                        if (timed)
+                    // A task's height, so the line sits a task's distance below the last.
+                    return ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 43),
+                      child: Row(
+                        children: [
+                          // Its buttons leave the cursor in the field; the + lines
+                          // up with the tick boxes above.
                           TextFieldTapRegion(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (choice != null)
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: _detailsRoom(width - 32 - _TaskAction.size)),
-                                    child: _ChosenDetails(choice: choice, today: widget.today, showDay: moved),
-                                  ),
-                                _TaskAction(
-                                  tooltip: choice == null
-                                      ? 'Pick a day'
-                                      : 'Due ${dayAndMonth(choice.day)}, click to change',
-                                  icon: choice == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
-                                  onPressed: _pick,
-                                ),
-                              ],
+                            child: SizedBox(
+                              width: 20,
+                              height: _TaskAction.size,
+                              child: OverflowBox(
+                                maxWidth: _TaskAction.size,
+                                child: _TaskAction(icon: Icons.add_rounded, onPressed: () => _submit(state)),
+                              ),
                             ),
                           ),
-                      ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focus,
+                              textCapitalization: TextCapitalization.sentences,
+                              inputFormatters: const [NoteInputFormatter()],
+                              // As a task's name, so the line is a task's height.
+                              style: _taskInputStyle(p),
+                              cursorColor: p.accent,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                hintText: 'Add task',
+                                hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                              onSubmitted: (_) => _submit(state),
+                            ),
+                          ),
+                          if (timed)
+                            TextFieldTapRegion(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (choice != null)
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxWidth: _detailsRoom(width - 32 - _TaskAction.size),
+                                      ),
+                                      child: _ChosenDetails(choice: choice, today: widget.today, showDay: moved),
+                                    ),
+                                  _TaskAction(
+                                    tooltip: choice == null
+                                        ? 'Pick a day'
+                                        : 'Due ${dayAndMonth(choice.day)}, click to change',
+                                    icon: choice == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
+                                    onPressed: _pick,
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
                     );
                   },
                 ),

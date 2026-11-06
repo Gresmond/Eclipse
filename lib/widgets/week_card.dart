@@ -264,8 +264,8 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
       foot = Padding(
         padding: const EdgeInsets.fromLTRB(26, 6, 0, 4),
         child: Text(
-          'Nothing planned',
-          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+          'Nothing planned.',
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted),
         ),
       );
     } else {
@@ -301,7 +301,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
                 padding: const EdgeInsets.fromLTRB(26, 6, 0, 2),
                 child: Text(
                   'Nothing due.',
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.inkMuted),
                 ),
               ),
             ),
