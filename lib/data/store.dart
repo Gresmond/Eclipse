@@ -358,7 +358,17 @@ class Store {
       );
 
   /// Work proportional to logged entries, rather than every calendar day.
-  (int, int) streaks(int habitId, DateTime today, {required bool restWeekends, List<Holiday> holidays = const []}) {
+  ///
+  /// The run as of [today], which isn't held against it while blank, unless
+  /// [dayOver]: then it's a past day's, and blank breaks the run as it does
+  /// for any other day.
+  (int, int) streaks(
+    int habitId,
+    DateTime today, {
+    required bool restWeekends,
+    List<Holiday> holidays = const [],
+    bool dayOver = false,
+  }) {
     // Each month's days for the ritual; a day that isn't one of them is
     // passed over, whatever was logged on it.
     final months = {
@@ -389,7 +399,7 @@ class Store {
     ])) {
       final day = _parseDay(r['day'] as String);
       final status = HabitStatus.values[r['status'] as int];
-      if (day == today && status == HabitStatus.none || off(day)) continue;
+      if (!dayOver && day == today && status == HabitStatus.none || off(day)) continue;
       if (previous != null && gapBreaks(previous, day)) run = 0;
       // An "other" day, or a rest day left blank or missed, neither breaks
       // nor extends it.
@@ -401,7 +411,8 @@ class Store {
       }
       previous = day;
     }
-    if (previous != null && gapBreaks(previous, today)) run = 0;
+    final until = dayOver ? DateTime(today.year, today.month, today.day + 1) : today;
+    if (previous != null && gapBreaks(previous, until)) run = 0;
     return (run, best);
   }
 

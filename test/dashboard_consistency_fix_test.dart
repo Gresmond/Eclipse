@@ -7,6 +7,7 @@ import 'package:eclipse/models.dart';
 import 'package:eclipse/screens/today_view.dart';
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/theme/oklch.dart' show contrast;
+import 'package:eclipse/widgets/rolling_number.dart';
 import 'package:eclipse/widgets/status_cell.dart';
 import 'package:eclipse/widgets/tile.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
@@ -238,6 +239,88 @@ void main() {
     expect(shown(), inExclusiveRange(0, 1), reason: 'still fading out with the page');
     await tester.pumpAndSettle();
     expect(flame, findsNothing);
+    store.close();
+  });
+
+  test('a past day has the streak it ended with', () {
+    final store = Store.memory();
+    final state = AppState(store, clock: () => DateTime(2026, 11, 6, 10));
+    final habit = store.addHabit(2026, 11, 'Sketch', addedOn: DateTime(2026, 11, 1));
+    for (final day in ['01', '02', '04', '05', '06']) {
+      store.setEntry('2026-11-$day', habit.id, HabitStatus.done);
+    }
+    (int, int) on(int day) => state.streaksOn(habit, DateTime(2026, 11, day));
+    expect(on(2), (2, 2));
+    expect(on(3), (0, 2), reason: 'left blank, so the run ended');
+    expect(on(5), (2, 2));
+    expect(on(6), (3, 3));
+    state.selectStatus(DateTime(2026, 11, 5), habit, HabitStatus.missed);
+    expect(on(5), (0, 2), reason: 'follows a correction');
+    store.close();
+  });
+
+  testWidgets('another day rolls the count in a pill that stays put', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    final habit = store.addHabit(2026, 11, 'Sketch', addedOn: DateTime(2026, 11, 1));
+    final state = AppState(store, clock: () => DateTime(2026, 11, 5, 10));
+    for (final day in ['01', '02', '03', '04', '05']) {
+      store.setEntry('2026-11-$day', habit.id, HabitStatus.done);
+    }
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    final flame = find.byIcon(Icons.local_fire_department_rounded);
+    final number = find.descendant(
+      of: find.ancestor(of: flame, matching: find.byType(Row)).first,
+      matching: find.byType(RollingNumber),
+    );
+    final at = tester.getTopLeft(flame);
+    final kept = tester.element(number);
+
+    state.showDay(DateTime(2026, 11, 2));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.element(number), same(kept), reason: 'the same pill, so its number rolls');
+    expect(tester.widget<RollingNumber>(number).value, 2);
+    final fade = tester.widget<FadeTransition>(find.ancestor(of: flame, matching: find.byType(FadeTransition)).first);
+    expect(fade.opacity.value, 1, reason: 'the pill itself never fades');
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(flame), at);
+    store.close();
+  });
+
+  testWidgets('only the day\'s name or date is in full ink, not its weekday', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    final state = AppState(store, clock: () => DateTime(2026, 11, 6, 10));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    Map<String, Color?> heading(String ends) {
+      final text = tester.widget<RichText>(
+        find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText().endsWith(ends)).first,
+      );
+      final colours = <String, Color?>{};
+      text.text.visitChildren((span) {
+        if (span is TextSpan && span.text != null) colours[span.text!] = span.style?.color;
+        return true;
+      });
+      return colours;
+    }
+
+    state.showDay(DateTime(2026, 11, 5));
+    await tester.pumpAndSettle();
+    final yesterday = heading('Thursday');
+    final ink = yesterday['Yesterday'], grey = yesterday['5 Nov'];
+    expect(grey, isNot(ink));
+    expect(yesterday['Thursday'], grey);
+    state.showDay(DateTime(2026, 11, 4));
+    await tester.pumpAndSettle();
+    expect(heading('Wednesday')['4 Nov'], ink);
+    expect(heading('Wednesday')['Wednesday'], grey);
     store.close();
   });
 }

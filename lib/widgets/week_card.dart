@@ -395,7 +395,7 @@ class _DayHeading extends StatelessWidget {
   final int open;
   final bool any;
 
-  /// All in full ink: today's.
+  /// Larger: the day being looked at.
   final bool strong;
 
   /// The first in its list, with less room above.
@@ -427,7 +427,7 @@ class _DayHeading extends StatelessWidget {
                           ),
                         TextSpan(
                           text: part,
-                          style: TextStyle(color: strong || full ? p.ink : p.inkMuted),
+                          style: TextStyle(color: full ? p.ink : p.inkMuted),
                         ),
                       ],
                     ],

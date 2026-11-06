@@ -9,13 +9,20 @@ import '../theme/app_theme.dart';
 /// lost at the front widens or narrows its slot smoothly, so whatever sits
 /// beside the number glides rather than jumps.
 class RollingNumber extends StatefulWidget {
-  const RollingNumber({super.key, required this.value, required this.style, this.digits = 1});
+  const RollingNumber({
+    super.key,
+    required this.value,
+    required this.style,
+    this.digits = 1,
+    this.duration = Motion.morph,
+  });
 
   final int value;
   final TextStyle style;
 
   /// At least this many digits, leading zeros filling the rest.
   final int digits;
+  final Duration duration;
 
   @override
   State<RollingNumber> createState() => _RollingNumberState();
@@ -53,6 +60,7 @@ class _RollingNumberState extends State<RollingNumber> {
               key: ValueKey(place),
               digit: place < digits.length ? digits[digits.length - 1 - place] : '',
               direction: _direction,
+              duration: widget.duration,
               style: style,
             ),
         ],
@@ -62,23 +70,24 @@ class _RollingNumberState extends State<RollingNumber> {
 }
 
 class _Digit extends StatelessWidget {
-  const _Digit({super.key, required this.digit, required this.direction, required this.style});
+  const _Digit({super.key, required this.digit, required this.direction, required this.duration, required this.style});
 
   /// Empty for a leading slot the number no longer reaches.
   final String digit;
   final int direction;
+  final Duration duration;
   final TextStyle style;
 
   @override
   Widget build(BuildContext context) {
     final current = ValueKey(digit);
     return AnimatedSize(
-      duration: Motion.morph,
+      duration: duration,
       curve: Motion.morphCurve,
       alignment: Alignment.centerRight,
       clipBehavior: Clip.none,
       child: AnimatedSwitcher(
-        duration: Motion.morph,
+        duration: duration,
         switchInCurve: Motion.morphCurve,
         switchOutCurve: Motion.morphCurve,
         // Only the incoming digit sizes the slot; the outgoing one rolls

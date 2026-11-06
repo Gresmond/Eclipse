@@ -34,6 +34,10 @@ mixin _Habits on ChangeNotifier {
   /// (current, best) streak by ritual id, until a mark or the day changes.
   final _streaks = LruCache<int, (int, int)>(256);
 
+  /// Past days' streaks, by what they depend on, so an old key is simply
+  /// never asked for again.
+  final _pastStreaks = LruCache<(int, DateTime, int, int, bool, List<Holiday>), (int, int)>(256);
+
   /// The days behind each ritual's week trail, by ritual and day, until its days change.
   final _trails = LruCache<(int, DateTime), List<DateTime>>(256);
 
@@ -272,6 +276,18 @@ mixin _Habits on ChangeNotifier {
   int currentStreak(Habit h) => _streaksOf(h).$1;
 
   int bestStreak(Habit h) => _streaksOf(h).$2;
+
+  /// A ritual's current and best streak as they stood at the end of [day];
+  /// on today, as they stand now.
+  (int, int) streaksOn(Habit h, DateTime day) => day == today
+      ? _streaksOf(h)
+      : _pastStreaks[(h.id, day, entriesRevision, habitsRevision, restWeekends, holidays)] ??= store.streaks(
+          h.id,
+          day,
+          restWeekends: restWeekends,
+          holidays: holidays,
+          dayOver: true,
+        );
 
   (int, int) _streaksOf(Habit h) =>
       _streaks[h.id] ??= store.streaks(h.id, today, restWeekends: restWeekends, holidays: holidays);
