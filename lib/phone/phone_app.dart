@@ -292,9 +292,9 @@ class _TodayPage extends StatelessWidget {
               ),
               if (updater case final updater?) _UpdateCard(updater: updater),
               const SizedBox(height: 16),
-              _MarksCard(title: 'Daily rituals', habits: state.habits, rest: rest),
+              _MarksCard(title: 'RITUALS', habits: state.habits, rest: rest),
               const SizedBox(height: 12),
-              _MarksCard(title: 'Sleep schedule', habits: state.sleepHabits, rest: rest),
+              _MarksCard(title: 'SLEEP', habits: state.sleepHabits, rest: rest),
               const SizedBox(height: 12),
               const _TasksCard(),
             ],
@@ -356,7 +356,11 @@ class _MarksCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TileHeader(title: title, caption: rest ? 'Rest day' : '$done of ${habits.length}'),
+          TileHeader(
+            title: title,
+            titleStyle: capsLabel(context.palette.inkMuted),
+            caption: rest ? 'Rest day' : '$done of ${habits.length}',
+          ),
           const SizedBox(height: 8),
           for (final h in habits) _MarkRow(habit: h),
         ],
@@ -437,7 +441,8 @@ class _TasksCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TileHeader(
-            title: 'Today',
+            title: 'TODAY',
+            titleStyle: capsLabel(p.inkMuted),
             caption: switch (tasks.where((t) => !t.done).length) {
               0 => null,
               final open => '$open to do',

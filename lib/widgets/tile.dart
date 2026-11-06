@@ -114,9 +114,13 @@ class TileHeader extends StatelessWidget {
     this.badge,
     this.trailing,
     this.trailingAtEnd = false,
+    this.titleStyle,
   });
 
   final String title;
+
+  /// In place of the usual Greed heading.
+  final TextStyle? titleStyle;
   final String? caption;
   final Widget? badge;
   final Widget? trailing;
@@ -156,7 +160,7 @@ class TileHeader extends StatelessWidget {
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: _titleStyle.copyWith(color: p.ink),
+          style: titleStyle ?? _titleStyle.copyWith(color: p.ink),
         ),
       ),
       if (caption != null || badge != null || (trailing != null && !trailingAtEnd)) const SizedBox(width: 8),
