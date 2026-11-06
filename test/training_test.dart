@@ -6,6 +6,7 @@ import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
+import 'package:eclipse/screens/shell.dart';
 import 'package:eclipse/training.dart';
 import 'package:eclipse/training_log.dart';
 
@@ -99,11 +100,13 @@ void main() {
     late AppState state;
 
     setUp(() {
+      pageButtonsEnabled = true;
       store = Store.memory();
       state = AppState(store, clock: () => today);
       state.endTour();
     });
     tearDown(() {
+      pageButtonsEnabled = false;
       state.dispose();
       store.close();
     });
@@ -116,16 +119,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the corner turns to Training and back', (tester) async {
+    testWidgets('the button opens Training and, clicked again, goes back', (tester) async {
       for (var w = 8; w >= 1; w--) {
         _logExample(state.training, today.subtract(Duration(days: w * 7)), (8 - w) * 1.5);
       }
       await show(tester);
       await tester.tap(find.byTooltip('Training'));
-      await tester.pump();
-      for (final ms in [200, 140, 140]) {
-        await tester.pump(Duration(milliseconds: ms));
-      }
       await tester.pumpAndSettle();
       expect(state.showingTraining, isTrue);
       expect(find.text('Estimated one-rep max'), findsOneWidget);
@@ -133,7 +132,7 @@ void main() {
       state.training.setAxis(TrainingAxis.change);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Back'));
+      await tester.tap(find.byTooltip('Training'));
       await tester.pumpAndSettle();
       expect(state.showingTraining, isFalse);
       expect(tester.takeException(), isNull);

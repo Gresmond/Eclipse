@@ -302,6 +302,21 @@ mixin _Todos on ChangeNotifier {
     return null;
   }
 
+  /// The days from [from] to [to] that [repeat] comes round on and hasn't
+  /// made a to-do for: one made is listed itself, wherever it's moved to,
+  /// and one taken away stays away.
+  List<DateTime> unmadeOccurrences(Repeat repeat, DateTime from, DateTime to) {
+    final made = _madeFrom(repeat, today);
+    return [
+      for (
+        var day = repeat.next(from);
+        day != null && !day.isAfter(to);
+        day = repeat.next(DateTime(day.year, day.month, day.day + 1))
+      )
+        if (!made.contains('${repeat.uid}@${dateKey(day)}')) day,
+    ];
+  }
+
   /// [repeat]'s to-do for [day], made now so it can be changed on its own.
   TodoItem occurrence(Repeat repeat, DateTime day) {
     final item = store.makeOccurrence(repeat, day);

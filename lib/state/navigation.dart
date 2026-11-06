@@ -24,23 +24,79 @@ mixin _Navigation on ChangeNotifier {
 
   /// The day the Today view shows.
   DateTime get shownDay => viewDay ?? today;
-  Object get navigation =>
-      (viewYear, viewMonth, viewingYear, viewDay, today, lateNight, dayStartHour, firstMonth, holidays);
+  Object get navigation => (
+    viewYear,
+    viewMonth,
+    viewingYear,
+    viewDay,
+    today,
+    lateNight,
+    dayStartHour,
+    firstMonth,
+    holidays,
+    showingTraining,
+    showingCalendar,
+    calendarMonth,
+  );
 
-  /// Gym training, every exercise's progress; the page under the corner.
+  /// Gym training, every exercise's progress.
   late final training = TrainingLog(store, notifyListeners);
 
-  /// The Training page is turned to, over whichever view was open.
+  /// The Training page is open, in place of whichever view was.
   bool showingTraining = false;
 
+  /// The calendar is open, in place of whichever view was.
+  bool showingCalendar = false;
+
+  /// The first of the month the calendar shows.
+  late DateTime calendarMonth = DateTime(today.year, today.month);
+
+  void _closePages() {
+    if (showingTraining) {
+      saveDrafts();
+      training.day = null;
+    }
+    showingTraining = false;
+    showingCalendar = false;
+  }
+
+  /// Back to the view that was open under Training or the calendar.
+  void closePages() {
+    _closePages();
+    notifyListeners();
+  }
+
   void toggleTraining() {
-    saveDrafts();
-    showingTraining = !showingTraining;
-    if (!showingTraining) training.day = null;
+    final open = !showingTraining;
+    _closePages();
+    showingTraining = open;
+    notifyListeners();
+  }
+
+  /// Opens on this month; closing goes back to the view it opened over.
+  void toggleCalendar() {
+    final open = !showingCalendar;
+    _closePages();
+    showingCalendar = open;
+    if (open) calendarMonth = DateTime(today.year, today.month);
+    notifyListeners();
+  }
+
+  /// Moves the calendar on or back, no earlier than the month you started.
+  void shiftCalendar(int months) {
+    final (y, m) = firstMonth;
+    final next = DateTime(calendarMonth.year, calendarMonth.month + months);
+    calendarMonth = next.isBefore(DateTime(y, m)) ? DateTime(y, m) : next;
+    notifyListeners();
+  }
+
+  void calendarToThisMonth() {
+    calendarMonth = DateTime(today.year, today.month);
     notifyListeners();
   }
 
   void showToday() {
+    _closePages();
     saveHabitDrafts();
     viewMonth = null;
     viewingYear = false;
@@ -51,6 +107,7 @@ mixin _Navigation on ChangeNotifier {
 
   /// Opens a past day's card in the Today view.
   void showDay(DateTime day) {
+    _closePages();
     saveHabitDrafts();
     viewMonth = null;
     viewingYear = false;
@@ -66,13 +123,13 @@ mixin _Navigation on ChangeNotifier {
   /// Opens [day] in the Today view (today's own for today or later), and
   /// lights [target] there.
   void showFound(DateTime day, String target) {
-    if (showingTraining) toggleTraining();
     found = (target: target, at: DateTime.now());
     showDay(day);
   }
 
   /// Opens the record of [viewYear]: every month's percentages at once.
   void showYear() {
+    _closePages();
     saveHabitDrafts();
     viewMonth = null;
     viewDay = null;
@@ -81,6 +138,7 @@ mixin _Navigation on ChangeNotifier {
   }
 
   void showMonth(int month) {
+    _closePages();
     saveHabitDrafts();
     viewMonth = month;
     viewingYear = false;

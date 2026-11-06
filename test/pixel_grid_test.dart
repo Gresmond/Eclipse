@@ -382,6 +382,7 @@ void main() {
       await settle();
 
       await scene('Year', () => tap(find.text('Year')));
+      await scene('Calendar', () async => state.toggleCalendar(), shows: 'MON');
       await scene('Training', () async => state.toggleTraining());
       await scene('Training, group menu', () {
         return tap(find.byWidgetPredicate((w) => '${w.runtimeType}' == '_GroupPill'));

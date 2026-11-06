@@ -34,9 +34,6 @@ abstract final class Motion {
   static const scroll = Duration(milliseconds: 120);
   static const page = Duration(milliseconds: 320);
 
-  /// The Training page's corner turning over: a whole page, handled slowly.
-  static const turn = Duration(milliseconds: 680);
-
   /// The light on a task found by search: up, held, then away on
   /// [glowFadeCurve]; [glowBrief] on a task whose subtask was found, and
   /// the subtask's own after [glowDelay], once its task's has gone. One

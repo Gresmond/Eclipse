@@ -15,12 +15,12 @@ import '../widgets/setting_rows.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/backup_card.dart';
+import '../widgets/todo_panel.dart' show CalendarView;
 import '../widgets/day_picker.dart';
 import '../widgets/fade_menu.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
-import '../widgets/page_turn.dart';
 import '../widgets/reminder_cards.dart';
 import '../widgets/smooth_gradient.dart';
 import '../widgets/sync_banner.dart';
@@ -31,6 +31,10 @@ import 'today_view.dart';
 import 'warm_up.dart';
 import 'training_view.dart';
 import 'year_view.dart';
+
+/// Whether the header offers the Calendar and Training buttons, the only ways
+/// to those pages. Both are built and tested; set this true to bring them back.
+bool pageButtonsEnabled = false;
 
 /// The corner cards over the window and its dialogs: sync, an update and
 /// reminders, stacked above the undo card.
@@ -72,7 +76,7 @@ class Shell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.navigation, s.touring, s.showingTraining));
+    final state = AppScope.watch(context, (s) => (s.navigation, s.touring));
     final month = state.viewMonth;
 
     final page = Column(
@@ -86,7 +90,11 @@ class Shell extends StatelessWidget {
           child: FadeThrough(
             deferBuild: true,
             layoutBuilder: FadeThrough.fill,
-            child: state.viewingYear
+            child: state.showingCalendar
+                ? const CalendarView(key: ValueKey('calendar'))
+                : state.showingTraining
+                ? const TrainingView(key: ValueKey('training'))
+                : state.viewingYear
                 ? YearView(key: ValueKey('year ${state.viewYear}'), year: state.viewYear)
                 : month == null
                 ? const TodayView(key: ValueKey('today'))
@@ -100,13 +108,7 @@ class Shell extends StatelessWidget {
       body: Stack(
         children: [
           Positioned.fill(
-            child: PageTurn(
-              turned: state.showingTraining,
-              onTurn: state.toggleTraining,
-              tooltip: state.showingTraining ? 'Back' : 'Training',
-              front: ColoredBox(color: context.palette.background, child: page),
-              back: const TrainingView(),
-            ),
+            child: ColoredBox(color: context.palette.background, child: page),
           ),
           if (WarmUp.enabled) const Positioned.fill(child: WarmUp()),
           if (state.touring) Positioned.fill(child: WelcomeTour(appearanceBuilder: (_) => const _AppearanceMenu())),
@@ -137,7 +139,15 @@ class _Header extends StatelessWidget {
       final h? when state.viewDay == null => '  ·  on holiday until ${shortDay(h.end, today: today)}',
       _ => '',
     };
-    final (String kicker, String title) = state.viewingYear
+    // Training and the calendar open over the view you were on.
+    final elsewhere = state.showingTraining || state.showingCalendar;
+    final onDay = month == null && !state.viewingYear && !elsewhere;
+    final calendar = state.calendarMonth;
+    final (String kicker, String title) = state.showingCalendar
+        ? ('${calendar.year}', monthNames[calendar.month - 1])
+        : state.showingTraining
+        ? ('Progress', 'Training')
+        : state.viewingYear
         ? ('${state.viewYear == today.year ? 'Year to date' : 'The whole year'}$holiday', '${state.viewYear}')
         : month == null
         ? (
@@ -167,7 +177,7 @@ class _Header extends StatelessWidget {
           TourTarget(
             spot: TourSpot.date,
             child: _DateButton(
-              enabled: month == null && !state.viewingYear,
+              enabled: onDay,
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 // A longer date's room opens before it fades in, and a shorter
@@ -182,7 +192,7 @@ class _Header extends StatelessWidget {
                     // cannot remount the pill's size or fade animations.
                     child: PixelTooltip(
                       key: ValueKey((kicker, title)),
-                      message: month == null && !state.viewingYear ? 'Look back at another day' : '',
+                      message: onDay ? 'Look back at another day' : '',
                       child: PixelFit(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,63 +210,76 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
-          // Takes all the free space (a Spacer beside a Flexible would halve
-          // it), right-aligned, scrolling only when the window is too narrow.
+          // Takes all the free space, right-aligned.
           Expanded(
             child: Align(
               alignment: Alignment.centerRight,
-              child: TourTarget(
-                spot: TourSpot.tabs,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: p.tile.withValues(alpha: 0.8),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: p.border),
-                  ),
-                  // Straight: a rounded clip's edge is jagged under Impeller, and
-                  // would cut the tab pill's end at this end of the bar.
-                  child: ClipRect(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      clipBehavior: Clip.none,
-                      child: _TabBar(
-                        selected: state.viewDay != null
-                            ? -1
-                            : state.viewingYear
-                            ? months.length + 1
-                            : month == null
-                            ? 0
-                            : months.indexOf(month) + 1,
-                        past: state.viewDay == null
-                            ? null
-                            : shown == DateTime(today.year, today.month, today.day - 1)
-                            ? 'Yesterday'
-                            : dayAndMonth(shown, today: today),
-                        tabs: [
-                          _Tab(
-                            label: 'Today',
-                            selected: month == null && !state.viewingYear && state.viewDay == null,
-                            onTap: state.showToday,
-                          ),
-                          for (final m in months)
-                            _Tab(
-                              label: shortMonth(m),
-                              selected: month == m,
-                              isCurrent: state.viewYear == today.year && m == today.month,
-                              onTap: () => state.showMonth(m),
-                            ),
-                          _Tab(label: 'Year', selected: state.viewingYear, onTap: state.showYear),
-                        ],
+              // Scrolling only when the window is too narrow. Straight: a rounded
+              // clip's edge is jagged under Impeller.
+              child: ClipRect(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  clipBehavior: Clip.none,
+                  child: PixelRow(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _Fold(
+                        shown: state.showingCalendar,
+                        child: const Padding(padding: EdgeInsets.only(right: 10), child: _MonthSwitcher()),
                       ),
-                    ),
+                      if (pageButtonsEnabled) ...[const _PageButtons(), const SizedBox(width: 10)],
+                      TourTarget(
+                        spot: TourSpot.tabs,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: p.tile.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: p.border),
+                          ),
+                          child: _TabBar(
+                            selected: elsewhere
+                                ? null
+                                : state.viewDay != null
+                                ? -1
+                                : state.viewingYear
+                                ? months.length + 1
+                                : month == null
+                                ? 0
+                                : months.indexOf(month) + 1,
+                            past: state.viewDay == null
+                                ? null
+                                : shown == DateTime(today.year, today.month, today.day - 1)
+                                ? 'Yesterday'
+                                : dayAndMonth(shown, today: today),
+                            onPast: elsewhere ? state.closePages : null,
+                            tabs: [
+                              _Tab(label: 'Today', selected: onDay && state.viewDay == null, onTap: state.showToday),
+                              for (final m in months)
+                                _Tab(
+                                  label: shortMonth(m),
+                                  selected: !elsewhere && month == m,
+                                  isCurrent: state.viewYear == today.year && m == today.month,
+                                  onTap: () => state.showMonth(m),
+                                ),
+                              _Tab(label: 'Year', selected: !elsewhere && state.viewingYear, onTap: state.showYear),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 14),
-          _YearSwitcher(year: state.viewYear),
+          _Fold(
+            shown: !elsewhere,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 14),
+              child: _YearSwitcher(year: state.viewYear),
+            ),
+          ),
           const SizedBox(width: 10),
           const TourTarget(spot: TourSpot.settings, child: _SettingsButton()),
           const SizedBox(width: 10),
@@ -301,19 +324,203 @@ class _DateButton extends StatelessWidget {
   );
 }
 
+/// [child] easing open sideways as it fades in, and closed as it fades out,
+/// so what's beside it slides over.
+class _Fold extends StatelessWidget {
+  const _Fold({required this.shown, required this.child});
+
+  final bool shown;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    tween: Tween(end: shown ? 1 : 0),
+    duration: Motion.morph,
+    curve: Motion.morphCurve,
+    child: child,
+    // Closed, it's not there at all.
+    builder: (context, t, child) => !shown && t == 0
+        ? const SizedBox.shrink()
+        : IgnorePointer(
+            ignoring: !shown,
+            child: ClipRect(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                widthFactor: t,
+                child: Opacity(opacity: t, child: child),
+              ),
+            ),
+          ),
+  );
+}
+
+/// Calendar and Training: their own pill, left of the tabs, each opening
+/// over the view you're on and, clicked again, going back to it.
+class _PageButtons extends StatefulWidget {
+  const _PageButtons();
+
+  @override
+  State<_PageButtons> createState() => _PageButtonsState();
+}
+
+class _PageButtonsState extends State<_PageButtons> {
+  final _calendar = GlobalKey(), _training = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final state = AppScope.watch(context, (s) => (s.showingCalendar, s.showingTraining));
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: p.tile.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: p.border),
+      ),
+      child: GlidePill(
+        target: state.showingCalendar
+            ? _calendar
+            : state.showingTraining
+            ? _training
+            : null,
+        color: p.done,
+        child: Row(
+          children: [
+            KeyedSubtree(
+              key: _calendar,
+              child: _IconTab(
+                icon: Icons.calendar_month_rounded,
+                tooltip: 'Calendar',
+                selected: state.showingCalendar,
+                onTap: state.toggleCalendar,
+              ),
+            ),
+            const SizedBox(width: 2),
+            KeyedSubtree(
+              key: _training,
+              child: _IconTab(
+                icon: Icons.fitness_center_rounded,
+                tooltip: 'Training',
+                selected: state.showingTraining,
+                onTap: state.toggleTraining,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A [_Tab] with an icon for its label, the same height.
+class _IconTab extends StatelessWidget {
+  const _IconTab({required this.icon, required this.tooltip, required this.selected, required this.onTap});
+
+  final IconData icon;
+  final String tooltip;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return PixelTooltip(
+      message: tooltip,
+      child: Hoverable(
+        onTap: onTap,
+        builder: (hover) => AnimatedContainer(
+          duration: context.themed(Motion.hover),
+          curve: Motion.hoverCurve,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            color: !selected && hover ? p.empty : p.empty.withValues(alpha: 0),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Nothing to see: holds a tab's text height, at any text size.
+              Text('\u200b', style: _Tab._style(FontWeight.w600, p.ink)),
+              TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: selected ? p.onAccent : p.ink),
+                duration: context.themed(Motion.morph),
+                curve: Motion.morphCurve,
+                builder: (context, colour, _) => Icon(icon, size: Scale.navIcon, color: colour),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The month the calendar shows: back to the month you started, on without
+/// end, and a way home once you've left this month.
+class _MonthSwitcher extends StatelessWidget {
+  const _MonthSwitcher();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final state = AppScope.watch(context, (s) => (s.calendarMonth, s.today, s.firstMonth));
+    final shown = state.calendarMonth;
+    final (y, m) = state.firstMonth;
+    final away = shown != DateTime(state.today.year, state.today.month);
+    Widget arrow(String message, IconData icon, int by, {required bool enabled}) => PixelTooltip(
+      message: message,
+      child: IconButton(
+        iconSize: Scale.navIcon,
+        // 40 tall, so the pill matches the tabs and the round buttons.
+        visualDensity: VisualDensity.compact,
+        color: p.inkMuted,
+        disabledColor: p.inkMuted.withValues(alpha: 0.35),
+        onPressed: enabled ? () => state.shiftCalendar(by) : null,
+        icon: Icon(icon),
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: p.tile.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: p.border),
+      ),
+      child: PixelRow(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          arrow('Previous month', Icons.chevron_left_rounded, -1, enabled: shown.isAfter(DateTime(y, m))),
+          arrow('Next month', Icons.chevron_right_rounded, 1, enabled: true),
+          _Fold(
+            shown: away,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 2),
+              child: _Tab(label: 'This month', selected: false, onTap: state.calendarToThisMonth),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The tabs in a row, with one highlight pill that glides to the selected
 /// tab instead of each tab lighting up on its own.
 class _TabBar extends StatefulWidget {
-  const _TabBar({required this.tabs, required this.selected, this.past});
+  const _TabBar({required this.tabs, required this.selected, this.past, this.onPast});
 
   /// Today first, then the months shown, then the year.
   final List<Widget> tabs;
 
-  /// Index into [tabs], or -1 for the [past] day's tab.
-  final int selected;
+  /// Index into [tabs], or -1 for the [past] day's tab; null for none, while
+  /// another page is open.
+  final int? selected;
 
   /// The past day being looked at, which opens a tab left of Today.
   final String? past;
+
+  /// Clicking the [past] day's tab, which otherwise only shows where you are.
+  final VoidCallback? onPast;
 
   @override
   State<_TabBar> createState() => _TabBarState();
@@ -385,8 +592,13 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
 
   Widget _bar(Palette p, Widget divider) {
     final labelWidth = _labelWidth;
+    final selected = widget.selected;
     return GlidePill(
-      target: widget.selected < 0 ? _pastKey : _key(widget.selected),
+      target: selected == null
+          ? null
+          : selected < 0
+          ? _pastKey
+          : _key(selected),
       color: p.done,
       child: Row(
         children: [
@@ -411,8 +623,8 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
                         key: _pastKey,
                         child: _Tab(
                           label: _pastLabel!,
-                          selected: widget.selected < 0,
-                          onTap: null,
+                          selected: selected != null && selected < 0,
+                          onTap: widget.onPast,
                           labelWidth: labelWidth,
                         ),
                       ),

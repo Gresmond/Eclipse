@@ -11,7 +11,8 @@ import '../theme/app_theme.dart';
 /// exactly on its tab, however that tab moves or resizes (a window resize,
 /// a label easing to a new width, a tab unfolding). Only a change of
 /// [target] glides, over [Motion.morph]; a switch mid-glide sets off from
-/// wherever the pill had got to.
+/// wherever the pill had got to. Going to or from no target, it fades where
+/// it stands.
 class GlidePill extends StatefulWidget {
   const GlidePill({super.key, required this.target, required this.color, required this.child});
 
@@ -24,7 +25,7 @@ class GlidePill extends StatefulWidget {
   State<GlidePill> createState() => _GlidePillState();
 }
 
-class _GlidePillState extends State<GlidePill> with SingleTickerProviderStateMixin {
+class _GlidePillState extends State<GlidePill> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) =>
       _GlidePillBox(target: widget.target, color: widget.color, vsync: this, child: widget.child);
@@ -48,11 +49,13 @@ class _GlidePillBox extends SingleChildRenderObjectWidget {
 
 class RenderGlidePill extends RenderProxyBox {
   RenderGlidePill(this._target, this._color, TickerProvider vsync)
-    : _glide = AnimationController(vsync: vsync, duration: Motion.morph, value: 1) {
+    : _glide = AnimationController(vsync: vsync, duration: Motion.morph, value: 1),
+      _presence = AnimationController(vsync: vsync, duration: Motion.morph, value: _target == null ? 0 : 1) {
     _glide.addListener(markNeedsPaint);
+    _presence.addListener(markNeedsPaint);
   }
 
-  final AnimationController _glide;
+  final AnimationController _glide, _presence;
 
   /// Where the pill was last painted, and where a glide set off from.
   Rect? _shown, _from;
@@ -60,9 +63,18 @@ class RenderGlidePill extends RenderProxyBox {
   GlobalKey? _target;
   set target(GlobalKey? value) {
     if (value == _target) return;
+    final had = _target != null;
     _target = value;
-    _from = _shown;
-    if (_from != null) _glide.forward(from: 0);
+    if (value == null) {
+      _presence.reverse();
+    } else if (had) {
+      _from = _shown;
+      if (_from != null) _glide.forward(from: 0);
+    } else {
+      _from = null;
+      _glide.value = 1;
+      _presence.forward();
+    }
     markNeedsPaint();
   }
 
@@ -86,6 +98,7 @@ class RenderGlidePill extends RenderProxyBox {
   @override
   void dispose() {
     _glide.dispose();
+    _presence.dispose();
     super.dispose();
   }
 
@@ -94,7 +107,7 @@ class RenderGlidePill extends RenderProxyBox {
     final to = _targetRect();
     final from = _from;
     final rect = to == null
-        ? null
+        ? (_target == null && _presence.value > 0 ? _shown : null)
         : from == null || _glide.isCompleted
         ? to
         : Rect.lerp(from, to, Motion.morphCurve.transform(_glide.value))!;
@@ -105,7 +118,7 @@ class RenderGlidePill extends RenderProxyBox {
       // paths without anti-aliasing, but rounded rects smoothly.
       context.canvas.drawRRect(
         RRect.fromRectAndRadius(rect.shift(offset), Radius.circular(rect.shortestSide / 2)),
-        Paint()..color = _color,
+        Paint()..color = _color.withValues(alpha: _color.a * _presence.value),
       );
     }
     super.paint(context, offset);

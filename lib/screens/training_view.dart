@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -21,41 +20,29 @@ import '../widgets/note_input.dart';
 part 'training/session.dart';
 part 'training/chart.dart';
 
-/// The page under the corner: every exercise's estimated 1RM over time,
+/// Gym training: every exercise's estimated 1RM over time,
 /// and the sessions that make it.
 class TrainingView extends StatelessWidget {
   const TrainingView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
-    return ColoredBox(
-      color: p.background,
-      child: Column(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
+      child: PixelColumn(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _Header(),
+        children: const [
+          Expanded(flex: 11, child: _ChartTile()),
+          SizedBox(height: 20),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
-              child: PixelColumn(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: const [
-                  Expanded(flex: 11, child: _ChartTile()),
-                  SizedBox(height: 20),
-                  Expanded(
-                    flex: 9,
-                    child: PixelRow(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(flex: 3, child: _SessionTile()),
-                        SizedBox(width: 20),
-                        Expanded(flex: 2, child: _HistoryTile()),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            flex: 9,
+            child: PixelRow(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 3, child: _SessionTile()),
+                SizedBox(width: 20),
+                Expanded(flex: 2, child: _HistoryTile()),
+              ],
             ),
           ),
         ],
@@ -89,43 +76,6 @@ String _shortDate(DateTime d) => '${d.day} ${monthNames[d.month - 1].substring(0
 
 TextStyle _label(Palette p, {double size = 14, FontWeight weight = FontWeight.w500, Color? color}) =>
     TextStyle(fontFamily: Fonts.ui, fontSize: size, fontWeight: weight, color: color ?? p.ink, height: 1.25);
-
-class _Header extends StatelessWidget {
-  const _Header();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(32, Platform.isMacOS ? 27 : 15, 32, 11),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('PROGRESS', style: capsLabel(p.inkMuted)),
-              const SizedBox(height: 4),
-              Text(
-                'Training',
-                style: TextStyle(
-                  fontFamily: Fonts.display,
-                  fontSize: 38,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.6,
-                  height: 1.05,
-                  color: p.ink,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-        ],
-      ),
-    );
-  }
-}
 
 // History
 
