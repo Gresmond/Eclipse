@@ -508,10 +508,10 @@ class _HabitRow extends StatelessWidget {
   }
 }
 
-/// A ritual's streak as of [day]. Another day's count rolls in the same
-/// pill; a new count on the same day fades through quickly with a slight pop.
-/// None at all (a dash) has no pill, which fades through as well: with the
-/// rest of the page, on another day.
+/// A ritual's streak as of [day]. A new count, on this day or another, rolls
+/// in the same pill. None at all (a dash) has no pill, so the pill fades
+/// through to or from it: quickly with a slight pop on the same day, and with
+/// the rest of the page on another.
 class _StreakBadge extends StatefulWidget {
   const _StreakBadge({required this.day, required this.streak, required this.best});
 
@@ -529,18 +529,10 @@ class _StreakBadgeState extends State<_StreakBadge> {
   /// would jump.
   var _withDay = false;
 
-  /// New pills from counts changed on one day; another day's keeps its pill.
-  var _pill = 0;
-
   @override
   void didUpdateWidget(_StreakBadge old) {
     super.didUpdateWidget(old);
-    if (old.streak == widget.streak) return;
-    final newDay = old.day != widget.day;
-    final both = old.streak > 0 && widget.streak > 0;
-    if (both && newDay) return;
-    _withDay = newDay;
-    if (both) _pill++;
+    if ((old.streak == 0) != (widget.streak == 0)) _withDay = old.day != widget.day;
   }
 
   @override
@@ -550,7 +542,7 @@ class _StreakBadgeState extends State<_StreakBadge> {
       duration: _withDay ? Motion.page : Motion.click,
       scaleFrom: _withDay ? 1.0 : 0.85,
       child: Tooltip(
-        key: streak == 0 ? const ValueKey(-1) : ValueKey(_pill),
+        key: ValueKey(streak == 0),
         message: streak == 0
             ? (best > 0 ? 'Best streak: $best days' : 'No streak yet')
             : '$streak day streak${best > streak ? '  ·  best $best' : ''}',

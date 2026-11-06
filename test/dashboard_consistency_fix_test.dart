@@ -288,6 +288,14 @@ void main() {
     expect(fade.opacity.value, 1, reason: 'the pill itself never fades');
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(flame), at);
+
+    state.showToday();
+    await tester.pumpAndSettle();
+    state.clear(DateTime(2026, 11, 5), habit);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(tester.element(number), same(kept), reason: 'a new count on the same day rolls too');
+    expect(tester.widget<RollingNumber>(number).value, 4);
     store.close();
   });
 
