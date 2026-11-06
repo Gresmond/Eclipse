@@ -200,8 +200,10 @@ class SyncService extends ChangeNotifier {
   /// first. If it throws, nothing is replaced.
   void Function()? beforeJoin;
 
-  /// Called once today's copy is in Drive, to remove the daily copies from
-  /// before they went there.
+  /// Whether a daily copy of the database has gone to Drive.
+  bool get hasDriveCopy => isOn && copiesToDrive && _config['copied'] is String;
+
+  /// Called once today's copy is in Drive.
   void Function()? afterDriveCopy;
 
   /// Called before joining with the journal days that were here, to remove

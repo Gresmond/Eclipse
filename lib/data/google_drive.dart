@@ -58,7 +58,7 @@ class DriveError implements Exception {
 /// swapped for the lasting sign-in. Stops waiting when [cancel] completes.
 Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
   if (googleClientId.startsWith('SET-ME') || googleClientSecret == 'SET-ME') {
-    throw const DriveError('Google sync is not configured for this build. Local data still works.');
+    throw const DriveError('Google sync is not configured for this build. Local data and backups still work.');
   }
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   try {

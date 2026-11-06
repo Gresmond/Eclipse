@@ -42,12 +42,6 @@ class _Drive implements SyncDrive {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// A daily copy as older versions saved them here.
-void saveDaily(Backups backups, Store store, String day) {
-  backups.dir.createSync(recursive: true);
-  store.saveCopy(p.join(backups.dir.path, 'productivity-$day.db'));
-}
-
 void main() {
   Directory temporary() {
     final temp = Directory.systemTemp.createTempSync('eclipse-recovery');
@@ -81,24 +75,31 @@ void main() {
   }
 
   group('the daily check', () {
-    test('good data passes today\'s check and saves nothing here', () {
+    test('a good copy is checked and saved, and the oldest dropped', () {
       final dir = temporary();
       final store = Store.open(database(dir));
       addTearDown(store.close);
-      final backups = Backups(Directory(p.join(dir.path, 'backups')));
-      backups.check(store);
-      expect(backups.list(), isEmpty);
+      final backups = Backups(Directory(p.join(dir.path, 'backups')), keep: 2);
+      for (final day in [1, 2, 3]) {
+        backups.daily(store, DateTime(2026, 11, day));
+      }
+      expect(backups.list().map((b) => b.day), [DateTime(2026, 11, 3), DateTime(2026, 11, 2)]);
+      expect(Backups.isHealthy(backups.list().first.file), isTrue);
     });
 
-    test('damaged data fails today\'s check', () {
+    test('damaged data makes no copy and drops none', () {
       final dir = temporary();
       final path = database(dir);
-      Store.open(path).close();
+      final backups = Backups(Directory(p.join(dir.path, 'backups')), keep: 1);
+      final good = Store.open(path);
+      backups.daily(good, DateTime(2026, 11, 1));
+      good.close();
       damage(path, lightly: true);
       final store = Store.open(path);
       addTearDown(store.close);
-      final backups = Backups(Directory(p.join(dir.path, 'backups')));
-      expect(() => backups.check(store), throwsA(isA<DataDamaged>()));
+      expect(store.isHealthy, isFalse);
+      expect(() => backups.daily(store, DateTime(2026, 11, 2)), throwsA(isA<DataDamaged>()));
+      expect(backups.list().map((b) => b.day), [DateTime(2026, 11, 1)]);
     });
 
     test('dropping the daily copies keeps the one-off ones', () {
@@ -106,8 +107,8 @@ void main() {
       final store = Store.open(database(dir));
       addTearDown(store.close);
       final backups = Backups(Directory(p.join(dir.path, 'backups')));
-      saveDaily(backups, store, '2026-11-01');
-      saveDaily(backups, store, '2026-11-02');
+      backups.daily(store, DateTime(2026, 11, 1));
+      backups.daily(store, DateTime(2026, 11, 2));
       backups.beforeJoining(store);
       backups.dropDaily();
       expect(backups.list().single.isBeforeJoin, isTrue);
@@ -128,12 +129,9 @@ void main() {
       final dir = temporary();
       final store = Store.open(database(dir));
       addTearDown(store.close);
-      // The copy before an update couldn't be made.
-      final failing = AppState(
-        store,
-        backups: Backups(Directory(p.join(dir.path, 'blocked')))..updateCopyFailed = true,
-        clock: () => DateTime(2026, 11, 4),
-      );
+      // A file where the backups folder should be: copies can't be saved.
+      final blocked = File(p.join(dir.path, 'blocked'))..writeAsStringSync('');
+      final failing = AppState(store, backups: Backups(Directory(blocked.path)), clock: () => DateTime(2026, 11, 4));
       addTearDown(failing.dispose);
       expect(failing.backupProblem, BackupProblem.failed);
 
@@ -208,7 +206,7 @@ void main() {
       path = database(dir);
       backups = Backups(Directory(p.join(dir.path, 'backups')));
       final store = Store.open(path);
-      saveDaily(backups, store, '2026-11-01');
+      backups.daily(store, DateTime(2026, 11, 1));
       store.close();
       copy = backups.list().single;
     });
@@ -357,7 +355,7 @@ void main() {
       store.flushToDisk();
       // A copy from before the edit, as the backup would be.
       final old = Backups(Directory(p.join(dir.path, 'older')));
-      saveDaily(old, store, '2026-11-01');
+      old.daily(store, DateTime(2026, 11, 1));
       store.setJournal('2026-11-03', 'Synced before the damage');
       await sync.run();
       sync.stop();

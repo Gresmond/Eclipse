@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'sqlite.dart' show OpenMode, sqlite3;
 
 import 'app_log.dart';
+import '../models.dart';
 import 'journal_files.dart';
 import 'safe_write.dart';
 import 'store.dart';
@@ -51,14 +52,15 @@ class DataDamaged implements Exception {
   const DataDamaged();
 }
 
-/// Copies of the database in one folder: whatever was there before the last
-/// restore, before joining sync and before the last update that changed its
-/// format. The daily copies go to Drive (see [SyncService]); the daily ones
-/// here are from before that, until the first has gone up.
+/// Daily copies of the database in one folder, newest [keep] kept, plus a
+/// copy of whatever was there before the last restore, before joining sync
+/// and before the last update that changed its format. Once they're in Drive
+/// too, the daily ones here can be turned off.
 class Backups {
-  Backups(this.dir);
+  Backups(this.dir, {this.keep = 30});
 
   final Directory dir;
+  final int keep;
 
   static final _daily = RegExp(r'^productivity-(\d{4})-(\d{2})-(\d{2})\.db$');
   static const _beforeRestore = 'before-restore.db';
@@ -67,6 +69,8 @@ class Backups {
 
   /// The copy before an update couldn't be made; the update went ahead.
   bool updateCopyFailed = false;
+
+  File _fileFor(DateTime day) => File(p.join(dir.path, 'productivity-${dateKey(day)}.db'));
 
   /// The copies saved before the last restore, joining sync and updating
   /// first, then newest day first.
@@ -96,7 +100,26 @@ class Backups {
     if (!store.isHealthy) throw const DataDamaged();
   }
 
-  /// Removes the daily copies from before they went to Drive.
+  /// Checks the database, then saves today's copy if there isn't one yet
+  /// and drops the oldest. Throws [DataDamaged] when the database fails its
+  /// check: nothing is saved over or dropped, as the older copies are the
+  /// way back.
+  void daily(Store store, DateTime today) {
+    check(store);
+    final file = _fileFor(today);
+    if (file.existsSync()) return;
+    dir.createSync(recursive: true);
+    store.saveCopy(file.path);
+    if (!isHealthy(file)) {
+      file.deleteSync();
+      throw StateError('Today’s copy failed its check');
+    }
+    for (final old in list().where((b) => b.day != null).skip(keep)) {
+      old.file.deleteSync();
+    }
+  }
+
+  /// Removes the daily copies, once they're in Drive instead.
   void dropDaily() {
     for (final old in list().where((b) => b.day != null)) {
       old.file.deleteSync();

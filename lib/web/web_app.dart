@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_state.dart';
 import '../data/app_log.dart';
@@ -61,6 +62,9 @@ Future<void> webMain({
   required Widget Function(AppState state, Updater? updater) app,
   required void Function(AppState state) watch,
 }) async {
+  // Right-click is Eclipse's own, as on the desktop: it marks things missed.
+  WidgetsFlutterBinding.ensureInitialized();
+  unawaited(BrowserContextMenu.disableContextMenu());
   runApp(const WebNotice(title: 'Eclipse', busy: true));
 
   // What it takes to let go of the data, as far as it's got.

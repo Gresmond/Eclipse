@@ -63,6 +63,6 @@ bash tool/build_web.sh --local
 python3 tool/serve_web.py
 ```
 
-Then open http://localhost:8765. `node --test test/web/` tests the sign-in functions.
+Then open http://localhost:8765. `node --test test/web/functions.test.mjs` tests the sign-in functions.
 
 It publishes with each release once these are set on GitHub: the repository variable `CLOUDFLARE_PROJECT`, and the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The Pages project needs the secrets `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, from a Web application client in Eclipse's Google Cloud project, and `COOKIE_KEY`, any long random text. Changing `COOKIE_KEY` signs everyone out.

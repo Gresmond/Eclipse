@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/backups.dart';
 import 'package:eclipse/data/copy_database.dart';
 import 'package:eclipse/data/google_drive.dart';
@@ -118,6 +120,41 @@ void main() {
     await after.turnOn(_account, join: true);
     expect(two.journal('2026-01-03'), 'Before signing out');
     after.stop();
+  });
+
+  test('daily copies stay here until turned off, which needs one in Drive', () async {
+    final home = Directory.systemTemp.createTempSync('eclipse-copies');
+    addTearDown(() => home.deleteSync(recursive: true));
+    final store = Store.memory();
+    addTearDown(store.close);
+    final backups = Backups(Directory('${home.path}/backups'));
+    final sync = _inBrowser(store, _Drive())..copiesToDrive = true;
+    var now = DateTime(2026, 11, 1);
+    final state = AppState(store, backups: backups, sync: sync, clock: () => now);
+    expect(backups.list().single.day, DateTime(2026, 11, 1), reason: 'signed out, they stay here');
+    expect(state.backupsInDrive, isFalse);
+
+    state.setKeepsBackupFiles(false);
+    now = DateTime(2026, 11, 2);
+    state.checkDate();
+    expect(backups.list(), hasLength(2), reason: 'off means nothing until Drive has one');
+    state.setKeepsBackupFiles(true);
+
+    await sync.look(_account);
+    await sync.turnOn(_account, join: false);
+    expect(state.backupsInDrive, isTrue);
+    expect(backups.list(), hasLength(2), reason: 'signing in alone removes nothing');
+
+    backups.beforeJoining(store);
+    state.setKeepsBackupFiles(false);
+    expect(backups.list().single.isBeforeJoin, isTrue, reason: 'the one-off copies stay');
+    now = DateTime(2026, 11, 3);
+    state.checkDate();
+    expect(backups.list(), hasLength(1), reason: 'none made while off');
+
+    state.setKeepsBackupFiles(true);
+    expect(backups.list().where((b) => b.day != null).single.day, DateTime(2026, 11, 3));
+    sync.stop();
   });
 
   test('copies here are dropped once one is in Drive, and only then', () async {

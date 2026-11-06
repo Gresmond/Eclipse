@@ -50,7 +50,9 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     sync?.onIncoming = _takeIncoming;
     sync?.beforeMerge = saveDrafts;
     sync?.beforeJoin = () => backups?.beforeJoining(store);
-    sync?.afterDriveCopy = () => backups?.dropDaily();
+    sync?.afterDriveCopy = () {
+      if (!savesBackupFiles) backups?.dropDaily();
+    };
     sync?.addListener(_checkJournalFiles);
     sync?.onClear = (days) {
       for (final day in days) {
@@ -65,7 +67,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     // added to your history.
     firstRun = store.isEmpty && !(sync?.isOn ?? false);
     if (firstRun) _seed();
-    _checkData();
+    _backUp();
     _savesFiles = savesJournalFiles;
     _initialExport = _exportJournal().then((_) => _savesFiles ? _rewriteStaleJournal() : null);
     _load();
@@ -250,7 +252,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     _forgetRemovals();
     _previewHabits.clear();
     _streaks.clear();
-    _checkData();
+    _backUp();
     _startDay();
     notifyListeners();
   }
@@ -258,11 +260,33 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   /// What went wrong with the last backup; null when all is well.
   BackupProblem? backupProblem;
 
-  /// Today's check, before anything changes today. It must never stop the
-  /// app opening.
-  void _checkData() {
+  /// A daily copy is in Drive, so the ones on this computer can be turned off.
+  bool get backupsInDrive => sync?.hasDriveCopy ?? false;
+
+  /// Turned off on this computer only. Back on by itself whenever Drive isn't
+  /// getting the copies, so there's always somewhere they go.
+  late bool keepsBackupFiles = store.setting('backupFiles') != '0';
+
+  bool get savesBackupFiles => keepsBackupFiles || !backupsInDrive;
+
+  /// Turning them off removes the daily copies here.
+  void setKeepsBackupFiles(bool keep) {
+    keepsBackupFiles = keep;
+    store.setSetting('backupFiles', keep ? '1' : '0');
+    _backUp();
+    if (!savesBackupFiles) backups?.dropDaily();
+    notifyListeners();
+  }
+
+  /// Today's check and copy, taken before anything changes today. A failed
+  /// backup must never stop the app opening.
+  void _backUp() {
     try {
-      backups?.check(store);
+      if (savesBackupFiles) {
+        backups?.daily(store, today);
+      } else {
+        backups?.check(store);
+      }
       backupProblem = backups?.updateCopyFailed ?? false ? BackupProblem.failed : null;
     } on DataDamaged {
       backupProblem = BackupProblem.damaged;
@@ -375,7 +399,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
       notifyListeners();
       rethrow;
     }
-    _checkData();
+    _backUp();
     // The journal's files follow: the restored entries written out, and
     // the files of days the copy has no entry for removed.
     final after = {for (final e in store.journalEntries()) e.day: e.text};

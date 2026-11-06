@@ -495,10 +495,7 @@ void main() {
       final home = Directory.systemTemp.createTempSync('eclipse-pixels');
       final store = Store.memory();
       final backups = Backups(Directory('${home.path}/backups'));
-      await t.runAsync(() async {
-        backups.dir.createSync(recursive: true);
-        store.saveCopy('${backups.dir.path}/productivity-2026-11-04.db');
-      });
+      await t.runAsync(() async => backups.daily(store, DateTime(2026, 11, 4)));
       final state = AppState(store, backups: backups, clock: () => DateTime(2026, 11, 5, 10));
       await t.pumpWidget(EclipseApp(state: state));
       await settle();

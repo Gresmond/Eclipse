@@ -62,7 +62,7 @@ jobs:
           flutter-version: 3.47.8
           cache: true
       - name: Test the sign-in functions
-        run: node --test test/web/
+        run: node --test test/web/functions.test.mjs
       - name: Build
         run: |
           cp lib/data/google_client.example.dart lib/data/google_client.dart

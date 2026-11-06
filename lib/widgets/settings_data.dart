@@ -79,11 +79,31 @@ extension on _SettingsDialogState {
         ),
         const SizedBox(height: 6),
         Text(
-          sync?.isOn ?? false
-              ? 'A copy of everything is saved to your Google Drive each day you use the app, and the last 30 are kept.'
-              : 'Sign in to Google to save a copy of everything to your Drive each day you use the app.',
+          !(sync?.isOn ?? false)
+              ? 'A copy of everything is saved each day you use the app, and the last 30 are kept.'
+              : state.backups != null && state.savesBackupFiles
+              ? 'A copy of everything is saved here and in your Google Drive each day you use the app, and the last 30 of each are kept.'
+              : 'A copy of everything is saved to your Google Drive each day you use the app, and the last 30 are kept.',
           style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.45, color: p.inkMuted),
         ),
+        if (state.backups != null && state.backupsInDrive) ...[
+          const SizedBox(height: 10),
+          DecoratedBox(
+            decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: SettingSwitchRow(
+                  title: 'Save daily backups on this computer',
+                  subtitle: 'They’re in your Drive either way. Turning this off deletes the ones here.',
+                  on: state.keepsBackupFiles,
+                  onTap: () => _setKeepsBackups(!state.keepsBackupFiles),
+                ),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         if (copies.isEmpty)
           Padding(

@@ -54,7 +54,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
   /// 0 for General, 1 for Data. Opens on General unless told otherwise.
   late int _ribbon = widget.tourRibbon ?? widget.ribbon;
 
-
   late List<Backup> _backups = AppScope.of(context).backups?.list() ?? [];
 
   /// The copies in Drive, listed after those here once they've been asked for.
@@ -91,6 +90,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       });
     }
   }
+
   Backup? _confirming;
   bool _restoring = false;
   String? _error;
@@ -196,6 +196,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   /// Asks, on its row, whether to restore [b]; null stops asking.
   void _ask(Backup? b) => setState(() => _confirming = b);
+
+  void _setKeepsBackups(bool keep) {
+    final state = AppScope.of(context);
+    state.setKeepsBackupFiles(keep);
+    setState(() => _backups = state.backups?.list() ?? []);
+  }
 
   Future<void> _moveJournal() async {
     if (_moving) return;

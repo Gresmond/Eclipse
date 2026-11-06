@@ -184,8 +184,8 @@ List<_Step> _steps(AppState state) => [
     'Data and backups',
     kIsWeb
         ? 'Data shows the last 30 daily backups in your Google Drive. Restore a copy there if you need to go back.'
-        : 'Data shows your data folder and, once you sign in to Google, the last 30 '
-              'daily backups in your Drive. Restore a copy there if you need to go back.',
+        : 'Data shows your data folder and the last 30 daily backups. Restore '
+              'a copy there if you need to go back.',
     TourSpot.settingsPreview,
     1,
   ),
