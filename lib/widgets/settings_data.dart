@@ -118,28 +118,6 @@ extension on _SettingsDialogState {
             style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missedInk),
           ),
         ],
-        if (AppLog.file case final log?) ...[
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Eclipse notes any problems in a log file to help fix them. It never holds your journal or tasks.',
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted),
-                ),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: p.accent,
-                  side: BorderSide(color: p.accent.withValues(alpha: 0.4)),
-                ),
-                onPressed: () => showInFiles(log),
-                child: const Text('Show log file'),
-              ),
-            ],
-          ),
-        ],
       ],
     );
   }

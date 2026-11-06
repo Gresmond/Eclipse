@@ -10,7 +10,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
-import '../data/app_log.dart';
 import '../data/backups.dart';
 import '../data/data_folder.dart';
 import '../data/google_drive.dart';
