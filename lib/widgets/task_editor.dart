@@ -430,7 +430,7 @@ class _LocationRow extends StatelessWidget {
                       controller: controller,
                       textCapitalization: TextCapitalization.sentences,
                       inputFormatters: const [NoteInputFormatter()],
-                      style: label.copyWith(color: p.ink),
+                      style: label.copyWith(color: accent),
                       cursorColor: p.accent,
                       decoration: InputDecoration(
                         isDense: true,
