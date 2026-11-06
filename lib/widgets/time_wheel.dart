@@ -172,18 +172,15 @@ class TimeWheel extends StatefulWidget {
   State<TimeWheel> createState() => _TimeWheelState();
 }
 
-/// A time's colon centred on its figures: 'case' raises it most of the
-/// way, and the last 3% of its size the rest.
+/// A time's colon centred on its figures: 'case' is the font's own colon
+/// for sitting between them.
 class _Colon extends StatelessWidget {
   const _Colon({required this.style});
 
   final TextStyle style;
 
   @override
-  Widget build(BuildContext context) => Transform.translate(
-    offset: Offset(0, -0.028 * style.fontSize!),
-    child: Text(':', style: style.copyWith(fontFeatures: const [FontFeature('case')])),
-  );
+  Widget build(BuildContext context) => Text(':', style: style.copyWith(fontFeatures: const [FontFeature('case')]));
 }
 
 /// How wide two digits are in [style], as the minutes always are.
@@ -231,7 +228,8 @@ class _TimeWheelState extends State<TimeWheel> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final style = SleepName.timeStyle(p).copyWith(fontSize: 22, fontWeight: FontWeight.w600, color: p.ink);
+    // Its line height set, so the colon's line is the same as the digits'.
+    final style = SleepName.timeStyle(p).copyWith(fontSize: 22, fontWeight: FontWeight.w600, color: p.ink, height: 1.2);
 
     Widget wheel({
       required FixedExtentScrollController controller,

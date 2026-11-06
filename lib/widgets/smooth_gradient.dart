@@ -70,7 +70,9 @@ class _SmoothGradientPainter extends BoxPainter {
     final ring = _ring;
     if (gradient != null) {
       // Stops under the ring's middle, so none of it shows round the outside.
-      final fill = ring == null ? shape : shape.deflate(ring.width / 2);
+      // Grows out as the ring fades: with no ring left to hide it, a half pixel
+      // inset blurs the straight edges and steps the corners.
+      final fill = ring == null ? shape : shape.deflate(ring.width / 2 * ring.color.a);
       final first = gradient.colors.first;
       if (gradient.colors.every((c) => c == first)) {
         canvas.drawRRect(fill, Paint()..color = first);
