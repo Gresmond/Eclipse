@@ -51,12 +51,12 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
               padding: const EdgeInsets.only(left: 4, right: 12),
               child: TileHeader(
                 title: 'Further ahead',
-                badge: StatusPill(label: '$count PLANNED'),
+                badge: StatusPill(label: '$count PLANNED', day: day),
                 trailingAtEnd: true,
                 trailing: AnimatedOpacity(
                   opacity: past ? 0 : 1,
-                  duration: Motion.morph,
-                  curve: Motion.morphCurve,
+                  duration: Motion.page,
+                  curve: past ? Motion.outgoingCurve : Motion.incoming,
                   child: IgnorePointer(
                     ignoring: past,
                     child: _ShowToggle(
@@ -93,7 +93,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
                 ),
               ),
             ),
-            _FoldAway(
+            DayFold(
               folded: past,
               child: _DatedAdd(
                 first: DateTime(today.year, today.month, today.day + WeekCard.span + 1),

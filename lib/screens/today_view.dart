@@ -264,7 +264,7 @@ class _HabitsCard extends StatelessWidget {
     final day = state.shownDay;
     final readOnly = !state.canEditDay(day);
     // A holiday needs nothing tracked.
-    final subtitle = holidayOn(state.holidays, day) != null ? 'On holiday' : '';
+    final onHoliday = holidayOn(state.holidays, day) != null;
 
     return Tile(
       padding: const EdgeInsets.all(24),
@@ -279,19 +279,19 @@ class _HabitsCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TileHeader(title: title),
-                    if (subtitle.isNotEmpty) const SizedBox(height: 6),
-                    // Fades through when the line changes, left-aligned so the
-                    // old and new lines share their start.
-                    if (subtitle.isNotEmpty)
-                      FadeThrough(
-                        duration: Motion.click,
-                        layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
-                        child: Text(
-                          subtitle,
-                          key: ValueKey(subtitle),
-                          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                    DayFold(
+                      folded: !onHoliday,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'On holiday',
+                            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                          ),
                         ),
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -302,10 +302,10 @@ class _HabitsCard extends StatelessWidget {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 // Every row's badge is as wide as the longest streak's, so the
-                // badges, squares and times stay lined up down the card.
-                final streaks = state.viewDay != null
-                    ? const <int>[]
-                    : [for (final h in habits) state.currentStreak(h)];
+                // badges, squares and times stay lined up down the card. A past
+                // day keeps the room, though it shows none, so a new day's fade
+                // doesn't start with the rows jumping sideways.
+                final streaks = [for (final h in habits) state.currentStreak(h)];
                 final badge = _HabitRow.badgeFor(context, streaks.fold(0, max));
                 final rows = _layOutRows(context, habits, constraints, badge);
                 final alignment = firstCheckboxInset;
@@ -491,44 +491,9 @@ class _HabitRow extends StatelessWidget {
             ),
             if (weekTrail) ...[const SizedBox(width: 10), _WeekTrail(habit: habit, day: day)],
             const SizedBox(width: 8),
-            Tooltip(
-              message: past
-                  ? ''
-                  : streak == 0
-                  ? (best > 0 ? 'Best streak: $best days' : 'No streak yet')
-                  : '$streak day streak${best > streak ? '  ·  best $best' : ''}',
-              child: SizedBox(
-                width: badgeWidth,
-                // A new streak count (or none) fades through with a slight pop.
-                child: FadeThrough(
-                  duration: Motion.click,
-                  scaleFrom: 0.85,
-                  child: streak > 0
-                      ? Container(
-                          key: ValueKey(streak),
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: p.accent.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.local_fire_department_rounded, size: 12, color: p.accent),
-                              const SizedBox(width: 2),
-                              Text('$streak', style: streakStyle(p.accent)),
-                            ],
-                          ),
-                        )
-                      : past
-                      ? const SizedBox.shrink(key: ValueKey(-1))
-                      : Text(
-                          '–',
-                          key: const ValueKey(0),
-                          style: TextStyle(fontSize: 14, color: p.inkMuted.withValues(alpha: 0.4)),
-                        ),
-                ),
-              ),
+            SizedBox(
+              width: badgeWidth,
+              child: _StreakBadge(day: day, streak: past ? null : streak, best: best),
             ),
             const SizedBox(width: 8),
             StatusCell(
@@ -537,9 +502,79 @@ class _HabitRow extends StatelessWidget {
               size: cellSize,
               enabled: state.canEditDay(day) && habit.startedBy(day),
               rest: state.isRestDay(day),
+              staysThroughDays: true,
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A ritual's streak, or nothing on a past day ([streak] null). A new count
+/// on the same day fades through quickly with a slight pop; another day's
+/// fades through with the rest of the page.
+class _StreakBadge extends StatefulWidget {
+  const _StreakBadge({required this.day, required this.streak, required this.best});
+
+  final DateTime day;
+  final int? streak;
+  final int best;
+
+  @override
+  State<_StreakBadge> createState() => _StreakBadgeState();
+}
+
+class _StreakBadgeState extends State<_StreakBadge> {
+  /// Whether the badge last changed with the day. Kept until it next changes,
+  /// so a rebuild partway through a fade doesn't restyle it.
+  var _withDay = false;
+
+  @override
+  void didUpdateWidget(_StreakBadge old) {
+    super.didUpdateWidget(old);
+    if (old.streak != widget.streak) _withDay = old.day != widget.day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final streak = widget.streak;
+    return FadeThrough(
+      duration: _withDay ? Motion.page : Motion.click,
+      scaleFrom: _withDay ? 1.0 : 0.85,
+      // Each has its own tooltip, inside the fade: a Tooltip with no message
+      // isn't there at all, so one outside would build this afresh, fully
+      // shown, on leaving a past day.
+      child: streak == null
+          ? const SizedBox.shrink(key: ValueKey(-1))
+          : Tooltip(
+              key: ValueKey(streak),
+              message: streak == 0
+                  ? (widget.best > 0 ? 'Best streak: ${widget.best} days' : 'No streak yet')
+                  : '$streak day streak${widget.best > streak ? '  ·  best ${widget.best}' : ''}',
+              child: SizedBox(
+                width: double.infinity,
+                child: Center(heightFactor: 1, child: _badge(context, streak)),
+              ),
+            ),
+    );
+  }
+
+  Widget _badge(BuildContext context, int streak) {
+    final p = context.palette;
+    if (streak == 0) {
+      return Text('–', style: TextStyle(fontSize: 14, color: p.inkMuted.withValues(alpha: 0.4)));
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: p.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.local_fire_department_rounded, size: 12, color: p.accent),
+          const SizedBox(width: 2),
+          Text('$streak', style: _HabitRow.streakStyle(p.accent)),
+        ],
       ),
     );
   }

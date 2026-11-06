@@ -41,10 +41,14 @@ class HeaderIconButton extends StatelessWidget {
 
 /// Shared status pills grow with their label instead of squeezing large counts.
 class StatusPill extends StatelessWidget {
-  const StatusPill({super.key, required this.label, this.complete = false});
+  const StatusPill({super.key, required this.label, this.complete = false, this.day});
 
   final String label;
   final bool complete;
+
+  /// The day [label] is about, if it's about one: another day's label fades
+  /// through with the page rather than rolling to it.
+  final DateTime? day;
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +66,7 @@ class StatusPill extends StatelessWidget {
       child: Center(
         widthFactor: 1,
         heightFactor: 1,
-        child: _CaptionSwap(caption: label.toUpperCase(), style: capsLabel(complete ? p.ink : p.inkMuted)),
+        child: _CaptionSwap(caption: label.toUpperCase(), day: day, style: capsLabel(complete ? p.ink : p.inkMuted)),
       ),
     );
   }
@@ -225,12 +229,40 @@ class _Caption extends StatelessWidget {
 /// The badge's caption, which the badge fits snugly. A new count rolls just
 /// its digits, the badge widening or narrowing in step with them; a new
 /// word fades the old one out before the new one fades in, the badge
-/// easing to its width.
-class _CaptionSwap extends StatelessWidget {
-  const _CaptionSwap({required this.caption, this.style});
+/// easing to its width. So does another [day]'s caption, on the page's
+/// timing rather than its own.
+class _CaptionSwap extends StatefulWidget {
+  const _CaptionSwap({required this.caption, this.day, this.style});
 
   final String caption;
+  final DateTime? day;
   final TextStyle? style;
+
+  @override
+  State<_CaptionSwap> createState() => _CaptionSwapState();
+}
+
+class _CaptionSwapState extends State<_CaptionSwap> {
+  /// Counts the days whose caption differed from the last's.
+  var _days = 0;
+
+  /// Whether the caption last changed with the day.
+  var _withDay = false;
+
+  /// The width it's easing to, and whether that was wider than the last.
+  double? _settled;
+  var _grows = true;
+
+  String get caption => widget.caption;
+  TextStyle? get style => widget.style;
+
+  @override
+  void didUpdateWidget(_CaptionSwap old) {
+    super.didUpdateWidget(old);
+    if (old.caption == widget.caption) return;
+    _withDay = old.day != widget.day;
+    if (_withDay) _days++;
+  }
 
   /// The caption's width once settled, measured as [_Caption] lays it out.
   double _width(BuildContext context) {
@@ -260,18 +292,28 @@ class _CaptionSwap extends StatelessWidget {
   Widget build(BuildContext context) {
     // The same timing and curve as the rolling digits' slots, so the badge
     // keeps its padding exactly as they widen or narrow.
+    final width = _width(context);
+    if (width != _settled) {
+      _grows = width > (_settled ?? width);
+      _settled = width;
+    }
+    final duration = _withDay ? Motion.page : Motion.morph;
     return TweenAnimationBuilder<double>(
-      tween: Tween(end: _width(context)),
-      duration: Motion.morph,
-      curve: Motion.morphCurve,
+      tween: Tween(end: width),
+      duration: duration,
+      curve: !_withDay
+          ? Motion.morphCurve
+          : _grows
+          ? Motion.roomOpens
+          : Motion.roomCloses,
       builder: (context, width, child) => SizedBox(width: width, child: child),
       child: OverflowBox(
         minWidth: 0,
         maxWidth: double.infinity,
         fit: OverflowBoxFit.deferToChild,
         child: FadeThrough(
-          duration: Motion.morph,
-          child: _Caption(key: ValueKey(_CaptionParts(caption).word), caption: caption, style: style),
+          duration: duration,
+          child: _Caption(key: ValueKey((_days, _CaptionParts(caption).word)), caption: caption, style: style),
         ),
       ),
     );

@@ -54,4 +54,14 @@ abstract final class Motion {
   /// sharp easeOut here blinked to the bare background in about two frames.
   static const incoming = Interval(0.45, 1.0, curve: Curves.easeInOutSine);
   static double outgoing(double t) => incoming.transform(1 - t);
+
+  /// The same fade-out, as a curve for something fading to nothing over the
+  /// whole of a fade-through's time.
+  static const outgoingCurve = FlippedCurve(incoming);
+
+  /// Room for what a fade-through brings: a larger thing's opens while the
+  /// old one fades out, before the new one shows, and a smaller one's closes
+  /// only once the old one has gone.
+  static const roomOpens = Interval(0, 0.45, curve: morphCurve);
+  static const roomCloses = Interval(0.55, 1, curve: morphCurve);
 }

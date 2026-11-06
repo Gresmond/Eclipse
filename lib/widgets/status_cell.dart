@@ -30,6 +30,7 @@ class StatusCell extends StatefulWidget {
     this.rest = false,
     this.off = false,
     this.paletteAnimation,
+    this.staysThroughDays = false,
   });
 
   final DateTime day;
@@ -47,6 +48,11 @@ class StatusCell extends StatefulWidget {
   /// Large grids repaint theme colors without rebuilding every cell.
   final ValueListenable<Palette>? paletteAnimation;
 
+  /// This one square shows each day in turn, among things that fade through
+  /// from day to day: on a new [day] the old mark and colour fade out and the
+  /// new ones fade in on the same beat, the square itself staying put.
+  final bool staysThroughDays;
+
   @override
   State<StatusCell> createState() => _StatusCellState();
 }
@@ -62,7 +68,11 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
   /// the grid's morph, so a whole month of colours doesn't snap in at once.
   static const _click = (Motion.click, Motion.clickCurve);
   static const _morph = (Motion.morph, Motion.morphCurve);
-  var _change = _click;
+  static const _day = (Motion.page, Curves.linear);
+  (Duration, Curve) _change = _click;
+
+  /// Whether the mark being moved to goes by way of a blank square.
+  var _through = false;
 
   /// The mark being left and the one being moved to; [_progress] runs
   /// between them. Only the square's paint follows it, so a month of
@@ -80,7 +90,11 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(StatusCell old) {
     super.didUpdateWidget(old);
-    _change = old.day == widget.day ? _click : _morph;
+    _change = old.day == widget.day
+        ? _click
+        : widget.staysThroughDays
+        ? _day
+        : _morph;
   }
 
   @override
@@ -164,6 +178,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
       final themeOnly = look.icon == _to!.icon;
       _from = themeOnly ? look : _to;
       _to = look;
+      _through = identical(_change, _day);
       if (!themeOnly) {
         final animation = _progress ??= AnimationController(vsync: this, value: 1);
         _curved ??= CurvedAnimation(parent: animation, curve: _change.$2);
@@ -187,8 +202,8 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
       _opacity,
       _opacityTarget,
       opacityTarget,
-      Motion.morph,
-      Motion.morphCurve,
+      identical(_change, _day) ? Motion.page : Motion.morph,
+      identical(_change, _day) ? Motion.incoming : Motion.morphCurve,
       (c) => _opacity = c,
     );
     _opacityTarget = opacityTarget;
@@ -202,6 +217,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
           from: _from!,
           to: _to!,
           progress: _curved ?? kAlwaysCompleteAnimation,
+          through: _through,
           hover: enabled ? (_hoverAnim ?? kAlwaysDismissedAnimation) : kAlwaysDismissedAnimation,
           scale: scale,
           opacity: opacity,
@@ -259,6 +275,7 @@ class _SquarePainter extends CustomPainter {
     required this.from,
     required this.to,
     required this.progress,
+    required this.through,
     required this.hover,
     required this.scale,
     required this.opacity,
@@ -269,6 +286,10 @@ class _SquarePainter extends CustomPainter {
   final _Look from;
   final _Look to;
   final Animation<double> progress;
+
+  /// Whether [from]'s colour eases out to a blank square as its mark does,
+  /// and [to]'s in from one, rather than one turning into the other.
+  final bool through;
   final Animation<double> hover;
 
   /// Lifted on hover, dipped while pressed, about the centre.
@@ -324,7 +345,12 @@ class _SquarePainter extends CustomPainter {
     final empty = palette.empty.withValues(alpha: 0.55 + 0.35 * h);
 
     final a = _fill(from, empty), b = _fill(to, empty);
-    final (top, bottom) = (Color.lerp(a[0], b[0], t)!, Color.lerp(a[1], b[1], t)!);
+    // How far from [from], and how far to [to]: one number unless going
+    // through a blank square, which is what's between them then.
+    final (leaving, arriving) = through ? (1 - Motion.outgoing(t), Motion.incoming.transform(t)) : (t, t);
+    Color between(Color from, Color to, Color blank) =>
+        through ? Color.lerp(Color.lerp(from, blank, leaving), to, arriving)! : Color.lerp(from, to, t)!;
+    final (top, bottom) = (between(a[0], b[0], empty), between(a[1], b[1], empty));
     // A month repaints hundreds of squares, in only a few colours: a blank
     // one needs no gradient, and the others share theirs.
     final fill = Paint();
@@ -353,7 +379,7 @@ class _SquarePainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
-        ..color = Color.lerp(_border(from, h), _border(to, h), t)!,
+        ..color = between(_border(from, h), _border(to, h), _border(const _Look(null, null), h)),
     );
 
     // The old mark eases out, then the new one grows in.
@@ -384,6 +410,7 @@ class _SquarePainter extends CustomPainter {
       old.basePalette != basePalette ||
       old.paletteAnimation != paletteAnimation ||
       old.progress != progress ||
+      old.through != through ||
       old.hover != hover ||
       old.scale != scale ||
       old.opacity != opacity;

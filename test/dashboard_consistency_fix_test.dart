@@ -203,4 +203,41 @@ void main() {
     }
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('a streak waits for the page, both ways, rather than popping in', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    final habit = store.addHabit(2026, 11, 'Sketch', addedOn: DateTime(2026, 11, 1));
+    final state = AppState(store, clock: () => DateTime(2026, 11, 5, 10));
+    store.setEntry('2026-11-04', habit.id, HabitStatus.done);
+    store.setEntry('2026-11-05', habit.id, HabitStatus.done);
+    state.showDay(DateTime(2026, 11, 2));
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+    final flame = find.byIcon(Icons.local_fire_department_rounded);
+    expect(flame, findsNothing);
+    double shown() => tester
+        .widget<FadeTransition>(find.ancestor(of: flame, matching: find.byType(FadeTransition)).first)
+        .opacity
+        .value;
+
+    state.showToday();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(shown(), 0, reason: 'nothing new shows until the old day has faded');
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(shown(), inExclusiveRange(0, 1), reason: 'partway through the page fade');
+    await tester.pumpAndSettle();
+    expect(shown(), 1);
+
+    state.showDay(DateTime(2026, 11, 2));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(shown(), inExclusiveRange(0, 1), reason: 'still fading out with the page');
+    await tester.pumpAndSettle();
+    expect(flame, findsNothing);
+    store.close();
+  });
 }

@@ -59,7 +59,7 @@ class _WeekCardState extends State<WeekCard> with _NewTasks {
                 ),
               ),
             ),
-            _FoldAway(
+            DayFold(
               folded: past,
               child: _DatedAdd(
                 first: today,

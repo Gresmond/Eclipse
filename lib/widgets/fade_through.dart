@@ -210,6 +210,35 @@ class _FadeThroughState extends State<FadeThrough> with TickerProviderStateMixin
   );
 }
 
+/// Something a day has and another hasn't, in step with a [FadeThrough] of
+/// the page's default duration: its room opens before it fades in, and it
+/// fades out before its room closes.
+class DayFold extends StatelessWidget {
+  const DayFold({super.key, required this.folded, required this.child});
+
+  final bool folded;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ClipRect(
+    child: AnimatedAlign(
+      duration: Motion.page,
+      curve: folded ? Motion.roomCloses : Motion.roomOpens,
+      alignment: Alignment.topCenter,
+      heightFactor: folded ? 0 : 1,
+      child: AnimatedOpacity(
+        duration: Motion.page,
+        curve: folded ? Motion.outgoingCurve : Motion.incoming,
+        opacity: folded ? 0 : 1,
+        child: IgnorePointer(
+          ignoring: folded,
+          child: ExcludeFocus(excluding: folded, child: child),
+        ),
+      ),
+    ),
+  );
+}
+
 /// Part of a page a deferred [FadeThrough] is bringing in, built [frames]
 /// frames after the page's first: the page is still all but invisible
 /// then, so opening it never costs one long frame. A page that was simply
@@ -480,10 +509,8 @@ class _RenderPageSize extends RenderProxyBox {
     super.dispose();
   }
 
-  static final _grow = Interval(0, Motion.incoming.begin, curve: Motion.morphCurve);
-  static final _shrink = Interval(1 - Motion.incoming.begin, 1, curve: Motion.morphCurve);
-
-  double _eased(double from, double to, double t) => from + (to - from) * (to >= from ? _grow : _shrink).transform(t);
+  double _eased(double from, double to, double t) =>
+      from + (to - from) * (to >= from ? Motion.roomOpens : Motion.roomCloses).transform(t);
 
   void _start() {
     _from = size;
