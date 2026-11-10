@@ -21,12 +21,13 @@ enum TrainingRange {
 /// Exercises and logged sets, kept in memory and written straight through
 /// to [store]. Changes tell AppState, so AppScope watchers redraw.
 class TrainingLog {
-  TrainingLog(this.store, this._changed) {
+  TrainingLog(this.store, this._changed, {this.onRemoved}) {
     reload();
   }
 
   final Store store;
   final void Function() _changed;
+  final void Function(String label, List<RowsBefore> before)? onRemoved;
 
   /// Bumped on every change, for AppScope.watch.
   int revision = 0;
@@ -162,21 +163,30 @@ class TrainingLog {
     _done();
   }
 
-  void deleteSet(TrainingSet set) {
-    store.deleteTrainingSet(set.uid);
-    _sets.removeWhere((s) => s.uid == set.uid);
-    _done();
-  }
+  void deleteSet(TrainingSet set) => _removeSets(_sets.where((s) => s.uid == set.uid), 'Removed a set');
 
   /// Takes [e] off [day], with all its sets that day.
   void removeFromDay(DateTime day, Exercise e) {
     final key = dateKey(day);
-    store.transaction(() {
-      for (final s in _sets.where((s) => s.day == key && s.exercise == e.uid)) {
-        store.deleteTrainingSet(s.uid);
+    _removeSets(_sets.where((s) => s.day == key && s.exercise == e.uid), 'Removed “${e.name}” from the session');
+  }
+
+  void _removeSets(Iterable<TrainingSet> sets, String label) {
+    final uids = {for (final set in sets) set.uid};
+    if (uids.isEmpty) return;
+    final before = store.transaction(() {
+      // Snapshot by UID so undo leaves sets logged after this removal alone.
+      final before = [
+        if (onRemoved != null)
+          for (final uid in uids) store.rowsBefore('training_sets', ['uid'], 'uid = ?', [uid]),
+      ];
+      for (final uid in uids) {
+        store.deleteTrainingSet(uid);
       }
+      return before;
     });
-    _sets.removeWhere((s) => s.day == key && s.exercise == e.uid);
+    _sets.removeWhere((s) => uids.contains(s.uid));
+    onRemoved?.call(label, before);
     _done();
   }
 

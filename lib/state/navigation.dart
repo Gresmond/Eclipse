@@ -10,6 +10,7 @@ mixin _Navigation on ChangeNotifier {
   bool isFutureMonth(int year, int month);
   void saveDrafts();
   void saveHabitDrafts();
+  void _removed(String label, List<RowsBefore> before);
 
   late int viewYear;
 
@@ -40,7 +41,7 @@ mixin _Navigation on ChangeNotifier {
   );
 
   /// Gym training, every exercise's progress.
-  late final training = TrainingLog(store, notifyListeners);
+  late final training = TrainingLog(store, notifyListeners, onRemoved: _removed);
 
   /// The Training page is open, in place of whichever view was.
   bool showingTraining = false;

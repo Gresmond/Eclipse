@@ -9,7 +9,7 @@ class Removal {
   final List<RowsBefore> _before;
 }
 
-/// Undo for removing a task or a ritual: the last few removals, and the
+/// Undo for removing a task, ritual or training set: the last few removals, and the
 /// latest one for the undo card to name until it's put back or the card
 /// times out.
 mixin _Undo on ChangeNotifier {

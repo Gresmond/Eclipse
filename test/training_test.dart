@@ -217,5 +217,48 @@ void main() {
           ..circle(x: (plotLeft + plotRight) / 2, radius: 3.6),
       );
     });
+
+    testWidgets('the Undo card restores a removed set or all sets removed from a session', (tester) async {
+      state.showingTraining = true;
+      final log = state.training;
+      final press = log.createExercise('Bench press', MuscleGroup.chest, bodyweight: false);
+      log.addToDay(today, press);
+      log.addSet(today, press);
+      final sets = log.session(today).single.$2;
+      log.updateSet(sets.first, weight: 50, reps: 8);
+      log.updateSet(sets.last, weight: 60, reps: 6);
+      await show(tester);
+
+      List<(String, double?, int)> savedSets() => [
+        for (final set in store.trainingSets()) (set.uid, set.weight, set.reps),
+      ];
+      final original = savedSets();
+      final undo = find.text('Undo');
+
+      await tester.tap(find.byTooltip('Remove set').first);
+      await tester.pumpAndSettle();
+      expect(savedSets(), [original.last]);
+      await tester.tap(undo);
+      await tester.pumpAndSettle();
+      expect(savedSets(), original);
+      expect(find.byTooltip('Remove set'), findsNWidgets(2));
+
+      await tester.tap(find.byTooltip('Remove this session'));
+      await tester.pumpAndSettle();
+      expect(savedSets(), isEmpty);
+      expect(log.points(), isEmpty);
+      expect(find.text('Bench press ×2'), findsNothing);
+
+      // Logging another set before clicking Undo should keep that set, too.
+      log.addToDay(today, press);
+      final added = savedSets().single;
+      await tester.pumpAndSettle();
+      await tester.tap(undo);
+      await tester.pumpAndSettle();
+      expect(savedSets(), unorderedEquals([...original, added]));
+      expect(log.points(), hasLength(1));
+      expect(find.text('Bench press ×3'), findsOneWidget);
+      expect(find.byTooltip('Remove set'), findsNWidgets(3));
+    });
   });
 }
