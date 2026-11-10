@@ -638,7 +638,8 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                   onToggle: () {
                                     final next = [...item.subtasks];
                                     next[index] = next[index].copyWith(done: !next[index].done);
-                                    state.setTodoSubtasks(widget.scope, item, next, day: widget.day);
+                                    // A repeat's time not made yet is made first, as when it's ticked.
+                                    state.setTodoSubtasks(widget.scope, _real(), next, day: widget.day);
                                   },
                                   onEdit: () => _editSubtask(state, index: index),
                                   onRemove: () {

@@ -195,6 +195,7 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
                   controller: _name,
                   autofocus: true,
                   textCapitalization: TextCapitalization.sentences,
+                  inputFormatters: const [NoteInputFormatter()],
                   cursorColor: p.ink,
                   style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
                   decoration: InputDecoration(

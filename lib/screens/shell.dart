@@ -767,7 +767,7 @@ class _YearSwitcher extends StatelessWidget {
             PixelTooltip(
               message: 'Previous year',
               child: IconButton(
-                iconSize: 18,
+                iconSize: Scale.navIcon,
                 // 40 tall, so the pill matches the tabs and the round buttons.
                 visualDensity: VisualDensity.compact,
                 color: p.inkMuted,
@@ -792,7 +792,7 @@ class _YearSwitcher extends StatelessWidget {
             PixelTooltip(
               message: 'Next year',
               child: IconButton(
-                iconSize: 18,
+                iconSize: Scale.navIcon,
                 // 40 tall, so the pill matches the tabs and the round buttons.
                 visualDensity: VisualDensity.compact,
                 color: p.inkMuted,

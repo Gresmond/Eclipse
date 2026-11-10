@@ -102,7 +102,7 @@ class BackupRow extends StatelessWidget {
   static (String, String) describe(Backup b, DateTime today) {
     if (b.day == null) {
       final t = b.modified;
-      final time = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+      final time = clockLabel(t.hour * 60 + t.minute);
       return (
         b.isBeforeUpdate
             ? 'Before updating'

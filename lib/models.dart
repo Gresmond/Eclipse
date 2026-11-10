@@ -591,13 +591,18 @@ String clockLabel(int minutes) {
   return '$hour:${m.toString().padLeft(2, '0')} ${h < 12 ? 'am' : 'pm'}';
 }
 
+final _clockKey = RegExp(r'^(\d{1,2}):(\d{2})$');
+final _clockInNote = RegExp(r'(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\b', caseSensitive: false);
+
 /// A sleep item's saved time: "21:00", or a time inside a note written
 /// before times were picked ("Awaken at 8:30 am"). Null when there's none.
 int? parseClock(String text) {
-  if (RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(text) case final m?) {
+  // Read for every task and repeat loaded, nearly all of them without one.
+  if (text.isEmpty) return null;
+  if (_clockKey.firstMatch(text) case final m?) {
     return int.parse(m[1]!) * 60 + int.parse(m[2]!);
   }
-  final m = RegExp(r'(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\b', caseSensitive: false).firstMatch(text);
+  final m = _clockInNote.firstMatch(text);
   if (m == null) return null;
   final hour = int.parse(m[1]!) % 12 + (m[3]!.toLowerCase() == 'p' ? 12 : 0);
   return hour * 60 + int.parse(m[2] ?? '0');

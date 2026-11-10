@@ -203,6 +203,8 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
           holidays = decodeHolidays(store.setting('holidays'));
           dayStartHour = int.tryParse(store.setting('dayStartHour') ?? '') ?? 0;
           _streaks.clear();
+          // Holidays pause repeats, so what's planned may have changed.
+          reloadTodos = true;
       }
     }
     if (entryDays.isNotEmpty) {

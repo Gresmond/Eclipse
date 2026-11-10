@@ -125,8 +125,14 @@ class TrainingLog {
     final last = _sets.where((s) => s.day == key).fold(-1, (m, s) => s.position > m ? s.position : m);
     final previous = _lastSet(e.uid);
     _sets.add(store.addTrainingSet(key, e.uid, position: last + 1, weight: e.bodyweight ? null : previous?.weight));
+    _sort();
     _done();
   }
+
+  /// Oldest day first, in order within each day, as [Store.trainingSets]
+  /// reads them: the days logged, the chart's points and the latest weight
+  /// all go by it, and a set added to an earlier day lands at the end.
+  void _sort() => _sets.sort((a, b) => a.day == b.day ? a.position.compareTo(b.position) : a.day.compareTo(b.day));
 
   /// Adds a set to [e] on [day], at the weight of the set before it.
   void addSet(DateTime day, Exercise e) {
@@ -144,7 +150,7 @@ class TrainingLog {
       }
       _sets.add(store.addTrainingSet(key, e.uid, position: at, weight: e.bodyweight ? null : weight));
     });
-    _sets.sort((a, b) => a.day == b.day ? a.position.compareTo(b.position) : a.day.compareTo(b.day));
+    _sort();
     _done();
   }
 

@@ -393,7 +393,8 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
                                     const SizedBox(width: 8),
                                     Flexible(
                                       child: Text(
-                                        'In ${daysBetween(state.today, g.date!)} days',
+                                        // From the day the list is for: looking back, as it stood.
+                                        'In ${daysBetween(day, g.date!)} days',
                                         style: TextStyle(fontSize: 12, color: p.inkMuted),
                                       ),
                                     ),

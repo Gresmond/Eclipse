@@ -337,7 +337,7 @@ extension on _SettingsDialogState {
       < 1 => 'just now',
       1 => 'a minute ago',
       < 60 => '$minutes minutes ago',
-      _ => 'at ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+      _ => 'at ${clockLabel(t.hour * 60 + t.minute)}',
     };
   }
 }

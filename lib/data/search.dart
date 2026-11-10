@@ -73,7 +73,7 @@ class SearchIndex {
   }();
 
   /// The words of [query], folded the way the text is.
-  static List<String> words(String query) => _fold(query).split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  static List<String> words(String query) => _fold(query).split(_spaces).where((w) => w.isNotEmpty).toList();
 
   /// Every entry and task holding all the words of [query], in any order,
   /// newest first. Entries come before tasks on the same day.
@@ -115,7 +115,11 @@ class SearchIndex {
 
 /// Lower case, with curly quotes as straight ones, so either matches.
 /// Keeps the text's length, so a match's place is the same in both.
-String _fold(String text) => text.toLowerCase().replaceAll(RegExp('[‘’′]'), "'").replaceAll(RegExp('[“”″]'), '"');
+String _fold(String text) => text.toLowerCase().replaceAll(_singleQuotes, "'").replaceAll(_doubleQuotes, '"');
+
+final _spaces = RegExp(r'\s+');
+final _singleQuotes = RegExp('[‘’′]');
+final _doubleQuotes = RegExp('[“”″]');
 
 /// The entry from a little before its first match, on one line.
 String _excerpt(String text, String key, List<String> words) {
@@ -127,7 +131,7 @@ String _excerpt(String text, String key, List<String> words) {
   var start = at <= 40 ? 0 : text.lastIndexOf(' ', at - 30) + 1;
   if (start < 0) start = 0;
   final end = start + 240 < text.length ? start + 240 : text.length;
-  final line = text.substring(start, end).replaceAll(RegExp(r'\s+'), ' ').trim();
+  final line = text.substring(start, end).replaceAll(_spaces, ' ').trim();
   return start == 0 ? line : '…$line';
 }
 

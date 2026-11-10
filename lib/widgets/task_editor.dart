@@ -249,6 +249,21 @@ Future<void> _editTask(
       reminders: reminders,
       location: location,
     );
+    // Stopped repeating and given another day at once: this time, which
+    // stays, still moves there.
+    if (choice == null && result.due != item.dueDate) {
+      state.editTodo(
+        scope,
+        make?.call() ?? item,
+        result.text,
+        result.due,
+        day: day,
+        time: time,
+        birthday: birthday,
+        reminders: reminders,
+        location: location,
+      );
+    }
     return;
   }
   final renamed =

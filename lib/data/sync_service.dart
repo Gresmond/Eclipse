@@ -607,8 +607,9 @@ class SyncService extends ChangeNotifier {
         await journal.copy(
           drive as JournalDrive,
           machine: machine,
-          writers: engine.journalWriters(),
-          texts: {for (final e in store.journalEntries()) e.day: e.text},
+          stamp: engine.journalStamp,
+          writers: engine.journalWriters,
+          texts: () => {for (final e in store.journalEntries()) e.day: e.text},
           stopped: () => _stopped,
         );
         if (_stopped) return;

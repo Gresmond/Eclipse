@@ -120,7 +120,7 @@ class _Reg {
       ('month_habit', 'days') => readsAs(v, decodeDays),
       ('todo_history', 'snapshot') => readsAs(v, _snapshot),
       ('journal', 'text') => v is String,
-      ('setting', 'value') || ('sleep_note', 'note') || ('todo_history', 'snapshot') => v == null || v is String,
+      ('setting', 'value') || ('sleep_note', 'note') => v == null || v is String,
       ('todo_repeat', 'rule') => v is String && RepeatRule.decode(v) != null,
       ('todo_repeat', 'start') => v is String && _day(v),
       ('todo_repeat', 'until') => v == null || v is String && _day(v),

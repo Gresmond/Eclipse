@@ -896,8 +896,8 @@ void main() {
       Future<void> copy() => folder.copy(
         drive,
         machine: 'pc',
-        writers: {'2026-10-31': 'pc'},
-        texts: {'2026-10-31': 'Hello'},
+        writers: () => {'2026-10-31': 'pc'},
+        texts: () => {'2026-10-31': 'Hello'},
         stopped: () => false,
       );
       await copy();
@@ -909,6 +909,62 @@ void main() {
       expect(drive.journal.keys, ['Eclipse Journals/2026/2026-10-31.md']);
     });
 
+    test('a day one computer emptied and another wrote again has one file, not two', () async {
+      final onPc = JournalFolder(<String, dynamic>{}, () async {});
+      final onLaptop = JournalFolder(<String, dynamic>{}, () async {});
+      var text = 'First';
+      var writer = 'pc';
+      Future<void> copy(JournalFolder folder, String machine) => folder.copy(
+        drive,
+        machine: machine,
+        writers: () => {'2026-11-01': writer},
+        texts: () => {if (text.isNotEmpty) '2026-11-01': text},
+        stopped: () => false,
+      );
+      await copy(onPc, 'pc');
+      text = '';
+      await copy(onPc, 'pc');
+      expect(drive.journal, isEmpty, reason: 'emptied on the PC');
+      (text, writer) = ('From the laptop', 'laptop');
+      await copy(onLaptop, 'laptop');
+      (text, writer) = ('Back on the PC', 'pc');
+      await copy(onPc, 'pc');
+      final files = drive.visible.values.where((f) => f.bytes != null && !f.binned);
+      expect(files.map((f) => utf8.decode(f.bytes!)), ['# Sunday 1 November 2026\n\nBack on the PC\n']);
+    });
+
+    test('the journal is only read for Drive again once it has changed', () async {
+      var now = DateTime(2026, 11, 3, 9);
+      final folder = JournalFolder(<String, dynamic>{}, () async {}, now: () => now);
+      var reads = 0, text = 'Hello', stamp = '1';
+      Future<void> copy() => folder.copy(
+        drive,
+        machine: 'pc',
+        stamp: stamp,
+        writers: () => {'2026-11-03': 'pc'},
+        texts: () {
+          reads++;
+          return {'2026-11-03': text};
+        },
+        stopped: () => false,
+      );
+      await copy();
+      await copy();
+      expect(reads, 1, reason: 'nothing changed');
+      (text, stamp) = ('Hello again', '2');
+      await copy();
+      expect(reads, 2);
+      expect(drive.journal.values.single, contains('Hello again'));
+      // The hourly look may find a file gone, to write again.
+      await drive.bin(drive.visible.entries.singleWhere((e) => e.value.bytes != null).key);
+      await copy();
+      expect(reads, 2);
+      now = now.add(JournalFolder.checkEvery);
+      await copy();
+      expect(reads, 3);
+      expect(drive.journal.values.single, contains('Hello again'));
+    });
+
     test('a file renamed in the journal folder doesn’t stop another computer adopting it', () async {
       final root = await drive.makeFolder(JournalFolder.folderName);
       final year = await drive.makeFolder('2026', parent: root);
@@ -918,8 +974,8 @@ void main() {
       await folder.copy(
         drive,
         machine: 'pc',
-        writers: {'2026-10-31': 'pc'},
-        texts: {'2026-10-31': 'Hello'},
+        writers: () => {'2026-10-31': 'pc'},
+        texts: () => {'2026-10-31': 'Hello'},
         stopped: () => false,
       );
       expect(drive.journal.keys, contains('Eclipse Journals/2026/2026-10-31.md'));
@@ -929,8 +985,8 @@ void main() {
       var now = DateTime(2026, 11, 3, 9);
       final onPc = JournalFolder(<String, dynamic>{}, () async {}, now: () => now);
       final onLaptop = JournalFolder(<String, dynamic>{}, () async {}, now: () => now);
-      const texts = {'2026-11-01': 'Written on the PC', '2026-11-02': 'Written on the laptop'};
-      const writers = {'2026-11-01': 'pc', '2026-11-02': 'laptop'};
+      Map<String, String> texts() => {'2026-11-01': 'Written on the PC', '2026-11-02': 'Written on the laptop'};
+      Map<String, String> writers() => {'2026-11-01': 'pc', '2026-11-02': 'laptop'};
       await onPc.copy(drive, machine: 'pc', writers: writers, texts: texts, stopped: () => false);
       // Drive's search hadn't caught up: the laptop doesn't see the PC's.
       final first = onPc.id!;

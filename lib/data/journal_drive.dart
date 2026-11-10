@@ -51,8 +51,13 @@ class JournalFolder {
   /// Each day's file and its checksum, by day.
   Map<String, dynamic> get _up => _map('journalUp');
 
+  /// The stamp [copy] was given when every day's file was last seen to be
+  /// right, since the app opened; null until it has been.
+  String? _copied;
+
   void forget() {
     behind = false;
+    _copied = null;
     for (final key in ['journalFolder', 'journalYears', 'journalUp', 'journalFill', 'journalChecked']) {
       _config.remove(key);
     }
@@ -62,15 +67,24 @@ class JournalFolder {
   /// ([writers]); the other computers see to theirs. Whoever makes the
   /// folder (the first time, or after it was deleted) fills it with every
   /// day of [texts].
+  ///
+  /// With a [stamp], which changes whenever the journal does, neither is
+  /// read while it's the one every file was last right for and the folder
+  /// is as it was: this runs every few minutes, and reading and checking
+  /// the whole journal each time took longer with every day written.
   Future<void> copy(
     JournalDrive drive, {
     required String machine,
-    required Map<String, String> writers,
-    required Map<String, String> texts,
+    required Map<String, String> Function() writers,
+    required Map<String, String> Function() texts,
+    String? stamp,
     required bool Function() stopped,
   }) async {
     var folder = id;
+    // Found, made or listed again: what's known of its files may have changed.
+    var looked = false;
     if (folder == null || !await drive.exists(folder)) {
+      looked = true;
       forget();
       final found = await drive.findFolder(folderName);
       if (found != null && found != folder) {
@@ -91,6 +105,7 @@ class JournalFolder {
       await _save();
     } else if (_now().difference(DateTime.tryParse(_config['journalChecked'] as String? ?? '') ?? DateTime(0)) >=
         checkEvery) {
+      looked = true;
       // Two computers that made the folder at once, neither seeing the
       // other's yet, each keep their own: the first made is the one. The
       // other's maker moves to it, fills it with every day, and bins its own.
@@ -124,16 +139,19 @@ class JournalFolder {
     if (stopped()) return;
 
     final fill = _config['journalFill'] == true;
+    if (stamp != null && stamp == _copied && !looked && !fill) return;
+    _copied = null;
+    final days = texts(), wrote = writers();
     // A day's file and its checksum, or two blanks once it's known there's
     // none, for a day emptied.
     final up = _up, years = _years;
     const none = ['', ''];
     var written = 0;
     behind = false;
-    for (final day in {...texts.keys, ...up.keys, ...writers.keys}.toList()..sort()) {
+    for (final day in {...days.keys, ...up.keys, ...wrote.keys}.toList()..sort()) {
       if (stopped()) return;
-      if (!fill && (writers[day] ?? machine) != machine) continue;
-      final contents = JournalFiles.contents(DateTime.parse(day), texts[day] ?? '');
+      if (!fill && (wrote[day] ?? machine) != machine) continue;
+      final contents = JournalFiles.contents(DateTime.parse(day), days[day] ?? '');
       final bytes = contents == null ? null : utf8.encode(contents);
       final had = (up[day] as List?)?.cast<String>();
       final same = bytes == null
@@ -163,8 +181,11 @@ class JournalFolder {
             await drive.findFolder(year, parent: folder) ??
             await drive.makeFolder(year, parent: folder);
         years[year] = yearFolder;
-        final id = had?[0] ?? (await drive.findFile('$day.md', yearFolder))?.$1;
-        final (newId, sum) = await drive.writeFile('$day.md', yearFolder, bytes, id: id == '' ? null : id);
+        // A day this computer emptied may have been written since by another:
+        // its file is written over, rather than a second one made beside it.
+        final known = had == null || had[0] == '' ? null : had[0];
+        final id = known ?? (await drive.findFile('$day.md', yearFolder))?.$1;
+        final (newId, sum) = await drive.writeFile('$day.md', yearFolder, bytes, id: id);
         up[day] = [newId, sum];
       } on DriveError catch (e) {
         if (!e.notFound) rethrow;
@@ -174,7 +195,10 @@ class JournalFolder {
         behind = true;
       }
     }
-    if (!behind) _config.remove('journalFill');
+    if (!behind) {
+      _config.remove('journalFill');
+      _copied = stamp;
+    }
     await _save();
   }
 }

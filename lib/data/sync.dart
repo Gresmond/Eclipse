@@ -756,6 +756,7 @@ class SyncEngine implements AutomaticWrites {
       _db.execute('DELETE FROM sync_local');
     });
     _lastTs = _lastSeq = null;
+    _newerOrigins = null;
   }
 
   /// Takes as this computer's own the edits under another id newer than
@@ -776,23 +777,32 @@ class SyncEngine implements AutomaticWrites {
       }
     });
     _lastSeq = null;
+    _newerOrigins = null;
   }
 
   /// The computers with edits of things this version doesn't keep: they
   /// show once it's updated.
-  Set<String> get newerOrigins => {
+  ///
+  /// Looked for through every register, so kept until one comes in from
+  /// another computer: what this one writes is only ever what it keeps.
+  Set<String> get newerOrigins => _newerOrigins ??= {
     for (final r in _db.select('SELECT DISTINCT kind, field, origin FROM sync_reg'))
       if (fields[r['kind']]?.containsKey(r['field']) != true) r['origin'] as String,
   };
+
+  Set<String>? _newerOrigins;
+
+  /// Reads the latest edit numbers again, after a rolled-back merge.
+  void forgetCounts() {
+    _lastTs = _lastSeq = null;
+    _newerOrigins = null;
+  }
 
   /// Clears this computer's rows and registers, to take another's whole
   /// history in their place. The sleep schedule's rituals stay: they're
   /// the same everywhere.
   ///
   /// Returns the journal days that were here, to remove their files.
-  /// Reads the latest edit numbers again, after a rolled-back merge.
-  void forgetCounts() => _lastTs = _lastSeq = null;
-
   List<String> clearForJoining() {
     final days = [for (final r in _db.select('SELECT day FROM journal')) r['day'] as String];
     store.transaction(() {
@@ -817,30 +827,37 @@ class SyncEngine implements AutomaticWrites {
       _db.execute('DELETE FROM sync_local');
     });
     _lastTs = _lastSeq = null;
+    _newerOrigins = null;
     return days;
   }
 
   /// This computer's edits, grouped by the day (UTC) they were made, for
   /// every day with an edit after [since] (one of [latest]'s numbers).
   Map<String, List<List<Object?>>> changesSince(int since) {
+    // Days as whole numbers of them, so each day's edits are read by their
+    // times, through the index on them: naming the day of every edit this
+    // computer ever made, to find one day's, took longer each month.
     final days = [
+      // Rounded down, so a time before 1970 (a test's clock) is in its day too.
       for (final r in _db.select(
-        "SELECT DISTINCT date(ts / 1000, 'unixepoch') AS d FROM sync_reg WHERE origin = ? AND seq > ?",
+        'SELECT DISTINCT ts / $_dayMs - (ts < 0 AND ts % $_dayMs != 0) AS d FROM sync_reg WHERE origin = ? AND seq > ?',
         [me, since],
       ))
-        r['d'] as String,
+        r['d'] as int,
     ];
     return {
       for (final day in days)
-        day: [
+        dateKey(DateTime.fromMillisecondsSinceEpoch(day * _dayMs, isUtc: true)): [
           for (final r in _db.select(
-            "SELECT * FROM sync_reg WHERE origin = ? AND date(ts / 1000, 'unixepoch') = ? ORDER BY kind, rowkey, field",
-            [me, day],
+            'SELECT * FROM sync_reg WHERE origin = ? AND ts >= ? AND ts < ? ORDER BY kind, rowkey, field',
+            [me, day * _dayMs, (day + 1) * _dayMs],
           ))
             _Reg.fromRow(r).toJson(),
         ],
     };
   }
+
+  static const _dayMs = 86400000;
 
   /// For each journal day, the computer that made its latest edit: when
   /// both wrote at once, whichever wrote later. The same on every computer
@@ -860,6 +877,13 @@ class SyncEngine implements AutomaticWrites {
                     ?.origin ??
                 r['origin'] as String),
   };
+
+  /// Changes whenever a journal entry does, here or brought in: how many
+  /// days have been written, and when they last were.
+  String get journalStamp {
+    final r = _db.select("SELECT COUNT(*), MAX(ts), SUM(ts) FROM sync_reg WHERE kind = 'journal'").first;
+    return '${r.columnAt(0)}:${r.columnAt(1)}:${r.columnAt(2)}';
+  }
 
   /// The number of this computer's latest edit, to send what came after.
   int get latest => _db.select('SELECT MAX(seq) FROM sync_reg WHERE origin = ?', [me]).first.columnAt(0) as int? ?? 0;
@@ -888,6 +912,7 @@ class SyncEngine implements AutomaticWrites {
               final merged = ours == null ? theirs : _resolve(ours, theirs);
               if (merged == null) continue;
               _put(merged);
+              _newerOrigins = null;
               if (ours?.value != merged.value) rows.add((theirs.kind, theirs.rowkey));
             }
             for (final (kind, rowkey) in rows) {
