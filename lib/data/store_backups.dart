@@ -8,13 +8,7 @@ extension StoreBackups on Store {
   void saveCopy(String path) => replaceSafelySync(path, (part) => _db.execute('VACUUM INTO ?', [part.path]));
 
   /// Whether the database passes SQLite's own check of its structure.
-  bool get isHealthy {
-    try {
-      return _db.select('PRAGMA quick_check').first.columnAt(0) == 'ok';
-    } catch (_) {
-      return false;
-    }
-  }
+  bool get isHealthy => passesCheck(_db);
 
   /// Replaces everything in this database with the copy at [path], except
   /// that journal writing is never lost: a day the copy has no entry for

@@ -2,7 +2,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import 'sqlite.dart' show OpenMode, sqlite3;
+import 'copy_database.dart';
+import 'sqlite.dart' show Database, OpenMode, offThread, sqlite3;
 
 import 'app_log.dart';
 import '../models.dart';
@@ -46,6 +47,8 @@ class DriveBackup extends Backup {
   @override
   DateTime get modified => saved;
 }
+
+enum _Daily { saved, damaged, badCopy }
 
 /// The database failed its check, so no copy of it was taken.
 class DataDamaged implements Exception {
@@ -95,29 +98,42 @@ class Backups {
     return [?before, ?beforeJoin, ?beforeUpdate, ...daily];
   }
 
-  /// Today's check of the database. Throws [DataDamaged] when it fails.
-  void check(Store store) {
-    if (!store.isHealthy) throw const DataDamaged();
+  /// Today's check of the database, away from the UI. Throws [DataDamaged]
+  /// when it fails.
+  Future<void> check(Store store) async {
+    if (!await offThread(store.raw, passesCheck)) throw const DataDamaged();
   }
 
   /// Checks the database, then saves today's copy if there isn't one yet
-  /// and drops the oldest. Throws [DataDamaged] when the database fails its
-  /// check: nothing is saved over or dropped, as the older copies are the
-  /// way back.
-  void daily(Store store, DateTime today) {
-    check(store);
+  /// and drops the oldest, away from the UI: the copy is of the database as
+  /// it was when this started. Throws [DataDamaged] when the database fails
+  /// its check: nothing is saved over or dropped, as the older copies are
+  /// the way back.
+  Future<void> daily(Store store, DateTime today) async {
     final file = _fileFor(today);
-    if (file.existsSync()) return;
+    if (file.existsSync()) return check(store);
     dir.createSync(recursive: true);
-    store.saveCopy(file.path);
-    if (!isHealthy(file)) {
-      file.deleteSync();
-      throw StateError('Today’s copy failed its check');
+    switch (await offThread(store.raw, _dailyCopy(file.path))) {
+      case _Daily.damaged:
+        throw const DataDamaged();
+      case _Daily.badCopy:
+        throw StateError('Today’s copy failed its check');
+      case _Daily.saved:
     }
     for (final old in list().where((b) => b.day != null).skip(keep)) {
       old.file.deleteSync();
     }
   }
+
+  /// The check and the copy at [to], for another isolate: made here so it
+  /// holds nothing but the path.
+  static _Daily Function(Database db) _dailyCopy(String to) => (db) {
+    if (!passesCheck(db)) return _Daily.damaged;
+    replaceSafelySync(to, (part) => db.execute('VACUUM INTO ?', [part.path]));
+    if (isHealthy(File(to))) return _Daily.saved;
+    File(to).deleteSync();
+    return _Daily.badCopy;
+  };
 
   /// Removes the daily copies, once they're in Drive instead.
   void dropDaily() {

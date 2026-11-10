@@ -1,11 +1,13 @@
 // What the 10 Nov 2026 audit found: each test holds the behaviour the rest
 // of the app, or the spec, implies.
+import 'dart:io';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/backups.dart';
-import 'package:eclipse/data/sqlite.dart' show sqlite3;
+import 'package:eclipse/data/sqlite.dart' show Database, OpenMode, checkedCopyOf, offThread, sqlite3;
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/data/sync_disk.dart';
@@ -217,4 +219,29 @@ void main() {
     // The same clock a task's time reads on.
     expect(clockLabel(14 * 60 + 5), '2:05 pm');
   });
+
+  test('the daily copy and the copy for Drive are made away from the UI', () async {
+    final dir = Directory.systemTemp.createTempSync('eclipse-off-thread');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final store = Store.open('${dir.path}/app.db');
+    addTearDown(store.close);
+    store.setJournal('2026-11-10', 'Written today');
+    _here = true;
+    expect(await offThread(store.raw, _onThisIsolate), isFalse, reason: 'a file is read on an isolate of its own');
+    expect(await offThread(Store.memory().raw, _onThisIsolate), isTrue, reason: 'one in memory has no file to open');
+
+    final copy = File('${dir.path}/copy.db')..writeAsBytesSync((await offThread(store.raw, checkedCopyOf))!);
+    final saved = sqlite3.open(copy.path, mode: OpenMode.readOnly);
+    addTearDown(saved.close);
+    expect(saved.select('SELECT text FROM journal').single['text'], 'Written today');
+
+    final backups = Backups(Directory('${dir.path}/backups'));
+    await backups.daily(store, DateTime(2026, 11, 10));
+    expect(Backups.isHealthy(backups.list().single.file), isTrue);
+  });
 }
+
+/// Set on the test's isolate only; another isolate starts with it unset.
+var _here = false;
+
+bool _onThisIsolate(Database _) => _here;

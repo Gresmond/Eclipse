@@ -137,6 +137,7 @@ void main() {
     state.setKeepsBackupFiles(false);
     now = DateTime(2026, 11, 2);
     state.checkDate();
+    await state.backedUp;
     expect(backups.list(), hasLength(2), reason: 'off means nothing until Drive has one');
     state.setKeepsBackupFiles(true);
 
@@ -147,12 +148,15 @@ void main() {
 
     backups.beforeJoining(store);
     state.setKeepsBackupFiles(false);
+    await state.backedUp;
     expect(backups.list().single.isBeforeJoin, isTrue, reason: 'the one-off copies stay');
     now = DateTime(2026, 11, 3);
     state.checkDate();
+    await state.backedUp;
     expect(backups.list(), hasLength(1), reason: 'none made while off');
 
     state.setKeepsBackupFiles(true);
+    await state.backedUp;
     expect(backups.list().where((b) => b.day != null).single.day, DateTime(2026, 11, 3));
     sync.stop();
   });

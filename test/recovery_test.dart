@@ -75,40 +75,40 @@ void main() {
   }
 
   group('the daily check', () {
-    test('a good copy is checked and saved, and the oldest dropped', () {
+    test('a good copy is checked and saved, and the oldest dropped', () async {
       final dir = temporary();
       final store = Store.open(database(dir));
       addTearDown(store.close);
       final backups = Backups(Directory(p.join(dir.path, 'backups')), keep: 2);
       for (final day in [1, 2, 3]) {
-        backups.daily(store, DateTime(2026, 11, day));
+        await backups.daily(store, DateTime(2026, 11, day));
       }
       expect(backups.list().map((b) => b.day), [DateTime(2026, 11, 3), DateTime(2026, 11, 2)]);
       expect(Backups.isHealthy(backups.list().first.file), isTrue);
     });
 
-    test('damaged data makes no copy and drops none', () {
+    test('damaged data makes no copy and drops none', () async {
       final dir = temporary();
       final path = database(dir);
       final backups = Backups(Directory(p.join(dir.path, 'backups')), keep: 1);
       final good = Store.open(path);
-      backups.daily(good, DateTime(2026, 11, 1));
+      await backups.daily(good, DateTime(2026, 11, 1));
       good.close();
       damage(path, lightly: true);
       final store = Store.open(path);
       addTearDown(store.close);
       expect(store.isHealthy, isFalse);
-      expect(() => backups.daily(store, DateTime(2026, 11, 2)), throwsA(isA<DataDamaged>()));
+      await expectLater(backups.daily(store, DateTime(2026, 11, 2)), throwsA(isA<DataDamaged>()));
       expect(backups.list().map((b) => b.day), [DateTime(2026, 11, 1)]);
     });
 
-    test('dropping the daily copies keeps the one-off ones', () {
+    test('dropping the daily copies keeps the one-off ones', () async {
       final dir = temporary();
       final store = Store.open(database(dir));
       addTearDown(store.close);
       final backups = Backups(Directory(p.join(dir.path, 'backups')));
-      backups.daily(store, DateTime(2026, 11, 1));
-      backups.daily(store, DateTime(2026, 11, 2));
+      await backups.daily(store, DateTime(2026, 11, 1));
+      await backups.daily(store, DateTime(2026, 11, 2));
       backups.beforeJoining(store);
       backups.dropDaily();
       expect(backups.list().single.isBeforeJoin, isTrue);
@@ -125,7 +125,7 @@ void main() {
       expect(Backups.isHealthy(text), isFalse);
     });
 
-    test('the app says when a backup failed, and when data is damaged', () {
+    test('the app says when a backup failed, and when data is damaged', () async {
       final dir = temporary();
       final store = Store.open(database(dir));
       addTearDown(store.close);
@@ -133,6 +133,7 @@ void main() {
       final blocked = File(p.join(dir.path, 'blocked'))..writeAsStringSync('');
       final failing = AppState(store, backups: Backups(Directory(blocked.path)), clock: () => DateTime(2026, 11, 4));
       addTearDown(failing.dispose);
+      await failing.backedUp;
       expect(failing.backupProblem, BackupProblem.failed);
 
       final working = AppState(
@@ -141,6 +142,7 @@ void main() {
         clock: () => DateTime(2026, 11, 4),
       );
       addTearDown(working.dispose);
+      await working.backedUp;
       expect(working.backupProblem, isNull);
     });
 
@@ -201,12 +203,12 @@ void main() {
     late Backups backups;
     late Backup copy;
 
-    setUp(() {
+    setUp(() async {
       dir = Directory.systemTemp.createTempSync('eclipse-recover');
       path = database(dir);
       backups = Backups(Directory(p.join(dir.path, 'backups')));
       final store = Store.open(path);
-      backups.daily(store, DateTime(2026, 11, 1));
+      await backups.daily(store, DateTime(2026, 11, 1));
       store.close();
       copy = backups.list().single;
     });
@@ -355,7 +357,7 @@ void main() {
       store.flushToDisk();
       // A copy from before the edit, as the backup would be.
       final old = Backups(Directory(p.join(dir.path, 'older')));
-      old.daily(store, DateTime(2026, 11, 1));
+      await old.daily(store, DateTime(2026, 11, 1));
       store.setJournal('2026-11-03', 'Synced before the damage');
       await sync.run();
       sync.stop();

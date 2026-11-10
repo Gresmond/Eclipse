@@ -34,6 +34,13 @@ Uint8List copyOfDatabase(Database db) {
   }
 }
 
+/// A browser has no isolates for this: [job] runs here, before this returns.
+Future<T> offThread<T>(Database db, T Function(Database db) job) => Future.sync(() => job(db));
+
+/// [copyOfDatabase], once [db] passes SQLite's check of its structure; null
+/// when it doesn't.
+Uint8List? checkedCopyOf(Database db) => passesCheck(db) ? copyOfDatabase(db) : null;
+
 var _placed = 0;
 
 /// Puts a database's [bytes] where SQLite can open them, and says where.

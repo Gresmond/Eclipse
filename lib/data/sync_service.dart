@@ -12,7 +12,7 @@ import 'backups.dart';
 import 'google_drive.dart';
 import 'host.dart';
 import 'safe_write.dart';
-import 'sqlite.dart' show copyOfDatabase;
+import 'sqlite.dart' show checkedCopyOf, copyOfDatabase, offThread;
 import 'journal_drive.dart';
 import 'store.dart';
 import 'sync.dart';
@@ -659,11 +659,13 @@ class SyncService extends ChangeNotifier {
     final today = dateKey(DateTime.now());
     try {
       if (_config['copied'] != today) {
-        if (!store.isHealthy) throw StateError('The database failed its check');
+        // Checked and copied away from the UI.
+        final copy = await offThread(store.raw, checkedCopyOf);
+        if (copy == null) throw StateError('The database failed its check');
         final files = await drive.list();
         final name = 'backup_${machine}_$today.db';
         final had = files.where((f) => f.name == name).firstOrNull;
-        await drive.upload(name, copyOfDatabase(store.raw), id: had?.id);
+        await drive.upload(name, copy, id: had?.id);
         final mine = [
           for (final f in files)
             if (_copyName.firstMatch(f.name) case final m? when m[1] == machine && m[2] != 'before-restore') f,

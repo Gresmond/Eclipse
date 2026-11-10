@@ -50,9 +50,9 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     sync?.onIncoming = _takeIncoming;
     sync?.beforeMerge = saveDrafts;
     sync?.beforeJoin = () => backups?.beforeJoining(store);
-    sync?.afterDriveCopy = () {
+    sync?.afterDriveCopy = () => _afterBackups(() async {
       if (!savesBackupFiles) backups?.dropDaily();
-    };
+    });
     sync?.addListener(_checkJournalFiles);
     sync?.onClear = (days) {
       for (final day in days) {
@@ -276,27 +276,56 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     keepsBackupFiles = keep;
     store.setSetting('backupFiles', keep ? '1' : '0');
     _backUp();
-    if (!savesBackupFiles) backups?.dropDaily();
+    _afterBackups(() async {
+      if (!savesBackupFiles) backups?.dropDaily();
+    });
     notifyListeners();
   }
 
-  /// Today's check and copy, taken before anything changes today. A failed
-  /// backup must never stop the app opening.
+  /// The backup work still to finish, one step after another; null when
+  /// there's none.
+  Future<void>? _backingUp;
+
+  /// Done once the backup work started so far is.
+  Future<void> get backedUp => _backingUp ?? Future.value();
+
+  /// Runs [step] once the backup work before it is done. With none waiting,
+  /// it starts at once.
+  void _afterBackups(Future<void> Function() step) {
+    final previous = _backingUp;
+    final next = previous == null ? step() : previous.then((_) => step());
+    _backingUp = next;
+    next.whenComplete(() {
+      if (identical(_backingUp, next)) _backingUp = null;
+    });
+  }
+
+  /// Today's check and copy, started as the day does and done away from the
+  /// UI. A failed backup must never stop the app opening.
   void _backUp() {
+    final day = today; // the day it started for, should it wait
+    _afterBackups(() => _backUpFor(day));
+  }
+
+  Future<void> _backUpFor(DateTime day) async {
+    BackupProblem? problem;
     try {
       if (savesBackupFiles) {
-        backups?.daily(store, today);
+        await backups?.daily(store, day);
       } else {
-        backups?.check(store);
+        await backups?.check(store);
       }
-      backupProblem = backups?.updateCopyFailed ?? false ? BackupProblem.failed : null;
+      problem = backups?.updateCopyFailed ?? false ? BackupProblem.failed : null;
     } on DataDamaged {
-      backupProblem = BackupProblem.damaged;
+      problem = BackupProblem.damaged;
       AppLog.note('The database failed its daily check');
     } catch (e) {
-      backupProblem = BackupProblem.failed;
+      problem = BackupProblem.failed;
       AppLog.failure('Backup failed', e);
     }
+    if (problem == backupProblem) return;
+    backupProblem = problem;
+    if (!_disposed) notifyListeners();
   }
 
   /// Reloads settings and live tasks; history is loaded into bounded caches.
@@ -373,6 +402,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     if (!Backups.isHealthy(backup.file)) throw StateError('That copy is damaged too');
     sync?.stop();
     await flushFiles();
+    await backedUp; // its connection is to the file being swapped
     await restartApplication(
       beforeRestart: () async {
         store.close();

@@ -1,5 +1,14 @@
 import 'package:sqlite3/common.dart';
 
+/// Whether [db] passes SQLite's own check of its structure.
+bool passesCheck(CommonDatabase db) {
+  try {
+    return db.select('PRAGMA quick_check').first.columnAt(0) == 'ok';
+  } catch (_) {
+    return false;
+  }
+}
+
 /// Makes [to] hold [from]'s schema, rows and version and nothing else, in one
 /// transaction, for where SQLite's own backup call isn't available.
 void copyOver(CommonDatabase from, CommonDatabase to) {
