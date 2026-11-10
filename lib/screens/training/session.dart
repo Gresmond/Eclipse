@@ -119,18 +119,16 @@ class _ExerciseBlock extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (exercise.bodyweight) ...[
-                            const SizedBox(width: 6),
-                            Text(
-                              'BODYWEIGHT',
-                              style: _label(
-                                p,
-                                size: 12,
-                                weight: FontWeight.w600,
-                                color: p.inkMuted,
-                              ).copyWith(letterSpacing: 1.2),
+                          const SizedBox(width: 6),
+                          PixelTooltip(
+                            message: exercise.bodyweight ? 'Switch to weighted' : 'Switch to bodyweight',
+                            child: _Chip(
+                              label: exercise.bodyweight ? 'Bodyweight' : 'Weighted',
+                              colour: p.accent,
+                              on: exercise.bodyweight,
+                              onTap: () => log.updateExercise(exercise, bodyweight: !exercise.bodyweight),
                             ),
-                          ],
+                          ),
                         ],
                       ),
                     ),
@@ -250,7 +248,7 @@ class _SetRowState extends State<_SetRow> {
               padding: const EdgeInsets.only(left: 6),
               child: Text('reps', style: _label(p, size: 14, color: p.inkMuted)),
             ),
-            if (s.reps > maxEstimateReps)
+            if (!widget.bodyweight && s.reps > maxEstimateReps)
               Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: Text(

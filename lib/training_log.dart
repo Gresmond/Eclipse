@@ -105,14 +105,14 @@ class TrainingLog {
     return e;
   }
 
-  void updateExercise(Exercise e, {String? name, MuscleGroup? group}) {
+  void updateExercise(Exercise e, {String? name, MuscleGroup? group, bool? bodyweight}) {
     final trimmed = name == null ? null : normaliseNote(name.trim());
     store.saveExercise(
       Exercise(
         uid: e.uid,
         name: trimmed == null || trimmed.isEmpty ? e.name : trimmed,
         group: group ?? e.group,
-        bodyweight: e.bodyweight,
+        bodyweight: bodyweight ?? e.bodyweight,
       ),
     );
     reload();

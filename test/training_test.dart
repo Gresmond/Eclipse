@@ -158,5 +158,64 @@ void main() {
       expect(state.training.session(today).single.$2.last.weight, 106.0);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('switching an existing exercise to bodyweight preserves its sets', (tester) async {
+      state.showingTraining = true;
+      final log = state.training;
+      final pullups = log.createExercise('Pullups', MuscleGroup.back, bodyweight: false);
+      log.addToDay(today, pullups);
+      final set = log.session(today).single.$2.single;
+      log.updateSet(set, weight: 5, reps: 22);
+      await show(tester);
+      expect(find.byType(EditableText), findsNWidgets(3));
+      expect(find.text('Over 20 reps, so not charted'), findsOneWidget);
+
+      await tester.tap(find.text('Weighted'));
+      await tester.pumpAndSettle();
+
+      final saved = store.exercises().single;
+      expect((saved.uid, saved.group, saved.bodyweight), (pullups.uid, MuscleGroup.back, true));
+      expect(find.byType(EditableText), findsNWidgets(2));
+      expect(find.text('Over 20 reps, so not charted'), findsNothing);
+      expect(log.points().values.single.single.value, 22);
+      expect(find.text('Bodyweight exercises show in the % change view.'), findsOneWidget);
+
+      await tester.tap(find.text('Bodyweight').first);
+      await tester.pumpAndSettle();
+      final restored = log.session(today).single;
+      expect(restored.$1.bodyweight, isFalse);
+      expect((restored.$2.single.uid, restored.$2.single.weight, restored.$2.single.reps), (set.uid, 5.0, 22));
+      expect(find.text('5'), findsOneWidget);
+    });
+
+    testWidgets('the chart starts at the first plotted date on a shared timeline', (tester) async {
+      state.showingTraining = true;
+      final log = state.training;
+      final press = log.createExercise('Bench press', MuscleGroup.chest, bodyweight: false);
+      void logSet(DateTime day, Exercise exercise) {
+        log.addToDay(day, exercise);
+        final set = log.session(day).firstWhere((entry) => entry.$1.uid == exercise.uid).$2.single;
+        log.updateSet(set, weight: 50, reps: 5);
+      }
+
+      logSet(today, press);
+      await show(tester);
+      final chart = find.byWidgetPredicate((widget) => widget is CustomPaint && widget.size == Size.infinite);
+      const plotLeft = 52.0;
+      expect(chart, paints..circle(x: plotLeft, radius: 3.6));
+
+      logSet(DateTime(2026, 10, 25), press);
+      final row = log.createExercise('Row', MuscleGroup.back, bodyweight: false);
+      logSet(DateTime(2026, 10, 26), row);
+      await tester.pumpAndSettle();
+      final plotRight = tester.getSize(chart).width - 20;
+      expect(
+        chart,
+        paints
+          ..circle(x: plotLeft, radius: 3.6)
+          ..circle(x: plotRight, radius: 3.6)
+          ..circle(x: (plotLeft + plotRight) / 2, radius: 3.6),
+      );
+    });
   });
 }

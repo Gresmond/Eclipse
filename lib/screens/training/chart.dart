@@ -37,6 +37,9 @@ class _ChartTileState extends State<_ChartTile> {
         if (!log.hidden.contains(e.uid) && !log.hidden.contains('g:${e.group.name}') && (percent || !e.bodyweight))
           _Series(e, points, groupColour(e.group, p), dash[e.uid] ?? const []),
     ]..sort((a, b) => a.exercise.group.index.compareTo(b.exercise.group.index));
+    final start = series.isEmpty
+        ? from ?? today
+        : series.map((s) => s.points.first.day).reduce((a, b) => b.isBefore(a) ? b : a);
     final charted = all.keys.toList()
       ..sort((a, b) => a.group.index != b.group.index ? a.group.index - b.group.index : a.name.compareTo(b.name));
 
@@ -47,7 +50,7 @@ class _ChartTileState extends State<_ChartTile> {
         children: [
           TileHeader(
             title: percent
-                ? 'Progress since ${from == null ? 'the start' : _shortDate(from)}'
+                ? 'Progress since ${from == null ? 'the start' : _shortDate(start)}'
                 : 'Estimated one-rep max',
             trailingAtEnd: true,
             trailing: Row(
@@ -80,7 +83,7 @@ class _ChartTileState extends State<_ChartTile> {
                   )
                 : _Chart(
                     series: series,
-                    from: from ?? series.map((s) => s.points.first.day).fold(today, (a, b) => b.isBefore(a) ? b : a),
+                    from: start,
                     to: today,
                     percent: percent,
                     focus: _focus,
@@ -205,8 +208,8 @@ class _ChartPainter extends CustomPainter {
 
     final start = dateOnly(from), end = dateOnly(to);
     const days = daysBetween;
-    final span = math.max(1, days(start, end));
-    double x(DateTime d) => plot.left + plot.width * (days(start, d) / span);
+    final span = days(start, end);
+    double x(DateTime d) => plot.left + plot.width * (days(start, d) / math.max(1, span));
     double y(double v) => plot.bottom - plot.height * ((v - lo) / (hi - lo));
 
     // Grid and labels.
@@ -228,9 +231,9 @@ class _ChartPainter extends CustomPainter {
           ..strokeWidth = 1,
       );
     }
-    final ticks = math.min(6, span);
+    final ticks = span.clamp(0, 6);
     for (var i = 0; i <= ticks; i++) {
-      final d = DateTime(start.year, start.month, start.day + (span * i / ticks).round());
+      final d = DateTime(start.year, start.month, start.day + (span * i / math.max(1, ticks)).round());
       _text(canvas, _shortDate(d), Offset(x(d), plot.bottom + 8), p.inkMuted, align: Alignment.topCenter);
     }
 
