@@ -142,14 +142,14 @@ void main() {
     );
     expect(find.byType(Container), findsNothing);
 
-    sync.unreadFrom = {'Mac'};
+    sync.unreadFrom = {'Tablet'};
     // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
     sync.notifyListeners();
     await tester.pump();
     expect(find.text('Some changes couldn’t be read'), findsOneWidget);
     expect(
       find.text(
-        'Some changes from Mac couldn’t be read, so they’re waiting. Your own changes still go to your other computers.',
+        'Some changes from Tablet couldn’t be read, so they’re waiting. Your own changes still go to your other computers.',
       ),
       findsOneWidget,
     );

@@ -15,7 +15,7 @@ import 'note_input.dart';
 import '../theme/pixels.dart';
 
 /// A habit-day square: left-click done, right-click not done, middle-click
-/// or Option/Alt-click other (trackpads have no middle button). Repeat the
+/// or Alt-click other (trackpads have no middle button). Repeat the
 /// same click to clear its mark.
 ///
 /// A month shows hundreds of these at once, so each is kept to a handful of

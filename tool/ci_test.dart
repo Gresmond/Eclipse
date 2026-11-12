@@ -1,14 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
-// Expose actual test errors as Actions annotations, including on Windows where
-// the public job API otherwise reports only an unhelpful exit code.
+// Expose actual test errors as Actions annotations: the public job API
+// otherwise reports only an unhelpful exit code.
 Future<void> main(List<String> arguments) async {
-  final process = await Process.start(Platform.isWindows ? 'flutter.bat' : 'flutter', [
+  final process = await Process.start('flutter', [
     'test',
     '--reporter=json',
     ...arguments,
-  ], runInShell: Platform.isWindows);
+  ]);
   String escape(String s) => s.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
   var passed = 0;
   final names = <int, String>{};

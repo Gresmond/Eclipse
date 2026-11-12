@@ -10,8 +10,6 @@ import 'dart:io';
 /// [sync] points TZ at whatever /etc/localtime now links to. The runner sets
 /// TZ the same way at launch (linux/runner/main.cc), so this only replaces
 /// it. A zone name you set in TZ yourself is left alone.
-///
-/// macOS notices time zone changes by itself.
 class SystemTimeZone {
   SystemTimeZone._(this._current);
 

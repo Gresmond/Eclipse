@@ -3,7 +3,7 @@ description: "A habit tracker and to-do planner."
 publish_to: 'none'
 
 # <two-digit year>.<month>.<release that month>.
-# tool/release.sh bumps this and tags the commit; the tag publishes per-user Linux, Windows and Mac releases.
+# tool/release.sh bumps this and tags the commit; the tag publishes the Linux, Android and web releases.
 version: 26.11.9
 
 environment:
@@ -57,7 +57,7 @@ flutter:
         - asset: assets/fonts/haffer/HafferSemiMono-TRIAL-SemiBold.otf
           weight: 600
 
-# Linux builds use the system SQLite package; other platforms keep their native asset.
+# Linux builds use the system SQLite package; Android keeps its native asset.
 hooks:
   user_defines:
     sqlite3:

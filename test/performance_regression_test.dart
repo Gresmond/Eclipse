@@ -1,11 +1,9 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/journal_files.dart';
 import 'package:eclipse/data/sync.dart';
-import 'package:eclipse/data/updates.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/util/lru_cache.dart';
@@ -270,42 +268,6 @@ void main() {
     expect(cache, isEmpty);
   });
 
-  for (final extension in ['.exe', '.dmg']) {
-    test('desktop $extension updates compare version and build', () async {
-      Future<ReleaseUpdater> updater(int installed, int available) async {
-        final value = ReleaseUpdater(
-          '26.10.1',
-          installedRelease: installed,
-          assetExtension: extension,
-          fetch: (_) async => (
-            200,
-            utf8.encode(
-              jsonEncode({
-                'tag_name': 'v26.10.1',
-                'body': '<!-- eclipse-build: $available -->',
-                'assets': [
-                  {'name': 'Eclipse$extension', 'browser_download_url': 'https://example.com/download'},
-                ],
-              }),
-            ),
-          ),
-        );
-        await value.check();
-        return value;
-      }
-
-      final newer = await updater(43, 44);
-      expect(newer.status, UpdateStatus.available);
-      newer.dispose();
-      final same = await updater(44, 44);
-      expect(same.status, UpdateStatus.none);
-      same.dispose();
-      final older = await updater(44, 43);
-      expect(older.status, UpdateStatus.none);
-      older.dispose();
-    });
-  }
-
   test('journal saves are ordered and shutdown flushes the final draft', () async {
     final dir = Directory.systemTemp.createTempSync('eclipse_journal_queue_');
     final disk = Store.memory();
@@ -374,15 +336,5 @@ void main() {
     expect(store.journal('2026-10-26'), contains('Local draft'));
     expect(store.journal('2026-10-26'), contains('Remote edit'));
     await folder.readAsync(ours, canMerge: () => false, beforeMerge: () => fail('stopped sync must not merge'));
-  });
-
-  test('Windows packaged metadata supplies the installed build', () {
-    final dir = Directory.systemTemp.createTempSync('eclipse_metadata_');
-    addTearDown(() => dir.deleteSync(recursive: true));
-    File('${dir.path}/version').writeAsStringSync('26.10.1');
-    File('${dir.path}/package-release').writeAsStringSync('44');
-    final updater = ReleaseUpdater.forWindows('${dir.path}/eclipse.exe')!;
-    expect(updater.installedRelease, 44);
-    updater.dispose();
   });
 }

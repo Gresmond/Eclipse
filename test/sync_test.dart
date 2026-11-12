@@ -675,7 +675,7 @@ void main() {
             {'mac': 5000},
           ],
         ],
-        'Mac',
+        'Tablet',
       ),
       (pc.engine.changesSince(0).values.expand((d) => d).toList(), 'pc'),
     ]);
@@ -746,7 +746,7 @@ void main() {
             {'mac': 5000},
           ],
         ],
-        'Mac',
+        'Tablet',
       ),
     ]);
     expect(laptop.engine.newerOrigins, {'mac'});
@@ -1095,11 +1095,11 @@ void main() {
 
       await drive.upload(
         'ffffffffffffffff_2026-10-25.json',
-        utf8.encode(jsonEncode({'version': 2, 'name': 'Mac', 'registers': 'in a new way'})),
+        utf8.encode(jsonEncode({'version': 2, 'name': 'Tablet', 'registers': 'in a new way'})),
       );
       await onLaptop.run();
       expect(onLaptop.error, isNull, reason: 'the round carried on');
-      expect(onLaptop.newerFrom, {'Mac'});
+      expect(onLaptop.newerFrom, {'Tablet'});
     });
 
     test('a change file that can\'t be read waits, says so, and this computer\'s own still go', () async {
@@ -1110,7 +1110,7 @@ void main() {
         utf8.encode(
           jsonEncode({
             'version': 1,
-            'name': 'Mac',
+            'name': 'Tablet',
             'registers': [
               [
                 'journal',
@@ -1129,10 +1129,10 @@ void main() {
       onLaptop.recordEdits();
       await onLaptop.run();
       expect(onLaptop.error, isNull);
-      expect(onLaptop.unreadFrom, {'Mac'});
+      expect(onLaptop.unreadFrom, {'Tablet'});
       await onPc.run();
       expect(pc.store.journal('2026-10-24'), 'Still goes');
-      expect(onPc.unreadFrom, {'Mac'});
+      expect(onPc.unreadFrom, {'Tablet'});
     });
 
     test('a file Drive doesn\'t list yet isn\'t made twice, and two of one name are both read', () async {

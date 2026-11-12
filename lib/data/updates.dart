@@ -9,7 +9,6 @@ import 'package:path/path.dart' as p;
 import 'app_log.dart';
 import 'restart.dart';
 import 'http_request.dart';
-import 'platform_files.dart';
 
 enum UpdateStatus {
   /// Up to date, nothing to check against, or dismissed.
@@ -23,11 +22,9 @@ enum UpdateStatus {
 /// Tells when a newer version of Eclipse is out, for the update card.
 abstract class Updater extends ChangeNotifier {
   /// Per-user Linux releases install verified archives; source installs retain
-  /// the local Git updater. Mac and Windows use release downloads.
+  /// the local Git updater.
   static Updater? forThisApp({Future<void> Function()? onRestart}) {
     final executable = Platform.resolvedExecutable;
-    if (Platform.isMacOS) return ReleaseUpdater.forBundle(executable);
-    if (Platform.isWindows) return ReleaseUpdater.forWindows(executable);
     if (Platform.isLinux) {
       final home = Platform.environment['HOME'];
       if (home != null && p.isWithin(home, executable)) {
@@ -202,29 +199,9 @@ class GitUpdater extends Updater {
   }
 }
 
-/// Asks GitHub for the latest release and links to its platform download.
-class ReleaseUpdater extends Updater {
-  ReleaseUpdater(
-    this.installedVersion, {
-    this.installedRelease = 0,
-    this.assetExtension = '.dmg',
-    this.fetch = fetchReleaseBytes,
-  });
-
-  static ReleaseUpdater? forWindows(String executable) {
-    final version = readInstalledVersion(executable);
-    return version == null
-        ? null
-        : ReleaseUpdater(version, installedRelease: readInstalledRelease(executable), assetExtension: '.exe');
-  }
-
-  static int readInstalledRelease(String executable) {
-    try {
-      return int.tryParse(File(p.join(p.dirname(executable), 'package-release')).readAsStringSync().trim()) ?? 0;
-    } on FileSystemException {
-      return 0;
-    }
-  }
+/// Asks GitHub for the latest release and whether it is newer than this copy.
+abstract class ReleaseUpdater extends Updater {
+  ReleaseUpdater(this.installedVersion, {this.installedRelease = 0, this.fetch = fetchReleaseBytes});
 
   static String? readInstalledVersion(String executable) {
     try {
@@ -235,61 +212,27 @@ class ReleaseUpdater extends Updater {
     }
   }
 
-  /// Reads the app's version from the Info.plist of the bundle around
-  /// [executable] (Eclipse.app/Contents/MacOS/Eclipse); null without one.
-  static ReleaseUpdater? forBundle(String executable) {
-    try {
-      final plist = File(p.join(p.dirname(p.dirname(executable)), 'Info.plist'));
-      if (!plist.existsSync()) return null;
-      String xml;
-      if (Platform.isMacOS) {
-        // plutil understands XML and binary property lists alike.
-        final result = Process.runSync('/usr/bin/plutil', ['-convert', 'xml1', '-o', '-', plist.path]);
-        if (result.exitCode != 0) return null;
-        xml = result.stdout as String;
-      } else {
-        xml = plist.readAsStringSync();
-      }
-      final match = RegExp(r'<key>CFBundleShortVersionString</key>\s*<string>([^<]+)</string>').firstMatch(xml);
-      final build = RegExp(r'<key>CFBundleVersion</key>\s*<(?:string|integer)>([^<]+)</(?:string|integer)>')
-          .firstMatch(xml);
-      return match == null
-          ? null
-          : ReleaseUpdater(match.group(1)!, installedRelease: int.tryParse(build?.group(1) ?? '') ?? 0);
-    } on FileSystemException {
-      return null;
-    } on ProcessException {
-      return null;
-    }
-  }
-
   static final _latest = Uri.parse('https://api.github.com/repos/Gresmond/Eclipse/releases/latest');
 
   final String installedVersion;
   final int installedRelease;
-  final String assetExtension;
   final ReleaseFetch fetch;
 
   Map<String, dynamic>? _asset;
 
-  bool newerRelease(String version, Map<String, dynamic>? asset) =>
-      isNewer(version, installedVersion) ||
-      (version == installedVersion && (asset?['package_release'] as int? ?? 0) > installedRelease);
+  bool newerRelease(String version, Map<String, dynamic>? asset);
 
   static int? releaseBuild(Map<String, dynamic> release) => int.tryParse(
     RegExp(r'<!-- eclipse-(?:linux-)?build: (\d+) -->').firstMatch(release['body'] as String? ?? '')?.group(1) ?? '',
   );
 
-  /// The platform download (or failing that the release page) to open.
+  /// Where the release's archive downloads from.
   String? _download;
 
   String? _dismissed;
 
   String _identity(String? version, Map<String, dynamic>? asset) =>
       '$version/${asset?['name']}/${asset?['package_release'] ?? ''}';
-
-  @override
-  String get actionLabel => 'Download';
 
   @override
   Duration get checkEvery => const Duration(hours: 3);
@@ -318,27 +261,10 @@ class ReleaseUpdater extends Updater {
     }
   }
 
-  Map<String, dynamic>? assetForRelease(Map<String, dynamic> release) {
-    final assets = (release['assets'] as List? ?? []).cast<Map<String, dynamic>>();
-    final asset = assets.where((a) => (a['name'] as String? ?? '').endsWith(assetExtension)).firstOrNull;
-    return asset == null ? null : {...asset, 'package_release': releaseBuild(release)};
-  }
+  /// This copy's download in [release], with its build number; null without one.
+  Map<String, dynamic>? assetForRelease(Map<String, dynamic> release);
 
-  /// Selects this platform's asset even when another platform is listed first.
-  String? downloadForRelease(Map<String, dynamic> release) =>
-      (assetForRelease(release)?['browser_download_url'] ?? release['html_url']) as String?;
-
-  @override
-  Future<void> update() async {
-    try {
-      if (_download case final url?) await openExternal(url);
-      dismiss();
-    } on ProcessException catch (e) {
-      error = e.message;
-      AppLog.failure('Update failed', e);
-      set(UpdateStatus.failed);
-    }
-  }
+  String? downloadForRelease(Map<String, dynamic> release);
 
   @override
   void dismiss() {
@@ -363,7 +289,7 @@ class LinuxUpdater extends ReleaseUpdater {
     this.runProcess = Process.run,
     this.restart = restartApplication,
     super.fetch,
-  }) : super(assetExtension: '.tar.zst');
+  });
 
   static LinuxUpdater? forExecutable(String executable, {Future<void> Function()? onRestart}) {
     try {

@@ -3,7 +3,7 @@
 # <two-digit year>.<month>.<release that month>, counting from 1 each month
 # (October 2026: 26.10.1, 26.10.2, ...; January 2027: 27.1.1),
 # then commits, tags v<version> and pushes. The tag makes the
-# Release workflow build and publish the Linux, Windows and Mac downloads.
+# Release workflow build and publish the Linux and Android downloads.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 

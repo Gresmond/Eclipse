@@ -121,105 +121,6 @@ jobs:
           if-no-files-found: error
           path: build/Eclipse.tar.zst
 
-  desktop:
-    needs: version
-    if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
-        with:
-          channel: stable
-          flutter-version: 3.47.8
-          cache: true
-      - name: Write Google sign-in client
-        env:
-          SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          test -n "$SECRET" || { echo '::error::Missing GOOGLE_CLIENT_SECRET'; exit 1; }
-          printf "const googleClientId = '972544414239-80se3hktkrmo65umjut0fvpj12nvsa9k.apps.googleusercontent.com';\nconst googleClientSecret = '%s';\n" "$SECRET" > lib/data/google_client.dart
-      - name: Fetch packages
-        run: flutter pub get
-      - name: Build macOS disk image
-        if: runner.os == 'macOS'
-        run: |
-          flutter build macos --release --build-number='${{ needs.version.outputs.build }}'
-          mkdir dmg
-          cp -R build/macos/Build/Products/Release/Eclipse.app dmg/
-          ln -s /Applications dmg/Applications
-          hdiutil create -volname Eclipse -srcfolder dmg -ov -format UDZO build/Eclipse.dmg
-      - name: Build Windows executable
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          flutter build windows --release --build-number='${{ needs.version.outputs.build }}' 2>&1 | Tee-Object -FilePath windows-build.log
-          if ($LASTEXITCODE -ne 0) {
-            Get-Content windows-build.log | Where-Object { $_ -match '(?i)error|failed|not found|exception' } | Select-Object -Last 15 | ForEach-Object {
-              $line = $_.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-              Write-Output "::error title=Windows compilation::$line"
-            }
-            throw 'Windows build failed'
-          }
-      - name: Add Windows runtime and version metadata
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          try {
-            $bundle = 'build/windows/x64/runner/Release'
-            Set-Content -Path "$bundle/version" -Value '${{ needs.version.outputs.version }}' -Encoding utf8NoBOM
-            Set-Content -Path "$bundle/package-release" -Value '${{ needs.version.outputs.build }}' -Encoding utf8NoBOM
-            $vs = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-            # Visual Studio 2026 adds a v145 directory above versioned redists.
-            $crt = Get-ChildItem "$vs/VC/Redist/MSVC" -Recurse -Directory |
-              Where-Object { $_.Name -like 'Microsoft.VC*.CRT' -and $_.Parent.Name -eq 'x64' } |
-              Sort-Object FullName -Descending | Select-Object -First 1
-            if ($null -eq $crt) { throw 'No x64 Visual C++ runtime directory found' }
-            Copy-Item "$($crt.FullName)/*.dll" $bundle
-          } catch {
-            Write-Output "::error title=Windows runtime packaging::$($_.Exception.Message)"
-            throw
-          }
-      - name: Build Windows installer
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $iscc = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
-          if (!(Test-Path $iscc)) { choco install innosetup --yes --no-progress }
-          & $iscc '/DAppVersion=${{ needs.version.outputs.version }}' '/DBuildNumber=${{ needs.version.outputs.build }}' windows/installer.iss 2>&1 | Tee-Object -FilePath installer-build.log
-          if ($LASTEXITCODE -ne 0) {
-            Get-Content installer-build.log | Select-Object -Last 8 | ForEach-Object {
-              $line = $_.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-              Write-Output "::error title=Windows installer::$line"
-            }
-            throw 'Installer build failed'
-          }
-      - name: Smoke test the Windows installer and installed app
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $target = Join-Path $env:RUNNER_TEMP 'Eclipse-smoke'
-          $installer = Get-Item 'build/Eclipse.exe'
-          $install = Start-Process $installer.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$target" -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
-          $app = Start-Process "$target/eclipse.exe" -PassThru
-          Start-Sleep -Seconds 20
-          if ($app.HasExited) { throw "App exited during startup: $($app.ExitCode)" }
-          Stop-Process -Id $app.Id
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: Eclipse-${{ runner.os }}
-          if-no-files-found: error
-          path: |
-            build/Eclipse.dmg
-            build/Eclipse.exe
-
   android:
     needs: version
     if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
@@ -290,7 +191,7 @@ jobs:
         run: npx --yes wrangler@4 pages deploy build/web --project-name="$PROJECT" --branch=main --commit-dirty=true
 
   publish:
-    needs: [version, arch, desktop, android]
+    needs: [version, arch, android]
     # A manual run publishes too, replacing the downloads of a release that
     # already has this version (move its tag to the commit first).
     if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
@@ -305,10 +206,8 @@ jobs:
         run: |
           cd dist
           test -s 'Eclipse.tar.zst'
-          test -s Eclipse.dmg
-          test -s 'Eclipse.exe'
           test -s Eclipse.apk
-          sha256sum *.tar.zst *.dmg *.exe *.apk > SHA256SUMS
+          sha256sum *.tar.zst *.apk > SHA256SUMS
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
@@ -322,16 +221,10 @@ jobs:
 
             Arch Linux: extract Eclipse.tar.zst and run `bash Eclipse/install.sh` as your normal user. Missing system libraries are listed by the installer.
 
-            Windows: run the setup .exe.
-
-            macOS: open the .dmg and drag Eclipse to Applications.
-
             Android: open Eclipse.apk on your phone and allow the install.
 
             SHA256SUMS contains checksums for all downloads.
           files: |
             dist/*.tar.zst
-            dist/Eclipse.dmg
-            dist/*.exe
             dist/Eclipse.apk
             dist/SHA256SUMS

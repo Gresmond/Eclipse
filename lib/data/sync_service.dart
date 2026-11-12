@@ -804,10 +804,8 @@ class _FileSettings implements SyncSettings {
   Future<void> write(String contents) => replaceSafely(_file.path, (part) async {
     // Protected while still empty, so the sign-in is never readable by others.
     await part.writeAsString('');
-    if (!Platform.isWindows) {
-      final result = await Process.run('chmod', ['600', part.path]);
-      if (result.exitCode != 0) throw FileSystemException('Cannot protect sync credentials', part.path);
-    }
+    final result = await Process.run('chmod', ['600', part.path]);
+    if (result.exitCode != 0) throw FileSystemException('Cannot protect sync credentials', part.path);
     await part.writeAsString(contents, flush: true);
   });
 }

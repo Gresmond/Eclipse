@@ -752,7 +752,7 @@ class _JournalTextState extends State<_JournalText> {
   }
 }
 
-/// Shows the journal's folder in Dolphin (Finder on a Mac), with the day's
+/// Shows the journal's folder in Dolphin, with the day's
 /// file selected once it exists. Each day is a Markdown file there, so
 /// entries can be read and kept without the app.
 class _OpenFolderButton extends StatelessWidget {

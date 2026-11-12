@@ -787,7 +787,7 @@ void main() {
     expect(service.error, isNull);
   });
 
-  test('release assets select the correct platform and Linux requires installation metadata', () {
+  test('release assets select the Linux archive and Linux requires installation metadata', () {
     final dir = temporary();
     final executable = '${dir.path}/eclipse';
     expect(LinuxUpdater.forExecutable(executable), isNull);
@@ -799,38 +799,17 @@ void main() {
       'tag_name': 'v26.10.2',
       'html_url': 'https://example.com/release',
       'assets': [
-        {'name': 'Eclipse.dmg', 'browser_download_url': 'https://example.com/mac'},
-        {'name': 'Eclipse-26.10.2-windows-x64-setup.exe', 'browser_download_url': 'https://example.com/windows'},
+        {'name': 'Eclipse.apk', 'browser_download_url': 'https://example.com/android'},
         {'name': 'Eclipse.tar.zst', 'browser_download_url': 'https://example.com/linux'},
       ],
     };
     expect(updater.downloadForRelease(release), 'https://example.com/linux');
-    expect(ReleaseUpdater('26.10.1').downloadForRelease(release), 'https://example.com/mac');
-    expect(ReleaseUpdater.forWindows(executable)!.downloadForRelease(release), 'https://example.com/windows');
     release['assets'] = <Map<String, dynamic>>[];
     expect(updater.downloadForRelease(release), isNull);
     expect(updater.newerRelease('26.10.2', null), isFalse);
     expect(isNewer('26.10.1', '1.10.31'), isTrue);
     metadata.writeAsStringSync('invalid');
     expect(LinuxUpdater.forExecutable(executable), isNull);
-  });
-
-  test('binary or unreadable bundle metadata never prevents startup', () {
-    final temp = temporary();
-    final contents = Directory('${temp.path}/Eclipse.app/Contents')..createSync(recursive: true);
-    File('${contents.path}/Info.plist').writeAsBytesSync(
-      base64Decode(
-        'YnBsaXN0MDDRAQJfEBpDRkJ1bmRsZVNob3J0VmVyc2lvblN0cmluZ1cxLjEwLjE2CAsoAAAAAAAAAQEAAAAAAAAAAwAAAAAAAAAAAAAAAAAAADA=',
-      ),
-    );
-    final updater = ReleaseUpdater.forBundle('${contents.path}/MacOS/Eclipse');
-    if (Platform.isMacOS) {
-      expect(updater?.installedVersion, '1.10.16');
-    } else {
-      expect(updater, isNull);
-    }
-    File('${contents.path}/Info.plist').writeAsStringSync('invalid plist');
-    expect(ReleaseUpdater.forBundle('${contents.path}/MacOS/Eclipse'), isNull);
   });
 
   test(

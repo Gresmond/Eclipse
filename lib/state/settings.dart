@@ -65,8 +65,8 @@ mixin _Settings on ChangeNotifier {
     notifyListeners();
   }
 
-  /// True where night light can be read (a Hyprland session, Windows, or a
-  /// Mac's Dark mode); the menu hides the switch otherwise.
+  /// True where night light can be read (a Hyprland session); the menu hides
+  /// the switch otherwise.
   bool nightLightAvailable = false;
 
   /// Switch to the dark partner when night light comes on, and back when it

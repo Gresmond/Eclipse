@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
 import '../app_state.dart';
-import '../data/host.dart';
 import '../data/backups.dart';
 import '../data/updates.dart';
 import '../models.dart';
@@ -172,8 +170,7 @@ class _Header extends StatelessWidget {
     );
 
     return Padding(
-      // On macOS the window buttons float over the top of the content.
-      padding: EdgeInsets.fromLTRB(32, isMacApp ? 27 : 15, 32, 11),
+      padding: const EdgeInsets.fromLTRB(32, 15, 32, 11),
       child: PixelRow(
         children: [
           // Fit the visible date, easing the right edge as its length changes.
@@ -939,10 +936,8 @@ class _AppearanceMenu extends StatelessWidget {
         if (state.nightLightAvailable) ...[
           const FadeMenuDivider(),
           SettingSwitchRow(
-            title: Platform.isMacOS ? 'Follow Dark mode' : 'Follow the sun',
-            subtitle: Platform.isMacOS
-                ? 'Follows macOS appearance, including ‘Auto’ (System Settings → Appearance).'
-                : 'Switch to your theme’s dark partner when Night Light is on.',
+            title: 'Follow the sun',
+            subtitle: 'Switch to your theme’s dark partner when Night Light is on.',
             on: state.followNightLight,
             onTap: () => state.setFollowNightLight(!state.followNightLight),
           ),

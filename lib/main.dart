@@ -20,7 +20,6 @@ import 'data/sync_service.dart';
 import 'data/system_notifications.dart';
 import 'data/system_time_zone.dart' if (dart.library.js_interop) 'data/system_time_zone_web.dart';
 import 'data/updates.dart';
-import 'data/windows_night_light.dart' if (dart.library.js_interop) 'data/windows_night_light_web.dart';
 import 'models.dart';
 import 'phone/phone_app.dart';
 import 'screens/shell.dart';
@@ -66,7 +65,6 @@ Future<void> main() async {
   final AppState state;
   Store? opened;
   try {
-    DataFolder.leaveSandbox(dir, documents);
     final data = DataFolder.load(dir, documents);
     await data.root.create(recursive: true);
     final backups = Backups(data.backups)..beforeUpdating(data.database);
@@ -128,7 +126,7 @@ Future<void> main() async {
 void _showStartupError(Object error, {String? theme, DataFolder? data, required Directory home}) {
   final updater = Updater.forThisApp();
   if (updater != null && updater is! GitUpdater) unawaited(updater.check());
-  if (Platform.isLinux || Platform.isWindows) {
+  if (Platform.isLinux) {
     // Nothing was opened, so the tray's Quit has nothing to save.
     const MethodChannel('eclipse/lifecycle').setMethodCallHandler((call) async {
       if (call.method != 'quit') throw MissingPluginException();
@@ -216,8 +214,8 @@ void _watchWindow(AppState state) {
       return AppExitResponse.exit;
     },
   );
-  // The tray's Quit (Linux and Windows), which saves before the app closes.
-  if (!kIsWeb && (Platform.isLinux || Platform.isWindows)) {
+  // The tray's Quit, which saves before the app closes.
+  if (!kIsWeb && Platform.isLinux) {
     const MethodChannel('eclipse/lifecycle').setMethodCallHandler((call) async {
       if (call.method != 'quit') throw MissingPluginException();
       await _shutdown(state);
@@ -227,17 +225,8 @@ void _watchWindow(AppState state) {
 
 /// Mirrors night light into [AppState]: hyprsunset can't announce a
 /// change, so it's asked every few seconds and whenever the window comes back.
-/// Windows Night light is read from the registry the same way.
-/// A Mac has no night light to read (Night Shift has no public API), so
-/// there it follows Dark mode, which macOS's Auto appearance turns on at
-/// sunset and off at sunrise.
 void _watchNightLight(AppState state) {
-  if (Platform.isMacOS) {
-    state.nightLightAvailable = true;
-    WidgetsBinding.instance.addObserver(_DarkModeObserver(state));
-    return;
-  }
-  final isOn = Platform.isWindows ? WindowsNightLight.isOn : NightLight.forSession()?.isOn;
+  final isOn = NightLight.forSession()?.isOn;
   if (isOn == null) return;
   state.nightLightAvailable = true;
   Future<void> check() async {
@@ -285,21 +274,6 @@ void _watchReminders(AppState state) {
   state.windowOpen = WidgetsBinding.instance.lifecycleState != AppLifecycleState.hidden;
   WidgetsBinding.instance.addPostFrameCallback((_) => check());
   check();
-}
-
-class _DarkModeObserver with WidgetsBindingObserver {
-  _DarkModeObserver(this.state) {
-    didChangePlatformBrightness();
-  }
-
-  final AppState state;
-
-  @override
-  void didChangePlatformBrightness() {
-    if (!state.closing) {
-      state.nightLightIs(WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark);
-    }
-  }
 }
 
 class EclipseApp extends StatelessWidget {

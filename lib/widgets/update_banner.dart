@@ -9,9 +9,8 @@ import 'fade_through.dart';
 import 'smooth_gradient.dart';
 
 /// A small card floating over the bottom-right corner when a newer version
-/// is out, naming it: one click updates and reopens source/Linux installs, or
-/// opens the Mac/Windows download. It floats rather than
-/// taking space, so the Today view keeps fitting the window.
+/// is out, naming it: one click updates and reopens the app. It floats rather
+/// than taking space, so the Today view keeps fitting the window.
 class UpdateBanner extends StatelessWidget {
   const UpdateBanner({super.key, required this.updater});
 

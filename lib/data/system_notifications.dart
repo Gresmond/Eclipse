@@ -4,9 +4,8 @@ import 'package:flutter/services.dart';
 import '../app_state.dart';
 
 /// Reminders as the system's own notifications, over the runner's channel:
-/// the freedesktop notification service on Linux, the notification area's
-/// toast on Windows, Notification Centre on a Mac. Clicking one brings the
-/// window up, and the runner says which.
+/// the freedesktop notification service. Clicking one brings the window up,
+/// and the runner says which.
 class SystemNotifications implements ReminderNotifier {
   SystemNotifications() {
     _channel.setMethodCallHandler((call) async {

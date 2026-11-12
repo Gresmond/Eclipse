@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -7,7 +6,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../app_state.dart';
-import '../data/host.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_through.dart';
@@ -125,13 +123,9 @@ List<_Step> _steps(AppState state) => [
   ),
   _Step(
     'Daily rituals',
-    isMacApp
-        ? 'Click a square for done, right-click for not done, or Option-click for other. '
-              'Repeat the same click to clear the mark. '
-              'Done days build each streak and fill the ring.'
-        : 'Click a square for done, right-click for not done, or middle-click for other. '
-              'Repeat the same mouse button to clear the mark. '
-              'Done days build each streak and fill the ring.',
+    'Click a square for done, right-click for not done, or middle-click for other. '
+        'Repeat the same mouse button to clear the mark. '
+        'Done days build each streak and fill the ring.',
     TourSpot.rituals,
   ),
   const _Step(
@@ -200,14 +194,8 @@ List<_Step> _steps(AppState state) => [
   _Step(
     'Appearance',
     'Pick a theme. Each one comes in a light and dark pair.'
-        '${state.nightLightAvailable ? switch (Platform.operatingSystem) {
-                'macos' => ' With ‘Follow Dark mode’ enabled, Eclipse follows macOS Light and Dark modes. '
-                    'For automatic switching, choose ‘Auto’ in System Settings → Appearance.',
-                'windows' => ' With ‘Follow the sun’ enabled, Eclipse switches to your theme’s dark partner '
-                    'while Windows Night light is on, and back to its light partner when Night light turns off.',
-                _ => ' With ‘Follow the sun’ enabled, Eclipse switches to your theme’s dark partner '
-                    'while night light is on, and back to its light partner when night light turns off.',
-              } : ''}',
+        '${state.nightLightAvailable ? ' With ‘Follow the sun’ enabled, Eclipse switches to your theme’s dark partner '
+                'while night light is on, and back to its light partner when night light turns off.' : ''}',
     TourSpot.appearancePreview,
   ),
 ];

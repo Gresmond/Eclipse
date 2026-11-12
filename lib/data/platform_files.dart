@@ -11,10 +11,8 @@ Future<void> openExternal(String target) async {
     openTab(target);
   } else if (Platform.isAndroid) {
     await const MethodChannel('eclipse/phone').invokeMethod<void>('openUrl', target);
-  } else if (Platform.isWindows) {
-    await Process.start('explorer.exe', [target], mode: ProcessStartMode.detached);
   } else {
-    await Process.run(Platform.isMacOS ? 'open' : 'xdg-open', [target]);
+    await Process.run('xdg-open', [target]);
   }
 }
 
@@ -31,22 +29,10 @@ Future<void> showInFiles(File file) async {
     }
   }
   final exists = file.existsSync();
-  if (Platform.isMacOS) {
-    await Process.run('open', exists ? ['-R', file.path] : [folder.path]);
-  } else if (Platform.isWindows) {
-    // Separate arguments: a path with a space gets quoted, and Explorer
-    // only reads /select, before the quotes, not inside them.
-    await Process.start(
-      'explorer.exe',
-      exists ? ['/select,', file.path] : [folder.path],
-      mode: ProcessStartMode.detached,
-    );
-  } else {
-    // Detached: Dolphin keeps running after it opens, and on its own.
-    try {
-      await Process.start('dolphin', exists ? ['--select', file.path] : [folder.path], mode: ProcessStartMode.detached);
-    } on ProcessException {
-      await Process.start('xdg-open', [folder.path], mode: ProcessStartMode.detached);
-    }
+  // Detached: Dolphin keeps running after it opens, and on its own.
+  try {
+    await Process.start('dolphin', exists ? ['--select', file.path] : [folder.path], mode: ProcessStartMode.detached);
+  } on ProcessException {
+    await Process.start('xdg-open', [folder.path], mode: ProcessStartMode.detached);
   }
 }

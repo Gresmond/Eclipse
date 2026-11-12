@@ -259,7 +259,7 @@ class _WaitingCard extends StatelessWidget {
   final Set<String> newerFrom, unreadFrom;
   final VoidCallback onClose;
 
-  /// "Laptop", "Laptop and PC", "Laptop, PC and Mac".
+  /// "Laptop", "Laptop and PC", "Laptop, PC and Phone".
   static String names(Set<String> names) {
     final list = [for (final n in names) curlyQuotes(n)]..sort();
     return list.length == 1 ? list.single : '${list.sublist(0, list.length - 1).join(', ')} and ${list.last}';

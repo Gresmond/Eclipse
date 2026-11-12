@@ -17,7 +17,6 @@ import 'package:eclipse/data/night_light.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync_service.dart';
 import 'package:eclipse/data/updates.dart';
-import 'package:eclipse/data/windows_night_light.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/widgets/fade_through.dart';
 import 'package:eclipse/screens/today_view.dart';
@@ -282,20 +281,6 @@ void main() {
       temperature = '6000';
       expect(await nightLight.isOn(), isFalse);
       expect(await NightLight('${dir.path}/missing.sock').isOn(), isNull);
-    }, skip: Platform.isWindows);
-
-    test('Windows Night light is read from its registry record', () {
-      Uint8List blob(List<int> inner) => Uint8List.fromList([
-        ...[0x43, 0x42, 0x01, 0x00, 0x0A, 0x02, 0x01, 0x00, 0x2A, 0x06, 0xF0, 0x9B, 0xC5, 0xC1, 0x06, 0x2A, 0x2B, 0x0E],
-        inner.length + 4,
-        ...[0x43, 0x42, 0x01, 0x00],
-        ...inner,
-      ]);
-      const settings = [0xD0, 0x0A, 0x02, 0xC6, 0x14, 0xB8, 0x8E, 0x9D, 0xD4, 0xE4, 0xDE, 0xCC, 0xED, 0x01, 0x00, 0x00];
-      expect(WindowsNightLight.parse(blob([0x10, 0x00, ...settings])), isTrue);
-      expect(WindowsNightLight.parse(blob(settings)), isFalse);
-      expect(WindowsNightLight.parse(null), isNull);
-      expect(WindowsNightLight.parse(Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8])), isNull);
     });
   });
 
@@ -453,7 +438,7 @@ void main() {
       await updater.check();
       expect(updater.status, UpdateStatus.failed, reason: 'the error stays until there is something new');
     });
-  }, skip: Platform.isWindows);
+  });
 
   test('the journal folders Eclipse named are renamed Eclipse Journals, with what was in them', () {
     final tmp = Directory.systemTemp.createTempSync('productivity_rename');
@@ -1850,7 +1835,7 @@ void main() {
     expect(state.noteOf(day, weights), 'Sore back');
   });
 
-  testWidgets('Option-click selects other, like middle-click', (tester) async {
+  testWidgets('Alt-click selects other, like middle-click', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -2165,7 +2150,7 @@ void main() {
         lessThan(tester.getTopLeft(find.text(palettes[i].name)).dy),
       );
     }
-    expect(find.text(Platform.isMacOS ? 'Follow Dark mode' : 'Follow the sun'), findsOneWidget);
+    expect(find.text('Follow the sun'), findsOneWidget);
     await _shoot(tester, 'theme_menu');
     await tester.tap(find.text('Morning Pastel'));
     await tester.pumpAndSettle();

@@ -101,8 +101,8 @@ mixin _Journal on ChangeNotifier {
   }
 
   /// The journal lives in the database. Its files are a copy for reading
-  /// outside the app, so one that's missing or can't be read (a Mac told
-  /// no to the Documents folder) never hides an entry.
+  /// outside the app, so one that's missing or can't be read never hides an
+  /// entry.
   String journalOf(DateTime day) => store.journal(dateKey(day));
 
   Future<void> setJournal(DateTime day, String text) {
@@ -177,11 +177,7 @@ mixin _Journal on ChangeNotifier {
       await files.write(day, text);
     } on FileSystemException catch (e) {
       AppLog.failure('Saving a journal file failed', e);
-      // EPERM: macOS's privacy settings keep Eclipse out of Documents.
-      problem = Platform.isMacOS && e.osError?.errorCode == 1
-          ? "Eclipse isn’t allowed in your Documents folder, so the journal’s files aren’t being saved. "
-                'Allow it in System Settings, Privacy & Security, Files and Folders.'
-          : "The journal’s files couldn’t be saved (${e.osError?.message ?? e.message}).";
+      problem = "The journal’s files couldn’t be saved (${e.osError?.message ?? e.message}).";
     }
     if (problem != null) _journalFailures++;
     if (_disposed) return problem == null;
