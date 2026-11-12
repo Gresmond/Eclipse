@@ -259,6 +259,17 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     notifyListeners();
   }
 
+  /// What the last restore here brought back ("22 October"), and how many
+  /// there have been: the corner card shows each one once.
+  String restoredFrom = '';
+  int restores = 0;
+
+  void noteRestored(String from) {
+    restoredFrom = from;
+    restores++;
+    if (!_disposed) notifyListeners();
+  }
+
   /// What went wrong with the last backup; null when all is well.
   BackupProblem? backupProblem;
 

@@ -173,7 +173,6 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final n = incoming.changes;
     final kept = incoming.keptBoth.toList()..sort();
     final detail = kept.isEmpty
@@ -181,41 +180,7 @@ class _Card extends StatelessWidget {
         : 'Both computers wrote in the journal for ${kept.map(_day).join(', ')}, so both are kept, '
               'one after the other.';
 
-    return Container(
-      width: cornerCardWidth,
-      padding: const EdgeInsets.fromLTRB(18, 16, 20, 16),
-      decoration: BoxDecoration(
-        color: p.tile,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.border),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: p.done.withValues(alpha: 0.16)),
-            child: Icon(Icons.sync_rounded, size: 16, color: p.done),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Updated from ${_from(incoming.from)}', style: cornerCardTitle(p.ink)),
-                const SizedBox(height: 4),
-                Text(
-                  detail,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    return BriefCard(icon: Icons.sync_rounded, title: 'Updated from ${_from(incoming.from)}', detail: detail);
   }
 }
 

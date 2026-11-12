@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -46,6 +48,54 @@ class _BackupCardState extends State<BackupCard> {
               child: Text('See backups', style: TextStyle(color: p.accent)),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// A card that floats up for a few seconds once a restore is done, saying
+/// what came back. A click closes it sooner.
+class RestoredCard extends StatefulWidget {
+  const RestoredCard({super.key});
+
+  @override
+  State<RestoredCard> createState() => _RestoredCardState();
+}
+
+class _RestoredCardState extends State<RestoredCard> {
+  int? _seen;
+  bool _visible = false;
+  Timer? _hide;
+
+  @override
+  void dispose() {
+    _hide?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.watch(context, (s) => s.restores);
+    if (_seen != null && _seen != state.restores) {
+      _visible = true;
+      _hide?.cancel();
+      _hide = Timer(Motion.notice, () {
+        if (mounted) setState(() => _visible = false);
+      });
+    }
+    _seen = state.restores;
+    return CornerCard(
+      visible: _visible,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => setState(() => _visible = false),
+          child: BriefCard(
+            icon: Icons.restore_rounded,
+            title: 'Restored ${state.restoredFrom}',
+            detail: 'What you had before is saved as a backup too.',
+          ),
+        ),
       ),
     );
   }

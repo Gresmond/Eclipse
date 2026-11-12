@@ -107,6 +107,55 @@ class CornerButton extends StatelessWidget {
   }
 }
 
+/// A card that says something has happened and goes by itself: a mark in a
+/// tinted circle, a title and a line of text.
+class BriefCard extends StatelessWidget {
+  const BriefCard({super.key, required this.icon, required this.title, required this.detail});
+
+  final IconData icon;
+  final String title, detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Container(
+      width: cornerCardWidth,
+      padding: const EdgeInsets.fromLTRB(18, 16, 20, 16),
+      decoration: BoxDecoration(
+        color: p.tile,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: p.done.withValues(alpha: 0.16)),
+            child: Icon(icon, size: 16, color: p.done),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title, style: cornerCardTitle(p.ink)),
+                const SizedBox(height: 4),
+                Text(
+                  detail,
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A card that says something and waits: a title, lines of text and buttons.
 class NoticeCard extends StatelessWidget {
   const NoticeCard({super.key, required this.title, required this.lines, required this.actions});

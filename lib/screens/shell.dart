@@ -38,8 +38,8 @@ import 'year_view.dart';
 /// It's built and tested; set this true to bring it back.
 bool calendarButtonEnabled = false;
 
-/// The corner cards over the window and its dialogs: sync, an update and
-/// reminders, stacked above the undo card.
+/// The corner cards over the window and its dialogs: backups, sync, an update
+/// and reminders, stacked above the undo card.
 class CornerCards extends StatelessWidget {
   const CornerCards({super.key, this.updater});
 
@@ -61,6 +61,7 @@ class CornerCards extends StatelessWidget {
             if (appNavigator.currentContext case final context?) openSettings(context, ribbon: 1);
           },
         ),
+        const RestoredCard(),
         if (sync != null) SyncBanner(sync: sync),
         if (updater != null) UpdateBanner(updater: updater),
         const ReminderCards(),
@@ -811,7 +812,6 @@ class _YearSwitcher extends StatelessWidget {
 
 /// Opens Settings on [ribbon]; confirms a restore once it's done.
 Future<void> openSettings(BuildContext context, {int ribbon = 0}) async {
-  final p = context.palette;
   final restored = await showAppDialog<Backup>(
     context: context,
     builder: (_) => SettingsDialog(ribbon: ribbon),
@@ -824,18 +824,7 @@ Future<void> openSettings(BuildContext context, {int ribbon = 0}) async {
       : restored.isBeforeUpdate
       ? 'how things were before your last update'
       : '${restored.day!.day} ${monthNames[restored.day!.month - 1]}';
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      behavior: SnackBarBehavior.floating,
-      width: 520,
-      backgroundColor: p.ink,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      content: Text(
-        'Restored $from. What you had before is saved as a backup too.',
-        style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.tile),
-      ),
-    ),
-  );
+  AppScope.read(context).noteRestored(from);
 }
 
 class _SettingsButton extends StatelessWidget {
