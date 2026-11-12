@@ -31,7 +31,13 @@ abstract final class Motion {
 
   /// Reorder overlaps the tick, rather than delaying movement until it lands.
   static const reorder = morph;
+
+  /// One wheel step of a task list gliding to rest, on [clickCurve].
   static const scroll = Duration(milliseconds: 120);
+
+  /// A whole page or day changing: a fade-through between views, on
+  /// [incoming] and [outgoing], and what reshapes under it (the month grid,
+  /// a tile's height), on [morphCurve].
   static const page = Duration(milliseconds: 320);
 
   /// The light on a task found by search: up, held, then away on
