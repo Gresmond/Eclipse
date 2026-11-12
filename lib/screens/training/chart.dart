@@ -81,13 +81,7 @@ class _ChartTileState extends State<_ChartTile> {
                       style: _label(p, color: p.inkMuted),
                     ),
                   )
-                : _Chart(
-                    series: series,
-                    from: start,
-                    to: today,
-                    percent: percent,
-                    focus: _focus,
-                  ),
+                : _Chart(series: series, from: start, to: today, percent: percent, focus: _focus),
           ),
           if (charted.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -292,7 +286,18 @@ class _ChartPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    final w = pixelCeil(math.max(title.width, body.width) + 24), h = pixelCeil(title.height + body.height + 18);
+    // What was actually done that day: the line itself goes set by set.
+    final sets = TextPainter(
+      text: TextSpan(
+        text: e.bodyweight
+            ? '${pt.sets.map((s) => s.reps).join(', ')} reps'
+            : pt.sets.map((s) => '${_kg(s.weight ?? 0)} × ${s.reps}').join(',  '),
+        style: _label(p, size: 14, color: p.inkMuted),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final w = pixelCeil(math.max(math.max(title.width, body.width), sets.width) + 24),
+        h = pixelCeil(title.height + body.height + sets.height + 20);
     var origin = hit.at + const Offset(12, -12) - Offset(0, h);
     if (origin.dx + w > size.width) origin = Offset(hit.at.dx - 12 - w, origin.dy);
     if (origin.dy < 0) origin = Offset(origin.dx, hit.at.dy + 12);
@@ -310,6 +315,7 @@ class _ChartPainter extends CustomPainter {
     canvas.drawCircle(hit.at, 5.5, Paint()..color = hit.series.colour.withValues(alpha: 0.3));
     title.paint(canvas, origin + const Offset(12, 8));
     body.paint(canvas, origin + Offset(12, 10 + title.height));
+    sets.paint(canvas, origin + Offset(12, 12 + title.height + body.height));
   }
 
   static double _niceStep(double raw) {

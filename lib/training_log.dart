@@ -78,21 +78,21 @@ class TrainingLog {
   }
 
   /// Each exercise's points, oldest first, from [from] on (all with null).
+  /// A point follows from the days before it, those before [from] too, so
+  /// it reads the same in every range.
   Map<Exercise, List<TrainingPoint>> points({DateTime? from}) {
-    final byDay = <String, Map<String, List<TrainingSet>>>{};
-    final fromKey = from == null ? null : dateKey(from);
+    final byExercise = <String, Map<String, List<TrainingSet>>>{};
     for (final s in _sets) {
-      if (fromKey != null && s.day.compareTo(fromKey) < 0) continue;
-      ((byDay[s.day] ??= {})[s.exercise] ??= []).add(s);
+      ((byExercise[s.exercise] ??= {})[s.day] ??= []).add(s);
     }
     final result = <Exercise, List<TrainingPoint>>{};
-    for (final MapEntry(key: day, value: perExercise) in byDay.entries) {
-      for (final MapEntry(key: uid, value: sets) in perExercise.entries) {
-        final e = _byUid[uid];
-        if (e == null) continue;
-        final point = trainingPoint(DateTime.parse(day), sets, bodyweight: e.bodyweight);
-        if (point != null) (result[e] ??= []).add(point);
-      }
+    for (final MapEntry(key: uid, value: days) in byExercise.entries) {
+      final e = _byUid[uid];
+      if (e == null) continue;
+      final points = trainingPoints([
+        for (final MapEntry(key: day, value: sets) in days.entries) (DateTime.parse(day), sets),
+      ], bodyweight: e.bodyweight).where((p) => from == null || !p.day.isBefore(from)).toList();
+      if (points.isNotEmpty) result[e] = points;
     }
     return result;
   }
@@ -118,12 +118,7 @@ class TrainingLog {
   /// How many sets of [e] are logged, on any day.
   int setsOf(Exercise e) => _sets.where((s) => s.exercise == e.uid).length;
 
-  /// What a set counts for when looking for a best: its estimated 1RM, or
-  /// for a bodyweight exercise its reps. Null when it doesn't count.
-  double? _worth(TrainingSet s, Exercise e) {
-    if (e.bodyweight) return s.reps > 0 ? s.reps.toDouble() : null;
-    return estimateOneRepMax(s.weight ?? 0, s.reps);
-  }
+  double? _worth(TrainingSet s, Exercise e) => setWorth(s, bodyweight: e.bodyweight);
 
   /// The sets of [e] on [day] that beat every set before them, on earlier
   /// days and earlier that day. None on the first day [e] is logged.

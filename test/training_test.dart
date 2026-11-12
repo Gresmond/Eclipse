@@ -69,6 +69,66 @@ void main() {
     });
   });
 
+  test('the line goes set by set, so an extra or a missing set does not move it', () {
+    var n = 0;
+    List<double> line(List<List<int>> days) => [
+      for (final p in trainingPoints([
+        for (final (i, reps) in days.indexed)
+          (
+            DateTime(2026, 10, 1 + i * 7),
+            [
+              for (final r in reps)
+                TrainingSet(uid: '${n++}', day: '', exercise: 'pullups', position: n, weight: null, reps: r),
+            ],
+          ),
+      ], bodyweight: true))
+        p.value,
+    ];
+    expect(
+      line([
+        [8],
+        [8, 7],
+      ]),
+      [8, 8],
+      reason: 'a second set is not a step back',
+    );
+    expect(
+      line([
+        [8, 6],
+        [8, 7],
+      ]),
+      [7, 7.5],
+      reason: 'a better second set shows',
+    );
+    expect(
+      line([
+        [8, 7],
+        [8],
+      ]),
+      [7.5, 7.5],
+      reason: 'a session cut short is not a gain',
+    );
+    expect(
+      line([
+        [8],
+        [8, 6],
+        [9],
+        [9, 7],
+      ]),
+      [8, 8, 9, 9.5],
+      reason: 'a set is compared with the last one there was',
+    );
+    expect(
+      line([
+        [8, 6],
+        [9, 7],
+        [9, 8],
+      ]),
+      [7, 8, 8.5],
+      reason: 'the plain average while the sets stay as many',
+    );
+  });
+
   test('training syncs between computers, deletions too', () {
     final a = Store.memory(), b = Store.memory();
     final ea = SyncEngine(a, 'pc'), eb = SyncEngine(b, 'laptop');

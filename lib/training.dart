@@ -96,34 +96,75 @@ double? estimateOneRepMax(double weight, int reps) {
   return mayhew();
 }
 
+/// What a set counts for: its estimated 1RM in kg, or for a bodyweight
+/// exercise its reps. Null when it doesn't count.
+double? setWorth(TrainingSet s, {required bool bodyweight}) {
+  if (bodyweight) return s.reps > 0 ? s.reps.toDouble() : null;
+  return estimateOneRepMax(s.weight ?? 0, s.reps);
+}
+
 /// One exercise on one day, as the chart plots it.
 class TrainingPoint {
-  const TrainingPoint(this.day, this.value, {required this.rough});
+  const TrainingPoint(this.day, this.value, {required this.rough, this.sets = const []});
 
   final DateTime day;
 
-  /// The average estimated 1RM of the day's sets in kg, or for a bodyweight
-  /// exercise their average reps.
+  /// Where the line is, in kg of estimated 1RM or for a bodyweight exercise
+  /// in reps. The first day it's the average of the day's sets; after that
+  /// it moves by how each set compares with the same set last time (see
+  /// [trainingPoints]), so it can differ from the day's own average.
   final double value;
 
   /// Some set had [roughEstimateReps] or more, so the estimate is rough.
   final bool rough;
+
+  /// The day's sets that count, in order.
+  final List<TrainingSet> sets;
 }
 
-/// The day's point for [sets] of one exercise, or null when no set counts.
-TrainingPoint? trainingPoint(DateTime day, List<TrainingSet> sets, {required bool bodyweight}) {
-  final values = <double>[];
-  var rough = false;
-  for (final s in sets) {
-    if (bodyweight) {
-      if (s.reps > 0) values.add(s.reps.toDouble());
-      continue;
+/// One exercise's points from its [days], oldest first, each with that
+/// day's sets in order.
+///
+/// A plain average of the day's sets falls when a tired extra set is added
+/// and rises when a session is cut short, though nothing got weaker or
+/// stronger. So each set is compared only with the same set (first, second
+/// and so on) the last time there was one, and the line moves by the average
+/// of those changes. A set with nothing to compare against moves nothing; it
+/// is what the next one is compared with. With the same number of sets every
+/// day this is the plain average.
+List<TrainingPoint> trainingPoints(Iterable<(DateTime, List<TrainingSet>)> days, {required bool bodyweight}) {
+  double mean(Iterable<double> values) => values.reduce((a, b) => a + b) / values.length;
+  final last = <int, double>{};
+  final points = <TrainingPoint>[];
+  double? value;
+  for (final (day, sets) in days) {
+    final worth = <int, double>{};
+    final counted = <TrainingSet>[];
+    for (final (i, s) in sets.indexed) {
+      final w = setWorth(s, bodyweight: bodyweight);
+      if (w == null) continue;
+      worth[i] = w;
+      counted.add(s);
     }
-    final estimate = estimateOneRepMax(s.weight ?? 0, s.reps);
-    if (estimate == null) continue;
-    values.add(estimate);
-    if (s.reps >= roughEstimateReps) rough = true;
+    if (worth.isEmpty) continue;
+    final changes = [
+      for (final MapEntry(key: i, value: w) in worth.entries)
+        if (last[i] case final was?) w - was,
+    ];
+    value = value == null
+        ? mean(worth.values)
+        : changes.isEmpty
+        ? value
+        : value + mean(changes);
+    last.addAll(worth);
+    points.add(
+      TrainingPoint(day, value, rough: !bodyweight && counted.any((s) => s.reps >= roughEstimateReps), sets: counted),
+    );
   }
-  if (values.isEmpty) return null;
-  return TrainingPoint(day, values.reduce((a, b) => a + b) / values.length, rough: rough);
+  return points;
 }
+
+/// The point for [sets] of one exercise on a [day] by itself: their average.
+/// Null when no set counts.
+TrainingPoint? trainingPoint(DateTime day, List<TrainingSet> sets, {required bool bodyweight}) =>
+    trainingPoints([(day, sets)], bodyweight: bodyweight).firstOrNull;
