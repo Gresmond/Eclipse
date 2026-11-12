@@ -357,6 +357,86 @@ void main() {
       );
     });
 
+    test('a range of months starts on a real day at a month end', () {
+      expect(monthsBefore(DateTime(2026, 3, 31), 1), DateTime(2026, 2, 28));
+      expect(monthsBefore(DateTime(2026, 8, 31), 6), DateTime(2026, 2, 28));
+      expect(monthsBefore(DateTime(2026, 1, 15), 3), DateTime(2025, 10, 15));
+      expect(monthsBefore(DateTime(2028, 2, 29), 12), DateTime(2027, 2, 28));
+    });
+
+    testWidgets('a line shows its nearest session to the mouse or a tap, and a tap elsewhere clears it', (
+      tester,
+    ) async {
+      state.showingTraining = true;
+      final log = state.training;
+      final press = log.createExercise('Bench press', MuscleGroup.chest, bodyweight: false);
+      for (final day in [today, today.subtract(const Duration(days: 10))]) {
+        log.addToDay(day, press);
+        log.updateSet(log.session(day).single.$2.single, weight: 50, reps: 5);
+      }
+      log.setRange(TrainingRange.all);
+      await show(tester);
+      final chart = find.byWidgetPredicate((widget) => widget is CustomPaint && widget.size == Size.infinite);
+      bool halo(Symbol method, List<dynamic> args) => method == #drawCircle && args[1] == 5.5;
+      final box = tester.getRect(chart);
+      final empty = Offset(box.left + box.width * 0.4, box.top + 12);
+
+      // Down the chart well between the two sessions until it meets the line.
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      var line = empty;
+      for (; line.dy < box.bottom; line += const Offset(0, 4)) {
+        await mouse.moveTo(line);
+        await tester.pump();
+        if (((paints..something(halo)) as Matcher).matches(chart, {})) break;
+      }
+      expect(chart, paints..something(halo));
+      await mouse.moveTo(empty);
+      await tester.pump();
+      expect(chart, isNot(paints..something(halo)));
+      await mouse.moveTo(Offset.zero);
+      await tester.pump();
+
+      await tester.tapAt(line);
+      await tester.pump();
+      expect(chart, paints..something(halo));
+      await tester.pump(const Duration(seconds: 2));
+      expect(chart, paints..something(halo), reason: 'stays until a tap elsewhere');
+      await tester.tapAt(empty);
+      await tester.pump();
+      expect(chart, isNot(paints..something(halo)));
+    });
+
+    testWidgets('a line whose points would touch has none until one is pointed at', (tester) async {
+      state.showingTraining = true;
+      final log = state.training;
+      final press = log.createExercise('Bench press', MuscleGroup.chest, bodyweight: false);
+      for (var i = 0; i < 400; i++) {
+        final day = today.subtract(Duration(days: i));
+        log.addToDay(day, press);
+        for (final set in log.session(day).single.$2) {
+          log.updateSet(set, weight: 50, reps: 5);
+        }
+      }
+      log.setRange(TrainingRange.all);
+      await show(tester);
+      final chart = find.byWidgetPredicate((widget) => widget is CustomPaint && widget.size == Size.infinite);
+      bool dot(Symbol method, List<dynamic> args) => method == #drawCircle && args[1] == 3.6;
+      expect(chart, isNot(paints..something(dot)));
+
+      final box = tester.getRect(chart);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      for (var y = box.top; y < box.bottom; y += 4) {
+        await mouse.moveTo(Offset(box.center.dx, y));
+        await tester.pump();
+        if (((paints..something(dot)) as Matcher).matches(chart, {})) break;
+      }
+      expect(chart, paints..something(dot));
+    });
+
     testWidgets('the Undo card restores a removed set or all sets removed from a session', (tester) async {
       state.showingTraining = true;
       final log = state.training;

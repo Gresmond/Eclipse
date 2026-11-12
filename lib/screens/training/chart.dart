@@ -20,7 +20,7 @@ class _ChartTileState extends State<_ChartTile> {
     final log = state.training;
     final today = state.today;
     final months = log.range.months;
-    final from = months == null ? null : DateTime(today.year, today.month - months, today.day);
+    final from = months == null ? null : monthsBefore(today, months);
     final all = log.points(from: from);
 
     // Stable look per exercise: its place among its group's in the order
@@ -135,22 +135,43 @@ class _Chart extends StatefulWidget {
 class _ChartState extends State<_Chart> {
   Offset? _pointer;
 
+  /// [_pointer] is where a finger last tapped, not where a mouse is.
+  bool _touch = false;
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     return MouseRegion(
-      onHover: (e) => setState(() => _pointer = e.localPosition),
-      onExit: (_) => setState(() => _pointer = null),
-      child: CustomPaint(
-        size: Size.infinite,
-        painter: _ChartPainter(
-          series: widget.series,
-          from: widget.from,
-          to: widget.to,
-          percent: widget.percent,
-          focus: widget.focus,
-          pointer: _pointer,
-          palette: p,
+      onHover: (e) => setState(() {
+        _pointer = e.localPosition;
+        _touch = false;
+      }),
+      onExit: (_) => setState(() {
+        if (!_touch) _pointer = null;
+      }),
+      // No hover by touch: a tap shows what is under it, and stays until a
+      // tap somewhere else.
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (e) {
+          if (e.kind == PointerDeviceKind.mouse) return;
+          setState(() {
+            _pointer = e.localPosition;
+            _touch = true;
+          });
+        },
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: _ChartPainter(
+            series: widget.series,
+            from: widget.from,
+            to: widget.to,
+            percent: widget.percent,
+            focus: widget.focus,
+            pointer: _pointer,
+            touch: _touch,
+            palette: p,
+          ),
         ),
       ),
     );
@@ -165,6 +186,7 @@ class _ChartPainter extends CustomPainter {
     required this.percent,
     required this.focus,
     required this.pointer,
+    required this.touch,
     required this.palette,
   });
 
@@ -173,6 +195,9 @@ class _ChartPainter extends CustomPainter {
   final bool percent;
   final String? focus;
   final Offset? pointer;
+
+  /// [pointer] is a finger's tap, which gets more room to miss by.
+  final bool touch;
   final Palette palette;
 
   static const _left = 52.0, _bottom = 26.0, _top = 6.0, _right = 20.0;
@@ -235,16 +260,24 @@ class _ChartPainter extends CustomPainter {
           ..strokeWidth = 1,
       );
     }
-    final ticks = span.clamp(0, 6);
+    // Over more than one calendar year a date says which: on the first label
+    // and on the first of each new year. Fewer labels where they would crowd.
+    final years = start.year != end.year;
+    final ticks = math.min(span, (plot.width / (years ? 90 : 60)).floor()).clamp(0, 6);
+    int? year;
     for (var i = 0; i <= ticks; i++) {
       final d = DateTime(start.year, start.month, start.day + (span * i / math.max(1, ticks)).round());
-      _text(canvas, _shortDate(d), Offset(x(d), plot.bottom + 8), p.inkMuted, align: Alignment.topCenter);
+      final text = years && d.year != year ? '${_shortDate(d)} ${d.year}' : _shortDate(d);
+      year = d.year;
+      _text(canvas, text, Offset(x(d), plot.bottom + 8), p.inkMuted, align: Alignment.topCenter);
     }
 
     // Unfocused series faded under the focused. Within each, lines, then
     // hollow points, then solid ones, so a hollow centre never covers a
     // solid point on the same spot.
     final hits = <_Hit>[];
+    final lines = <(_Series, List<Offset>)>[];
+    final dense = <_Series>{};
     for (final faded in const [true, false]) {
       final drawn = [
         for (final s in series)
@@ -254,8 +287,16 @@ class _ChartPainter extends CustomPainter {
       for (final (s, pts) in drawn) {
         if (pts.length > 1) _stroke(canvas, pts, s.dash, colour(s), focus != null && !faded ? 2.6 : 2);
       }
+      // A line whose points would touch goes without them; one shows when
+      // it is pointed at.
+      for (final (s, pts) in drawn) {
+        for (var i = 0; i + 1 < pts.length; i++) {
+          if ((pts[i + 1] - pts[i]).distance < 8) dense.add(s);
+        }
+      }
       for (final rough in const [true, false]) {
         for (final (s, pts) in drawn) {
+          if (dense.contains(s)) continue;
           for (final (i, o) in pts.indexed) {
             if (s.points[i].rough != rough) continue;
             _dot(canvas, o, colour(s), p.tile, rough: rough, square: s.square);
@@ -263,6 +304,7 @@ class _ChartPainter extends CustomPainter {
         }
       }
       if (!faded) {
+        lines.addAll(drawn);
         for (final (s, pts) in drawn) {
           for (final (i, o) in pts.indexed) {
             hits.add(_Hit(s, s.points[i], o));
@@ -272,13 +314,47 @@ class _ChartPainter extends CustomPainter {
     }
     final at = pointer;
     if (at == null || hits.isEmpty) return;
-    final nearest = hits.reduce((a, b) => (b.at - at).distance < (a.at - at).distance ? b : a);
-    if ((nearest.at - at).distance >= 16) return;
+    var nearest = hits.reduce((a, b) => (b.at - at).distance < (a.at - at).distance ? b : a);
+    if ((nearest.at - at).distance >= (touch ? 24 : 16)) {
+      // Not on a point: the line under the pointer, and its session nearest
+      // in date.
+      (_Series, List<Offset>)? line;
+      var reach = touch ? 16.0 : 8.0;
+      for (final (s, pts) in lines) {
+        for (var i = 0; i + 1 < pts.length; i++) {
+          final d = _distanceToSegment(at, pts[i], pts[i + 1]);
+          if (d < reach) {
+            reach = d;
+            line = (s, pts);
+          }
+        }
+      }
+      if (line == null) return;
+      final (s, pts) = line;
+      var i = 0;
+      for (var j = 1; j < pts.length; j++) {
+        if ((pts[j].dx - at.dx).abs() < (pts[i].dx - at.dx).abs()) i = j;
+      }
+      nearest = _Hit(s, s.points[i], pts[i]);
+    }
     // Every point of that day whose dot overlaps the nearest one.
-    _tooltip(canvas, size, [
+    final stack = [
       for (final h in hits)
         if (h.point.day == nearest.point.day && (h.at - nearest.at).distance < 7.2) h,
-    ]);
+    ];
+    for (final h in stack) {
+      if (!dense.contains(h.series)) continue;
+      _dot(canvas, h.at, h.series.colour, p.tile, rough: h.point.rough, square: h.series.square);
+    }
+    _tooltip(canvas, size, stack, year: years);
+  }
+
+  static double _distanceToSegment(Offset p, Offset a, Offset b) {
+    final ab = b - a;
+    final length = ab.distanceSquared;
+    if (length == 0) return (p - a).distance;
+    final t = (((p.dx - a.dx) * ab.dx + (p.dy - a.dy) * ab.dy) / length).clamp(0.0, 1.0);
+    return (p - (a + ab * t)).distance;
   }
 
   /// One point: a circle, or a square for a series past the last dash style.
@@ -302,7 +378,8 @@ class _ChartPainter extends CustomPainter {
   }
 
   /// One block per hit (name, date and value, the day's sets), stacked.
-  void _tooltip(Canvas canvas, Size size, List<_Hit> stack) {
+  /// With [year], dates say which year.
+  void _tooltip(Canvas canvas, Size size, List<_Hit> stack, {required bool year}) {
     final p = palette;
     TextPainter line(String text, {Color? colour, bool title = false}) => TextPainter(
       text: TextSpan(
@@ -322,7 +399,7 @@ class _ChartPainter extends CustomPainter {
           : '';
       blocks.add([
         line(e.name, colour: hit.series.colour, title: true),
-        line('${_shortDate(pt.day)}  ·  $value$change'),
+        line('${_shortDate(pt.day)}${year ? ' ${pt.day.year}' : ''}  ·  $value$change'),
         // What was actually done that day: the line itself goes set by set.
         line(
           e.bodyweight
@@ -340,7 +417,8 @@ class _ChartPainter extends CustomPainter {
     var origin = anchor + const Offset(12, -12) - Offset(0, h);
     if (origin.dx + w > size.width) origin = Offset(anchor.dx - 12 - w, origin.dy);
     if (origin.dy < 0) origin = Offset(origin.dx, anchor.dy + 12);
-    // A tall stack still has to stay on the chart.
+    // A wide or tall one still has to stay on the chart.
+    if (origin.dx < 0) origin = Offset(0, origin.dy);
     if (origin.dy + h > size.height) origin = Offset(origin.dx, math.max(0, size.height - h));
     origin = Offset(pixelRound(origin.dx), pixelRound(origin.dy));
     final box = RRect.fromRectAndRadius(origin & Size(w, h), const Radius.circular(12));

@@ -18,6 +18,14 @@ enum TrainingRange {
   final int? months;
 }
 
+/// The same day of the month [months] earlier, or that month's last day when
+/// it is shorter: a month before 31 March is 28 February, not 3 March.
+DateTime monthsBefore(DateTime day, int months) {
+  final first = DateTime(day.year, day.month - months);
+  final last = DateTime(first.year, first.month + 1, 0).day;
+  return DateTime(first.year, first.month, day.day < last ? day.day : last);
+}
+
 /// Exercises and logged sets, kept in memory and written straight through
 /// to [store]. Changes tell AppState, so AppScope watchers redraw.
 class TrainingLog {
