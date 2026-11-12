@@ -101,7 +101,8 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
       builder: (context, themeName, _) => MaterialApp(
         title: 'Eclipse',
         debugShowCheckedModeBanner: false,
-        theme: themeNamed(themeName),
+        // A finger has no hover, so a touch keeps Material's ripple here.
+        theme: themeNamed(themeName).copyWith(splashFactory: InkSparkle.splashFactory),
         themeAnimationDuration: Motion.morph,
         themeAnimationCurve: Motion.morphCurve,
         builder: (context, child) => DefaultTextHeightBehavior(

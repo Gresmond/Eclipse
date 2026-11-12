@@ -428,6 +428,8 @@ ThemeData buildTheme(Palette p) {
 
   final theme = ThemeData(
     useMaterial3: true,
+    // No ripple: a press shows as the same tint a hover does.
+    splashFactory: NoSplash.splashFactory,
     dialogTheme: DialogThemeData(
       alignment: const PixelCentre(),
       elevation: 0,
