@@ -80,6 +80,10 @@ class TrainingLog {
   /// Each exercise's points, oldest first, from [from] on (all with null).
   /// A point follows from the days before it, those before [from] too, so
   /// it reads the same in every range.
+  /// Exercise uids in the order each was first logged: by day, then by its
+  /// place in that day's session.
+  List<String> get loggedOrder => {for (final s in _sets) s.exercise}.toList();
+
   Map<Exercise, List<TrainingPoint>> points({DateTime? from}) {
     final byExercise = <String, Map<String, List<TrainingSet>>>{};
     for (final s in _sets) {

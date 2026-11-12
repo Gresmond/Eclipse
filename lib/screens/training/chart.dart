@@ -23,19 +23,25 @@ class _ChartTileState extends State<_ChartTile> {
     final from = months == null ? null : DateTime(today.year, today.month - months, today.day);
     final all = log.points(from: from);
 
-    // Stable dash per exercise: its place among its group's, by name.
+    // Stable look per exercise: its place among its group's in the order
+    // first logged, so a new exercise never changes an older one's. Once the
+    // dashes run out they start again with square points.
     final dash = <String, List<double>>{};
+    final square = <String>{};
+    final place = {for (final (i, uid) in log.loggedOrder.indexed) uid: i};
     for (final g in MuscleGroup.values) {
-      final mine = log.exercises.where((e) => e.group == g).toList();
+      final mine = log.exercises.where((e) => e.group == g && place.containsKey(e.uid)).toList()
+        ..sort((a, b) => place[a.uid]!.compareTo(place[b.uid]!));
       for (final (i, e) in mine.indexed) {
         dash[e.uid] = _dashes[i % _dashes.length];
+        if ((i ~/ _dashes.length).isOdd) square.add(e.uid);
       }
     }
     final percent = log.axis == TrainingAxis.change;
     final series = [
       for (final MapEntry(key: e, value: points) in all.entries)
         if (!log.hidden.contains(e.uid) && !log.hidden.contains('g:${e.group.name}') && (percent || !e.bodyweight))
-          _Series(e, points, groupColour(e.group, p), dash[e.uid] ?? const []),
+          _Series(e, points, groupColour(e.group, p), dash[e.uid] ?? const [], square: square.contains(e.uid)),
     ]..sort((a, b) => a.exercise.group.index.compareTo(b.exercise.group.index));
     final start = series.isEmpty
         ? from ?? today
@@ -88,6 +94,7 @@ class _ChartTileState extends State<_ChartTile> {
             _Legend(
               exercises: charted,
               dash: dash,
+              square: square,
               hidden: log.hidden,
               percent: percent,
               onHover: (key) => setState(() => _focus = key),
@@ -101,8 +108,11 @@ class _ChartTileState extends State<_ChartTile> {
 }
 
 class _Series {
-  _Series(this.exercise, this.points, this.colour, this.dash);
+  _Series(this.exercise, this.points, this.colour, this.dash, {this.square = false});
   final Exercise exercise;
+
+  /// Its points are squares, not circles.
+  final bool square;
   final List<TrainingPoint> points;
   final Color colour;
   final List<double> dash;
@@ -231,76 +241,107 @@ class _ChartPainter extends CustomPainter {
       _text(canvas, _shortDate(d), Offset(x(d), plot.bottom + 8), p.inkMuted, align: Alignment.topCenter);
     }
 
-    // Lines, unfocused ones faded under the focused.
-    _Hit? hit;
-    var hitDistance = 16.0;
-    final ordered = [...series.where((s) => !s.focused(focus)), ...series.where((s) => s.focused(focus))];
-    for (final s in ordered) {
-      final faded = !s.focused(focus);
-      final colour = faded ? s.colour.withValues(alpha: 0.18) : s.colour;
-      final pts = [for (final pt in s.points) Offset(x(pt.day), y(_value(s, pt)))];
-      if (pts.length > 1) {
-        _stroke(canvas, pts, s.dash, colour, focus != null && !faded ? 2.6 : 2);
+    // Unfocused series faded under the focused. Within each, lines, then
+    // hollow points, then solid ones, so a hollow centre never covers a
+    // solid point on the same spot.
+    final hits = <_Hit>[];
+    for (final faded in const [true, false]) {
+      final drawn = [
+        for (final s in series)
+          if (s.focused(focus) != faded) (s, [for (final pt in s.points) Offset(x(pt.day), y(_value(s, pt)))]),
+      ];
+      Color colour(_Series s) => faded ? s.colour.withValues(alpha: 0.18) : s.colour;
+      for (final (s, pts) in drawn) {
+        if (pts.length > 1) _stroke(canvas, pts, s.dash, colour(s), focus != null && !faded ? 2.6 : 2);
       }
-      for (final (i, o) in pts.indexed) {
-        final rough = s.points[i].rough;
-        canvas.drawCircle(o, 3.6, Paint()..color = rough ? p.tile : colour);
-        if (rough) {
-          // A filled ring: a stroked circle comes out jagged under Impeller on Linux.
-          final circle = Rect.fromCircle(center: o, radius: 4.4);
-          final ring = RRect.fromRectAndRadius(circle, Radius.circular(circle.shortestSide / 2));
-          canvas.drawDRRect(ring, ring.deflate(1.6), Paint()..color = colour);
+      for (final rough in const [true, false]) {
+        for (final (s, pts) in drawn) {
+          for (final (i, o) in pts.indexed) {
+            if (s.points[i].rough != rough) continue;
+            _dot(canvas, o, colour(s), p.tile, rough: rough, square: s.square);
+          }
         }
-        if (!faded && pointer != null) {
-          final d = (pointer! - o).distance;
-          if (d < hitDistance) {
-            hitDistance = d;
-            hit = _Hit(s, s.points[i], o);
+      }
+      if (!faded) {
+        for (final (s, pts) in drawn) {
+          for (final (i, o) in pts.indexed) {
+            hits.add(_Hit(s, s.points[i], o));
           }
         }
       }
     }
-    if (hit != null) _tooltip(canvas, size, hit);
+    final at = pointer;
+    if (at == null || hits.isEmpty) return;
+    final nearest = hits.reduce((a, b) => (b.at - at).distance < (a.at - at).distance ? b : a);
+    if ((nearest.at - at).distance >= 16) return;
+    // Every point of that day whose dot overlaps the nearest one.
+    _tooltip(canvas, size, [
+      for (final h in hits)
+        if (h.point.day == nearest.point.day && (h.at - nearest.at).distance < 7.2) h,
+    ]);
   }
 
-  void _tooltip(Canvas canvas, Size size, _Hit hit) {
+  /// One point: a circle, or a square for a series past the last dash style.
+  /// A [rough] one is hollow.
+  static void _dot(Canvas canvas, Offset o, Color colour, Color tile, {required bool rough, required bool square}) {
+    if (square) {
+      // Straight edges, so on whole pixels.
+      final side = rough ? 8.0 : 6.0;
+      final rect = Rect.fromCenter(center: Offset(pixelRound(o.dx), pixelRound(o.dy)), width: side, height: side);
+      canvas.drawRect(rect, Paint()..color = colour);
+      if (rough) canvas.drawRect(rect.deflate(2), Paint()..color = tile);
+      return;
+    }
+    canvas.drawCircle(o, 3.6, Paint()..color = rough ? tile : colour);
+    if (rough) {
+      // A filled ring: a stroked circle comes out jagged under Impeller on Linux.
+      final circle = Rect.fromCircle(center: o, radius: 4.4);
+      final ring = RRect.fromRectAndRadius(circle, Radius.circular(circle.shortestSide / 2));
+      canvas.drawDRRect(ring, ring.deflate(1.6), Paint()..color = colour);
+    }
+  }
+
+  /// One block per hit (name, date and value, the day's sets), stacked.
+  void _tooltip(Canvas canvas, Size size, List<_Hit> stack) {
     final p = palette;
-    final pt = hit.point, e = hit.series.exercise;
-    final value = e.bodyweight
-        ? '${_kg(pt.value)} reps'
-        : '${pt.rough ? '≈ ' : ''}${_kg(pt.value)} kg${pt.rough ? '  (±5–10%)' : ''}';
-    final change = percent && hit.series.points.first != pt
-        ? '  ·  ${_value(hit.series, pt) >= 0 ? '+' : ''}${_value(hit.series, pt).toStringAsFixed(1)}%'
-        : '';
-    final title = TextPainter(
+    TextPainter line(String text, {Color? colour, bool title = false}) => TextPainter(
       text: TextSpan(
-        text: e.name,
-        style: _label(p, weight: FontWeight.w600),
+        text: text,
+        style: title ? _label(p, weight: FontWeight.w600, color: colour) : _label(p, size: 14, color: p.inkMuted),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    final body = TextPainter(
-      text: TextSpan(
-        text: '${_shortDate(pt.day)}  ·  $value$change',
-        style: _label(p, size: 14, color: p.inkMuted),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    // What was actually done that day: the line itself goes set by set.
-    final sets = TextPainter(
-      text: TextSpan(
-        text: e.bodyweight
-            ? '${pt.sets.map((s) => s.reps).join(', ')} reps'
-            : pt.sets.map((s) => '${_kg(s.weight ?? 0)} × ${s.reps}').join(',  '),
-        style: _label(p, size: 14, color: p.inkMuted),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final w = pixelCeil(math.max(math.max(title.width, body.width), sets.width) + 24),
-        h = pixelCeil(title.height + body.height + sets.height + 20);
-    var origin = hit.at + const Offset(12, -12) - Offset(0, h);
-    if (origin.dx + w > size.width) origin = Offset(hit.at.dx - 12 - w, origin.dy);
-    if (origin.dy < 0) origin = Offset(origin.dx, hit.at.dy + 12);
+    final blocks = <List<TextPainter>>[];
+    for (final hit in stack) {
+      final pt = hit.point, e = hit.series.exercise;
+      final value = e.bodyweight
+          ? '${_kg(pt.value)} reps'
+          : '${pt.rough ? '≈ ' : ''}${_kg(pt.value)} kg${pt.rough ? '  (±5–10%)' : ''}';
+      final change = percent && hit.series.points.first != pt
+          ? '  ·  ${_value(hit.series, pt) >= 0 ? '+' : ''}${_value(hit.series, pt).toStringAsFixed(1)}%'
+          : '';
+      blocks.add([
+        line(e.name, colour: hit.series.colour, title: true),
+        line('${_shortDate(pt.day)}  ·  $value$change'),
+        // What was actually done that day: the line itself goes set by set.
+        line(
+          e.bodyweight
+              ? '${pt.sets.map((s) => s.reps).join(', ')} reps'
+              : pt.sets.map((s) => '${_kg(s.weight ?? 0)} × ${s.reps}').join(',  '),
+        ),
+      ]);
+    }
+    const gap = 2.0, between = 10.0;
+    double blockHeight(List<TextPainter> b) => b.fold(0.0, (h, t) => h + t.height) + gap * (b.length - 1);
+    final widest = blocks.expand((b) => b).map((t) => t.width).reduce(math.max);
+    final w = pixelCeil(widest + 24),
+        h = pixelCeil(blocks.fold(0.0, (h, b) => h + blockHeight(b)) + between * (blocks.length - 1) + 16);
+    final anchor = stack.first.at;
+    var origin = anchor + const Offset(12, -12) - Offset(0, h);
+    if (origin.dx + w > size.width) origin = Offset(anchor.dx - 12 - w, origin.dy);
+    if (origin.dy < 0) origin = Offset(origin.dx, anchor.dy + 12);
+    // A tall stack still has to stay on the chart.
+    if (origin.dy + h > size.height) origin = Offset(origin.dx, math.max(0, size.height - h));
     origin = Offset(pixelRound(origin.dx), pixelRound(origin.dy));
     final box = RRect.fromRectAndRadius(origin & Size(w, h), const Radius.circular(12));
     canvas.drawShadow(Path()..addRRect(box), p.shadow.withValues(alpha: 0.4), 6, false);
@@ -312,10 +353,17 @@ class _ChartPainter extends CustomPainter {
         ..strokeWidth = 1
         ..color = p.tileBorder,
     );
-    canvas.drawCircle(hit.at, 5.5, Paint()..color = hit.series.colour.withValues(alpha: 0.3));
-    title.paint(canvas, origin + const Offset(12, 8));
-    body.paint(canvas, origin + Offset(12, 10 + title.height));
-    sets.paint(canvas, origin + Offset(12, 12 + title.height + body.height));
+    for (final hit in stack) {
+      canvas.drawCircle(hit.at, 5.5, Paint()..color = hit.series.colour.withValues(alpha: 0.3));
+    }
+    var top = origin.dy + 8;
+    for (final block in blocks) {
+      for (final t in block) {
+        t.paint(canvas, Offset(origin.dx + 12, top));
+        top += t.height + gap;
+      }
+      top += between - gap;
+    }
   }
 
   static double _niceStep(double raw) {
@@ -405,6 +453,7 @@ class _Legend extends StatelessWidget {
   const _Legend({
     required this.exercises,
     required this.dash,
+    required this.square,
     required this.hidden,
     required this.percent,
     required this.onHover,
@@ -413,6 +462,9 @@ class _Legend extends StatelessWidget {
 
   final List<Exercise> exercises;
   final Map<String, List<double>> dash;
+
+  /// Exercises whose points are squares.
+  final Set<String> square;
   final Set<String> hidden;
   final bool percent;
   final ValueChanged<String?> onHover;
@@ -465,7 +517,11 @@ class _Legend extends StatelessWidget {
                         children: [
                           CustomPaint(
                             size: const Size(22, 10),
-                            painter: _DashSample(groupColour(g, p), dash[e.uid] ?? const []),
+                            painter: _DashSample(
+                              groupColour(g, p),
+                              dash[e.uid] ?? const [],
+                              square: square.contains(e.uid),
+                            ),
                           ),
                           const SizedBox(width: 6),
                           PixelFit(child: Text(e.name, style: _label(p, size: 14))),
@@ -521,21 +577,29 @@ class _LegendItem extends StatelessWidget {
 }
 
 class _DashSample extends CustomPainter {
-  _DashSample(this.colour, this.dash);
+  _DashSample(this.colour, this.dash, {required this.square});
   final Color colour;
   final List<double> dash;
 
-  @override
-  void paint(Canvas canvas, Size size) => _ChartPainter._stroke(
-    canvas,
-    [Offset(1, size.height / 2), Offset(size.width - 1, size.height / 2)],
-    dash,
-    colour,
-    2,
-  );
+  /// Shows the square point that tells it from the same dash with circles.
+  final bool square;
 
   @override
-  bool shouldRepaint(_DashSample old) => old.colour != colour || old.dash != dash;
+  void paint(Canvas canvas, Size size) {
+    _ChartPainter._stroke(
+      canvas,
+      [Offset(1, size.height / 2), Offset(size.width - 1, size.height / 2)],
+      dash,
+      colour,
+      2,
+    );
+    if (square) {
+      _ChartPainter._dot(canvas, size.center(Offset.zero), colour, colour, rough: false, square: true);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashSample old) => old.colour != colour || old.dash != dash || old.square != square;
 }
 
 /// A row of options in one pill, the chosen one filled.

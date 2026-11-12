@@ -279,6 +279,84 @@ void main() {
       );
     });
 
+    testWidgets('hovering stacked points lists every exercise on them, solid points over hollow', (tester) async {
+      state.showingTraining = true;
+      final log = state.training;
+      void logSet(Exercise exercise, double weight, int reps) {
+        log.addToDay(today, exercise);
+        final set = log.session(today).firstWhere((entry) => entry.$1.uid == exercise.uid).$2.single;
+        log.updateSet(set, weight: weight, reps: reps);
+      }
+
+      // Both an estimated 60 kg, so on one spot; ten reps makes the first hollow.
+      logSet(log.createExercise('Bench press', MuscleGroup.chest, bodyweight: false), 45, 10);
+      logSet(log.createExercise('Row', MuscleGroup.back, bodyweight: false), 60, 1);
+      await show(tester);
+      final chart = find.byWidgetPredicate((widget) => widget is CustomPaint && widget.size == Size.infinite);
+      // The hollow point's centre and ring, then the solid one on top.
+      expect(
+        chart,
+        paints
+          ..circle(radius: 3.6)
+          ..drrect()
+          ..circle(radius: 3.6),
+      );
+      bool halo(Symbol method, List<dynamic> args) => method == #drawCircle && args[1] == 5.5;
+      expect(chart, isNot(paints..something(halo)));
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      final box = tester.getRect(chart);
+      for (var y = box.top; y < box.bottom; y += 4) {
+        await mouse.moveTo(Offset(box.left + 52, y));
+        await tester.pump();
+        if (((paints..something(halo)) as Matcher).matches(chart, {})) break;
+      }
+      // A highlight on each of the two, not only the nearest.
+      expect(
+        chart,
+        paints
+          ..something(halo)
+          ..something(halo),
+      );
+    });
+
+    test('exercises are ordered by when they were first logged, not by name', () {
+      final log = state.training;
+      final row = log.createExercise('Row', MuscleGroup.back, bodyweight: false);
+      final chin = log.createExercise('Chin-up', MuscleGroup.back, bodyweight: true);
+      final never = log.createExercise('Deadlift', MuscleGroup.back, bodyweight: false);
+      log.addToDay(today, row);
+      log.addToDay(today, chin);
+      expect(log.loggedOrder, [row.uid, chin.uid]);
+      // Logged later on an earlier day, it comes first.
+      log.addToDay(today.subtract(const Duration(days: 3)), chin);
+      expect(log.loggedOrder, [chin.uid, row.uid]);
+      expect(log.loggedOrder, isNot(contains(never.uid)));
+    });
+
+    testWidgets('a seventh exercise in a group repeats the first dash with square points', (tester) async {
+      state.showingTraining = true;
+      final log = state.training;
+      for (var i = 0; i < 7; i++) {
+        final e = log.createExercise('Press $i', MuscleGroup.chest, bodyweight: false);
+        log.addToDay(today, e);
+        log.updateSet(log.session(today).last.$2.single, weight: 40.0 + 10 * i, reps: 5);
+      }
+      await show(tester);
+      final chart = find.byWidgetPredicate((widget) => widget is CustomPaint && widget.size == Size.infinite);
+      expect(chart, paints..rect());
+      expect(
+        chart,
+        isNot(
+          paints
+            ..rect()
+            ..rect(),
+        ),
+      );
+    });
+
     testWidgets('the Undo card restores a removed set or all sets removed from a session', (tester) async {
       state.showingTraining = true;
       final log = state.training;
