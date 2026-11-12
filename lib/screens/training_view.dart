@@ -111,6 +111,12 @@ class _HistoryTile extends StatelessWidget {
                             final d = DateTime.parse(key);
                             log.showDay(d == state.today ? null : d);
                           },
+                          onRepeat: DateTime.parse(key) == state.today
+                              ? null
+                              : () {
+                                  log.repeatSession(DateTime.parse(key), state.today);
+                                  log.showDay(null);
+                                },
                         ),
                     ],
                   ),
@@ -122,12 +128,21 @@ class _HistoryTile extends StatelessWidget {
 }
 
 class _HistoryRow extends StatelessWidget {
-  const _HistoryRow({required this.day, required this.selected, required this.session, required this.onTap});
+  const _HistoryRow({
+    required this.day,
+    required this.selected,
+    required this.session,
+    required this.onTap,
+    required this.onRepeat,
+  });
 
   final DateTime day;
   final bool selected;
   final List<(Exercise, List<TrainingSet>)> session;
   final VoidCallback onTap;
+
+  /// Puts this session on today; null for today's own.
+  final VoidCallback? onRepeat;
 
   @override
   Widget build(BuildContext context) {
@@ -178,6 +193,24 @@ class _HistoryRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (onRepeat != null)
+              // The button is taller than a line of the row, which it must not stretch.
+              SizedBox(
+                width: 24,
+                height: 18,
+                child: OverflowBox(
+                  maxHeight: 24,
+                  child: IgnorePointer(
+                    ignoring: !hover,
+                    child: AnimatedOpacity(
+                      opacity: hover ? 1 : 0,
+                      duration: Motion.hover,
+                      curve: Motion.hoverCurve,
+                      child: _IconAction(icon: Icons.replay_rounded, tooltip: 'Repeat today', onTap: onRepeat!),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

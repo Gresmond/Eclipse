@@ -74,6 +74,7 @@ class _ExerciseBlock extends StatelessWidget {
     final p = context.palette;
     final log = AppScope.read(context).training;
     final colour = groupColour(exercise.group, p);
+    final bests = log.personalBests(day, exercise);
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
@@ -132,6 +133,7 @@ class _ExerciseBlock extends StatelessWidget {
                         ],
                       ),
                     ),
+                    _DeleteExercise(count: log.setsOf(exercise), onDelete: () => log.deleteExercise(exercise)),
                     _IconAction(
                       icon: Icons.close_rounded,
                       tooltip: 'Remove this session',
@@ -146,6 +148,7 @@ class _ExerciseBlock extends StatelessWidget {
                     index: i,
                     set: s,
                     bodyweight: exercise.bodyweight,
+                    best: bests.contains(s.uid),
                     last: i == sets.length - 1,
                     day: day,
                     exercise: exercise,
@@ -160,12 +163,44 @@ class _ExerciseBlock extends StatelessWidget {
   }
 }
 
+/// Deleting an exercise outright: the bin asks once, in place, and goes
+/// back to a bin when the pointer leaves.
+class _DeleteExercise extends StatefulWidget {
+  const _DeleteExercise({required this.count, required this.onDelete});
+
+  final int count;
+  final VoidCallback onDelete;
+
+  @override
+  State<_DeleteExercise> createState() => _DeleteExerciseState();
+}
+
+class _DeleteExerciseState extends State<_DeleteExercise> {
+  bool _asking = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onExit: (_) => setState(() => _asking = false),
+    child: _asking
+        ? _TextButton(
+            label: 'Delete with all ${widget.count} ${widget.count == 1 ? 'set' : 'sets'}',
+            onTap: widget.onDelete,
+          )
+        : _IconAction(
+            icon: Icons.delete_outline_rounded,
+            tooltip: 'Delete this exercise',
+            onTap: () => setState(() => _asking = true),
+          ),
+  );
+}
+
 class _SetRow extends StatefulWidget {
   const _SetRow({
     super.key,
     required this.index,
     required this.set,
     required this.bodyweight,
+    required this.best,
     required this.last,
     required this.day,
     required this.exercise,
@@ -173,7 +208,7 @@ class _SetRow extends StatefulWidget {
 
   final int index;
   final TrainingSet set;
-  final bool bodyweight, last;
+  final bool bodyweight, best, last;
   final DateTime day;
   final Exercise exercise;
 
@@ -254,6 +289,14 @@ class _SetRowState extends State<_SetRow> {
                 child: Text(
                   'Over $maxEstimateReps reps, so not charted',
                   style: _label(p, size: 12, color: p.inkMuted),
+                ),
+              ),
+            if (widget.best)
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Text(
+                  'Personal best',
+                  style: _label(p, size: 12, weight: FontWeight.w700, color: p.accent),
                 ),
               ),
             const Spacer(),
@@ -470,6 +513,13 @@ class _AddExerciseState extends State<_AddExercise> {
   bool _bodyweight = false;
 
   @override
+  void initState() {
+    super.initState();
+    // The most-used exercises show while the empty field has the cursor.
+    _focus.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _text.dispose();
     _focus.dispose();
@@ -488,7 +538,7 @@ class _AddExerciseState extends State<_AddExercise> {
     final log = AppScope.read(context).training;
     final query = _text.text.trim().toLowerCase();
     final matches = query.isEmpty
-        ? const <Exercise>[]
+        ? (_focus.hasFocus ? log.mostUsed(except: widget.logged) : const <Exercise>[])
         : log.exercises
               .where((e) => e.name.toLowerCase().contains(query) && !widget.logged.contains(e.uid))
               .take(6)
@@ -524,7 +574,7 @@ class _AddExerciseState extends State<_AddExercise> {
                   ),
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) {
-                    if (matches.isNotEmpty) _add(matches.first);
+                    if (query.isNotEmpty && matches.isNotEmpty) _add(matches.first);
                   },
                 ),
               ),
@@ -534,12 +584,15 @@ class _AddExerciseState extends State<_AddExercise> {
         if (matches.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final e in matches) _Chip(colour: groupColour(e.group, p), label: e.name, onTap: () => _add(e)),
-              ],
+            // Leaves the cursor in the field, which the most-used ones need to stay up.
+            child: TextFieldTapRegion(
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final e in matches) _Chip(colour: groupColour(e.group, p), label: e.name, onTap: () => _add(e)),
+                ],
+              ),
             ),
           ),
         if (query.isNotEmpty && !exact) ...[

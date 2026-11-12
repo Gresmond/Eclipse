@@ -467,7 +467,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   /// rituals, and their rows, as they are.
   @override
   void _reloadAfterUndo(Set<String> tables) {
-    if (tables.remove('training_sets')) {
+    if ([tables.remove('training_sets'), tables.remove('exercises')].contains(true)) {
       training.reload();
       if (tables.isEmpty) {
         notifyListeners();

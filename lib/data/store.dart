@@ -590,6 +590,8 @@ class Store {
   );
 
   /// Every set logged, oldest day first, in order within each day.
+  void deleteExercise(String uid) => _db.execute('DELETE FROM exercises WHERE uid = ?', [uid]);
+
   List<TrainingSet> trainingSets() => [
     for (final r in _db.select('SELECT * FROM training_sets ORDER BY day, position, uid'))
       TrainingSet(

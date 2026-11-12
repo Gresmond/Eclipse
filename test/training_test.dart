@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
@@ -259,6 +260,76 @@ void main() {
       expect(log.points(), hasLength(1));
       expect(find.text('Bench press ×3'), findsOneWidget);
       expect(find.byTooltip('Remove set'), findsNWidgets(3));
+    });
+
+    testWidgets('repeating a session, personal bests, most-used chips and deleting an exercise', (tester) async {
+      state.showingTraining = true;
+      final log = state.training;
+      final before = today.subtract(const Duration(days: 7));
+      final press = log.createExercise('Bench press', MuscleGroup.chest, bodyweight: false);
+      final curl = log.createExercise('Curl', MuscleGroup.biceps, bodyweight: false);
+      for (final (e, w) in [(press, 50.0), (curl, 12.0)]) {
+        log.addToDay(before, e);
+        log.addSet(before, e);
+        for (final s in log.session(before).firstWhere((x) => x.$1.uid == e.uid).$2) {
+          log.updateSet(s, weight: w, reps: 8);
+        }
+      }
+      expect(log.personalBests(before, press), isEmpty, reason: 'nothing to beat on the first day');
+      await show(tester);
+
+      // Hovering a past session offers to repeat it today.
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(find.text('Bench press ×2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Repeat today'));
+      await tester.pumpAndSettle();
+      final repeated = log.session(today);
+      expect(
+        [
+          for (final (e, sets) in repeated)
+            for (final s in sets) '${e.name} ${s.weight} x ${s.reps}',
+        ],
+        ['Bench press 50.0 x 0', 'Bench press 50.0 x 0', 'Curl 12.0 x 0', 'Curl 12.0 x 0'],
+      );
+      // Again changes nothing: both are on today already.
+      log.repeatSession(before, today);
+      expect(store.trainingSets(), hasLength(8));
+
+      // Only a set that beats everything before it is a best.
+      final sets = repeated.first.$2;
+      log.updateSet(sets[0], reps: 8);
+      log.updateSet(sets[1], weight: 52.5, reps: 8);
+      await tester.pumpAndSettle();
+      expect(log.personalBests(today, press), {sets[1].uid});
+      expect(find.text('Personal best'), findsOneWidget);
+
+      // The empty field offers what isn't on the day yet, most used first.
+      log.removeFromDay(today, curl);
+      await tester.pumpAndSettle();
+      expect(find.text('Curl'), findsOneWidget, reason: 'only in the chart legend');
+      await tester.tap(find.byType(EditableText).last);
+      await tester.pumpAndSettle();
+      expect(find.text('Curl'), findsNWidgets(2));
+      await tester.tap(find.text('Curl').last);
+      await tester.pumpAndSettle();
+      expect(log.session(today).last.$1.uid, curl.uid);
+
+      // Deleting asks once in place, takes every set, and Undo brings all of it back.
+      final all = store.trainingSets().length;
+      await tester.tap(find.byTooltip('Delete this exercise').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete with all 4 sets'));
+      await tester.pumpAndSettle();
+      expect(log.exercises.single.uid, curl.uid);
+      expect(store.trainingSets().length, all - 4);
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(log.exercises, hasLength(2));
+      expect(store.trainingSets().length, all);
+      expect(tester.takeException(), isNull);
     });
   });
 }

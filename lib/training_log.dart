@@ -97,6 +97,57 @@ class TrainingLog {
     return result;
   }
 
+  /// The exercises logged on the most days, of those the latest first,
+  /// leaving out [except]: the ones to offer before anything is typed.
+  List<Exercise> mostUsed({Set<String> except = const {}, int count = 6}) {
+    final days = <String, Set<String>>{};
+    for (final s in _sets) {
+      if (_byUid.containsKey(s.exercise) && !except.contains(s.exercise)) (days[s.exercise] ??= {}).add(s.day);
+    }
+    // Sets are oldest first, so a day set's last is its latest.
+    final uids = days.keys.toList()
+      ..sort((a, b) {
+        final (da, db) = (days[a]!, days[b]!);
+        if (da.length != db.length) return db.length - da.length;
+        final latest = db.last.compareTo(da.last);
+        return latest != 0 ? latest : _byUid[a]!.name.compareTo(_byUid[b]!.name);
+      });
+    return [for (final uid in uids.take(count)) _byUid[uid]!];
+  }
+
+  /// How many sets of [e] are logged, on any day.
+  int setsOf(Exercise e) => _sets.where((s) => s.exercise == e.uid).length;
+
+  /// What a set counts for when looking for a best: its estimated 1RM, or
+  /// for a bodyweight exercise its reps. Null when it doesn't count.
+  double? _worth(TrainingSet s, Exercise e) {
+    if (e.bodyweight) return s.reps > 0 ? s.reps.toDouble() : null;
+    return estimateOneRepMax(s.weight ?? 0, s.reps);
+  }
+
+  /// The sets of [e] on [day] that beat every set before them, on earlier
+  /// days and earlier that day. None on the first day [e] is logged.
+  Set<String> personalBests(DateTime day, Exercise e) {
+    final key = dateKey(day);
+    double? best;
+    for (final s in _sets) {
+      if (s.exercise != e.uid || s.day.compareTo(key) >= 0) continue;
+      final worth = _worth(s, e);
+      if (worth != null && (best == null || worth > best)) best = worth;
+    }
+    if (best == null) return const {};
+    final result = <String>{};
+    for (final s in _sets) {
+      if (s.exercise != e.uid || s.day != key) continue;
+      final worth = _worth(s, e);
+      if (worth != null && worth > best!) {
+        best = worth;
+        result.add(s.uid);
+      }
+    }
+    return result;
+  }
+
   // Editing
 
   Exercise createExercise(String name, MuscleGroup group, {required bool bodyweight}) {
@@ -118,6 +169,50 @@ class TrainingLog {
     );
     reload();
     _changed();
+  }
+
+  /// Removes [e] for good, with every set of it on every day.
+  void deleteExercise(Exercise e) {
+    final uids = [
+      for (final s in _sets)
+        if (s.exercise == e.uid) s.uid,
+    ];
+    final before = store.transaction(() {
+      final before = [
+        if (onRemoved != null) ...[
+          store.rowsBefore('exercises', ['uid'], 'uid = ?', [e.uid]),
+          for (final uid in uids) store.rowsBefore('training_sets', ['uid'], 'uid = ?', [uid]),
+        ],
+      ];
+      for (final uid in uids) {
+        store.deleteTrainingSet(uid);
+      }
+      store.deleteExercise(e.uid);
+      return before;
+    });
+    reload();
+    onRemoved?.call('Deleted “${e.name}” and all its sets', before);
+    _changed();
+  }
+
+  /// Puts the exercises of [from] on [to] with the same sets at the same
+  /// weights, reps left to fill in. Ones already on [to] stay as they are.
+  void repeatSession(DateTime from, DateTime to) {
+    final key = dateKey(to);
+    final there = {for (final (e, _) in session(to)) e.uid};
+    var at = _sets.where((s) => s.day == key).fold(-1, (m, s) => s.position > m ? s.position : m) + 1;
+    final added = store.transaction(
+      () => [
+        for (final (e, sets) in session(from))
+          if (!there.contains(e.uid))
+            for (final s in sets)
+              store.addTrainingSet(key, e.uid, position: at++, weight: e.bodyweight ? null : s.weight),
+      ],
+    );
+    if (added.isEmpty) return;
+    _sets.addAll(added);
+    _sort();
+    _done();
   }
 
   /// Puts [e] on [day] with one empty set, after what's already there.
