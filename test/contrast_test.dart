@@ -1,7 +1,7 @@
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/theme/oklch.dart' show contrast;
 import 'package:eclipse/theme/tokens.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// WCAG AA, on every theme: 4.5:1 for all text, labels on fills included,

@@ -5,7 +5,7 @@ import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/theme/app_theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 List<List<Object?>> _sent(SyncEngine e) => e.changesSince(0).values.expand((v) => v).toList();

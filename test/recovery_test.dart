@@ -12,7 +12,7 @@ import 'package:eclipse/screens/startup_error.dart';
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/widgets/backup_card.dart';
 import 'package:eclipse/widgets/sync_banner.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart' show sqlite3;

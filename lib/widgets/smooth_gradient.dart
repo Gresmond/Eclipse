@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A [BoxDecoration] whose gradient keeps a smooth edge under Impeller on
 /// Linux, which leaves gradient-filled shapes jagged. Draws the shape in a

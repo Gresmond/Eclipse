@@ -1,7 +1,7 @@
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/theme/oklch.dart';
 import 'package:eclipse/theme/palette_recipe.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 List<Color> _slots(Palette p) => [

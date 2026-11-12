@@ -6,10 +6,6 @@ analyzer:
     - linux/**
     - android/**
     - web/**
-  errors:
-    # Flutter 3.50 deprecates package:flutter/material.dart in favour of the material_ui package.
-    # Remove this once the imports are moved over; it hides every other deprecation notice too.
-    deprecated_member_use: ignore
 
 formatter:
   page_width: 120

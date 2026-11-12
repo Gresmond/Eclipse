@@ -10,7 +10,7 @@ import 'package:eclipse/widgets/rolling_number.dart';
 import 'package:eclipse/widgets/status_cell.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:eclipse/widgets/tile.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 

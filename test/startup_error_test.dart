@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:flutter/material.dart' show Theme;
+import 'package:material_ui/material_ui.dart' show Theme;
 import 'package:sqlite3/sqlite3.dart' show sqlite3;
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/data/dev_install.dart';
