@@ -166,19 +166,20 @@ class _Grid extends StatelessWidget {
     final used = columns.fold(0.0, (a, c) => a + c * cell + (c - 1) * gap);
     // Spare width goes between the months, so they run the card's width.
     final monthGap = pixelFloor((width - left - used) / 11);
-    final dayStyle = TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted);
+    const dayLine = 16.0;
+    final dayStyle = TextStyle(fontFamily: Fonts.ui, fontSize: 12, height: dayLine / 12, color: p.inkMuted);
+    // Rows shorter than a line of text name every other day, so no two
+    // names touch.
+    final everyOther = step < dayLine;
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
     Color fill(double r) => r < 0.5 ? Color.lerp(p.missed, p.other, r * 2)! : Color.lerp(p.other, p.done, r * 2 - 1)!;
 
     final children = <Widget>[
       for (final (i, name) in dayNames.indexed)
-        Positioned(
-          left: 0,
-          top: top + i * step,
-          height: cell,
-          child: Center(child: Text(name, style: dayStyle)),
-        ),
+        if (!everyOther || i.isEven)
+          // Centred on its row, whatever the row's height.
+          Positioned(left: 0, top: top + i * step + (cell - dayLine) / 2, child: Text(name, style: dayStyle)),
     ];
     var x = left;
     for (var month = 1; month <= 12; month++) {

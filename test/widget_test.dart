@@ -2027,6 +2027,13 @@ void main() {
     expect(find.text('YEAR TO DATE'), findsNWidgets(3), reason: 'kicker and both tables');
     expect(find.text('91%'), findsWidgets, reason: 'August: 10 of 11');
     expect(find.text('80%'), findsWidgets, reason: 'Sketch so far: 16 of 20');
+    // At this width a heatmap row is shorter than its day's name.
+    expect(find.text('Tue'), findsNothing, reason: 'every other day is named, so no two names touch');
+    expect(
+      tester.getRect(find.text('Wed')).top,
+      greaterThanOrEqualTo(tester.getRect(find.text('Mon')).bottom),
+      reason: 'the names clear each other',
+    );
     await _shoot(tester, 'year');
 
     // The tables show only the months since the first one logged, up to this
