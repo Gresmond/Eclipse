@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../app_state.dart';
@@ -15,6 +17,8 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/app_dialog.dart';
+import '../widgets/holidays.dart';
+import '../widgets/setting_rows.dart';
 import '../widgets/tile.dart';
 import 'phone_platform.dart';
 
@@ -24,16 +28,29 @@ Future<void> phoneMain() async {
   final dir = await getApplicationSupportDirectory();
   await dir.create(recursive: true);
   AppLog.start(dir);
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    AppLog.failure('Drawing', details.exception, details.stack);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppLog.failure('Uncaught', error, stack);
+    return false;
+  };
   final documents = await getApplicationDocumentsDirectory();
   final data = DataFolder.load(dir, documents);
   await data.root.create(recursive: true);
   final backups = Backups(data.backups)..beforeUpdating(data.database);
   final store = Store.open(data.database);
-  final sync = SyncService.load(dir, store)..copiesToDrive = true;
+  SyncService? sync;
+  try {
+    sync = SyncService.load(dir, store)..copiesToDrive = true;
+  } catch (error) {
+    AppLog.failure('Sync couldn’t start', error);
+  }
   final state = AppState(store, backups: backups, journalFiles: JournalFiles(data.journal), dataFolder: data, sync: sync);
   state.endTour();
-  sync.start();
-  if (sync.isOn) unawaited(sync.run());
+  sync?.start();
+  if (sync?.isOn ?? false) unawaited(sync!.run());
   runApp(PhoneApp(state: state, updater: PhoneUpdater()));
 }
 
@@ -52,7 +69,7 @@ class PhoneApp extends StatefulWidget {
 
 class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   AppState get _state => widget.state;
-  Timer? _scheduling;
+  Timer? _scheduling, _dateTimer;
 
   @override
   void initState() {
@@ -60,12 +77,14 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _state.addListener(_changed);
     _changed();
+    _dateTimer = Timer.periodic(const Duration(seconds: 30), (_) => _state.checkDate());
     unawaited(widget.updater?.check());
   }
 
   @override
   void dispose() {
     _scheduling?.cancel();
+    _dateTimer?.cancel();
     _state.removeListener(_changed);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -238,9 +257,16 @@ class _TodayPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.today, s.habitsRevision, s.entriesRevision, s.todosRevision));
+    final state = AppScope.watch(
+      context,
+      (s) => (s.today, s.habitsRevision, s.entriesRevision, s.todosRevision, s.shownRemoval),
+    );
     final today = state.today;
     final rest = state.isRestDay(today);
+    final rituals = [
+      for (final h in state.habits)
+        if (h.onDay(today) && h.startedBy(today)) h,
+    ];
     return Scaffold(
       backgroundColor: p.background,
       // 16 under it, and the list leaves 16 over it above its last card.
@@ -257,50 +283,124 @@ class _TodayPage extends StatelessWidget {
         child: const Icon(Icons.add_rounded, size: 22),
       ),
       body: SafeArea(
-        child: RefreshIndicator(
-          color: p.accent,
-          onRefresh: () async {
-            final sync = state.sync;
-            if (sync != null && sync.isOn) await sync.run();
-          },
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
+          children: [
+            RefreshIndicator(
+              color: p.accent,
+              onRefresh: () async {
+                final sync = state.sync;
+                if (sync != null && sync.isOn) await sync.run();
+              },
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(weekdayNames[today.weekday - 1].toUpperCase(), style: capsLabel(p.inkMuted)),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${today.day} ${monthNames[today.month - 1]}',
-                          style: _title(p),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(weekdayNames[today.weekday - 1].toUpperCase(), style: capsLabel(p.inkMuted)),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${today.day} ${monthNames[today.month - 1]}',
+                              style: _title(p),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      IconButton(
+                        tooltip: 'Settings',
+                        icon: Icon(Icons.settings_rounded, color: p.inkMuted),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => _SettingsPage(updater: updater)),
+                        ),
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    tooltip: 'Settings',
-                    icon: Icon(Icons.settings_rounded, color: p.inkMuted),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => _SettingsPage(updater: updater)),
-                    ),
-                  ),
+                  if (updater case final updater?) _UpdateCard(updater: updater),
+                  const SizedBox(height: 16),
+                  _MarksCard(title: 'RITUALS', habits: rituals, rest: rest),
+                  const SizedBox(height: 12),
+                  _MarksCard(title: 'SLEEP', habits: state.sleepHabits, rest: rest),
+                  const SizedBox(height: 12),
+                  const _TasksCard(),
                 ],
               ),
-              if (updater case final updater?) _UpdateCard(updater: updater),
-              const SizedBox(height: 16),
-              _MarksCard(title: 'RITUALS', habits: state.habits, rest: rest),
-              const SizedBox(height: 12),
-              _MarksCard(title: 'SLEEP', habits: state.sleepHabits, rest: rest),
-              const SizedBox(height: 12),
-              const _TasksCard(),
-            ],
-          ),
+            ),
+            if (state.shownRemoval case final removal?)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 84,
+                child: _PhoneUndoBanner(
+                  removal: removal,
+                  onUndo: state.undo,
+                  onHide: () => state.hideUndoCard(removal),
+                ),
+              ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _PhoneUndoBanner extends StatefulWidget {
+  const _PhoneUndoBanner({required this.removal, required this.onUndo, required this.onHide});
+
+  final Removal removal;
+  final VoidCallback onUndo;
+  final VoidCallback onHide;
+
+  @override
+  State<_PhoneUndoBanner> createState() => _PhoneUndoBannerState();
+}
+
+class _PhoneUndoBannerState extends State<_PhoneUndoBanner> {
+  Timer? _timer;
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer(const Duration(seconds: 5), widget.onHide);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  @override
+  void didUpdateWidget(_PhoneUndoBanner old) {
+    super.didUpdateWidget(old);
+    if (!identical(widget.removal, old.removal)) _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: p.tile,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: p.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(widget.removal.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: _body(p, size: 14)),
+          ),
+          TextButton(onPressed: widget.onUndo, child: const Text('Undo')),
+        ],
       ),
     );
   }
@@ -430,12 +530,7 @@ class _TasksCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.of(context);
-    final tasks = [...state.todos[TodoScope.today]!];
-    int order(TodoItem t) => t.done ? 2 : (t.dueTime == null ? 1 : 0);
-    tasks.sort((a, b) {
-      final first = order(a).compareTo(order(b));
-      return first != 0 ? first : (a.dueTime ?? 0).compareTo(b.dueTime ?? 0);
-    });
+    final tasks = state.orderedTodos(TodoScope.today);
     return Tile(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Column(
@@ -455,7 +550,19 @@ class _TasksCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Text('Nothing planned', style: _body(p, colour: p.inkMuted)),
             ),
-          for (final task in tasks) _TaskRow(key: ValueKey(task.id), task: task),
+          for (final task in tasks)
+            Dismissible(
+              key: ValueKey('dismiss-${task.id}'),
+              direction: DismissDirection.endToStart,
+              onDismissed: (_) => state.removeTodo(TodoScope.today, task),
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 16),
+                decoration: BoxDecoration(color: p.missed, borderRadius: BorderRadius.circular(12)),
+                child: Icon(Icons.delete_rounded, size: 18, color: p.missedInk),
+              ),
+              child: _TaskRow(key: ValueKey(task.id), task: task),
+            ),
         ],
       ),
     );
@@ -471,56 +578,135 @@ class _TaskRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.of(context);
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => state.toggleTodo(task),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 52),
-        child: Row(
-          children: [
-            Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: task.done ? p.done : Colors.transparent,
-                border: task.done ? null : Border.all(color: p.inkMuted, width: 1.5),
-              ),
-              child: task.done ? Icon(Icons.check_rounded, size: 18, color: p.onDone) : null,
+    final hasMeta = task.dueTime != null || task.location != null || task.repeatUid != null || task.birthday;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => state.toggleTodo(task),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 52),
+            child: Row(
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: task.done ? p.done : Colors.transparent,
+                    border: task.done ? null : Border.all(color: p.inkMuted, width: 1.5),
+                  ),
+                  child: task.done ? Icon(Icons.check_rounded, size: 18, color: p.onDone) : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (hasMeta)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Row(
+                              children: [
+                                if (task.dueTime case final time?)
+                                  Text(
+                                    clockLabel(time),
+                                    style: TextStyle(fontFamily: Fonts.taskTime, fontSize: 12, color: p.inkMuted),
+                                  ),
+                                if (task.location case final loc?) ...[
+                                  if (task.dueTime != null) const SizedBox(width: 8),
+                                  Icon(Icons.place_rounded, size: 12, color: p.inkMuted),
+                                  const SizedBox(width: 2),
+                                  Flexible(
+                                    child: Text(
+                                      loc,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: _body(p, size: 12, colour: p.inkMuted),
+                                    ),
+                                  ),
+                                ],
+                                if (task.birthday || task.repeatUid != null) ...[
+                                  if (task.dueTime != null || task.location != null) const SizedBox(width: 8),
+                                  Icon(
+                                    task.birthday ? Icons.cake_rounded : Icons.repeat_rounded,
+                                    size: 12,
+                                    color: p.inkMuted,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        Text(
+                          task.text,
+                          style: _body(p, colour: task.done ? p.inkMuted : p.ink).copyWith(
+                            decoration: task.done ? TextDecoration.lineThrough : null,
+                            decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                          ),
+                        ),
+                        if (task.note case final note?)
+                          Text(
+                            note,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: _body(p, size: 12, colour: p.inkMuted),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          ),
+        ),
+        for (final (i, sub) in task.subtasks.indexed)
+          Padding(
+            padding: const EdgeInsets.only(left: 38),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                state.setTodoSubtasks(TodoScope.today, task, [
+                  for (final (j, s) in task.subtasks.indexed)
+                    if (j == i) TodoSubtask(s.text, done: !s.done, note: s.note, numbered: s.numbered) else s,
+                ]);
+              },
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 40),
+                child: Row(
                   children: [
-                    if (task.dueTime case final time?)
-                      Text(
-                        clockLabel(time),
-                        style: TextStyle(fontFamily: Fonts.taskTime, fontSize: 12, color: p.inkMuted),
+                    Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: sub.done ? p.done : Colors.transparent,
+                        border: sub.done ? null : Border.all(color: p.inkMuted, width: 1.5),
                       ),
-                    Text(
-                      task.text,
-                      style: _body(p, colour: task.done ? p.inkMuted : p.ink).copyWith(
-                        decoration: task.done ? TextDecoration.lineThrough : null,
-                        decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                      child: sub.done ? Icon(Icons.check_rounded, size: 12, color: p.onDone) : null,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Text(
+                          sub.text,
+                          style: _body(p, size: 14, colour: sub.done ? p.inkMuted : p.ink).copyWith(
+                            decoration: sub.done ? TextDecoration.lineThrough : null,
+                            decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                          ),
+                        ),
                       ),
                     ),
-                    if (task.note case final note?)
-                      Text(
-                        note,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: _body(p, size: 12, colour: p.inkMuted),
-                      ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 }
@@ -645,7 +831,7 @@ class _SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => s.themeName);
+    final state = AppScope.watch(context, (s) => (s.themeName, s.restWeekends, s.dayStartHour));
     final sync = state.sync;
     return Scaffold(
       backgroundColor: p.background,
@@ -659,7 +845,7 @@ class _SettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (sync != null)
+          if (sync != null) ...[
             ListenableBuilder(
               listenable: sync,
               builder: (context, _) => Tile(
@@ -692,6 +878,45 @@ class _SettingsPage extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+          ],
+          Tile(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Text('DAYS', style: capsLabel(p.inkMuted)),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => state.setRestWeekends(!state.restWeekends),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Weekends as rest days', style: _body(p)),
+                              const SizedBox(height: 2),
+                              Text('Saturdays and Sundays don’t count against streaks.', style: _body(p, size: 14, colour: p.inkMuted)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        SettingToggle(on: state.restWeekends),
+                      ],
+                    ),
+                  ),
+                ),
+                const DayStartPicker(),
+                const HolidaysRow(),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
           Tile(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -708,6 +933,15 @@ class _SettingsPage extends StatelessWidget {
                       height: 48,
                       child: Row(
                         children: [
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: theme.background,
+                              border: Border.all(color: theme.tileBorder),
+                            ),
+                            child: const SizedBox(width: 18, height: 18),
+                          ),
+                          const SizedBox(width: 8),
                           for (final colour in [theme.done, theme.missed, theme.other, theme.today])
                             Padding(
                               padding: const EdgeInsets.only(right: 4),
@@ -718,7 +952,7 @@ class _SettingsPage extends StatelessWidget {
                             ),
                           const SizedBox(width: 10),
                           Expanded(child: Text(theme.name, style: _body(p))),
-                          if (theme.name == p.name) Icon(Icons.check_rounded, size: 18, color: p.ink),
+                          if (theme.name == p.name) Icon(Icons.check_rounded, size: 18, color: p.accent),
                         ],
                       ),
                     ),

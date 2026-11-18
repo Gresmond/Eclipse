@@ -5,6 +5,8 @@ import 'package:eclipse/data/google_drive.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/phone/phone_app.dart';
+import 'package:eclipse/widgets/rolling_number.dart';
+import 'package:eclipse/widgets/tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -102,5 +104,95 @@ void main() {
     expect(upcoming.map((r) => r.at), [DateTime(2026, 11, 6, 14), DateTime(2026, 11, 6, 14, 45)]);
     expect(upcoming.first.title, 'Dentist');
     expect(upcoming.first.body, 'In 1 hour, at 3:00 pm');
+  });
+
+  testWidgets('off-day and future-added rituals are hidden on phone Today', (tester) async {
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.addHabit(2026, 11, 'Read');
+    // 2026-11-06 is a Friday. Add a Monday-only ritual and one added tomorrow.
+    final mondayOnly = store.addHabit(2026, 11, 'Monday sprint');
+    store.setHabitDays(2026, 11, mondayOnly.id, [(null, weekdayBit(DateTime.monday))]);
+    store.addHabit(2026, 11, 'Starts tomorrow', addedOn: DateTime(2026, 11, 7));
+    final state = AppState(store, clock: () => DateTime(2026, 11, 6, 9))..endTour();
+    addTearDown(state.dispose);
+    expect(state.habits, hasLength(3));
+
+    await show(tester, state);
+
+    expect(find.text('Read'), findsOneWidget);
+    expect(find.text('Monday sprint'), findsNothing);
+    expect(find.text('Starts tomorrow'), findsNothing);
+    final ritualsHeader = find.ancestor(of: find.text('RITUALS'), matching: find.byType(TileHeader));
+    expect(find.descendant(of: ritualsHeader, matching: find.text(' OF 1')), findsOneWidget);
+    expect(
+      tester.widget<RollingNumber>(find.descendant(of: ritualsHeader, matching: find.byType(RollingNumber))).value,
+      0,
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('phone tasks show metadata and subtasks, and swipe-to-delete can be undone', (tester) async {
+    final (_, state) = make();
+    state.addTodo(TodoScope.today, 'Dentist', time: 10 * 60, location: 'Rundle Mall');
+    final timed = state.todos[TodoScope.today]!.last;
+    state.setTodoSubtasks(TodoScope.today, timed, [const TodoSubtask('Bring card')]);
+    state.addRepeat('Vitamins', const RepeatRule.every(1), DateTime(2026, 11, 6));
+    await show(tester, state);
+
+    await tester.dragUntilVisible(find.text('Dentist'), find.byType(ListView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+    expect(find.text('10:00 am'), findsOneWidget);
+    expect(find.text('Rundle Mall'), findsOneWidget);
+    expect(find.text('Bring card'), findsOneWidget);
+    expect(find.byIcon(Icons.repeat_rounded), findsOneWidget);
+
+    await tester.tap(find.text('Bring card'));
+    await tester.pumpAndSettle();
+    expect(state.todos[TodoScope.today]!.firstWhere((t) => t.id == timed.id).subtasks.single.done, isTrue);
+
+    await tester.drag(find.text('Dentist'), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Dentist'), findsNothing);
+    expect(find.text('Removed “Dentist”'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dentist'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('phone settings shows Days controls and opens Holiday dialog without overflow', (tester) async {
+    final (_, state) = make();
+    await show(tester, state);
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('DAYS'), findsOneWidget);
+    expect(find.text('Weekends as rest days'), findsOneWidget);
+    expect(find.text('New day starts at'), findsOneWidget);
+    expect(find.text('Holidays'), findsOneWidget);
+
+    await tester.tap(find.text('Weekends as rest days'));
+    await tester.pumpAndSettle();
+    expect(state.restWeekends, isTrue);
+
+    await tester.tap(find.text('4am'));
+    await tester.pumpAndSettle();
+    expect(state.dayStartHour, 4);
+
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add a holiday'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
   });
 }

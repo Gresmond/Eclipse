@@ -54,8 +54,6 @@ flutter:
       fonts:
         - asset: assets/fonts/haffer/HafferSemiMono-TRIAL-Medium.otf
           weight: 500
-        - asset: assets/fonts/haffer/HafferSemiMono-TRIAL-SemiBold.otf
-          weight: 600
 
 # Linux builds use the system SQLite package; Android keeps its native asset.
 hooks:

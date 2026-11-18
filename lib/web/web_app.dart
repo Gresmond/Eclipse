@@ -59,7 +59,7 @@ Future<(String, int)> _accessToken() async {
 /// or another tab's say-so happens first, on plain pages.
 Future<void> webMain({
   required Widget Function(AppState state, Updater? updater) app,
-  required void Function(AppState state) watch,
+  required void Function() Function(AppState state) watch,
 }) async {
   // Right-click is Eclipse's own, as on the desktop: it marks things missed.
   WidgetsFlutterBinding.ensureInitialized();
@@ -89,15 +89,17 @@ Future<void> webMain({
   };
 
   void show(AppState state) {
-    close = () async {
-      await state.shutdown();
-      await data.close();
-    };
-    watch(state);
+    final stopWatching = watch(state);
     if (state.firstRun) state.startTour();
     final updater = WebUpdater();
     unawaited(updater.check());
-    Timer.periodic(updater.checkEvery, (_) => updater.check());
+    final updateTimer = Timer.periodic(updater.checkEvery, (_) => updater.check());
+    close = () async {
+      updateTimer.cancel();
+      stopWatching();
+      await state.shutdown();
+      await data.close();
+    };
     runApp(app(state, updater));
   }
 

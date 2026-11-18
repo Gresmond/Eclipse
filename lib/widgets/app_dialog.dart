@@ -28,6 +28,7 @@ class AppAlertDialog extends StatelessWidget {
     final p = context.palette;
     return AlertDialog(
       backgroundColor: p.tile,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       titlePadding: EdgeInsets.fromLTRB(dialogPadding.left, dialogPadding.top, dialogPadding.right, 0),
       contentPadding: EdgeInsets.fromLTRB(dialogPadding.left, dialogTitleGap, dialogPadding.right, 0),
       actionsPadding: EdgeInsets.fromLTRB(

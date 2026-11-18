@@ -38,10 +38,15 @@ Future<void> main() async {
     return webMain(
       app: (state, updater) => EclipseApp(state: state, updater: updater),
       watch: (state) {
-        _watchWindow(state);
-        _watchDate(state);
-        _watchReminders(state);
+        final stopWindow = _watchWindow(state);
+        final stopDate = _watchDate(state);
+        final stopReminders = _watchReminders(state);
         WarmUp.enabled = true;
+        return () {
+          stopWindow();
+          stopDate();
+          stopReminders();
+        };
       },
     );
   }
@@ -159,7 +164,8 @@ Future<void> _shutdown(AppState state) async {
 /// starts). Also looks once a minute,
 /// because timers stand still while the computer sleeps and the time zone
 /// can change, and whenever the window comes back.
-void _watchDate(AppState state) {
+void Function() _watchDate(AppState state) {
+  Timer? timer;
   void check() {
     if (state.closing) return;
     SystemTimeZone.instance?.sync();
@@ -178,21 +184,25 @@ void _watchDate(AppState state) {
     final wait = until < const Duration(minutes: 1)
         ? until + const Duration(milliseconds: 20)
         : const Duration(minutes: 1);
-    Timer(wait, () {
+    timer = Timer(wait, () {
       check();
       schedule();
     });
   }
 
   schedule();
-  AppLifecycleListener(onResume: check, onShow: check);
+  final listener = AppLifecycleListener(onResume: check, onShow: check);
+  return () {
+    timer?.cancel();
+    listener.dispose();
+  };
 }
 
 /// Syncs as the window comes and goes, so switching computers shows the
 /// latest: what changed here goes when the window goes to the back or is
 /// closed, and the others' changes come in when it comes back. Quitting
 /// waits a moment for sync, and saves typing first either way.
-void _watchWindow(AppState state) {
+void Function() _watchWindow(AppState state) {
   void leaving() {
     if (state.closing) return;
     state.saveDrafts();
@@ -200,7 +210,7 @@ void _watchWindow(AppState state) {
     state.sync?.sendChanges();
   }
 
-  AppLifecycleListener(
+  final listener = AppLifecycleListener(
     onResume: () {
       if (!state.closing) state.sync?.refresh();
     },
@@ -221,13 +231,14 @@ void _watchWindow(AppState state) {
       await _shutdown(state);
     });
   }
+  return listener.dispose;
 }
 
 /// Mirrors night light into [AppState]: hyprsunset can't announce a
 /// change, so it's asked every few seconds and whenever the window comes back.
-void _watchNightLight(AppState state) {
+void Function() _watchNightLight(AppState state) {
   final isOn = NightLight.forSession()?.isOn;
-  if (isOn == null) return;
+  if (isOn == null) return () {};
   state.nightLightAvailable = true;
   Future<void> check() async {
     if (state.closing) return;
@@ -236,15 +247,19 @@ void _watchNightLight(AppState state) {
   }
 
   unawaited(check());
-  Timer.periodic(const Duration(seconds: 5), (_) => check());
-  AppLifecycleListener(onResume: check, onShow: check);
+  final timer = Timer.periodic(const Duration(seconds: 5), (_) => check());
+  final listener = AppLifecycleListener(onResume: check, onShow: check);
+  return () {
+    timer.cancel();
+    listener.dispose();
+  };
 }
 
 /// Sends tasks' reminders as they come due: looked for every few seconds,
 /// since timers stand still while the computer sleeps, and whenever the
 /// window comes back. Cards show only while the window is open. On starting
 /// or waking they wait for a sync, for times changed on another computer.
-void _watchReminders(AppState state) {
+void Function() _watchReminders(AppState state) {
   void check() {
     if (!state.closing) state.checkReminders();
   }
@@ -256,13 +271,13 @@ void _watchReminders(AppState state) {
 
   syncFirst();
   var last = DateTime.now();
-  Timer.periodic(const Duration(seconds: 10), (_) {
+  final timer = Timer.periodic(const Duration(seconds: 10), (_) {
     final now = DateTime.now();
     if (now.difference(last) > const Duration(seconds: 30)) syncFirst();
     last = now;
     check();
   });
-  AppLifecycleListener(
+  final listener = AppLifecycleListener(
     onShow: () {
       state.windowOpen = true;
       check();
@@ -274,6 +289,10 @@ void _watchReminders(AppState state) {
   state.windowOpen = WidgetsBinding.instance.lifecycleState != AppLifecycleState.hidden;
   WidgetsBinding.instance.addPostFrameCallback((_) => check());
   check();
+  return () {
+    timer.cancel();
+    listener.dispose();
+  };
 }
 
 class EclipseApp extends StatelessWidget {

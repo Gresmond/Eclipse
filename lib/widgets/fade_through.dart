@@ -175,6 +175,15 @@ class _FadeThroughState extends State<FadeThrough> with TickerProviderStateMixin
         ..transition = _transition(_current);
       return;
     }
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      for (final entry in _outgoing) {
+        entry.controller.dispose();
+      }
+      _outgoing.clear();
+      _current.controller.dispose();
+      _current = _entry(child, value: 1);
+      return;
+    }
     _outgoing.add(_current..controller.reverse());
     // Switched back to one still fading out: it turns round.
     final back = _outgoing.where((e) => e != _current && Widget.canUpdate(e.child, child)).lastOrNull;

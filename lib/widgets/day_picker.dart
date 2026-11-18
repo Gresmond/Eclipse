@@ -4,6 +4,7 @@ import '../models.dart';
 import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import 'fade_through.dart';
 import 'hover_fill.dart';
 
 /// A month of days to pick from, opening on [selected]. Days after
@@ -85,9 +86,14 @@ class _MonthCalendarState extends State<MonthCalendar> {
           children: [
             const SizedBox(width: 6),
             Expanded(
-              child: Text(
-                '${monthNames[_month.month - 1]} ${_month.year}',
-                style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
+              child: FadeThrough(
+                layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
+                duration: Motion.morph,
+                child: Text(
+                  '${monthNames[_month.month - 1]} ${_month.year}',
+                  key: ValueKey((_month.year, _month.month)),
+                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
+                ),
               ),
             ),
             arrow(Icons.chevron_left_rounded, localizations.previousMonthTooltip, atFirst ? null : () => _shift(-1)),
@@ -104,21 +110,30 @@ class _MonthCalendarState extends State<MonthCalendar> {
           ],
         ),
         const SizedBox(height: 4),
-        for (var week = 0; week < 6; week++)
-          PixelRow(
+        FadeThrough(
+          duration: Motion.morph,
+          child: Column(
+            key: ValueKey((_month.year, _month.month)),
+            mainAxisSize: MainAxisSize.min,
             children: [
-              for (var col = 0; col < 7; col++)
-                if (week * 7 + col - lead + 1 case final d when d >= 1 && d <= days)
-                  // Keyed by its date, so a month's change draws new days
-                  // rather than easing the old ones' fills into them.
-                  Expanded(
-                    key: ValueKey(DateTime(_month.year, _month.month, d)),
-                    child: widget.dayBuilder(context, DateTime(_month.year, _month.month, d)),
-                  )
-                else
-                  const Expanded(child: SizedBox(height: CalendarDay.height)),
+              for (var week = 0; week < 6; week++)
+                PixelRow(
+                  children: [
+                    for (var col = 0; col < 7; col++)
+                      if (week * 7 + col - lead + 1 case final d when d >= 1 && d <= days)
+                        // Keyed by its date, so a month's change draws new days
+                        // rather than easing the old ones' fills into them.
+                        Expanded(
+                          key: ValueKey(DateTime(_month.year, _month.month, d)),
+                          child: widget.dayBuilder(context, DateTime(_month.year, _month.month, d)),
+                        )
+                      else
+                        const Expanded(child: SizedBox(height: CalendarDay.height)),
+                  ],
+                ),
             ],
           ),
+        ),
       ],
     );
   }

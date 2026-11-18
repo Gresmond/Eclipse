@@ -70,13 +70,21 @@ class YearHeatmap extends StatelessWidget {
     final names = <int, String>{};
     var allDone = 0, allLogged = 0;
     for (final MapEntry(key: month, value: ids) in rituals.entries) {
+      final byId = <int, Habit>{};
       for (final h in state.habitsFor(year, month)) {
         names[h.id] = h.name;
+        byId[h.id] = h;
       }
       for (final e in state.store.entriesInMonth(year, month)) {
-        // Counted as a month's tab does: other days aren't logged.
-        if (!ids.contains(e.habitId) || e.status == HabitStatus.none || e.status == HabitStatus.other) continue;
-        final weekday = DateTime.parse(e.day).weekday - 1;
+        final h = byId[e.habitId];
+        // Counted as a month's tab does: other days, days before a ritual was
+        // added, and days it isn't scheduled for aren't logged.
+        if (h == null || !ids.contains(e.habitId) || e.status == HabitStatus.none || e.status == HabitStatus.other) {
+          continue;
+        }
+        final day = DateTime.parse(e.day);
+        if (!h.startedBy(day) || !h.onDay(day)) continue;
+        final weekday = day.weekday - 1;
         final isDone = e.status == HabitStatus.done;
         logged[e.day] = (logged[e.day] ?? 0) + 1;
         (loggedOn[e.habitId] ??= List.filled(7, 0))[weekday]++;

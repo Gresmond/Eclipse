@@ -158,18 +158,20 @@ class TrainingLog {
   /// days and earlier that day. None on the first day [e] is logged.
   Set<String> personalBests(DateTime day, Exercise e) {
     final key = dateKey(day);
+    var hadPriorDay = false;
     double? best;
     for (final s in _sets) {
       if (s.exercise != e.uid || s.day.compareTo(key) >= 0) continue;
+      hadPriorDay = true;
       final worth = _worth(s, e);
       if (worth != null && (best == null || worth > best)) best = worth;
     }
-    if (best == null) return const {};
+    if (!hadPriorDay) return const {};
     final result = <String>{};
     for (final s in _sets) {
       if (s.exercise != e.uid || s.day != key) continue;
       final worth = _worth(s, e);
-      if (worth != null && worth > best!) {
+      if (worth != null && (best == null || worth > best)) {
         best = worth;
         result.add(s.uid);
       }

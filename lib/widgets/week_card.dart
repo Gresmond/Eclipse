@@ -129,7 +129,7 @@ class _CardDrop extends StatelessWidget {
       // As a day a task is dragged over lights up.
       builder: (context, candidates, _) => TweenAnimationBuilder<double>(
         tween: Tween(end: candidates.isEmpty ? 0 : 0.08),
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         builder: (context, alpha, child) => DecoratedBox(
           position: DecorationPosition.foreground,
@@ -356,7 +356,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
               ? 0.045
               : 0,
         ),
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         builder: (context, alpha, sliver) => DecoratedSliver(
           decoration: BoxDecoration(

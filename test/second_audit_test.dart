@@ -239,6 +239,29 @@ void main() {
     await backups.daily(store, DateTime(2026, 11, 10));
     expect(Backups.isHealthy(backups.list().single.file), isTrue);
   });
+
+  testWidgets('YearHeatmap ignores entries before addedOn and on unscheduled weekdays', (tester) async {
+    // 2026-11-10 is Tuesday.
+    open(DateTime(2026, 11, 10, 10));
+    state.dispose();
+    for (final h in store.monthHabits(2026, 11)) {
+      store.removeHabit(2026, 11, h.id);
+    }
+    final mondayHabit = store.addHabit(2026, 11, 'Monday review', addedOn: DateTime(2026, 11, 9));
+    // Scheduled only on Mondays (2026-11-09 is Monday).
+    store.setHabitDays(2026, 11, mondayHabit.id, [(null, weekdayBit(DateTime.monday))]);
+    // Entry before addedOn (2026-11-02 is Monday, before Nov 9).
+    store.setEntry('2026-11-02', mondayHabit.id, HabitStatus.missed);
+    // Entry on an unscheduled weekday (2026-11-10 is Tuesday).
+    store.setEntry('2026-11-10', mondayHabit.id, HabitStatus.missed);
+    // Valid scheduled entry on addedOn Monday.
+    store.setEntry('2026-11-09', mondayHabit.id, HabitStatus.done);
+    state = AppState(store, clock: () => now)..endTour();
+    state.showYear();
+    await show(tester);
+
+    expect(find.text('THE YEAR  ·  100% OF RITUALS DONE'), findsOneWidget);
+  });
 }
 
 /// Set on the test's isolate only; another isolate starts with it unset.

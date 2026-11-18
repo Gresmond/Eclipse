@@ -36,8 +36,6 @@ mixin _Navigation on ChangeNotifier {
     firstMonth,
     holidays,
     showingTraining,
-    showingCalendar,
-    calendarMonth,
   );
 
   /// Gym training, every exercise's progress.
@@ -46,22 +44,15 @@ mixin _Navigation on ChangeNotifier {
   /// The Training page is open, in place of whichever view was.
   bool showingTraining = false;
 
-  /// The calendar is open, in place of whichever view was.
-  bool showingCalendar = false;
-
-  /// The first of the month the calendar shows.
-  late DateTime calendarMonth = DateTime(today.year, today.month);
-
   void _closePages() {
     if (showingTraining) {
       saveDrafts();
       training.day = null;
     }
     showingTraining = false;
-    showingCalendar = false;
   }
 
-  /// Back to the view that was open under Training or the calendar.
+  /// Back to the view that was open under Training.
   void closePages() {
     _closePages();
     notifyListeners();
@@ -71,28 +62,6 @@ mixin _Navigation on ChangeNotifier {
     final open = !showingTraining;
     _closePages();
     showingTraining = open;
-    notifyListeners();
-  }
-
-  /// Opens on this month; closing goes back to the view it opened over.
-  void toggleCalendar() {
-    final open = !showingCalendar;
-    _closePages();
-    showingCalendar = open;
-    if (open) calendarMonth = DateTime(today.year, today.month);
-    notifyListeners();
-  }
-
-  /// Moves the calendar on or back, no earlier than the month you started.
-  void shiftCalendar(int months) {
-    final (y, m) = firstMonth;
-    final next = DateTime(calendarMonth.year, calendarMonth.month + months);
-    calendarMonth = next.isBefore(DateTime(y, m)) ? DateTime(y, m) : next;
-    notifyListeners();
-  }
-
-  void calendarToThisMonth() {
-    calendarMonth = DateTime(today.year, today.month);
     notifyListeners();
   }
 

@@ -467,7 +467,7 @@ class _DateTags extends StatelessWidget {
 }
 
 /// A row of choices, one filled, or with [chosen] any of them.
-class _Pills extends StatelessWidget {
+class _Pills extends StatefulWidget {
   const _Pills({required this.options, this.selected = -1, this.chosen, required this.onSelect});
 
   final List<String> options;
@@ -475,11 +475,99 @@ class _Pills extends StatelessWidget {
   final Set<int>? chosen;
   final ValueChanged<int> onSelect;
 
-  bool _on(int i) => chosen?.contains(i) ?? i == selected;
+  @override
+  State<_Pills> createState() => _PillsState();
+}
+
+class _PillsState extends State<_Pills> {
+  late List<GlobalKey> _keys = [for (final _ in widget.options) GlobalKey()];
+
+  @override
+  void didUpdateWidget(_Pills old) {
+    super.didUpdateWidget(old);
+    if (widget.options.length != _keys.length) {
+      _keys = [for (final _ in widget.options) GlobalKey()];
+    }
+  }
+
+  bool _on(int i) => widget.chosen?.contains(i) ?? i == widget.selected;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final row = widget.chosen == null
+        ? GlidePill(
+            target: widget.selected >= 0 && widget.selected < _keys.length ? _keys[widget.selected] : null,
+            color: p.done,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (i, option) in widget.options.indexed)
+                  MouseRegion(
+                    key: _keys[i],
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => widget.onSelect(i),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: PixelFit(
+                          child: TweenAnimationBuilder<Color?>(
+                            tween: ColorTween(end: _on(i) ? p.onDone : p.inkMuted),
+                            duration: context.themed(Motion.morph),
+                            curve: Motion.morphCurve,
+                            builder: (context, color, _) => Text(
+                              option,
+                              style: TextStyle(
+                                fontFamily: Fonts.ui,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: color,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          )
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (i, option) in widget.options.indexed)
+                MouseRegion(
+                  // Each pill keeps its own state as others come and go.
+                  key: ValueKey(option),
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => widget.onSelect(i),
+                    child: AnimatedContainer(
+                      duration: context.themed(Motion.click),
+                      curve: Motion.clickCurve,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: p.done.withValues(alpha: _on(i) ? 1 : 0),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: PixelFit(
+                        child: Text(
+                          option,
+                          style: TextStyle(
+                            fontFamily: Fonts.ui,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _on(i) ? p.onDone : p.inkMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -487,41 +575,7 @@ class _Pills extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: p.border),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (i, option) in options.indexed)
-            MouseRegion(
-              // Each pill keeps its own state as others come and go.
-              key: ValueKey(option),
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onSelect(i),
-                child: AnimatedContainer(
-                  duration: context.themed(Motion.click),
-                  curve: Motion.clickCurve,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: p.done.withValues(alpha: _on(i) ? 1 : 0),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: PixelFit(
-                    child: Text(
-                      option,
-                      style: TextStyle(
-                        fontFamily: Fonts.ui,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: _on(i) ? p.onDone : p.inkMuted,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+      child: row,
     );
   }
 }

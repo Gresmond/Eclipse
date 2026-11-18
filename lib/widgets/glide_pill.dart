@@ -27,28 +27,42 @@ class GlidePill extends StatefulWidget {
 
 class _GlidePillState extends State<GlidePill> with TickerProviderStateMixin {
   @override
-  Widget build(BuildContext context) =>
-      _GlidePillBox(target: widget.target, color: widget.color, vsync: this, child: widget.child);
+  Widget build(BuildContext context) => _GlidePillBox(
+    target: widget.target,
+    color: widget.color,
+    disableAnimations: MediaQuery.maybeDisableAnimationsOf(context) ?? false,
+    vsync: this,
+    child: widget.child,
+  );
 }
 
 class _GlidePillBox extends SingleChildRenderObjectWidget {
-  const _GlidePillBox({required this.target, required this.color, required this.vsync, super.child});
+  const _GlidePillBox({
+    required this.target,
+    required this.color,
+    required this.disableAnimations,
+    required this.vsync,
+    super.child,
+  });
 
   final GlobalKey? target;
   final Color color;
+  final bool disableAnimations;
   final TickerProvider vsync;
 
   @override
-  RenderObject createRenderObject(BuildContext context) => RenderGlidePill(target, color, vsync);
+  RenderObject createRenderObject(BuildContext context) =>
+      RenderGlidePill(target, color, vsync, disableAnimations);
 
   @override
   void updateRenderObject(BuildContext context, RenderGlidePill renderObject) => renderObject
+    ..disableAnimations = disableAnimations
     ..target = target
     ..color = color;
 }
 
 class RenderGlidePill extends RenderProxyBox {
-  RenderGlidePill(this._target, this._color, TickerProvider vsync)
+  RenderGlidePill(this._target, this._color, TickerProvider vsync, [this._disableAnimations = false])
     : _glide = AnimationController(vsync: vsync, duration: Motion.morph, value: 1),
       _presence = AnimationController(vsync: vsync, duration: Motion.morph, value: _target == null ? 0 : 1) {
     _glide.addListener(markNeedsPaint);
@@ -56,6 +70,18 @@ class RenderGlidePill extends RenderProxyBox {
   }
 
   final AnimationController _glide, _presence;
+
+  bool _disableAnimations;
+  set disableAnimations(bool value) {
+    if (value == _disableAnimations) return;
+    _disableAnimations = value;
+    if (value) {
+      _from = null;
+      _glide.value = 1;
+      _presence.value = _target == null ? 0 : 1;
+      markNeedsPaint();
+    }
+  }
 
   /// Where the pill was last painted, and where a glide set off from.
   Rect? _shown, _from;
@@ -65,7 +91,11 @@ class RenderGlidePill extends RenderProxyBox {
     if (value == _target) return;
     final had = _target != null;
     _target = value;
-    if (value == null) {
+    if (_disableAnimations) {
+      _from = null;
+      _glide.value = 1;
+      _presence.value = value == null ? 0 : 1;
+    } else if (value == null) {
       _presence.reverse();
     } else if (had) {
       _from = _shown;

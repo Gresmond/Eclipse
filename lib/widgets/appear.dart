@@ -36,15 +36,34 @@ class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
   late final _sizeFirst = _controller.drive(CurveTween(curve: Motion.firstHalf));
   late final _fadeLast = _controller.drive(CurveTween(curve: Motion.secondHalf));
 
+  bool get _disabled => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_disabled && _controller.isAnimating) {
+      _controller.value = widget.shown ? 1 : 0;
+    }
+  }
+
   @override
   void didUpdateWidget(Appear old) {
     super.didUpdateWidget(old);
     if (old.shown && !widget.shown) {
-      _controller.reverse().whenCompleteOrCancel(() {
-        if (mounted && !widget.shown) widget.onHidden?.call();
-      });
+      if (_disabled) {
+        _controller.value = 0;
+        widget.onHidden?.call();
+      } else {
+        _controller.reverse().whenCompleteOrCancel(() {
+          if (mounted && !widget.shown) widget.onHidden?.call();
+        });
+      }
     } else if (!old.shown && widget.shown) {
-      _controller.forward();
+      if (_disabled) {
+        _controller.value = 1;
+      } else {
+        _controller.forward();
+      }
     }
   }
 

@@ -12,7 +12,6 @@ import '../theme/tokens.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/note_input.dart';
-import '../widgets/ritual_name.dart';
 import '../widgets/rolling_number.dart';
 import '../widgets/search_glow.dart';
 import '../widgets/status_cell.dart';
@@ -481,9 +480,10 @@ class _HabitRow extends StatelessWidget {
                     : habit.description ?? habit.name,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: RitualName(
-                    habit: habit,
+                  child: Text(
+                    habit.name,
                     maxLines: nameLines,
+                    overflow: TextOverflow.ellipsis,
                     style: nameStyle.copyWith(color: p.ink),
                   ),
                 ),

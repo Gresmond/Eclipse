@@ -416,6 +416,7 @@ class _InlineName extends StatefulWidget {
 
 class _InlineNameState extends State<_InlineName> {
   bool _editing = false;
+  bool _cancelled = false;
   late final _text = TextEditingController(text: widget.name);
   final _focus = FocusNode();
 
@@ -423,8 +424,21 @@ class _InlineNameState extends State<_InlineName> {
   void initState() {
     super.initState();
     _focus.addListener(() {
-      if (!_focus.hasFocus && _editing) _commit();
+      if (!_focus.hasFocus && _editing) {
+        if (_cancelled) {
+          _cancelled = false;
+          setState(() => _editing = false);
+        } else {
+          _commit();
+        }
+      }
     });
+  }
+
+  @override
+  void didUpdateWidget(_InlineName old) {
+    super.didUpdateWidget(old);
+    if (!_editing && widget.name != old.name) _text.text = widget.name;
   }
 
   @override
@@ -451,15 +465,26 @@ class _InlineNameState extends State<_InlineName> {
     );
     if (_editing) {
       return IntrinsicWidth(
-        child: TextField(
-          inputFormatters: const [NoteInputFormatter()],
-          controller: _text,
-          focusNode: _focus,
-          autofocus: true,
-          style: style,
-          cursorColor: p.accent,
-          decoration: const InputDecoration.collapsed(hintText: ''),
-          onSubmitted: (_) => _commit(),
+        child: Focus(
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+              _cancelled = true;
+              _text.text = widget.name;
+              _focus.unfocus();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: TextField(
+            inputFormatters: const [NoteInputFormatter()],
+            controller: _text,
+            focusNode: _focus,
+            autofocus: true,
+            style: style,
+            cursorColor: p.accent,
+            decoration: const InputDecoration.collapsed(hintText: ''),
+            onSubmitted: (_) => _commit(),
+          ),
         ),
       );
     }

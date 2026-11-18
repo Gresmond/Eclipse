@@ -4,6 +4,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import 'fade_menu.dart';
+import 'glide_pill.dart';
 import 'smooth_gradient.dart';
 
 /// A setting you flip by clicking anywhere on its row.
@@ -73,16 +74,13 @@ class DayStartPicker extends StatefulWidget {
 }
 
 class _DayStartPickerState extends State<DayStartPicker> {
-  /// Where the pill sits for [hour]: its left edge and width, as fractions.
-  static Offset _pillAt(int hour) {
-    const hours = DayStartPicker.hours;
-    return Offset(hours.indexOf(hour) / hours.length, 1 / hours.length);
-  }
+  final _keys = [for (final _ in DayStartPicker.hours) GlobalKey()];
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.of(context);
+    final index = DayStartPicker.hours.indexOf(state.dayStartHour);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Column(
@@ -102,62 +100,40 @@ class _DayStartPickerState extends State<DayStartPicker> {
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)),
             // One pill glides to the chosen hour, like the tab bar's.
-            child: Stack(
-              children: [
-                if (DayStartPicker.hours.contains(state.dayStartHour))
-                  Positioned.fill(
-                    child: TweenAnimationBuilder<Offset>(
-                      tween: Tween(end: _pillAt(state.dayStartHour)),
-                      duration: Motion.morph,
-                      curve: Motion.morphCurve,
-                      builder: (context, pill, _) => Align(
-                        // pill.dx is the left edge and pill.dy the width, as
-                        // fractions of the row.
-                        alignment: Alignment(pill.dy >= 1 ? 0 : 2 * pill.dx / (1 - pill.dy) - 1, 0),
-                        child: FractionallySizedBox(
-                          widthFactor: pill.dy,
-                          heightFactor: 1,
-                          child: DecoratedBox(
-                            decoration: SmoothGradientDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              gradient: LinearGradient(colors: p.gradient.skip(1).toList()),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                Row(
-                  children: [
-                    for (final hour in DayStartPicker.hours)
-                      Expanded(
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => state.setDayStartHour(hour),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Center(
-                                child: AnimatedDefaultTextStyle(
-                                  duration: context.themed(Motion.morph),
-                                  curve: Motion.morphCurve,
-                                  style: TextStyle(
-                                    fontFamily: Fonts.ui,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: hour == state.dayStartHour ? p.onAccent : p.inkMuted,
-                                  ),
-                                  child: Text(hourLabel(hour)),
+            child: GlidePill(
+              target: index >= 0 ? _keys[index] : null,
+              color: p.done,
+              child: Row(
+                children: [
+                  for (final (i, hour) in DayStartPicker.hours.indexed)
+                    Expanded(
+                      key: _keys[i],
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => state.setDayStartHour(hour),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Center(
+                              child: AnimatedDefaultTextStyle(
+                                duration: context.themed(Motion.morph),
+                                curve: Motion.morphCurve,
+                                style: TextStyle(
+                                  fontFamily: Fonts.ui,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: hour == state.dayStartHour ? p.onDone : p.inkMuted,
                                 ),
+                                child: Text(hourLabel(hour)),
                               ),
                             ),
                           ),
                         ),
                       ),
-                  ],
-                ),
-              ],
+                    ),
+                ],
+              ),
             ),
           ),
         ],
@@ -179,7 +155,7 @@ class SettingToggle extends StatelessWidget {
     // frame, so a theme change recolours it in step with everything else.
     return TweenAnimationBuilder<double>(
       tween: Tween(end: on ? 1 : 0),
-      duration: Motion.click,
+      duration: context.themed(Motion.click),
       curve: Motion.clickCurve,
       builder: (context, t, _) => Container(
         width: 36,

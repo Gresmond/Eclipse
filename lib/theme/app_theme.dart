@@ -517,7 +517,8 @@ extension PaletteContext on BuildContext {
   /// [duration], or none while the theme cross-fades. A widget that eases
   /// its own colours would otherwise chase the fading theme, restarting its
   /// ease every frame, and land well after everything else.
-  Duration themed(Duration duration) => ThemeMorph.active(this) ? Duration.zero : duration;
+  Duration themed(Duration duration) =>
+      (MediaQuery.maybeDisableAnimationsOf(this) ?? false) || ThemeMorph.active(this) ? Duration.zero : duration;
 }
 
 /// Whether the theme is part way through cross-fading to [target].

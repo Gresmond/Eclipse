@@ -12,7 +12,6 @@ import '../widgets/confirm_on_enter.dart';
 import '../widgets/day_toggles.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/note_input.dart';
-import '../widgets/ritual_name.dart';
 import '../widgets/sleep_time.dart';
 import '../widgets/smooth_gradient.dart';
 import '../widgets/status_cell.dart';
@@ -303,9 +302,10 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                         alignment: Alignment.centerLeft,
                         child: SizedBox(
                           width: widget.nameWidth - 16,
-                          child: RitualName(
-                            habit: widget.habit,
+                          child: Text(
+                            widget.habit.name,
                             maxLines: widget.laidOut + 5 >= 2 * 14.5 * 1.15 + 2 ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
                             style: nameStyle,
                           ),
                         ),
@@ -382,7 +382,7 @@ class _PillButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: SmoothGradientDecoration(
             borderRadius: BorderRadius.circular(30),
-            gradient: filled ? LinearGradient(colors: p.gradient) : null,
+            gradient: filled ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
             border: filled ? null : Border.all(color: p.tileBorder),
           ),
           child: PixelFit(

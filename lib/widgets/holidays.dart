@@ -6,6 +6,7 @@ import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'app_dialog.dart';
+import 'appear.dart';
 import 'confirm_on_enter.dart';
 import 'day_picker.dart';
 
@@ -35,7 +36,6 @@ class HolidaysRow extends StatelessWidget {
         if (h.end.isBefore(today)) h,
     ];
     Widget row(Holiday h, {required bool over}) => Padding(
-      key: ValueKey(h),
       padding: const EdgeInsets.only(top: 4),
       child: PixelRow(
         children: [
@@ -106,14 +106,14 @@ class HolidaysRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final h in shown) row(h, over: false),
+                for (final h in shown) Appear(key: ValueKey(h), animate: true, child: row(h, over: false)),
                 if (past.isNotEmpty) ...[
                   Padding(
                     key: const ValueKey('past'),
                     padding: const EdgeInsets.only(top: 10, bottom: 2),
                     child: Text('PAST', style: capsLabel(p.inkMuted)),
                   ),
-                  for (final h in past) row(h, over: true),
+                  for (final h in past) Appear(key: ValueKey(h), animate: true, child: row(h, over: true)),
                 ],
               ],
             ),
@@ -169,8 +169,8 @@ class _HolidayDialogState extends State<_HolidayDialog> {
       onConfirm: _add,
       child: AppAlertDialog(
         title: 'Add a holiday',
-        content: SizedBox(
-          width: 340,
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 340),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -98,15 +98,9 @@ class _DatedAddState extends State<_DatedAdd> {
 /// button picks the next one's day (this one to start), time and repeat,
 /// as at the card's foot.
 class _AddTask extends StatefulWidget {
-  const _AddTask({required this.day, required this.today, this.past, this.anyDay = false, this.autofocus = false});
+  const _AddTask({required this.day, required this.today, this.past});
 
   final DateTime day, today;
-
-  /// Its calendar reaches beyond the week: it's for a day that may be.
-  final bool anyDay;
-
-  /// Opens with the cursor in it.
-  final bool autofocus;
 
   /// The past day whose lists it adds to; [day] is that day or the next.
   final DateTime? past;
@@ -128,7 +122,6 @@ class _AddTaskState extends State<_AddTask> {
   @override
   void initState() {
     super.initState();
-    if (widget.autofocus) WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
     _focus.addListener(() {
       setState(() {
         if (!_focus.hasFocus && !_picking && _controller.text.trim().isEmpty) _choice = null;
@@ -167,7 +160,7 @@ class _AddTaskState extends State<_AddTask> {
     final picked = await _pickDayAndRepeat(
       context,
       first: today,
-      last: widget.anyDay ? null : DateTime(today.year, today.month, today.day + WeekCard.span),
+      last: DateTime(today.year, today.month, today.day + WeekCard.span),
       selected: choice?.day ?? widget.day,
       repeat: choice?.repeat,
       time: choice?.time,

@@ -2,12 +2,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
-import 'package:eclipse/screens/shell.dart';
 import 'package:eclipse/training.dart';
 import 'package:eclipse/training_log.dart';
 import 'package:eclipse/widgets/rolling_number.dart';
@@ -162,13 +162,11 @@ void main() {
     late AppState state;
 
     setUp(() {
-      calendarButtonEnabled = true;
       store = Store.memory();
       state = AppState(store, clock: () => today);
       state.endTour();
     });
     tearDown(() {
-      calendarButtonEnabled = false;
       state.dispose();
       store.close();
     });
@@ -615,6 +613,31 @@ void main() {
       await tester.pumpAndSettle();
       expect(log.exercises, hasLength(2));
       expect(store.trainingSets().length, all);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('personalBests awards a best after a high-rep day and Escape cancels inline rename', (tester) async {
+      state.showingTraining = true;
+      final log = state.training;
+      final squats = log.createExercise('Squat', MuscleGroup.quads, bodyweight: false);
+      final day1 = today.subtract(const Duration(days: 3));
+      log.addToDay(day1, squats);
+      // Over 20 reps returns null from Brzycki estimate, but day 1 is still a prior logged day.
+      log.updateSet(log.session(day1).single.$2.single, weight: 40, reps: 25);
+
+      log.addToDay(today, squats);
+      final setToday = log.session(today).single.$2.single;
+      log.updateSet(setToday, weight: 80, reps: 5);
+      expect(log.personalBests(today, squats), {setToday.uid});
+
+      await show(tester);
+      await tester.tap(find.byTooltip('Rename').first);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Squat'), 'Front squat');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(log.exercises.single.name, 'Squat');
+      expect(find.text('Front squat'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

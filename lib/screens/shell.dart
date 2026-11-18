@@ -14,7 +14,6 @@ import '../widgets/setting_rows.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/backup_card.dart';
-import '../widgets/todo_panel.dart' show CalendarView;
 import '../widgets/day_picker.dart';
 import '../widgets/fade_menu.dart';
 import '../widgets/fade_through.dart';
@@ -31,10 +30,6 @@ import 'today_view.dart';
 import 'warm_up.dart';
 import 'training_view.dart';
 import 'year_view.dart';
-
-/// Whether the header offers the Calendar button, the only way to that page.
-/// It's built and tested; set this true to bring it back.
-bool calendarButtonEnabled = false;
 
 /// The corner cards over the window and its dialogs: backups, sync, an update
 /// and reminders, stacked above the undo card.
@@ -91,12 +86,10 @@ class Shell extends StatelessWidget {
           child: FadeThrough(
             deferBuild: true,
             layoutBuilder: FadeThrough.fill,
-            child: state.showingCalendar
-                ? const CalendarView(key: ValueKey('calendar'))
-                : state.showingTraining
+            child: state.showingTraining
                 ? const TrainingView(key: ValueKey('training'))
                 : state.viewingYear
-                ? YearView(key: ValueKey('year ${state.viewYear}'), year: state.viewYear)
+                ? YearView(key: const ValueKey('year'), year: state.viewYear)
                 : month == null
                 ? const TodayView(key: ValueKey('today'))
                 : MonthView(key: const ValueKey('month'), year: state.viewYear, month: month),
@@ -140,13 +133,10 @@ class _Header extends StatelessWidget {
       final h? when state.viewDay == null => '  ·  on holiday until ${shortDay(h.end, today: today)}',
       _ => '',
     };
-    // Training and the calendar open over the view you were on.
-    final elsewhere = state.showingTraining || state.showingCalendar;
+    // Training opens over the view you were on.
+    final elsewhere = state.showingTraining;
     final onDay = month == null && !state.viewingYear && !elsewhere;
-    final calendar = state.calendarMonth;
-    final (String kicker, String title) = state.showingCalendar
-        ? ('${calendar.year}', monthNames[calendar.month - 1])
-        : state.showingTraining
+    final (String kicker, String title) = state.showingTraining
         ? ('Progress', 'Training')
         : state.viewingYear
         ? ('${state.viewYear == today.year ? 'Year to date' : 'The whole year'}$holiday', '${state.viewYear}')
@@ -223,10 +213,6 @@ class _Header extends StatelessWidget {
                   child: PixelRow(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _Fold(
-                        shown: state.showingCalendar,
-                        child: const Padding(padding: EdgeInsets.only(right: 10), child: _MonthSwitcher()),
-                      ),
                       const _PageButtons(),
                       const SizedBox(width: 10),
                       TourTarget(
@@ -355,9 +341,8 @@ class _Fold extends StatelessWidget {
   );
 }
 
-/// Training and search, with Calendar when it's on: their own pill, left of
-/// the tabs. A page opens over the view you're on and, clicked again, goes
-/// back to it; search opens its dialog.
+/// Training and search: their own pill, left of the tabs. A page opens over the
+/// view you're on and, clicked again, goes back to it; search opens its dialog.
 class _PageButtons extends StatefulWidget {
   const _PageButtons();
 
@@ -366,12 +351,12 @@ class _PageButtons extends StatefulWidget {
 }
 
 class _PageButtonsState extends State<_PageButtons> {
-  final _calendar = GlobalKey(), _training = GlobalKey();
+  final _training = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.showingCalendar, s.showingTraining));
+    final state = AppScope.watch(context, (s) => s.showingTraining);
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -380,26 +365,10 @@ class _PageButtonsState extends State<_PageButtons> {
         border: Border.all(color: p.border),
       ),
       child: GlidePill(
-        target: state.showingCalendar
-            ? _calendar
-            : state.showingTraining
-            ? _training
-            : null,
+        target: state.showingTraining ? _training : null,
         color: p.done,
         child: Row(
           children: [
-            if (calendarButtonEnabled) ...[
-              KeyedSubtree(
-                key: _calendar,
-                child: _IconTab(
-                  icon: Icons.calendar_month_rounded,
-                  tooltip: 'Calendar',
-                  selected: state.showingCalendar,
-                  onTap: state.toggleCalendar,
-                ),
-              ),
-              const SizedBox(width: 2),
-            ],
             KeyedSubtree(
               key: _training,
               child: _IconTab(
@@ -461,55 +430,6 @@ class _IconTab extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// The month the calendar shows: back to the month you started, on without
-/// end, and a way home once you've left this month.
-class _MonthSwitcher extends StatelessWidget {
-  const _MonthSwitcher();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.calendarMonth, s.today, s.firstMonth));
-    final shown = state.calendarMonth;
-    final (y, m) = state.firstMonth;
-    final away = shown != DateTime(state.today.year, state.today.month);
-    Widget arrow(String message, IconData icon, int by, {required bool enabled}) => PixelTooltip(
-      message: message,
-      child: IconButton(
-        iconSize: Scale.navIcon,
-        // 40 tall, so the pill matches the tabs and the round buttons.
-        visualDensity: VisualDensity.compact,
-        color: p.inkMuted,
-        disabledColor: p.inkMuted.withValues(alpha: 0.35),
-        onPressed: enabled ? () => state.shiftCalendar(by) : null,
-        icon: Icon(icon),
-      ),
-    );
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      decoration: BoxDecoration(
-        color: p.tile.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: p.border),
-      ),
-      child: PixelRow(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          arrow('Previous month', Icons.chevron_left_rounded, -1, enabled: shown.isAfter(DateTime(y, m))),
-          arrow('Next month', Icons.chevron_right_rounded, 1, enabled: true),
-          _Fold(
-            shown: away,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 2),
-              child: _Tab(label: 'This month', selected: false, onTap: state.calendarToThisMonth),
-            ),
-          ),
-        ],
       ),
     );
   }
