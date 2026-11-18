@@ -54,7 +54,8 @@ class SearchIndex {
   ];
   late final List<
     ({
-      ({String uid, String day, String text, bool done, List<TodoSubtask> subtasks, String? location}) todo,
+      ({String uid, String day, String text, bool done, List<TodoSubtask> subtasks, String? location, String? note})
+      todo,
       String key,
       List<({int index, String text, String key})> subtasks,
     })
@@ -65,9 +66,12 @@ class SearchIndex {
       for (final t in _store.searchableTodos())
         (
           todo: t,
-          // Its location matches as its name does.
-          key: _fold(t.location == null ? t.text : '${t.text}\n${t.location}'),
-          subtasks: [for (final (i, s) in t.subtasks.indexed) (index: i, text: s.text, key: _fold(s.text))],
+          // Its location and note match as its name does, and a subtask's
+          // note as the subtask.
+          key: _fold([t.text, ?t.location, ?t.note].join('\n')),
+          subtasks: [
+            for (final (i, s) in t.subtasks.indexed) (index: i, text: s.text, key: _fold([s.text, ?s.note].join('\n'))),
+          ],
         ),
     ];
   }();

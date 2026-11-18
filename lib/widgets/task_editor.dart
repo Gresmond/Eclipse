@@ -170,7 +170,8 @@ class _SubPage extends StatelessWidget {
 typedef _RepeatChoice = ({RepeatRule rule, DateTime? until});
 
 /// What the editor saved; [repeat] null when it doesn't repeat, and
-/// [start] the day it comes round from when that was moved.
+/// [start] the day it comes round from when that was moved. [note] is
+/// this task's, or this time's of a repeat, alone.
 typedef _TaskEdit = ({
   String text,
   DateTime? due,
@@ -180,6 +181,7 @@ typedef _TaskEdit = ({
   bool birthday,
   int reminders,
   String? location,
+  String? note,
 });
 
 /// Edits [item], asking whether a change to a repeating task's name is
@@ -200,6 +202,31 @@ Future<void> _editTask(
     builder: (_) => _EditTaskDialog(item: item, scope: scope, day: day, repeat: repeat),
   );
   if (result == null || !context.mounted) return;
+  final noted = cleanNote(result.note) != item.note;
+  // Made repeating, the task goes and its first time takes its note.
+  if (noted && repeat == null && result.repeat != null) item.note = cleanNote(result.note);
+  final changedRepeat = await _editTaskDetails(context, state, scope, item, day, result, repeat, onToday, make);
+  if (changedRepeat == null || !noted || (repeat == null && result.repeat != null)) return;
+  if (onToday) day = state.today;
+  // After a repeat's rule changed, a time not made yet may no longer come
+  // round, so only one already made takes the note.
+  if (changedRepeat && make != null) return;
+  state.setTodoNote(scope, make?.call() ?? item, result.note, day: day);
+}
+
+/// Saves all but the note of [_editTask]: whether the repeat itself
+/// changed, or null when the question of which times was dismissed.
+Future<bool?> _editTaskDetails(
+  BuildContext context,
+  AppState state,
+  TodoScope scope,
+  TodoItem item,
+  DateTime day,
+  _TaskEdit result,
+  Repeat? repeat,
+  bool onToday,
+  TodoItem Function()? make,
+) async {
   // Today's lists stay today's across midnight: saved after the day
   // changed, it changes the task, not the day before's record of it.
   if (onToday) day = state.today;
@@ -232,7 +259,7 @@ Future<void> _editTask(
         location: location,
       );
     }
-    return;
+    return false;
   }
   final from = item.repeatDay ?? day;
   final moved = choice != null && result.start != null && result.start != from;
@@ -264,14 +291,14 @@ Future<void> _editTask(
         location: location,
       );
     }
-    return;
+    return true;
   }
   final renamed =
       result.text.trim() != item.text ||
       (time, birthday, reminders, location) != (item.dueTime, item.birthday, item.reminders, item.location);
-  if (!renamed && result.due == item.dueDate) return;
+  if (!renamed && result.due == item.dueDate) return false;
   final future = renamed ? await _askWhich(context, removing: false) : false;
-  if (future == null || !context.mounted) return;
+  if (future == null || !context.mounted) return null;
   if (onToday) day = state.today;
   if (future) {
     state.renameRepeat(
@@ -297,6 +324,7 @@ Future<void> _editTask(
       location: location,
     );
   }
+  return false;
 }
 
 /// Removes [item] by [removeOne], or, for a repeating task, that time or
@@ -379,7 +407,7 @@ class _DetailRow extends StatelessWidget {
             child: TextButton.icon(
               style: _detailButtonStyle,
               icon: Icon(icon, size: 18),
-              label: Text(label),
+              label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
               onPressed: onPressed,
             ),
           ),
@@ -564,6 +592,8 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
   /// Kept as it is: whether it's a birthday is only set when it's added.
   late final bool _birthday = widget.item.birthday;
 
+  late String? _note = widget.item.note;
+
   @override
   void initState() {
     super.initState();
@@ -600,6 +630,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
       birthday: _birthday,
       reminders: _reminders(birthday: _birthday),
       location: _place,
+      note: _note,
     ));
   }
 
@@ -660,6 +691,11 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
         _FoldAway(folded: _birthday, child: _timeRow()),
         _notifyRow(birthday: _birthday),
         _locationRow(onSubmitted: _save),
+        _NoteRow(
+          name: () => _text.text.trim().isEmpty ? widget.item.text : _text.text.trim(),
+          note: _note,
+          onChanged: (note) => setState(() => _note = note),
+        ),
         _FoldAway(folded: _birthday, child: _repeatRow()),
         const SizedBox(height: 16),
       ],
@@ -669,9 +705,10 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
 
 /// Names a subtask, and sets whether its task numbers all its subtasks.
 class _SubtaskDialog extends StatefulWidget {
-  const _SubtaskDialog({required this.text, required this.numbered});
+  const _SubtaskDialog({required this.text, required this.numbered, this.note});
   final String text;
   final bool numbered;
+  final String? note;
   @override
   State<_SubtaskDialog> createState() => _SubtaskDialogState();
 }
@@ -679,8 +716,11 @@ class _SubtaskDialog extends StatefulWidget {
 class _SubtaskDialogState extends State<_SubtaskDialog> {
   late final _text = TextEditingController(text: widget.text);
   late bool _numbered = widget.numbered;
+  late String? _note = widget.note;
   void _save() {
-    if (_text.text.trim().isNotEmpty) Navigator.pop(context, (text: _text.text.trim(), numbered: _numbered));
+    if (_text.text.trim().isNotEmpty) {
+      Navigator.pop(context, (text: _text.text.trim(), numbered: _numbered, note: _note));
+    }
   }
 
   @override
@@ -709,7 +749,13 @@ class _SubtaskDialogState extends State<_SubtaskDialog> {
               decoration: const InputDecoration(labelText: 'Subtask'),
               onSubmitted: (_) => _save(),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
+            _NoteRow(
+              name: () => _text.text.trim().isEmpty ? 'Subtask' : _text.text.trim(),
+              note: _note,
+              onChanged: (note) => setState(() => _note = note),
+            ),
+            const SizedBox(height: 8),
             MouseRegion(
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
@@ -737,6 +783,131 @@ class _SubtaskDialogState extends State<_SubtaskDialog> {
       ],
     ),
   );
+}
+
+/// A task's or subtask's note in its editor, on a line like the time's:
+/// "Add a note", or the note's first line, opening it; a cross takes it
+/// away. Kept when the editor is saved.
+class _NoteRow extends StatelessWidget {
+  const _NoteRow({required this.name, required this.note, required this.onChanged});
+
+  /// What it's on, as typed in the editor when the note opens.
+  final ValueGetter<String> name;
+  final String? note;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final note = this.note;
+    return _DetailRow(
+      icon: Icons.notes_rounded,
+      label: note == null ? 'Add a note' : note.split('\n').first,
+      onPressed: () async {
+        final result = await _editNote(context, name(), note);
+        if (result != null) onChanged(cleanNote(result));
+      },
+      clear: 'No note',
+      onClear: note == null ? null : () => onChanged(null),
+    );
+  }
+}
+
+/// Opens the note on [name], a task or subtask, returning what to keep:
+/// blank to take it away, null when cancelled.
+Future<String?> _editNote(BuildContext context, String name, String? note) => showAppDialog<String>(
+  context: context,
+  builder: (_) => _NoteDialog(name: name, note: note),
+);
+
+/// A task's or subtask's note: who has got back, prices, anything to keep
+/// track of. Enter saves; Shift+Enter starts a new line.
+class _NoteDialog extends StatefulWidget {
+  const _NoteDialog({required this.name, this.note});
+
+  final String name;
+  final String? note;
+
+  @override
+  State<_NoteDialog> createState() => _NoteDialogState();
+}
+
+class _NoteDialogState extends State<_NoteDialog> {
+  late final _controller = TextEditingController(text: widget.note);
+
+  void _save() => Navigator.pop(context, _controller.text);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return ConfirmOnEnter(
+      onConfirm: _save,
+      child: Dialog(
+        backgroundColor: p.tile,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
+        child: SizedBox(
+          width: 480,
+          child: Padding(
+            padding: dialogPadding,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.name.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: capsLabel(p.inkMuted),
+                ),
+                const SizedBox(height: 8),
+                Text(widget.note == null ? 'Add note' : 'Edit note', style: dialogTitleStyle(p)),
+                const SizedBox(height: 18),
+                TextField(
+                  inputFormatters: const [NoteInputFormatter()],
+                  controller: _controller,
+                  autofocus: true,
+                  minLines: 3,
+                  maxLines: 10,
+                  keyboardType: TextInputType.multiline,
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink),
+                  decoration: InputDecoration(
+                    hintText: 'Who got back to you, prices, anything to keep track of',
+                    hintStyle: TextStyle(color: p.inkMuted),
+                    filled: true,
+                    fillColor: p.empty,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Shift+Enter for a new line',
+                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 12, color: p.inkMuted),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (widget.note != null) ...[
+                      DialogDismiss(label: 'Remove', onPressed: () => Navigator.pop(context, '')),
+                      const Spacer(),
+                    ],
+                    DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(context)),
+                    const SizedBox(width: 6),
+                    DialogConfirm(label: 'Save', onPressed: _save),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Task fades are separate from the ritual grid’s row animations.

@@ -103,6 +103,7 @@ extension StoreTodos on Store {
           position: _position(s['position']),
           reminders: _bits(s['reminders']),
           location: _place(s['location']),
+          note: cleanNote(s['note']),
         ),
       );
     }
@@ -145,6 +146,7 @@ extension StoreTodos on Store {
             'position',
             'reminders',
             'location',
+            'note',
           ])
             key: r[key],
           'deleted': deleted,
@@ -182,6 +184,7 @@ extension StoreTodos on Store {
     position: _position(r['position']),
     reminders: _bits(r['reminders']),
     location: _place(r['location']),
+    note: cleanNote(r['note']),
   );
 
   /// Open tasks that give reminders, each with the day it's on: its due
@@ -353,11 +356,24 @@ extension StoreTodos on Store {
       _setTodoSubtasks(
         scope,
         target,
-        [...target.subtasks, TodoSubtask(source.text, done: source.done, numbered: target.numbered)],
+        [...target.subtasks, TodoSubtask(source.text, done: source.done, numbered: target.numbered, note: source.note)],
         day,
         today: day,
       );
       deleteTodo(source.id, day: day);
+    });
+  }
+
+  /// Gives [item] the note [note], or none for a blank one. The note goes
+  /// with the task wherever it's kept: on a day before [today] it's that
+  /// day's record and the live task both.
+  void setTodoNote(TodoScope scope, TodoItem item, String? note, DateTime day, {required DateTime today}) {
+    final value = cleanNote(note);
+    transaction(() {
+      if (day != today) _editPastTodo(scope, day, item: item, note: (value: value));
+      final (column, key) = item.uid == null ? ('id', item.id as Object) : ('uid', item.uid as Object);
+      _db.execute('UPDATE todos SET note = ? WHERE $column = ?', [value, key]);
+      if (_db.updatedRows > 0) _recordTodos(_db.select('SELECT * FROM todos WHERE $column = ?', [key]), today);
     });
   }
 
@@ -579,6 +595,7 @@ extension StoreTodos on Store {
     bool birthday = false,
     int reminders = 0,
     String? location,
+    ({String? value})? note,
     bool deleted = false,
   }) {
     final uid = item?.uid ?? _db.select('SELECT lower(hex(randomblob(8))) AS uid').single['uid'] as String;
@@ -616,6 +633,7 @@ extension StoreTodos on Store {
       snapshot['location'] = _place(location);
     }
     if (subtasks != null) snapshot['subtasks'] = subtasks;
+    if (note != null) snapshot['note'] = note.value;
     if (done != null) {
       _toggleTodoSnapshot(snapshot, done, day);
       // Ticked, it's on that day's list: the day before's record may have
@@ -732,8 +750,10 @@ extension StoreTodos on Store {
     ],
   );
 
+  /// A repeat's checklist: each time starts with its steps open and
+  /// without the notes kept on one time.
   static List<TodoSubtask> _unticked(List<TodoSubtask> children) => [
-    for (final child in children) child.copyWith(done: false),
+    for (final child in children) TodoSubtask(child.text, numbered: child.numbered),
   ];
 
   /// Gives repeat [uid] the checklist [children], unticked, and the open
@@ -747,11 +767,12 @@ extension StoreTodos on Store {
         uid,
       ]);
       for (final r in _openOccurrences(uid, DateTime(from.year, from.month, from.day + 1))) {
-        final had = {
-          for (final child in TodoSubtask.decode(r['subtasks'] as String?))
-            if (child.done) child.text,
-        };
-        final next = [for (final child in template) child.copyWith(done: had.contains(child.text))];
+        // Each step keeps its tick and note on this time.
+        final had = {for (final child in TodoSubtask.decode(r['subtasks'] as String?)) child.text: child};
+        final next = [
+          for (final child in template)
+            child.copyWith(done: had[child.text]?.done ?? false).withNote(had[child.text]?.note),
+        ];
         _db.execute('UPDATE todos SET subtasks = ? WHERE id = ?', [TodoSubtask.encode(next), r['id']]);
         _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [r['id']]), today);
       }

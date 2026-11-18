@@ -507,6 +507,13 @@ class _TaskRow extends StatelessWidget {
                         decorationColor: p.inkMuted.withValues(alpha: 0.45),
                       ),
                     ),
+                    if (task.note case final note?)
+                      Text(
+                        note,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: _body(p, size: 12, colour: p.inkMuted),
+                      ),
                   ],
                 ),
               ),

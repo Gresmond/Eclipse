@@ -25,7 +25,7 @@ abstract interface class AutomaticWrites {
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 34;
+  static const schemaVersion = 35;
   Store._(this._db) {
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
@@ -520,9 +520,12 @@ class Store {
       .map((r) => (day: r['day'] as String, text: curlyQuotes(r['text'] as String)));
 
   /// Every task kept, ticked or not, on the day it's on, for search.
-  Iterable<({String uid, String day, String text, bool done, List<TodoSubtask> subtasks, String? location})>
-  searchableTodos() =>
-      _db.select('SELECT uid, scope, period, text, done, due_date, since, subtasks, location FROM todos').expand((r) {
+  Iterable<
+    ({String uid, String day, String text, bool done, List<TodoSubtask> subtasks, String? location, String? note})
+  >
+  searchableTodos() => _db
+      .select('SELECT uid, scope, period, text, done, due_date, since, subtasks, location, note FROM todos')
+      .expand((r) {
         final period = r['period'] as String;
         final day = switch (r['scope']) {
           'today' => DateTime.tryParse(period),
@@ -542,6 +545,7 @@ class Store {
             done: r['done'] == 1,
             subtasks: TodoSubtask.decode(r['subtasks'] as String?),
             location: r['location'] as String?,
+            note: cleanNote(r['note']),
           ),
         ];
       });

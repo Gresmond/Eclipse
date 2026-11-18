@@ -127,7 +127,7 @@ extension StoreBackups on Store {
       'habit_months': 'year, month',
       'month_habits': 'year, month, habit_id, name, position, note, added_on, days',
       'entries': 'day, habit_id, status, note',
-      'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category, position, reminders, location',
+      'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category, position, reminders, location, note',
       'todo_history': 'uid, day, snapshot',
       'journal': 'day, text',
       'sleep_habits': 'item, habit_id',

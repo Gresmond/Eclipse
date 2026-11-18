@@ -372,21 +372,42 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
 
   Future<void> _editSubtask(AppState state, {int? index}) async {
     final children = widget.item.subtasks;
-    final result = await showAppDialog<({String text, bool numbered})>(
+    final result = await showAppDialog<({String text, bool numbered, String? note})>(
       context: context,
-      builder: (_) => _SubtaskDialog(text: index == null ? '' : children[index].text, numbered: widget.item.numbered),
+      builder: (_) => _SubtaskDialog(
+        text: index == null ? '' : children[index].text,
+        numbered: widget.item.numbered,
+        note: index == null ? null : children[index].note,
+      ),
     );
     if (result == null || result.text.trim().isEmpty || !mounted) return;
     final text = normaliseNote(result.text.trim());
     // The switch applies to the whole task, so every subtask takes it.
     final next = [for (final child in widget.item.subtasks) child.copyWith(numbered: result.numbered)];
     if (index == null) {
-      next.add(TodoSubtask(text, numbered: result.numbered));
+      next.add(TodoSubtask(text, numbered: result.numbered).withNote(result.note));
       _arrive(next.length - 1);
     } else {
-      next[index] = next[index].copyWith(text: text);
+      next[index] = next[index].copyWith(text: text).withNote(result.note);
     }
     await _setSubtasks(state, next);
+  }
+
+  /// Opens the task's note, or its subtask at [index]'s, and keeps what's
+  /// saved. A repeat's time not made yet is made first, as when it's ticked;
+  /// the note is that time's alone.
+  Future<void> _editTaskNote(AppState state, {int? index}) async {
+    final item = widget.item;
+    final child = index == null ? null : item.subtasks[index];
+    final result = await _editNote(context, child?.text ?? item.text, child?.note ?? item.note);
+    if (result == null || !mounted) return;
+    if (index == null) {
+      state.setTodoNote(widget.scope, _real(), result, day: widget.day);
+    } else if (cleanNote(result) != child!.note) {
+      final next = [...item.subtasks];
+      next[index] = next[index].withNote(result);
+      state.setTodoSubtasks(widget.scope, _real(), next, day: widget.day);
+    }
   }
 
   /// When search last opened one of its subtasks, opening it to show it.
@@ -481,6 +502,8 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                     ],
                                   ),
                                 ),
+                                if (item.note case final note?)
+                                  _NoteLine(note, onTap: widget.readOnly ? null : () => _editTaskNote(state)),
                                 if (item.subtasks.isNotEmpty)
                                   Text(
                                     '${item.subtasks.where((child) => child.done).length} of ${item.subtasks.length} subtasks complete',
@@ -633,6 +656,8 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                 child: _SubtaskRow(
                                   done: item.subtasks[index].done,
                                   text: item.subtasks[index].text,
+                                  note: item.subtasks[index].note,
+                                  onNote: () => _editTaskNote(state, index: index),
                                   number: item.numbered ? index + 1 : null,
                                   readOnly: widget.readOnly,
                                   onToggle: () {
@@ -814,21 +839,25 @@ class _SubtaskRow extends StatefulWidget {
   const _SubtaskRow({
     required this.done,
     required this.text,
+    this.note,
     required this.number,
     required this.readOnly,
     required this.onToggle,
     required this.onEdit,
+    required this.onNote,
     required this.onRemove,
   });
 
   final bool done;
   final String text;
+  final String? note;
 
   /// Its place in a numbered list.
   final int? number;
   final bool readOnly;
   final VoidCallback onToggle;
   final VoidCallback onEdit;
+  final VoidCallback onNote;
   final VoidCallback onRemove;
 
   @override
@@ -883,14 +912,21 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
                         // One paragraph, as a task's time and name, so the
                         // number keeps the text's baseline at any scale; two
                         // round to the pixel apart.
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              if (widget.number case final number?)
-                                TextSpan(text: '$number. ', style: _timeStyle(p).copyWith(height: 1.35)),
-                              TextSpan(text: widget.text),
-                            ],
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text.rich(
+                              TextSpan(
+                                children: [
+                                  if (widget.number case final number?)
+                                    TextSpan(text: '$number. ', style: _timeStyle(p).copyWith(height: 1.35)),
+                                  TextSpan(text: widget.text),
+                                ],
+                              ),
+                            ),
+                            if (widget.note case final note?)
+                              _NoteLine(note, onTap: widget.readOnly ? null : widget.onNote),
+                          ],
                         ),
                       ),
                     ),
@@ -933,6 +969,50 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A task's or subtask's note under its name, muted and never struck
+/// through, up to three lines. Clicking it opens it.
+class _NoteLine extends StatelessWidget {
+  const _NoteLine(this.note, {this.onTap});
+
+  final String note;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final style = TextStyle(
+      fontFamily: Fonts.body,
+      fontSize: 12,
+      height: 1.35,
+      color: p.inkMuted,
+      decoration: TextDecoration.none,
+    );
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          // The icon centred on the first line, the lines after it lined up
+          // under the first.
+          child: PixelRow(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: style.fontSize! * style.height! * MediaQuery.textScalerOf(context).scale(1),
+                child: Center(child: Icon(Icons.notes_rounded, size: 12, color: p.inkMuted)),
+              ),
+              const SizedBox(width: 4),
+              Flexible(child: Text(note, maxLines: 3, overflow: TextOverflow.ellipsis, style: style)),
+            ],
           ),
         ),
       ),

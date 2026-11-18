@@ -126,9 +126,13 @@ enum TodoScope {
 }
 
 class TodoSubtask {
-  const TodoSubtask(this.text, {this.done = false, this.numbered = false});
+  const TodoSubtask(this.text, {this.done = false, this.numbered = false, this.note});
   final String text;
   final bool done;
+
+  /// What the user keeps track of about it; null for none. Kept in the
+  /// subtask list, so older versions read the list as before.
+  final String? note;
 
   /// Whether its task numbers its subtasks. Every subtask of a task carries
   /// the same value, so the setting rides along in the existing list and
@@ -136,9 +140,17 @@ class TodoSubtask {
   final bool numbered;
 
   TodoSubtask copyWith({String? text, bool? done, bool? numbered}) =>
-      TodoSubtask(text ?? this.text, done: done ?? this.done, numbered: numbered ?? this.numbered);
+      TodoSubtask(text ?? this.text, done: done ?? this.done, numbered: numbered ?? this.numbered, note: note);
 
-  Map<String, dynamic> toJson() => {'text': text, 'done': done, if (numbered) 'numbered': true};
+  /// The same subtask with [note], or none for a blank one.
+  TodoSubtask withNote(String? note) => TodoSubtask(text, done: done, numbered: numbered, note: cleanNote(note));
+
+  Map<String, dynamic> toJson() => {
+    'text': text,
+    'done': done,
+    if (numbered) 'numbered': true,
+    if (note != null) 'note': note,
+  };
   static List<TodoSubtask> decode(String? value) => value == null
       ? []
       : [
@@ -147,6 +159,7 @@ class TodoSubtask {
               curlyQuotes(entry['text'] as String),
               done: entry['done'] == true,
               numbered: entry['numbered'] == true,
+              note: cleanNote(entry['note']),
             ),
         ];
   static String encode(List<TodoSubtask> items) => jsonEncode([for (final item in items) item.toJson()]);
@@ -168,10 +181,15 @@ class TodoItem {
     this.position,
     this.reminders = 0,
     this.location,
+    this.note,
   });
 
   final int id;
   List<TodoSubtask> subtasks;
+
+  /// What the user keeps track of about it, shown under its name; null for
+  /// none.
+  String? note;
   final String? uid;
 
   /// Its subtasks show 1, 2, 3 and stay in order when ticked.
@@ -216,7 +234,22 @@ class TodoItem {
   DateTime? get repeatDay => repeatUid == null ? null : DateTime.tryParse(uid!.substring(uid!.indexOf('@') + 1));
 
   bool sameContent(TodoItem other) {
-    if ((id, text, done, doneAt, carried, since, dueDate, dueTime, birthday, uid, position, reminders, location) !=
+    if ((
+              id,
+              text,
+              done,
+              doneAt,
+              carried,
+              since,
+              dueDate,
+              dueTime,
+              birthday,
+              uid,
+              position,
+              reminders,
+              location,
+              note,
+            ) !=
             (
               other.id,
               other.text,
@@ -231,13 +264,14 @@ class TodoItem {
               other.position,
               other.reminders,
               other.location,
+              other.note,
             ) ||
         subtasks.length != other.subtasks.length) {
       return false;
     }
     for (var i = 0; i < subtasks.length; i++) {
-      if ((subtasks[i].text, subtasks[i].done, subtasks[i].numbered) !=
-          (other.subtasks[i].text, other.subtasks[i].done, other.subtasks[i].numbered)) {
+      if ((subtasks[i].text, subtasks[i].done, subtasks[i].numbered, subtasks[i].note) !=
+          (other.subtasks[i].text, other.subtasks[i].done, other.subtasks[i].numbered, other.subtasks[i].note)) {
         return false;
       }
     }
@@ -555,6 +589,11 @@ String autoDashes(String text) {
   if (!text.contains('-')) return text;
   return text.replaceAll('---', '—').replaceAll('--', '–').replaceAll('–-', '—');
 }
+
+/// A task's or subtask's stored note: trimmed, with the app's quotes,
+/// dashes and capital, or none for a blank or anything else.
+String? cleanNote(Object? value) =>
+    value is String && value.trim().isNotEmpty ? normaliseNote(curlyQuotes(value.trim())) : null;
 
 String normaliseNote(String text) => autoDashes(capitaliseFirst(curlyQuotes(text)));
 

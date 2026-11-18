@@ -130,6 +130,15 @@ mixin _Todos on ChangeNotifier {
     _todosChanged();
   }
 
+  /// Gives [item] the note [note], or takes its note away for a blank one.
+  void setTodoNote(TodoScope scope, TodoItem item, String? note, {DateTime? day}) {
+    final target = day ?? today;
+    if (!canEditDay(target) || cleanNote(note) == item.note) return;
+    store.setTodoNote(scope, item, note, target, today: today);
+    _reloadTodos();
+    _todosChanged();
+  }
+
   /// Without a [time], it has none; not a [birthday] unless set, and no
   /// [reminders] or [location].
   void editTodo(
@@ -354,7 +363,7 @@ mixin _Todos on ChangeNotifier {
 
   /// Makes [item] repeat from [start], or its day (or today), on, in place
   /// of it. Its checklist goes with it: every time starts with the steps
-  /// unticked, and the first keeps the ticks it had.
+  /// unticked, and the first keeps the ticks and notes it had.
   void makeRepeating(
     TodoScope scope,
     TodoItem item,
@@ -382,9 +391,12 @@ mixin _Todos on ChangeNotifier {
         subtasks: item.subtasks,
       );
       store.deleteTodo(item.id, day: today);
-      final ticked = item.subtasks.any((child) => child.done) ? repeat.next(first) : null;
-      if (ticked case final day?) {
-        store.setTodoSubtasks(TodoScope.month, store.makeOccurrence(repeat, day), item.subtasks, today, today: today);
+      // The first time keeps its ticks and notes, which the repeat doesn't.
+      final kept = item.note != null || item.subtasks.any((child) => child.done || child.note != null);
+      if (kept ? repeat.next(first) : null case final day?) {
+        final occurrence = store.makeOccurrence(repeat, day);
+        store.setTodoSubtasks(TodoScope.month, occurrence, item.subtasks, today, today: today);
+        if (item.note != null) store.setTodoNote(TodoScope.month, occurrence, item.note, today, today: today);
       }
       return repeat;
     });

@@ -564,6 +564,16 @@ extension on Store {
     // here: upgrading to it takes in those another computer sent while this
     // one couldn't keep them.
     if (version < 34) _db.execute('PRAGMA user_version = 34');
+    if (version < 35) {
+      transaction(() {
+        // What the user keeps track of about a task. A subtask's is kept in
+        // its task's subtask list. A repeat's times each have their own.
+        if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'note')) {
+          _db.execute('ALTER TABLE todos ADD COLUMN note TEXT');
+        }
+        _db.execute('PRAGMA user_version = 35');
+      });
+    }
 
     if (version >= 1 && version < Store.schemaVersion) upgradedFrom = version;
     // Versions before 25 changed synced rows where the sync triggers
