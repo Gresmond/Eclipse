@@ -186,8 +186,16 @@ class _HistoryRow extends StatelessWidget {
                           decoration: BoxDecoration(color: groupColour(e.group, p), shape: BoxShape.circle),
                         ),
                         const SizedBox(width: 4),
-                        PixelFit(
-                          child: Text('${e.name} ×${sets.length}', style: _label(p, size: 14, color: p.inkMuted)),
+                        // A name longer than the row shortens rather than spill out of it.
+                        Flexible(
+                          child: PixelFit(
+                            child: Text(
+                              '${e.name} ×${sets.length}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _label(p, size: 14, color: p.inkMuted),
+                            ),
+                          ),
                         ),
                       ],
                     ),

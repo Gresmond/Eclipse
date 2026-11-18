@@ -258,26 +258,19 @@ class _ExerciseCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          PixelRow(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              PixelFit(
-                child: Text(
-                  _latest(series, percent: percent),
-                  style: _label(p, size: 22, weight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  since,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _label(p, size: 12, color: p.inkMuted),
-                ),
-              ),
-            ],
+          // The figure gets a line to itself: beside it, a long one would push
+          // the change off a narrow card.
+          Text(
+            _latest(series, percent: percent),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _label(p, size: 22, weight: FontWeight.w600),
+          ),
+          Text(
+            since,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _label(p, size: 12, color: p.inkMuted),
           ),
           const SizedBox(height: 6),
           Expanded(
