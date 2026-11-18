@@ -321,6 +321,28 @@ enum Reminder {
           ? dayBefore.bit | onTheDay.bit
           : (time == null ? 0 : dayBefore.bit | hourBefore.bit | quarterBefore.bit));
 
+  /// Those of [timed] already past, as of [now], for a one-off task on
+  /// [day] at [time]; none without a [day], as for a repeating task, whose
+  /// later times can still give any.
+  static int gone(DateTime? day, int? time, DateTime now) {
+    if (day == null || time == null) return 0;
+    var bits = 0;
+    for (final r in timed) {
+      if (!r.at(day, time).isAfter(now)) bits |= r.bit;
+    }
+    return bits;
+  }
+
+  /// What of [bits] a task gives with those [gone] left out. If all it
+  /// chose are gone, 15 min before stands in, while that's still to come;
+  /// the choice itself is kept, for a later day.
+  static int given(int bits, {required bool birthday, int? time, int gone = 0}) {
+    final can = allowed(bits, birthday: birthday, time: time);
+    final left = can & ~gone;
+    if (left == 0 && can != 0 && !birthday && gone & quarterBefore.bit == 0) return quarterBefore.bit;
+    return left;
+  }
+
   /// When it goes off for a task on [day] at [time] (a birthday: none).
   DateTime at(DateTime day, int? time) {
     final (y, m, d) = (day.year, day.month, day.day);

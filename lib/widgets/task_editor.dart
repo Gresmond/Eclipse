@@ -109,12 +109,29 @@ mixin _DetailPages<T extends StatefulWidget> on State<T> {
 
   /// Its reminders, under the time: shown once it has one, or is a
   /// [birthday].
-  Widget _notifyRow({required bool birthday}) =>
-      _NotifyRow(bits: _notify, time: _time, birthday: birthday, onChanged: (bits) => setState(() => _notify = bits));
+  Widget _notifyRow({required bool birthday}) => _NotifyRow(
+    bits: _notify,
+    time: _time,
+    birthday: birthday,
+    gone: _gone(birthday: birthday),
+    onChanged: (bits) => setState(() => _notify = bits),
+  );
+
+  /// The day it's on; asked only of a one-off task.
+  DateTime get _day;
+
+  /// Its times before already past: only a one-off timed task's, as a
+  /// repeat's later times can still give any.
+  int _gone({required bool birthday}) =>
+      birthday || _repeat != null ? 0 : Reminder.gone(_day, _time, AppScope.read(context).reminderNow);
 
   /// The reminders it gives, as saved.
-  int _reminders({required bool birthday}) =>
-      Reminder.allowed(_notify, birthday: birthday, time: birthday ? null : _time);
+  int _reminders({required bool birthday}) => Reminder.given(
+    _notify,
+    birthday: birthday,
+    time: birthday ? null : _time,
+    gone: _gone(birthday: birthday),
+  );
 
   Widget _repeatRow() =>
       _RepeatRow(repeat: _repeat, onOpen: () => _open(_Page.repeat), onClear: () => setState(() => _repeat = null));
@@ -657,11 +674,22 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
     );
   }
 
+  /// The day it's on, for a task kept by its list rather than a due date
+  /// too.
+  DateTime _on(DateTime today) =>
+      _due ?? (widget.scope == TodoScope.tomorrow ? DateTime(today.year, today.month, today.day + 1) : today);
+
+  @override
+  DateTime get _day {
+    final today = AppScope.read(context).today;
+    final on = _on(today);
+    return on.isBefore(today) ? today : on;
+  }
+
   Widget _main(DateTime today) {
     final dated =
         widget.scope == TodoScope.week || widget.scope == TodoScope.month || (widget.day == today && !widget.item.done);
-    // The day it's on, for a task kept by its list rather than a due date.
-    final on = _due ?? (widget.scope == TodoScope.tomorrow ? DateTime(today.year, today.month, today.day + 1) : today);
+    final on = _on(today);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,

@@ -23,6 +23,26 @@ class _Notifier implements ReminderNotifier {
 void main() {
   const quarter = 4, hour = 2, day = 1, onTheDay = 8;
 
+  group('passed times before', () {
+    final today = DateTime(2026, 11, 18);
+    final now = DateTime(2026, 11, 18, 19, 50);
+
+    test('a one-off today drops what has passed', () {
+      expect(Reminder.gone(today, 20 * 60 + 30, now), day | hour);
+      expect(Reminder.gone(today, 23 * 60, now), day);
+      expect(Reminder.gone(DateTime(2026, 11, 19), 9 * 60, now), day);
+      expect(Reminder.gone(DateTime(2026, 11, 19), 21 * 60, now), 0);
+      expect(Reminder.gone(null, 20 * 60, now), 0);
+    });
+
+    test('all chosen gone: 15 min stands in, or nothing', () {
+      expect(Reminder.given(day, birthday: false, time: 23 * 60, gone: day), quarter);
+      expect(Reminder.given(day | hour, birthday: false, time: 23 * 60, gone: day), hour);
+      expect(Reminder.given(day, birthday: false, time: 19 * 60 + 55, gone: day | hour | quarter), 0);
+      expect(Reminder.given(day, birthday: false, time: 23 * 60), day);
+    });
+  });
+
   group('what goes off', () {
     final dentist = TodoItem(1, 'Dentist', since: DateTime(2026, 10, 1), uid: 'd', dueTime: 15 * 60);
 

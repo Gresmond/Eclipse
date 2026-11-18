@@ -119,6 +119,9 @@ class _DueDateDialog extends StatefulWidget {
 class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
   late DateTime _selected;
   late bool _birthday = widget.birthday;
+
+  @override
+  DateTime get _day => _selected;
   final _name = TextEditingController();
 
   @override

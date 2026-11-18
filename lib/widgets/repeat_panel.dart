@@ -492,6 +492,8 @@ class _Pills extends StatelessWidget {
         children: [
           for (final (i, option) in options.indexed)
             MouseRegion(
+              // Each pill keeps its own state as others come and go.
+              key: ValueKey(option),
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -635,12 +637,21 @@ class _StepperState extends State<_Stepper> {
 /// least one stays chosen. Switched on, it's 15 minutes before (a
 /// birthday: on the day).
 class _NotifyRow extends StatelessWidget {
-  const _NotifyRow({required this.bits, required this.time, required this.birthday, required this.onChanged});
+  const _NotifyRow({
+    required this.bits,
+    required this.time,
+    required this.birthday,
+    this.gone = 0,
+    required this.onChanged,
+  });
 
-  /// As chosen, before [Reminder.allowed] keeps what this task can give.
+  /// As chosen, before [Reminder.given] keeps what this task can give.
   final int bits;
   final int? time;
   final bool birthday;
+
+  /// The times before already past for a one-off task: not offered.
+  final int gone;
   final ValueChanged<int> onChanged;
 
   static String _chip(Reminder r, bool birthday) => switch (r) {
@@ -667,9 +678,12 @@ class _NotifyRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final offered = birthday ? Reminder.forBirthday : Reminder.timed;
-    final shows = birthday || time != null;
-    final kept = Reminder.allowed(bits, birthday: birthday, time: time);
+    final offered = [
+      for (final r in birthday ? Reminder.forBirthday : Reminder.timed)
+        if (gone & r.bit == 0) r,
+    ];
+    final shows = (birthday || time != null) && offered.isNotEmpty;
+    final kept = Reminder.given(bits, birthday: birthday, time: time, gone: gone);
     final on = Reminder.of(kept);
     return _Unfold(
       open: shows,
@@ -681,8 +695,11 @@ class _NotifyRow extends StatelessWidget {
             on: kept != 0,
             label: _label(on, birthday),
             icon: Icons.notifications_rounded,
+            // Off clears the hidden choices too, or 15 min would stand in.
             onTap: () => onChanged(
-              kept != 0 ? bits & ~kept : bits | (birthday ? Reminder.onTheDay : Reminder.quarterBefore).bit,
+              kept != 0
+                  ? bits & ~Reminder.allowed(bits, birthday: birthday, time: time)
+                  : bits | (birthday ? Reminder.onTheDay : Reminder.quarterBefore).bit,
             ),
           ),
           _Unfold(
@@ -703,7 +720,8 @@ class _NotifyRow extends StatelessWidget {
                       final bit = offered[i].bit;
                       // The last one chosen stays: the switch turns them off.
                       if (kept == bit) return;
-                      onChanged(bits ^ bit);
+                      // A stand-in 15 min becomes a real choice once touched.
+                      onChanged((bits | kept) ^ bit);
                     },
                   ),
                 ),
