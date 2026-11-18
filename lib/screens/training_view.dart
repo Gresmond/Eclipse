@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,11 +13,15 @@ import '../theme/tokens.dart';
 import '../theme/oklch.dart';
 import '../training.dart';
 import '../training_log.dart';
+import '../widgets/appear.dart';
 import '../widgets/day_picker.dart';
 import '../widgets/fade_menu.dart';
+import '../widgets/fade_through.dart';
+import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/tile.dart';
 import '../widgets/note_input.dart';
+import '../widgets/rolling_number.dart';
 
 part 'training/session.dart';
 part 'training/chart.dart';
@@ -78,6 +83,54 @@ String _shortDate(DateTime d) => '${d.day} ${monthNames[d.month - 1].substring(0
 TextStyle _label(Palette p, {double size = 14, FontWeight weight = FontWeight.w500, Color? color}) =>
     TextStyle(fontFamily: Fonts.ui, fontSize: size, fontWeight: weight, color: color ?? p.ink, height: 1.25);
 
+/// Rows that open up and fade in when added, and fade and close up when
+/// removed, as a day's tasks do. Those there when it's first built are
+/// simply there. Each child must be keyed.
+class _FoldingColumn extends StatefulWidget {
+  const _FoldingColumn({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  State<_FoldingColumn> createState() => _FoldingColumnState();
+}
+
+class _FoldingColumnState extends State<_FoldingColumn> {
+  late final _seen = {for (final c in widget.children) c.key!};
+
+  /// Removed rows as last built, closing up where they were.
+  final _leaving = <Key, ({int index, Widget child})>{};
+
+  @override
+  void didUpdateWidget(_FoldingColumn old) {
+    super.didUpdateWidget(old);
+    final now = {for (final c in widget.children) c.key!};
+    for (final (i, c) in old.children.indexed) {
+      if (!now.contains(c.key)) _leaving.putIfAbsent(c.key!, () => (index: i, child: c));
+    }
+    _leaving.removeWhere((k, _) => now.contains(k));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = [for (final c in widget.children) Appear(key: c.key, animate: !_seen.contains(c.key), child: c)];
+    for (final MapEntry(key: k, value: l) in _leaving.entries) {
+      rows.insert(
+        l.index.clamp(0, rows.length),
+        Appear(
+          key: k,
+          animate: false,
+          shown: false,
+          onHidden: () => setState(() => _leaving.remove(k)),
+          child: l.child,
+        ),
+      );
+    }
+    _seen.addAll([for (final c in widget.children) c.key!]);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+  }
+}
+
 // History
 
 class _HistoryTile extends StatelessWidget {
@@ -103,22 +156,27 @@ class _HistoryTile extends StatelessWidget {
                 : ListView(
                     padding: EdgeInsets.zero,
                     children: [
-                      for (final key in days)
-                        _HistoryRow(
-                          day: DateTime.parse(key),
-                          selected: key == open,
-                          session: log.session(DateTime.parse(key)),
-                          onTap: () {
-                            final d = DateTime.parse(key);
-                            log.showDay(d == state.today ? null : d);
-                          },
-                          onRepeat: DateTime.parse(key) == state.today
-                              ? null
-                              : () {
-                                  log.repeatSession(DateTime.parse(key), state.today);
-                                  log.showDay(null);
-                                },
-                        ),
+                      _FoldingColumn(
+                        children: [
+                          for (final key in days)
+                            _HistoryRow(
+                              key: ValueKey(key),
+                              day: DateTime.parse(key),
+                              selected: key == open,
+                              session: log.session(DateTime.parse(key)),
+                              onTap: () {
+                                final d = DateTime.parse(key);
+                                log.showDay(d == state.today ? null : d);
+                              },
+                              onRepeat: DateTime.parse(key) == state.today
+                                  ? null
+                                  : () {
+                                      log.repeatSession(DateTime.parse(key), state.today);
+                                      log.showDay(null);
+                                    },
+                            ),
+                        ],
+                      ),
                     ],
                   ),
           ),
@@ -130,6 +188,7 @@ class _HistoryTile extends StatelessWidget {
 
 class _HistoryRow extends StatelessWidget {
   const _HistoryRow({
+    super.key,
     required this.day,
     required this.selected,
     required this.session,

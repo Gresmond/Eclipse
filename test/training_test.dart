@@ -10,6 +10,7 @@ import 'package:eclipse/main.dart';
 import 'package:eclipse/screens/shell.dart';
 import 'package:eclipse/training.dart';
 import 'package:eclipse/training_log.dart';
+import 'package:eclipse/widgets/rolling_number.dart';
 
 /// The user's own example session, logged on [day] with [extra] kg added
 /// to every weight, so a few days make a rising line.
@@ -213,8 +214,32 @@ void main() {
       expect(state.training.layout, TrainingLayout.exercises);
       // Five exercises, Pullups among them in reps though the chart is in kg.
       expect(charts, findsNWidgets(5));
-      expect(find.textContaining(RegExp(r'^[0-9.]+ reps$')), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((w) => w is RollingFigure && RegExp(r'^[0-9.]+ reps$').hasMatch(w.text)),
+        findsOneWidget,
+      );
       expect(find.text('Bodyweight exercises show in the % change view.'), findsNothing);
+      // The cards fill the tile, down to its bottom and out to its right.
+      Rect cards() => find
+          .ancestor(of: charts, matching: find.byType(AnimatedPositioned))
+          .evaluate()
+          .map((e) => tester.getRect(find.byWidget(e.widget)))
+          .reduce((a, b) => a.expandToInclude(b));
+      final area = tester.getRect(find.ancestor(of: charts.first, matching: find.byType(SingleChildScrollView)));
+      expect(cards().bottom, closeTo(area.bottom, 1));
+      expect(cards().right, closeTo(area.right, 6));
+
+      // Hiding one: it fades where it was while the others glide to fill.
+      final pullups = state.training.exercises.firstWhere((e) => e.name == 'Pullups');
+      state.training.toggleHidden(pullups.uid);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(charts, findsNWidgets(5));
+      await tester.pumpAndSettle();
+      expect(charts, findsNWidgets(4));
+      expect(cards().bottom, closeTo(area.bottom, 1));
+      state.training.toggleHidden(pullups.uid);
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Muscles'));
       await tester.pumpAndSettle();

@@ -114,3 +114,83 @@ class _Digit extends StatelessWidget {
     );
   }
 }
+
+/// A figure such as "+24.1%" or "≈ 82.5 kg" whose changed digits roll as a
+/// [RollingNumber]'s do: up as [value] rises, down as it falls. Digits are
+/// kept by their place either side of the decimal point, so the units stay
+/// the units, and what comes before or after the number (a sign, a unit)
+/// rolls over the same way when it changes. Text with no number in it shows
+/// as it is.
+class RollingFigure extends StatefulWidget {
+  const RollingFigure({
+    super.key,
+    required this.text,
+    required this.value,
+    required this.style,
+    this.duration = Motion.morph,
+  });
+
+  final String text;
+
+  /// What [text] shows, to tell which way its digits roll.
+  final double value;
+  final TextStyle style;
+  final Duration duration;
+
+  @override
+  State<RollingFigure> createState() => _RollingFigureState();
+}
+
+class _RollingFigureState extends State<RollingFigure> {
+  static final _parts = RegExp(r'^(\D*?)(\d+)(?:\.(\d+))?(\D*)$');
+
+  int _direction = 1;
+
+  /// Slots kept even when empty, as [RollingNumber] keeps them: whole digits
+  /// and decimals.
+  int _whole = 1, _decimals = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _grow();
+  }
+
+  @override
+  void didUpdateWidget(RollingFigure old) {
+    super.didUpdateWidget(old);
+    if (widget.value != old.value) _direction = widget.value > old.value ? 1 : -1;
+    _grow();
+  }
+
+  void _grow() {
+    final m = _parts.firstMatch(widget.text);
+    if (m == null) return;
+    _whole = math.max(_whole, m[2]!.length);
+    _decimals = math.max(_decimals, m[3]?.length ?? 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = widget.style.copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    final m = _parts.firstMatch(widget.text);
+    if (m == null) return Text(widget.text, style: style, maxLines: 1);
+    final whole = m[2]!, decimals = m[3] ?? '';
+    Widget slot(String key, String text) =>
+        _Digit(key: ValueKey(key), digit: text, direction: _direction, duration: widget.duration, style: style);
+    return ClipRect(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          slot('before', m[1]!),
+          for (var place = _whole - 1; place >= 0; place--)
+            slot('w$place', place < whole.length ? whole[whole.length - 1 - place] : ''),
+          if (_decimals > 0) slot('point', decimals.isEmpty ? '' : '.'),
+          for (var place = 0; place < _decimals; place++)
+            slot('d$place', place < decimals.length ? decimals[place] : ''),
+          slot('after', m[4]!),
+        ],
+      ),
+    );
+  }
+}

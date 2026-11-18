@@ -115,12 +115,16 @@ class TileHeader extends StatelessWidget {
     this.trailing,
     this.trailingAtEnd = false,
     this.titleStyle,
+    this.fadeTitle = false,
   });
 
   final String title;
 
   /// In place of the usual Greed heading.
   final TextStyle? titleStyle;
+
+  /// A new title fades through, the old one out before the new one in.
+  final bool fadeTitle;
   final String? caption;
   final Widget? badge;
   final Widget? trailing;
@@ -156,12 +160,24 @@ class TileHeader extends StatelessWidget {
     final p = context.palette;
     final lead = [
       Flexible(
-        child: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: titleStyle ?? _titleStyle.copyWith(color: p.ink),
-        ),
+        child: fadeTitle
+            ? FadeThrough(
+                duration: Motion.page,
+                layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
+                child: Text(
+                  title,
+                  key: ValueKey(title),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: titleStyle ?? _titleStyle.copyWith(color: p.ink),
+                ),
+              )
+            : Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: titleStyle ?? _titleStyle.copyWith(color: p.ink),
+              ),
       ),
       if (caption != null || badge != null || (trailing != null && !trailingAtEnd)) const SizedBox(width: 8),
       ?badge,

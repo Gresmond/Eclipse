@@ -60,18 +60,27 @@ class _ChartTileState extends State<_ChartTile> {
       TrainingLayout.all => _Chart(series: series, from: start, to: today, percent: percent, focus: _focus),
       TrainingLayout.exercises => _CardGrid(
         minWidth: 240,
-        height: 196,
+        minHeight: 196,
         children: [
-          for (final s in series) _ExerciseCard(series: s, from: start, to: today, percent: percent, focus: _focus),
+          for (final s in series)
+            _ExerciseCard(
+              key: ValueKey(s.exercise.uid),
+              series: s,
+              from: start,
+              to: today,
+              percent: percent,
+              focus: _focus,
+            ),
         ],
       ),
       TrainingLayout.muscles => _CardGrid(
         minWidth: 320,
-        height: 268,
+        minHeight: 268,
         children: [
           for (final g in MuscleGroup.values)
             if (visible.any((s) => s.exercise.group == g))
               _MuscleCard(
+                key: ValueKey(g),
                 group: g,
                 series: [
                   for (final s in series)
@@ -92,6 +101,7 @@ class _ChartTileState extends State<_ChartTile> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TileHeader(
+            fadeTitle: true,
             title: percent
                 ? 'Progress since ${from == null ? 'the start' : _shortDate(start)}'
                 : 'Estimated one-rep max',
@@ -120,17 +130,24 @@ class _ChartTileState extends State<_ChartTile> {
             ),
           ),
           const SizedBox(height: 12),
+          // Another layout, range or axis fades through, as another day does.
           Expanded(
-            child: all.isEmpty
-                ? Center(
-                    child: Text(
-                      log.exercises.isEmpty
-                          ? 'Log a session below and your progress will show here.'
-                          : 'Nothing logged in this range yet.',
-                      style: _label(p, color: p.inkMuted),
-                    ),
-                  )
-                : body,
+            child: FadeThrough(
+              layoutBuilder: FadeThrough.fill,
+              child: KeyedSubtree(
+                key: ValueKey((layout, log.range, log.axis, all.isEmpty)),
+                child: all.isEmpty
+                    ? Center(
+                        child: Text(
+                          log.exercises.isEmpty
+                              ? 'Log a session below and your progress will show here.'
+                              : 'Nothing logged in this range yet.',
+                          style: _label(p, color: p.inkMuted),
+                        ),
+                      )
+                    : body,
+              ),
+            ),
           ),
           if (charted.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -167,27 +184,143 @@ String _latest(_Series s, {required bool percent}) {
   return '${last.rough ? '≈ ' : ''}${_kg(last.value)} kg';
 }
 
-/// Cards of one [height] in as many columns of at least [minWidth] as fit,
-/// scrolling down inside the chart tile when there are more.
-class _CardGrid extends StatelessWidget {
-  const _CardGrid({required this.minWidth, required this.height, required this.children});
+/// Cards in an even grid that fills the chart tile: as many rows and
+/// columns as leave the fewest empty places with cards of about the shape
+/// of [minWidth] by [minHeight], stretched to fill the tile. Cards never
+/// get smaller than that; when they would, whole rows fill the tile's
+/// height and the rest scroll.
+///
+/// Hiding or showing a card (from the legend) glides the others to their
+/// new places and sizes as it fades; a window resize simply lays them out
+/// again.
+class _CardGrid extends StatefulWidget {
+  const _CardGrid({required this.minWidth, required this.minHeight, required this.children});
 
-  final double minWidth, height;
+  final double minWidth, minHeight;
+
+  /// Each keyed, so it keeps its place and state as others come and go.
   final List<Widget> children;
 
-  static const _gap = 12.0;
+  static const gap = 12.0;
+
+  /// Columns, rows and each card's size for [count] cards in [box].
+  static ({int columns, int rows, double width, double height}) layout(
+    int count,
+    Size box, {
+    required double minWidth,
+    required double minHeight,
+  }) {
+    final most = math.max(1, ((box.width + gap) / (minWidth + gap)).floor());
+    double widthFor(int columns) => (box.width - gap * (columns - 1)) / columns;
+    double fitHeight(int rows) => (box.height - gap * (rows - 1)) / rows;
+    // Whole rows filling the height, for when the cards scroll.
+    final shown = math.max(1, ((box.height + gap) / (minHeight + gap)).floor());
+    final scrollHeight = math.max(minHeight, fitHeight(shown));
+    final shape = minWidth / minHeight;
+    final fits = [
+      for (var c = 1; c <= most; c++)
+        if (fitHeight((count / c).ceil()) >= minHeight) c,
+    ];
+    final columns = fits.isNotEmpty ? fits : [for (var c = 1; c <= most; c++) c];
+    ({int columns, int rows, double width, double height})? best;
+    double bestScore = double.infinity;
+    for (final c in columns) {
+      final rows = math.max(1, (count / c).ceil());
+      final height = fits.isNotEmpty ? fitHeight(rows) : scrollHeight;
+      final width = widthFor(c);
+      // An empty place counts for more than a card a little off the shape.
+      final score = (rows * c - count) + 2 * (math.log(width / height / shape)).abs();
+      if (score < bestScore) {
+        bestScore = score;
+        best = (columns: c, rows: rows, width: pixelFloor(width), height: pixelFloor(height));
+      }
+    }
+    return best!;
+  }
+
+  @override
+  State<_CardGrid> createState() => _CardGridState();
+}
+
+class _CardGridState extends State<_CardGrid> {
+  Size? _box;
+  List<Key> _shown = const [];
+  final _rects = <Key, Rect>{};
+
+  /// Cards hidden, fading out where they were.
+  final _leaving = <Key, ({Rect rect, Widget card})>{};
+  final _cards = <Key, Widget>{};
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
-      final columns = math.max(1, ((box.maxWidth + _gap) / (minWidth + _gap)).floor());
-      // Whole-pixel widths, so every card's edges land on pixels.
-      final width = pixelFloor((box.maxWidth - _gap * (columns - 1)) / columns);
+      final size = box.biggest;
+      final keys = [for (final c in widget.children) c.key!];
+      final resized = _box != null && _box != size;
+      final changed = _box != null && !listEquals(keys, _shown);
+      if (resized) _leaving.clear();
+      // Cards come in since the grid was first laid out fade in.
+      final arriving = <Key>{};
+      if (changed && !resized) {
+        for (final k in _shown) {
+          if (!keys.contains(k) && _rects[k] != null && _cards[k] != null) {
+            _leaving[k] = (rect: _rects[k]!, card: _cards[k]!);
+          }
+        }
+        for (final k in keys) {
+          if (!_shown.contains(k)) arriving.add(k);
+          _leaving.remove(k);
+        }
+      }
+      _box = size;
+      _shown = keys;
+
+      final g = _CardGrid.layout(keys.length, size, minWidth: widget.minWidth, minHeight: widget.minHeight);
+      const gap = _CardGrid.gap;
+      for (final (i, c) in widget.children.indexed) {
+        final column = i % g.columns, row = i ~/ g.columns;
+        _rects[c.key!] = Rect.fromLTWH(
+          pixelRound(column * (g.width + gap)),
+          pixelRound(row * (g.height + gap)),
+          g.width,
+          g.height,
+        );
+        _cards[c.key!] = c;
+      }
+      final height = g.rows * g.height + (g.rows - 1) * gap;
+      final glide = resized ? Duration.zero : context.themed(Motion.morph);
       return SingleChildScrollView(
-        child: Wrap(
-          spacing: _gap,
-          runSpacing: _gap,
-          children: [for (final c in children) SizedBox(width: width, height: height, child: c)],
+        child: SizedBox(
+          width: size.width,
+          height: math.max(height, _leaving.values.fold(0.0, (h, l) => math.max(h, l.rect.bottom))),
+          child: Stack(
+            children: [
+              // The same widgets as a shown card's, so its fade picks up
+              // where it was.
+              for (final MapEntry(key: k, value: l) in _leaving.entries)
+                AnimatedPositioned.fromRect(
+                  key: k,
+                  rect: l.rect,
+                  duration: glide,
+                  curve: Motion.morphCurve,
+                  child: Appear(
+                    animate: false,
+                    shown: false,
+                    animateSize: false,
+                    onHidden: () => setState(() => _leaving.remove(k)),
+                    child: l.card,
+                  ),
+                ),
+              for (final c in widget.children)
+                AnimatedPositioned.fromRect(
+                  key: c.key,
+                  rect: _rects[c.key!]!,
+                  duration: glide,
+                  curve: Motion.morphCurve,
+                  child: Appear(animate: arriving.contains(c.key), animateSize: false, child: c),
+                ),
+            ],
+          ),
         ),
       );
     },
@@ -218,6 +351,7 @@ class _MiniCard extends StatelessWidget {
 /// One exercise: its name and group, where it stands now, and its own chart.
 class _ExerciseCard extends StatelessWidget {
   const _ExerciseCard({
+    super.key,
     required this.series,
     required this.from,
     required this.to,
@@ -260,11 +394,16 @@ class _ExerciseCard extends StatelessWidget {
           const SizedBox(height: 4),
           // The figure gets a line to itself: beside it, a long one would push
           // the change off a narrow card.
-          Text(
-            _latest(series, percent: percent),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: _label(p, size: 22, weight: FontWeight.w600),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: RollingFigure(
+                text: _latest(series, percent: percent),
+                value: series.points.last.value,
+                style: _label(p, size: 22, weight: FontWeight.w600),
+              ),
+            ),
           ),
           Text(
             since,
@@ -286,6 +425,7 @@ class _ExerciseCard extends StatelessWidget {
 /// key that tells them apart by dash.
 class _MuscleCard extends StatelessWidget {
   const _MuscleCard({
+    super.key,
     required this.group,
     required this.series,
     required this.from,
@@ -330,8 +470,9 @@ class _MuscleCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 PixelFit(
-                  child: Text(
-                    _latest(s, percent: percent),
+                  child: RollingFigure(
+                    text: _latest(s, percent: percent),
+                    value: s.points.last.value,
                     style: _label(p, size: 14, color: p.inkMuted),
                   ),
                 ),
@@ -933,13 +1074,21 @@ class _DashSample extends CustomPainter {
   bool shouldRepaint(_DashSample old) => old.colour != colour || old.dash != dash || old.square != square;
 }
 
-/// A row of options in one pill, the chosen one filled.
-class _Segments extends StatelessWidget {
+/// A row of options in one pill: the chosen one's fill glides to it, as
+/// Settings' ribbons' does.
+class _Segments extends StatefulWidget {
   const _Segments({required this.labels, required this.selected, required this.onSelect});
 
   final List<String> labels;
   final int selected;
   final ValueChanged<int> onSelect;
+
+  @override
+  State<_Segments> createState() => _SegmentsState();
+}
+
+class _SegmentsState extends State<_Segments> {
+  late final _keys = [for (final _ in widget.labels) GlobalKey()];
 
   @override
   Widget build(BuildContext context) {
@@ -951,38 +1100,39 @@ class _Segments extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: p.borderSoft),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (i, label) in labels.indexed)
-            MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onSelect(i),
-                child: AnimatedContainer(
-                  duration: context.themed(Motion.click),
-                  curve: Motion.clickCurve,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: p.done.withValues(alpha: i == selected ? 1 : 0),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: PixelFit(
-                    child: Text(
-                      label,
-                      style: _label(
-                        p,
-                        size: 14,
-                        weight: FontWeight.w600,
-                        color: i == selected ? p.onAccent : p.inkMuted,
+      child: GlidePill(
+        target: _keys[widget.selected],
+        color: p.done,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (i, label) in widget.labels.indexed)
+              MouseRegion(
+                key: _keys[i],
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => widget.onSelect(i),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    child: PixelFit(
+                      child: AnimatedDefaultTextStyle(
+                        duration: context.themed(Motion.morph),
+                        curve: Motion.morphCurve,
+                        style: _label(
+                          p,
+                          size: 14,
+                          weight: FontWeight.w600,
+                          color: i == widget.selected ? p.onAccent : p.inkMuted,
+                        ),
+                        child: Text(label),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -15,48 +15,57 @@ class _SessionTile extends StatelessWidget {
     final isToday = day == state.today;
     return Tile(
       padding: const EdgeInsets.fromLTRB(24, 20, 20, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TileHeader(
-            title: isToday ? "Today’s session" : '${weekdayNames[day.weekday - 1]}  ·  ${_shortDate(day)}',
-            trailingAtEnd: true,
-            trailing: Builder(
-              builder: (anchor) => _TextButton(
-                label: isToday ? 'Another day' : 'Back to today',
-                icon: isToday ? Icons.calendar_today_rounded : null,
-                onTap: isToday
-                    ? () => showFadeMenu(
-                        anchor,
-                        width: 312,
-                        builder: (_) => DayPicker(
-                          today: state.today,
-                          first: DateTime(state.firstMonth.$1, state.firstMonth.$2),
-                          selected: day,
-                          onPick: (d) => log.showDay(d == state.today ? null : d),
-                        ),
-                      )
-                    : () => log.showDay(null),
+      // Another day's session fades through, as another day does on Today.
+      child: FadeThrough(
+        layoutBuilder: FadeThrough.fill,
+        child: Column(
+          key: ValueKey(dateKey(day)),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TileHeader(
+              title: isToday ? "Today’s session" : '${weekdayNames[day.weekday - 1]}  ·  ${_shortDate(day)}',
+              trailingAtEnd: true,
+              trailing: Builder(
+                builder: (anchor) => _TextButton(
+                  label: isToday ? 'Another day' : 'Back to today',
+                  icon: isToday ? Icons.calendar_today_rounded : null,
+                  onTap: isToday
+                      ? () => showFadeMenu(
+                          anchor,
+                          width: 312,
+                          builder: (_) => DayPicker(
+                            today: state.today,
+                            first: DateTime(state.firstMonth.$1, state.firstMonth.$2),
+                            selected: day,
+                            onPick: (d) => log.showDay(d == state.today ? null : d),
+                          ),
+                        )
+                      : () => log.showDay(null),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                for (final (e, sets) in session)
-                  _ExerciseBlock(key: ValueKey(e.uid), day: day, exercise: e, sets: sets),
-                _AddExercise(key: ValueKey(dateKey(day)), day: day, logged: {for (final (e, _) in session) e.uid}),
-              ],
+            const SizedBox(height: 10),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  _FoldingColumn(
+                    children: [
+                      for (final (e, sets) in session)
+                        _ExerciseBlock(key: ValueKey(e.uid), day: day, exercise: e, sets: sets),
+                    ],
+                  ),
+                  _AddExercise(key: ValueKey(dateKey(day)), day: day, logged: {for (final (e, _) in session) e.uid}),
+                ],
+              ),
             ),
-          ),
-          if (session.isEmpty && log.exercises.isEmpty)
-            Text(
-              'Type an exercise, pick what it trains, then add your sets.',
-              style: _label(p, size: 14, color: p.inkMuted),
-            ),
-        ],
+            if (session.isEmpty && log.exercises.isEmpty)
+              Text(
+                'Type an exercise, pick what it trains, then add your sets.',
+                style: _label(p, size: 14, color: p.inkMuted),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -80,7 +89,10 @@ class _ExerciseBlock extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
+          // Grows and shrinks with its sets as they open and close.
+          AnimatedContainer(
+            duration: context.themed(Motion.morph),
+            curve: Motion.morphCurve,
             width: 3,
             height: 30.0 + sets.length * 36,
             margin: const EdgeInsets.only(right: 12, top: 2),
@@ -142,17 +154,21 @@ class _ExerciseBlock extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                for (final (i, s) in sets.indexed)
-                  _SetRow(
-                    key: ValueKey(s.uid),
-                    index: i,
-                    set: s,
-                    bodyweight: exercise.bodyweight,
-                    best: bests.contains(s.uid),
-                    last: i == sets.length - 1,
-                    day: day,
-                    exercise: exercise,
-                  ),
+                _FoldingColumn(
+                  children: [
+                    for (final (i, s) in sets.indexed)
+                      _SetRow(
+                        key: ValueKey(s.uid),
+                        index: i,
+                        set: s,
+                        bodyweight: exercise.bodyweight,
+                        best: bests.contains(s.uid),
+                        last: i == sets.length - 1,
+                        day: day,
+                        exercise: exercise,
+                      ),
+                  ],
+                ),
                 _TextButton(label: 'Add set', icon: Icons.add_rounded, onTap: () => log.addSet(day, exercise)),
               ],
             ),
@@ -181,16 +197,29 @@ class _DeleteExerciseState extends State<_DeleteExercise> {
   @override
   Widget build(BuildContext context) => MouseRegion(
     onExit: (_) => setState(() => _asking = false),
-    child: _asking
-        ? _TextButton(
-            label: 'Delete with all ${widget.count} ${widget.count == 1 ? 'set' : 'sets'}',
-            onTap: widget.onDelete,
-          )
-        : _IconAction(
-            icon: Icons.delete_outline_rounded,
-            tooltip: 'Delete this exercise',
-            onTap: () => setState(() => _asking = true),
-          ),
+    // The bin and the question swap as a fade-through, the room easing
+    // between their widths.
+    child: AnimatedSize(
+      duration: context.themed(Motion.morph),
+      curve: Motion.morphCurve,
+      alignment: Alignment.centerRight,
+      child: FadeThrough(
+        duration: Motion.morph,
+        layoutBuilder: FadeThrough.aligned(Alignment.centerRight),
+        child: _asking
+            ? _TextButton(
+                key: const ValueKey(true),
+                label: 'Delete with all ${widget.count} ${widget.count == 1 ? 'set' : 'sets'}',
+                onTap: widget.onDelete,
+              )
+            : _IconAction(
+                key: const ValueKey(false),
+                icon: Icons.delete_outline_rounded,
+                tooltip: 'Delete this exercise',
+                onTap: () => setState(() => _asking = true),
+              ),
+      ),
+    ),
   );
 }
 
@@ -581,47 +610,60 @@ class _AddExerciseState extends State<_AddExercise> {
             ],
           ),
         ),
-        if (matches.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            // Leaves the cursor in the field, which the most-used ones need to stay up.
-            child: TextFieldTapRegion(
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final e in matches) _Chip(colour: groupColour(e.group, p), label: e.name, onTap: () => _add(e)),
-                ],
-              ),
-            ),
-          ),
-        if (query.isNotEmpty && !exact) ...[
-          const SizedBox(height: 10),
-          Row(
+        // What shows under the field opens and closes its room as it comes
+        // and goes.
+        AnimatedSize(
+          duration: context.themed(Motion.morph),
+          curve: Motion.morphCurve,
+          alignment: Alignment.topCenter,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('New: what does “${_text.text.trim()}” train?', style: _label(p, size: 14, color: p.inkMuted)),
-              const SizedBox(width: 10),
-              // Leaves the cursor in the name.
-              TextFieldTapRegion(
-                child: _Chip(
-                  label: 'Bodyweight',
-                  colour: p.accent,
-                  on: _bodyweight,
-                  onTap: () => setState(() => _bodyweight = !_bodyweight),
+              if (matches.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  // Leaves the cursor in the field, which the most-used ones need to stay up.
+                  child: TextFieldTapRegion(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final e in matches)
+                          _Chip(colour: groupColour(e.group, p), label: e.name, onTap: () => _add(e)),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              if (query.isNotEmpty && !exact) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Text('New: what does “${_text.text.trim()}” train?', style: _label(p, size: 14, color: p.inkMuted)),
+                    const SizedBox(width: 10),
+                    // Leaves the cursor in the name.
+                    TextFieldTapRegion(
+                      child: _Chip(
+                        label: 'Bodyweight',
+                        colour: p.accent,
+                        on: _bodyweight,
+                        onTap: () => setState(() => _bodyweight = !_bodyweight),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _GroupMenu(
+                  selected: null,
+                  onPick: (g) {
+                    final name = _text.text.trim();
+                    final e = log.createExercise(name[0].toUpperCase() + name.substring(1), g, bodyweight: _bodyweight);
+                    _add(e);
+                  },
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 8),
-          _GroupMenu(
-            selected: null,
-            onPick: (g) {
-              final name = _text.text.trim();
-              final e = log.createExercise(name[0].toUpperCase() + name.substring(1), g, bodyweight: _bodyweight);
-              _add(e);
-            },
-          ),
-        ],
+        ),
       ],
     );
   }
@@ -665,7 +707,7 @@ class _Chip extends StatelessWidget {
 }
 
 class _TextButton extends StatelessWidget {
-  const _TextButton({required this.label, required this.onTap, this.icon});
+  const _TextButton({super.key, required this.label, required this.onTap, this.icon});
 
   final String label;
   final IconData? icon;
@@ -700,7 +742,7 @@ class _TextButton extends StatelessWidget {
 }
 
 class _IconAction extends StatelessWidget {
-  const _IconAction({required this.icon, required this.tooltip, required this.onTap});
+  const _IconAction({super.key, required this.icon, required this.tooltip, required this.onTap});
 
   final IconData icon;
   final String tooltip;
