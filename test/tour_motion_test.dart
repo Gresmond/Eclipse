@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
@@ -24,9 +24,6 @@ void main() {
       }
       await loader.load();
     }
-    // Each loaded font announces itself on the real event loop. Let those arrive now, before the app is built;
-    // otherwise they land after the test ends and count as an animation left running.
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     tester.view.physicalSize = const Size(1280, 1100);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

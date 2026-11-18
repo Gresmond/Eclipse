@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:ui' show AppExitResponse, PlatformDispatcher;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 

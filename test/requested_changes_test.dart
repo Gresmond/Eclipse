@@ -9,7 +9,7 @@ import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/widgets/smooth_task_scroll.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:flutter/gestures.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

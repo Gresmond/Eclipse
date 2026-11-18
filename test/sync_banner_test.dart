@@ -5,7 +5,7 @@ import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/data/sync_service.dart';
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/widgets/sync_banner.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

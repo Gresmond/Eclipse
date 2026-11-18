@@ -6,7 +6,7 @@ import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

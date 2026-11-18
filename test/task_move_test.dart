@@ -105,9 +105,6 @@ void main() {
       }
       await loader.load();
     }
-    // Each loaded font announces itself on the real event loop. Let those arrive now, before the app is built;
-    // otherwise they land after the test ends and count as an animation left running.
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     state.startTour();
     await showApp(tester);
     await tester.tap(find.text('Show me around'));

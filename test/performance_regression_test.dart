@@ -12,7 +12,7 @@ import 'package:eclipse/widgets/lazy_motion.dart';
 import 'package:eclipse/screens/month_view.dart';
 import 'package:eclipse/screens/warm_up.dart';
 import 'package:eclipse/widgets/settings_dialog.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,4 +1,4 @@
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 
 /// Static values need no ticker. Allocate an animation only while it changes,
 /// then release it after its render object has adopted the settled value.

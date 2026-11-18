@@ -1,7 +1,7 @@
 // State and UI logic found in the 3 Nov 2026 audit (LOGIC-01 to LOGIC-19):
 // each test holds the behaviour the spec, or the rest of the app, implies.
 import 'package:flutter/gestures.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';

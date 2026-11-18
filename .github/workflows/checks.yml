@@ -19,7 +19,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
-          flutter-version: 3.50.0
+          flutter-version: 3.47.9
           cache: true
       - name: Trust the checked-out repository and Flutter SDK in the container
         shell: bash
@@ -59,7 +59,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
-          flutter-version: 3.50.0
+          flutter-version: 3.47.9
           cache: true
       - name: Test the sign-in functions
         run: node --test test/web/functions.test.mjs
