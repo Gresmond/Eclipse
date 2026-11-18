@@ -119,6 +119,8 @@ jobs:
         with:
           name: Eclipse-Linux
           if-no-files-found: error
+          # Only publish below reads it; the release keeps its own copy.
+          retention-days: 1
           path: build/Eclipse.tar.zst
 
   android:
@@ -162,6 +164,7 @@ jobs:
         with:
           name: Eclipse-Android
           if-no-files-found: error
+          retention-days: 1
           path: build/Eclipse.apk
 
   # Puts the web version on Cloudflare Pages, once CLOUDFLARE_PROJECT is set as
