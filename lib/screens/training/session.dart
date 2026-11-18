@@ -148,7 +148,7 @@ class _ExerciseBlock extends StatelessWidget {
                     _DeleteExercise(count: log.setsOf(exercise), onDelete: () => log.deleteExercise(exercise)),
                     _IconAction(
                       icon: Icons.close_rounded,
-                      tooltip: 'Remove this session',
+                      tooltip: 'Remove from this session',
                       onTap: () => log.removeFromDay(day, exercise),
                     ),
                   ],
@@ -250,6 +250,20 @@ class _SetRowState extends State<_SetRow> {
   late final _reps = TextEditingController(text: widget.set.reps == 0 ? '' : '${widget.set.reps}');
   final _repsFocus = FocusNode();
   bool _hover = false;
+
+  /// A change made elsewhere (on another computer, or by undo) shows here,
+  /// unless it's what's being typed.
+  @override
+  void didUpdateWidget(_SetRow old) {
+    super.didUpdateWidget(old);
+    final s = widget.set;
+    if (s.weight != old.set.weight && s.weight != double.tryParse(_weight.text.replaceAll(',', '.'))) {
+      _weight.text = s.weight == null ? '' : _kg(s.weight!);
+    }
+    if (s.reps != old.set.reps && s.reps != (int.tryParse(_reps.text) ?? 0)) {
+      _reps.text = s.reps == 0 ? '' : '${s.reps}';
+    }
+  }
 
   @override
   void dispose() {
@@ -493,7 +507,7 @@ class _GroupPill extends StatelessWidget {
           child: PixelFit(
             child: Text(
               group.label.toUpperCase(),
-              style: _label(p, size: 12, weight: FontWeight.w700, color: colour).copyWith(letterSpacing: 1.2),
+              style: capsLabel(colour),
             ),
           ),
         ),

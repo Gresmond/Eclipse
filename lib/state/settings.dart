@@ -115,7 +115,7 @@ mixin _Settings on ChangeNotifier {
     notifyListeners();
   }
 
-  bool isRestDay(DateTime day) => restWeekends && day.weekday >= DateTime.saturday || holidayOn(holidays, day) != null;
+  bool isRestDay(DateTime day) => restsOn(day, restWeekends: restWeekends, holidays: holidays);
 
   /// Holidays, earliest first: the same on every computer.
   late List<Holiday> holidays = decodeHolidays(store.setting('holidays'));

@@ -841,6 +841,38 @@ void main() {
     expect(store.raw.select('SELECT * FROM sync_seen'), isEmpty, reason: 'tried again next round');
   });
 
+  test('a training set with a day Training can’t read is skipped, not saved', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final temp = Directory.systemTemp.createTempSync('eclipse-bad-set');
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final folder = SyncFolder(temp, 'local', 'Local');
+    final set = {'_': true, 'day': 'someday', 'exercise': 'e', 'position': 0, 'weight': 60.0, 'reps': 8};
+    File('${temp.path}/other/2026-11-18.json')
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync(
+        jsonEncode({
+          'version': 1,
+          'name': 'Other',
+          'registers': [
+            for (final MapEntry(:key, :value) in set.entries)
+              [
+                'training_set',
+                's',
+                key,
+                jsonEncode(value),
+                1,
+                'other',
+                {'other': 1},
+              ],
+          ],
+        }),
+      );
+    folder.read(SyncEngine(store, 'local'));
+    expect(store.raw.select('SELECT * FROM training_sets'), isEmpty);
+    expect(folder.unread, {'Other'});
+  });
+
   group('through Google Drive', () {
     late Directory dir;
     late _FakeDrive drive;

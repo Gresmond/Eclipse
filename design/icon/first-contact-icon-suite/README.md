@@ -4,7 +4,7 @@ The approved adjusted First Contact design: the original ivory moon is 5% smalle
 
 ## Assets
 
-Only `source/`, `build.py` and this README are kept in git. Everything else below is written by `build.py` (see Rebuild) and ignored; the app's own copies live in `linux/icons` and `android/app/src/main/res`.
+Only `source/`, `build.py` and this README are kept in git. Everything else below is written by `build.py` (see Rebuild) and ignored; the app's own copies live in `linux/icons`, `android/app/src/main/res` and `web/icon.svg`.
 
 - `source/eclipse.svg`: editable master, with transparent corners around its circular red tile.
 - `png/`: native vector renders at 16, 20, 22, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024 and 2048 pixels.
@@ -29,12 +29,10 @@ Inside the app repository, regenerate and copy the icons into the app with:
 ECLIPSE_ICON_PYTHON=python3 bash tool/make_icons.sh
 ```
 
-That updates `linux/icons/hicolor` and the PNGs in `android/app/src/main/res`. The Linux launcher and tray lookup and the Android launcher already reference those locations. Rebuild the app to include the new assets. This does not install a new application binary into the operating system.
+That updates `linux/icons/hicolor`, the PNGs in `android/app/src/main/res` and the web version's `web/icon.svg`. The Linux launcher and tray lookup and the Android launcher already reference those locations. Rebuild the app to include the new assets. This does not install a new application binary into the operating system.
 
 The builder verifies every PNG's dimensions and transparency, checks the palette, and verifies copied project assets and the ZIP archive.
 
 ## Platform references
 
 - [freedesktop Icon Theme Specification](https://specifications.freedesktop.org/icon-theme/)
-
-The existing legacy icon suites and exploration files are retained separately.

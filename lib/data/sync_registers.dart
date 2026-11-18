@@ -129,6 +129,13 @@ class _Reg {
       // others; only a birthday counts.
       ('todo', 'category') || ('todo_repeat', 'category') => v == null || v is String,
       ('todo', 'location') || ('todo_repeat', 'location') || ('todo', 'note') => v == null || v is String,
+      // Read as they are by Training: a set's day is parsed, and its place
+      // and reps read as whole numbers.
+      ('training_set', 'day') => v is String && _day(v),
+      ('training_set', 'position') || ('training_set', 'reps') => v is int && v >= 0,
+      ('training_set', 'weight') => v == null || v is num,
+      ('training_set', 'exercise') || ('exercise', 'name') || ('exercise', 'muscle') => v is String,
+      ('exercise', 'bodyweight') => v == 0 || v == 1,
       _ => v == null || v is num || v is String,
     };
   }

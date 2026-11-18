@@ -323,12 +323,14 @@ enum Reminder {
 
   /// Those of [timed] already past, as of [now], for a one-off task on
   /// [day] at [time]; none without a [day], as for a repeating task, whose
-  /// later times can still give any.
-  static int gone(DateTime? day, int? time, DateTime now) {
+  /// later times can still give any. With the day starting at [startHour],
+  /// a time before it is in the small hours after [day]'s evening.
+  static int gone(DateTime? day, int? time, DateTime now, {int startHour = 0}) {
     if (day == null || time == null) return 0;
+    final on = afterMidnight(time, startHour) ? DateTime(day.year, day.month, day.day + 1) : day;
     var bits = 0;
     for (final r in timed) {
-      if (!r.at(day, time).isAfter(now)) bits |= r.bit;
+      if (!r.at(on, time).isAfter(now)) bits |= r.bit;
     }
     return bits;
   }
@@ -730,6 +732,11 @@ typedef Holiday = ({DateTime start, DateTime end});
 /// The holiday [day] falls in, if any.
 Holiday? holidayOn(List<Holiday> holidays, DateTime day) =>
     holidays.where((h) => !day.isBefore(h.start) && !day.isAfter(h.end)).firstOrNull;
+
+/// Whether rituals and sleep rest on [day]: a weekend, with [restWeekends],
+/// or a holiday.
+bool restsOn(DateTime day, {required bool restWeekends, required List<Holiday> holidays}) =>
+    restWeekends && day.weekday >= DateTime.saturday || holidayOn(holidays, day) != null;
 
 /// Holidays as kept in the synced `holidays` setting: day-key pairs.
 String encodeHolidays(List<Holiday> holidays) => jsonEncode([

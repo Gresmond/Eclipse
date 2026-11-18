@@ -90,20 +90,30 @@ class TrainingLog {
   /// [day]'s sets, grouped by exercise in the order they were first logged.
   List<(Exercise, List<TrainingSet>)> session(DateTime day) {
     final key = dateKey(day);
-    final groups = <String, List<TrainingSet>>{};
-    for (final s in _sets) {
-      if (s.day == key && _byUid.containsKey(s.exercise)) (groups[s.exercise] ??= []).add(s);
-    }
-    return [for (final MapEntry(:key, :value) in groups.entries) (_byUid[key]!, value)];
+    return _grouped(_sets.where((s) => s.day == key))[key] ?? const [];
   }
 
-  /// Each exercise's points, oldest first, from [from] on (all with null).
-  /// A point follows from the days before it, those before [from] too, so
-  /// it reads the same in every range.
+  /// Every logged day's [session], by day key, in one pass over the sets.
+  Map<String, List<(Exercise, List<TrainingSet>)>> get sessions => _grouped(_sets);
+
+  Map<String, List<(Exercise, List<TrainingSet>)>> _grouped(Iterable<TrainingSet> sets) {
+    final days = <String, Map<String, List<TrainingSet>>>{};
+    for (final s in sets) {
+      if (_byUid.containsKey(s.exercise)) ((days[s.day] ??= {})[s.exercise] ??= []).add(s);
+    }
+    return {
+      for (final MapEntry(key: day, value: groups) in days.entries)
+        day: [for (final MapEntry(:key, :value) in groups.entries) (_byUid[key]!, value)],
+    };
+  }
+
   /// Exercise uids in the order each was first logged: by day, then by its
   /// place in that day's session.
   List<String> get loggedOrder => {for (final s in _sets) s.exercise}.toList();
 
+  /// Each exercise's points, oldest first, from [from] on (all with null).
+  /// A point follows from the days before it, those before [from] too, so
+  /// it reads the same in every range.
   Map<Exercise, List<TrainingPoint>> points({DateTime? from}) {
     final byExercise = <String, Map<String, List<TrainingSet>>>{};
     for (final s in _sets) {
@@ -209,6 +219,8 @@ class TrainingLog {
       store.deleteExercise(e.uid);
       return before;
     });
+    // Nothing left of it to hide.
+    if (hidden.remove(e.uid)) store.setSetting('trainingHidden', hidden.join(','));
     reload();
     onRemoved?.call('Deleted “${e.name}” and all its sets', before);
     _changed();

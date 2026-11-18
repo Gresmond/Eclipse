@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_through.dart';
 import 'hover_fill.dart';
+import 'app_dialog.dart';
 import 'settings_dialog.dart';
 import 'fade_menu.dart';
 import 'smooth_gradient.dart';
@@ -411,7 +412,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
                     child: IgnorePointer(
                       child: AnimatedSwitcher(
                         duration: Motion.morph,
-                        transitionBuilder: (child, animation) => settingsTransition(context, animation, child),
+                        transitionBuilder: (child, animation) => dialogTransition(animation, child),
                         child: step.settingsRibbon == null
                             ? const SizedBox.expand()
                             : _SettingsPreview(

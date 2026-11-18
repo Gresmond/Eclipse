@@ -491,6 +491,20 @@ void main() {
       expect(chart, paints..something(dot));
     });
 
+    testWidgets('a set changed elsewhere, as by sync, shows its new weight and reps', (tester) async {
+      state.showingTraining = true;
+      final log = state.training;
+      final press = log.createExercise('Bench press', MuscleGroup.chest, bodyweight: false);
+      log.addToDay(today, press);
+      await show(tester);
+      String field(int i) => tester.widgetList<TextField>(find.byType(TextField)).elementAt(i).controller!.text;
+      expect([field(0), field(1)], ['', '']);
+
+      log.updateSet(log.session(today).single.$2.single, weight: 62.5, reps: 8);
+      await tester.pumpAndSettle();
+      expect([field(0), field(1)], ['62.5', '8']);
+    });
+
     testWidgets('the Undo card restores a removed set or all sets removed from a session', (tester) async {
       state.showingTraining = true;
       final log = state.training;
@@ -516,7 +530,7 @@ void main() {
       expect(savedSets(), original);
       expect(find.byTooltip('Remove set'), findsNWidgets(2));
 
-      await tester.tap(find.byTooltip('Remove this session'));
+      await tester.tap(find.byTooltip('Remove from this session'));
       await tester.pumpAndSettle();
       expect(savedSets(), isEmpty);
       expect(log.points(), isEmpty);

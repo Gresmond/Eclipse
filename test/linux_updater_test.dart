@@ -50,7 +50,7 @@ void main() {
       File('/bin/true').copySync('$source/bundle/eclipse');
       await Process.run('chmod', ['+x', '$source/bundle/eclipse']);
       File('linux/install-release.sh').copySync('$source/install.sh');
-      File('design/icon/eclipse.svg').copySync('$source/eclipse.svg');
+      File('linux/icons/hicolor/scalable/apps/dev.nicholas.productivity_app.svg').copySync('$source/eclipse.svg');
       await archive();
       asset = {'name': 'Eclipse.tar.zst', 'browser_download_url': url, 'digest': 'sha256:${sha256.convert(bytes)}'};
       release = {

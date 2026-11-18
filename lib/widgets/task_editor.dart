@@ -122,8 +122,11 @@ mixin _DetailPages<T extends StatefulWidget> on State<T> {
 
   /// Its times before already past: only a one-off timed task's, as a
   /// repeat's later times can still give any.
-  int _gone({required bool birthday}) =>
-      birthday || _repeat != null ? 0 : Reminder.gone(_day, _time, AppScope.read(context).reminderNow);
+  int _gone({required bool birthday}) {
+    if (birthday || _repeat != null) return 0;
+    final state = AppScope.read(context);
+    return Reminder.gone(_day, _time, state.reminderNow, startHour: state.dayStartHour);
+  }
 
   /// The reminders it gives, as saved.
   int _reminders({required bool birthday}) => Reminder.given(

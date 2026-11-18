@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Rebuilds design/icon/first-contact-icon-suite and copies the approved
-# circular First Contact icon into the Linux and Android project assets.
+# circular First Contact icon into the Linux, Android and web project assets.
 # Run after changing the icon, and commit the project icons it updates
-# (linux/icons, android/app/src/main/res).
+# (linux/icons, android/app/src/main/res, web/icon.svg).
 # Needs Pillow (python-pillow) and rsvg-convert (librsvg).
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/painting.dart';
 
+import 'oklch.dart';
+
 /// Predicted perceived warmth from Ou, Luo, Woodcock & Wright (2004),
 /// equation 2: WC = -0.5 + 0.02 C*^1.07 cos(h - 50°).
 /// https://doi.org/10.1002/col.20010
@@ -9,8 +11,7 @@ import 'package:flutter/painting.dart';
 /// Input is opaque sRGB, converted to CIELAB with a D65 reference white
 /// (matching sRGB and the study's illumination). Do not substitute OKLCH hue.
 double colourWarmth(Color colour) {
-  double linear(double v) => v <= 0.04045 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
-  final r = linear(colour.r), g = linear(colour.g), b = linear(colour.b);
+  final r = srgbToLinear(colour.r), g = srgbToLinear(colour.g), b = srgbToLinear(colour.b);
   // sRGB -> XYZ (D65), using the CSS Color 4 conversion matrix.
   final x = (506752 / 1228815) * r + (87881 / 245763) * g + (12673 / 70218) * b;
   final y = (87098 / 409605) * r + (175762 / 245763) * g + (12673 / 175545) * b;

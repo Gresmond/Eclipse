@@ -379,7 +379,7 @@ class Store {
         (r['year'] as int, r['month'] as int): decodeDays(r['days'] as String),
     };
     bool off(DateTime day) => !isOnDay(months[(day.year, day.month)] ?? const [], day);
-    bool rest(DateTime day) => restWeekends && day.weekday >= DateTime.saturday || holidayOn(holidays, day) != null;
+    bool rest(DateTime day) => restsOn(day, restWeekends: restWeekends, holidays: holidays);
     bool excused(DateTime day) => off(day) || rest(day);
 
     bool gapBreaks(DateTime from, DateTime until) {
@@ -593,9 +593,9 @@ class Store {
     [e.uid, e.name, e.group.name, e.bodyweight ? 1 : 0],
   );
 
-  /// Every set logged, oldest day first, in order within each day.
   void deleteExercise(String uid) => _db.execute('DELETE FROM exercises WHERE uid = ?', [uid]);
 
+  /// Every set logged, oldest day first, in order within each day.
   List<TrainingSet> trainingSets() => [
     for (final r in _db.select('SELECT * FROM training_sets ORDER BY day, position, uid'))
       TrainingSet(

@@ -46,7 +46,7 @@ class Oklch {
   }
 
   static Oklch of(Color color) {
-    final (r, g, b) = (_toLinear(color.r), _toLinear(color.g), _toLinear(color.b));
+    final (r, g, b) = (srgbToLinear(color.r), srgbToLinear(color.g), srgbToLinear(color.b));
     final lab = _labFromLinear(r, g, b);
     final c = math.sqrt(lab.$2 * lab.$2 + lab.$3 * lab.$3);
     final h = (math.atan2(lab.$3, lab.$2) * 180 / math.pi) % 360;
@@ -100,14 +100,14 @@ Color simulate(Color color, ColourBlindness type) {
       [0.004733, 0.691367, 0.303900],
     ],
   };
-  final v = [_toLinear(color.r), _toLinear(color.g), _toLinear(color.b)];
+  final v = [srgbToLinear(color.r), srgbToLinear(color.g), srgbToLinear(color.b)];
   double row(int i) => (m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2]).clamp(0.0, 1.0);
   return _encode((row(0), row(1), row(2)));
 }
 
-double _luminance(Color c) => 0.2126 * _toLinear(c.r) + 0.7152 * _toLinear(c.g) + 0.0722 * _toLinear(c.b);
+double _luminance(Color c) => 0.2126 * srgbToLinear(c.r) + 0.7152 * srgbToLinear(c.g) + 0.0722 * srgbToLinear(c.b);
 
-(double, double, double) _lab(Color c) => _labFromLinear(_toLinear(c.r), _toLinear(c.g), _toLinear(c.b));
+(double, double, double) _lab(Color c) => _labFromLinear(srgbToLinear(c.r), srgbToLinear(c.g), srgbToLinear(c.b));
 
 (double, double, double) _labFromLinear(double r, double g, double b) {
   final l = _cbrt(0.4122214708 * r + 0.5363494308 * g + 0.0514459929 * b);
@@ -147,6 +147,7 @@ Color _encode((double, double, double) rgb) {
   return Color.from(alpha: 1, red: enc(rgb.$1), green: enc(rgb.$2), blue: enc(rgb.$3));
 }
 
-double _toLinear(double v) => v <= 0.04045 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+/// An sRGB channel, 0-1, as linear light.
+double srgbToLinear(double v) => v <= 0.04045 ? v / 12.92 : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
 
 double _cbrt(double v) => v < 0 ? -math.pow(-v, 1 / 3).toDouble() : math.pow(v, 1 / 3).toDouble();

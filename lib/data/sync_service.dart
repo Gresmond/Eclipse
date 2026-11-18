@@ -318,7 +318,7 @@ class SyncService extends ChangeNotifier {
         if (!_stopped && _changed) await run();
       })().timeout(const Duration(seconds: 5));
     } on TimeoutException {
-      debugPrint('Sync before quitting took too long');
+      AppLog.note('Sync before quitting took too long');
     }
   }
 

@@ -143,6 +143,7 @@ class _HistoryTile extends StatelessWidget {
     final log = state.training;
     final open = dateKey(log.day ?? state.today);
     final days = log.loggedDays;
+    final sessions = log.sessions;
     return Tile(
       padding: const EdgeInsets.fromLTRB(24, 20, 16, 12),
       child: Column(
@@ -163,7 +164,7 @@ class _HistoryTile extends StatelessWidget {
                               key: ValueKey(key),
                               day: DateTime.parse(key),
                               selected: key == open,
-                              session: log.session(DateTime.parse(key)),
+                              session: sessions[key] ?? const [],
                               onTap: () {
                                 final d = DateTime.parse(key);
                                 log.showDay(d == state.today ? null : d);

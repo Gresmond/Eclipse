@@ -29,10 +29,6 @@ import 'welcome_tour.dart';
 
 part 'settings_data.dart';
 
-/// Shared by the normal modal and its welcome-tour preview.
-Widget settingsTransition(BuildContext context, Animation<double> animation, Widget child) =>
-    dialogTransition(animation, child);
-
 /// Settings, in two ribbons: General and Data.
 /// Restoring a backup asks first, inline on its row. Pops with the
 /// restored [Backup], or nothing.

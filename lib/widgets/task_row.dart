@@ -995,7 +995,7 @@ class _NoteLine extends StatelessWidget {
       decoration: TextDecoration.none,
     );
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,

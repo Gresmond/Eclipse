@@ -35,6 +35,13 @@ void main() {
       expect(Reminder.gone(null, 20 * 60, now), 0);
     });
 
+    test('a time before a 4am day start is after midnight, still to come', () {
+      // 1:30 am on today's list is tonight's small hours, 19 Nov.
+      expect(Reminder.gone(today, 90, now, startHour: 4), day);
+      expect(Reminder.gone(today, 90, now), day | hour | quarter);
+      expect(Reminder.gone(today, 5 * 60, now, startHour: 4), day | hour | quarter);
+    });
+
     test('all chosen gone: 15 min stands in, or nothing', () {
       expect(Reminder.given(day, birthday: false, time: 23 * 60, gone: day), quarter);
       expect(Reminder.given(day | hour, birthday: false, time: 23 * 60, gone: day), hour);

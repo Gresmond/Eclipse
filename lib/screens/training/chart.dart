@@ -617,17 +617,16 @@ class _ChartPainter extends CustomPainter {
       hi = math.max(hi, 0);
     }
     if (hi - lo < 1e-9) {
-      lo -= percent ? 5 : 5;
-      hi += percent ? 5 : 5;
+      lo -= 5;
+      hi += 5;
     }
     final step = _niceStep((hi - lo) / 4);
     lo = (lo / step).floor() * step;
     hi = (hi / step).ceil() * step;
 
     final start = dateOnly(from), end = dateOnly(to);
-    const days = daysBetween;
-    final span = days(start, end);
-    double x(DateTime d) => plot.left + plot.width * (days(start, d) / math.max(1, span));
+    final span = daysBetween(start, end);
+    double x(DateTime d) => plot.left + plot.width * (daysBetween(start, d) / math.max(1, span));
     double y(double v) => plot.bottom - plot.height * ((v - lo) / (hi - lo));
 
     // Grid and labels.
@@ -849,13 +848,13 @@ class _ChartPainter extends CustomPainter {
         mag;
   }
 
-  /// Draws lines through [pts], dashed if [dash] has any lengths. Impeller on
-  /// Linux leaves stroked paths jagged, but smooths lines. They overlap where
-  /// they meet, so a see-through colour draws them as one on a layer.
   /// Where a one-wide line goes to fill the row of pixels nearest [at], rather
   /// than blur across two.
   static double _crisp(double at) => pixelRound(at - 0.5) + 0.5;
 
+  /// Draws lines through [pts], dashed if [dash] has any lengths. Impeller on
+  /// Linux leaves stroked paths jagged, but smooths lines. They overlap where
+  /// they meet, so a see-through colour draws them as one on a layer.
   static void _stroke(Canvas canvas, List<Offset> pts, List<double> dash, Color colour, double width) {
     final fading = colour.a < 1;
     if (fading) {
@@ -964,15 +963,7 @@ class _Legend extends StatelessWidget {
                     onHover: onHover,
                     onToggle: onToggle,
                     child: PixelFit(
-                      child: Text(
-                        g.label.toUpperCase(),
-                        style: _label(
-                          p,
-                          size: 12,
-                          weight: FontWeight.w700,
-                          color: groupColour(g, p),
-                        ).copyWith(letterSpacing: 1.2),
-                      ),
+                      child: Text(g.label.toUpperCase(), style: capsLabel(groupColour(g, p))),
                     ),
                   ),
                   for (final e in list)

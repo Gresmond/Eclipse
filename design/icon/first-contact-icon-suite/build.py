@@ -96,6 +96,7 @@ def update_project():
     for source in (ROOT/'android/res').rglob('*.png'):
         dest=repo/'android/app/src/main/res'/source.relative_to(ROOT/'android/res')
         write(dest,source.read_bytes());copied.append((source,dest))
+    write(repo/'web/icon.svg',SOURCE.read_bytes());copied.append((SOURCE,repo/'web/icon.svg'))
     for source,dest in copied:
         assert source.read_bytes()==dest.read_bytes()
     return len(copied)
