@@ -5,6 +5,17 @@ import 'training.dart';
 /// How the chart's y-axis reads.
 enum TrainingAxis { kg, change }
 
+/// What the chart tile shows: every exercise on one chart, a small chart
+/// per exercise, or one per muscle group with its exercises as lines.
+enum TrainingLayout {
+  all('All'),
+  exercises('Exercises'),
+  muscles('Muscles');
+
+  const TrainingLayout(this.label);
+  final String label;
+}
+
 /// How far back the chart looks.
 enum TrainingRange {
   month('1M', 1),
@@ -48,6 +59,7 @@ class TrainingLog {
   DateTime? day;
 
   late TrainingAxis axis = TrainingAxis.values.asNameMap()[store.setting('trainingAxis')] ?? TrainingAxis.kg;
+  late TrainingLayout layout = TrainingLayout.values.asNameMap()[store.setting('trainingLayout')] ?? TrainingLayout.all;
   late TrainingRange range = TrainingRange.values.asNameMap()[store.setting('trainingRange')] ?? TrainingRange.quarter;
 
   /// Exercise uids and muscle group names hidden from the chart.
@@ -305,6 +317,12 @@ class TrainingLog {
   void setAxis(TrainingAxis a) {
     axis = a;
     store.setSetting('trainingAxis', a.name);
+    _done();
+  }
+
+  void setLayout(TrainingLayout l) {
+    layout = l;
+    store.setSetting('trainingLayout', l.name);
     _done();
   }
 

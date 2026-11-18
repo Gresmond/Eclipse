@@ -199,6 +199,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('the chart splits into a card per exercise or per muscle group', (tester) async {
+      for (var w = 4; w >= 1; w--) {
+        _logExample(state.training, today.subtract(Duration(days: w * 7)), (4 - w) * 1.5);
+      }
+      state.showingTraining = true;
+      await show(tester);
+      final charts = find.byWidgetPredicate((widget) => widget is CustomPaint && widget.size == Size.infinite);
+      expect(charts, findsOneWidget);
+
+      await tester.tap(find.text('Exercises'));
+      await tester.pumpAndSettle();
+      expect(state.training.layout, TrainingLayout.exercises);
+      // Five exercises, Pullups among them in reps though the chart is in kg.
+      expect(charts, findsNWidgets(5));
+      expect(find.textContaining(RegExp(r'^[0-9.]+ reps$')), findsOneWidget);
+      expect(find.text('Bodyweight exercises show in the % change view.'), findsNothing);
+
+      await tester.tap(find.text('Muscles'));
+      await tester.pumpAndSettle();
+      // Five groups; Back has only Pullups, so in kg it says where to find it.
+      expect(charts, findsNWidgets(4));
+      expect(find.text('Bodyweight exercises show in the % change view.'), findsNWidgets(2));
+
+      state.training.setAxis(TrainingAxis.change);
+      await tester.pumpAndSettle();
+      expect(charts, findsNWidgets(5));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('logging a new exercise from the session tile', (tester) async {
       state.showingTraining = true;
       await show(tester);

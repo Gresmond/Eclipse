@@ -38,16 +38,53 @@ class _ChartTileState extends State<_ChartTile> {
       }
     }
     final percent = log.axis == TrainingAxis.change;
-    final series = [
+    final layout = log.layout;
+    // A card of its own gives a bodyweight exercise its own scale, so it
+    // shows in kg too; sharing a chart, reps would sit on a kg axis.
+    final bodyweightShown = percent || layout == TrainingLayout.exercises;
+    final visible = [
       for (final MapEntry(key: e, value: points) in all.entries)
-        if (!log.hidden.contains(e.uid) && !log.hidden.contains('g:${e.group.name}') && (percent || !e.bodyweight))
+        if (!log.hidden.contains(e.uid) && !log.hidden.contains('g:${e.group.name}'))
           _Series(e, points, groupColour(e.group, p), dash[e.uid] ?? const [], square: square.contains(e.uid)),
-    ]..sort((a, b) => a.exercise.group.index.compareTo(b.exercise.group.index));
+    ]..sort(_bySeries);
+    final series = [
+      for (final s in visible)
+        if (bodyweightShown || !s.exercise.bodyweight) s,
+    ];
     final start = series.isEmpty
         ? from ?? today
         : series.map((s) => s.points.first.day).reduce((a, b) => b.isBefore(a) ? b : a);
     final charted = all.keys.toList()
       ..sort((a, b) => a.group.index != b.group.index ? a.group.index - b.group.index : a.name.compareTo(b.name));
+    final Widget body = switch (layout) {
+      TrainingLayout.all => _Chart(series: series, from: start, to: today, percent: percent, focus: _focus),
+      TrainingLayout.exercises => _CardGrid(
+        minWidth: 240,
+        height: 196,
+        children: [
+          for (final s in series) _ExerciseCard(series: s, from: start, to: today, percent: percent, focus: _focus),
+        ],
+      ),
+      TrainingLayout.muscles => _CardGrid(
+        minWidth: 320,
+        height: 268,
+        children: [
+          for (final g in MuscleGroup.values)
+            if (visible.any((s) => s.exercise.group == g))
+              _MuscleCard(
+                group: g,
+                series: [
+                  for (final s in series)
+                    if (s.exercise.group == g) s,
+                ],
+                from: start,
+                to: today,
+                percent: percent,
+                focus: _focus,
+              ),
+        ],
+      ),
+    };
 
     return Tile(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
@@ -62,6 +99,12 @@ class _ChartTileState extends State<_ChartTile> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _Segments(
+                  labels: [for (final l in TrainingLayout.values) l.label],
+                  selected: layout.index,
+                  onSelect: (i) => log.setLayout(TrainingLayout.values[i]),
+                ),
+                const SizedBox(width: 10),
                 _Segments(
                   labels: [for (final r in TrainingRange.values) r.label],
                   selected: log.range.index,
@@ -87,7 +130,7 @@ class _ChartTileState extends State<_ChartTile> {
                       style: _label(p, color: p.inkMuted),
                     ),
                   )
-                : _Chart(series: series, from: start, to: today, percent: percent, focus: _focus),
+                : body,
           ),
           if (charted.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -96,11 +139,223 @@ class _ChartTileState extends State<_ChartTile> {
               dash: dash,
               square: square,
               hidden: log.hidden,
-              percent: percent,
+              bodyweightShown: bodyweightShown,
               onHover: (key) => setState(() => _focus = key),
               onToggle: log.toggleHidden,
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Muscle groups in their order, then exercises by name.
+int _bySeries(_Series a, _Series b) {
+  final g = a.exercise.group.index.compareTo(b.exercise.group.index);
+  return g != 0 ? g : a.exercise.name.compareTo(b.exercise.name);
+}
+
+/// [s]'s latest point as a card heads it: kg, reps, or % since its first.
+String _latest(_Series s, {required bool percent}) {
+  final first = s.points.first, last = s.points.last;
+  if (percent) {
+    final change = (last.value / first.value - 1) * 100;
+    return '${change >= 0 ? '+' : ''}${change.toStringAsFixed(1)}%';
+  }
+  if (s.exercise.bodyweight) return '${_kg(last.value)} reps';
+  return '${last.rough ? '≈ ' : ''}${_kg(last.value)} kg';
+}
+
+/// Cards of one [height] in as many columns of at least [minWidth] as fit,
+/// scrolling down inside the chart tile when there are more.
+class _CardGrid extends StatelessWidget {
+  const _CardGrid({required this.minWidth, required this.height, required this.children});
+
+  final double minWidth, height;
+  final List<Widget> children;
+
+  static const _gap = 12.0;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final columns = math.max(1, ((box.maxWidth + _gap) / (minWidth + _gap)).floor());
+      // Whole-pixel widths, so every card's edges land on pixels.
+      final width = pixelFloor((box.maxWidth - _gap * (columns - 1)) / columns);
+      return SingleChildScrollView(
+        child: Wrap(
+          spacing: _gap,
+          runSpacing: _gap,
+          children: [for (final c in children) SizedBox(width: width, height: height, child: c)],
+        ),
+      );
+    },
+  );
+}
+
+/// The surface each card in [_CardGrid] sits on.
+class _MiniCard extends StatelessWidget {
+  const _MiniCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+      decoration: BoxDecoration(
+        color: p.empty.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: p.borderSoft),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// One exercise: its name and group, where it stands now, and its own chart.
+class _ExerciseCard extends StatelessWidget {
+  const _ExerciseCard({
+    required this.series,
+    required this.from,
+    required this.to,
+    required this.percent,
+    required this.focus,
+  });
+
+  final _Series series;
+  final DateTime from, to;
+  final bool percent;
+  final String? focus;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final e = series.exercise, first = series.points.first, last = series.points.last;
+    final String since;
+    if (series.points.length == 1) {
+      since = 'One session so far';
+    } else if (percent) {
+      since = 'since ${_shortDate(first.day)}';
+    } else {
+      final change = last.value - first.value;
+      since =
+          '${change >= 0 ? '+' : '−'}${_kg(change.abs())} ${e.bodyweight ? 'reps' : 'kg'} since ${_shortDate(first.day)}';
+    }
+    return _MiniCard(
+      child: PixelColumn(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PixelRow(
+            children: [
+              Expanded(
+                child: Text(e.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: _label(p, size: 15)),
+              ),
+              const SizedBox(width: 8),
+              PixelFit(child: Text(e.group.label.toUpperCase(), style: capsLabel(series.colour))),
+            ],
+          ),
+          const SizedBox(height: 4),
+          PixelRow(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              PixelFit(
+                child: Text(
+                  _latest(series, percent: percent),
+                  style: _label(p, size: 22, weight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  since,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _label(p, size: 12, color: p.inkMuted),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: _Chart(series: [series], from: from, to: to, percent: percent, focus: focus),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One muscle group: each of its exercises as a line on one chart, with a
+/// key that tells them apart by dash.
+class _MuscleCard extends StatelessWidget {
+  const _MuscleCard({
+    required this.group,
+    required this.series,
+    required this.from,
+    required this.to,
+    required this.percent,
+    required this.focus,
+  });
+
+  final MuscleGroup group;
+
+  /// The group's charted exercises; empty when all of them are bodyweight
+  /// and the chart is in kg.
+  final List<_Series> series;
+  final DateTime from, to;
+  final bool percent;
+  final String? focus;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return _MiniCard(
+      child: PixelColumn(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PixelFit(child: Text(group.label.toUpperCase(), style: capsLabel(groupColour(group, p)))),
+          const SizedBox(height: 6),
+          for (final s in series)
+            PixelRow(
+              children: [
+                CustomPaint(
+                  size: const Size(22, 10),
+                  painter: _DashSample(s.colour, s.dash, square: s.square),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    s.exercise.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _label(p, size: 14),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                PixelFit(
+                  child: Text(
+                    _latest(s, percent: percent),
+                    style: _label(p, size: 14, color: p.inkMuted),
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: series.isEmpty
+                ? Center(
+                    child: Text(
+                      'Bodyweight exercises show in the % change view.',
+                      textAlign: TextAlign.center,
+                      style: _label(p, size: 12, color: p.inkMuted),
+                    ),
+                  )
+                : _Chart(series: series, from: from, to: to, percent: percent, focus: focus),
+          ),
         ],
       ),
     );
@@ -533,7 +788,7 @@ class _Legend extends StatelessWidget {
     required this.dash,
     required this.square,
     required this.hidden,
-    required this.percent,
+    required this.bodyweightShown,
     required this.onHover,
     required this.onToggle,
   });
@@ -544,7 +799,9 @@ class _Legend extends StatelessWidget {
   /// Exercises whose points are squares.
   final Set<String> square;
   final Set<String> hidden;
-  final bool percent;
+
+  /// Bodyweight exercises are charted: in % change, or on cards of their own.
+  final bool bodyweightShown;
   final ValueChanged<String?> onHover;
   final ValueChanged<String> onToggle;
 
@@ -587,7 +844,10 @@ class _Legend extends StatelessWidget {
                   for (final e in list)
                     _LegendItem(
                       keyName: e.uid,
-                      off: hidden.contains(e.uid) || hidden.contains('g:${g.name}') || (!percent && e.bodyweight),
+                      off:
+                          hidden.contains(e.uid) ||
+                          hidden.contains('g:${g.name}') ||
+                          (!bodyweightShown && e.bodyweight),
                       onHover: onHover,
                       onToggle: onToggle,
                       child: Row(
@@ -610,7 +870,7 @@ class _Legend extends StatelessWidget {
               ),
           ],
         ),
-        if (!percent && hasBodyweight)
+        if (!bodyweightShown && hasBodyweight)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
