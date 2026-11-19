@@ -192,12 +192,27 @@ Future<void> webMain({
     return;
   }
   remember(_hereKey, '1');
-  state.signOut = ({bool force = false}) => _signOut(state, data, lock, force: force);
+  var signingOut = false;
+  var signOutPending = false;
+  state.signOut = ({bool force = false}) => _signOut(
+    state,
+    data,
+    lock,
+    force: force,
+    onStart: () {
+      signingOut = true;
+      signOutPending = false;
+    },
+    onPending: () {
+      signingOut = false;
+      signOutPending = true;
+    },
+  );
   show(state);
 
   // Sign-in taken back while open: nothing here is lost, it just waits.
   sync.addListener(() async {
-    if (sync.isOn || state.closing || turnOn != null) return;
+    if (sync.isOn || state.closing || signingOut || signOutPending || turnOn != null) return;
     state.saveDrafts();
     await data.persist();
     remember(_hereKey, null);
@@ -242,22 +257,55 @@ void _chooseAccount(String? had, GoogleAccount now, Future<void> Function() clos
 
 /// Sends what's here, says if that failed unless [force], then ends the
 /// sign-in and erases this browser's copy.
-Future<String?> _signOut(AppState state, BrowserData data, DataLock lock, {required bool force}) async {
+Future<String?> _signOut(
+  AppState state,
+  BrowserData data,
+  DataLock lock, {
+  required bool force,
+  required void Function() onStart,
+  required void Function() onPending,
+}) async {
+  onStart();
   final sync = state.sync!;
   state.saveDrafts();
-  await sync.run();
-  if (sync.error != null && !force) return sync.error;
-  await state.shutdown();
-  try {
-    await sendHttpRequest('POST', Uri.base.resolve('/api/signout'), body: const [], type: 'text/plain');
-  } catch (_) {
-    // Offline: the sign-in lingers, but there's nothing left here to read.
+  if (!force && sync.isOn) await sync.run();
+  if (sync.error != null && !force) {
+    onPending();
+    return sync.error;
   }
-  await data.close();
-  remember(_hereKey, null);
-  await BrowserData.erase();
-  lock.release();
-  goTo(_welcome);
+  await state.shutdown();
+  var serverCleared = false;
+  try {
+    final (status, _) = await sendHttpRequest(
+      'POST',
+      Uri.base.resolve('/api/signout'),
+      body: const [],
+      type: 'text/plain',
+      timeout: const Duration(seconds: 10),
+    );
+    serverCleared = status >= 200 && status < 300;
+  } catch (_) {
+    // Offline: the browser's copy is still erased below.
+  }
+  var erased = false;
+  try {
+    await data.close().timeout(const Duration(seconds: 10));
+    remember(_hereKey, null);
+    await BrowserData.erase().timeout(const Duration(seconds: 10));
+    erased = true;
+  } catch (e, stack) {
+    AppLog.failure('Couldn’t erase browser data', e, stack);
+    remember(_hereKey, null);
+  } finally {
+    lock.release();
+    goTo(
+      !erased
+          ? '$_welcome?error=erase'
+          : !serverCleared
+          ? '$_welcome?offline_signout=1'
+          : _welcome,
+    );
+  }
   return null;
 }
 

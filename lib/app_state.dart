@@ -359,6 +359,9 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     weekEmptyDays = store.setting('weekEmptyDays') == 'shown';
     _monthSleep.clear();
     _streaks.clear();
+    _forgetRemovals();
+    reminderCards.clear();
+    training.reload();
     _startDay();
   }
 
@@ -393,7 +396,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
             try {
               check();
             } catch (_) {
-              await store.restoreFrom(before);
+              await store.replaceRawFrom(before);
               rethrow;
             }
           } finally {
@@ -429,15 +432,18 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   Future<void> _restore(Future<void> Function(void Function() check) swap) async {
     saveDrafts(); // so it's in the before-restore copy
     await flushFiles();
+    await backedUp;
     final before = {for (final e in store.journalEntries()) e.day};
     try {
       // Loaded before its files are written, so a copy the app can't open
       // goes back untouched.
       await swap(() {
+        sync?.engine.forgetCounts();
         _load();
         checkDate(); // the backup may start its days at another hour
       });
     } catch (_) {
+      sync?.engine.forgetCounts();
       _load();
       notifyListeners();
       rethrow;

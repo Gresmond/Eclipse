@@ -129,10 +129,20 @@ class Backups {
   /// holds nothing but the path.
   static _Daily Function(Database db) _dailyCopy(String to) => (db) {
     if (!passesCheck(db)) return _Daily.damaged;
-    replaceSafelySync(to, (part) => db.execute('VACUUM INTO ?', [part.path]));
-    if (isHealthy(File(to))) return _Daily.saved;
-    File(to).deleteSync();
-    return _Daily.badCopy;
+    final part = File('$to.part');
+    try {
+      if (part.existsSync()) part.deleteSync();
+      db.execute('VACUUM INTO ?', [part.path]);
+      if (!isHealthy(part)) {
+        if (part.existsSync()) part.deleteSync();
+        return _Daily.badCopy;
+      }
+      part.renameSync(to);
+      return _Daily.saved;
+    } catch (_) {
+      if (part.existsSync()) part.deleteSync();
+      rethrow;
+    }
   };
 
   /// Removes the daily copies, once they're in Drive instead.
@@ -174,6 +184,7 @@ class Backups {
     try {
       final db = sqlite3.open(database);
       try {
+        db.execute('PRAGMA busy_timeout = 5000');
         final version = db.select('PRAGMA user_version').first.columnAt(0) as int;
         if (version < 1 || version >= Store.schemaVersion) return;
         dir.createSync(recursive: true);
@@ -209,6 +220,7 @@ class Backups {
       replaceSafelySync(database, (part) => backup.file.copySync(part.path));
       final store = Store.open(database);
       try {
+        store.validate();
         for (final MapEntry(key: day, value: text) in (journal?.readAllSync() ?? const <String, String>{}).entries) {
           final kept = Store.keepWriting(store.journal(day), text);
           if (kept != store.journal(day)) store.setJournal(day, kept);
@@ -247,7 +259,7 @@ class Backups {
       try {
         check?.call();
       } catch (_) {
-        await store.restoreFrom(before.path);
+        await store.replaceRawFrom(before.path);
         rethrow;
       }
     } finally {

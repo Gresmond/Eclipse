@@ -5,6 +5,7 @@ import 'dart:math';
 import 'sqlite.dart';
 
 import '../models.dart';
+import '../training.dart';
 import 'store.dart';
 import 'sync_disk.dart';
 
@@ -273,17 +274,18 @@ class SyncEngine implements AutomaticWrites {
 
   /// What a row of a kind that can be removed can't be without: until it's
   /// come (in a file not read yet), an edit of it waits, the row not there.
-  static const _made = {
-    'todo': 'since',
-    'month_habit': 'name',
-    'exercise': 'name',
-    'training_set': 'exercise',
-    'todo_repeat': 'start',
+  static const _made = <String, List<String>>{
+    'todo': ['since'],
+    'month_habit': ['name'],
+    'exercise': ['name'],
+    'training_set': ['day', 'exercise'],
+    'todo_repeat': ['start'],
   };
 
   /// Makes the row match [f], its fields from the registers.
   void _write(String kind, String rowkey, Map<String, Object?> f) {
-    final gone = _removable.contains(kind) && (f[_present] != true || f[_made[kind]] == null);
+    final gone =
+        _removable.contains(kind) && (f[_present] != true || (_made[kind]?.any((k) => f[k] == null) ?? false));
     switch (kind) {
       case 'habit_month':
         final (y, m) = _month(rowkey);
@@ -564,7 +566,7 @@ class SyncEngine implements AutomaticWrites {
       }
       for (final d in dirty) {
         final (:kind, :rowkey, :at) = d;
-        if (budget != null && kind != 'holiday' && clock.elapsed > budget) {
+        if (budget != null && done.isNotEmpty && kind != 'holiday' && clock.elapsed > budget) {
           left = true;
           break;
         }
@@ -598,16 +600,18 @@ class SyncEngine implements AutomaticWrites {
         for (final MapEntry(key: field, value: v) in changed.entries) {
           final old = _reg(kind, rowkey, field);
           final vv = weak ? {...?old?.vv} : {...?old?.vv, me: seq};
+          final regTs = weak && old != null && (ts, me).compareTo(old.ts, old.origin) <= 0 ? old.ts + 1 : ts;
+          if (regTs > _seenTs) _lastTs = regTs;
           _put(
             _Reg(
               kind,
               rowkey,
               field,
               jsonEncode(v),
-              ts,
+              regTs,
               me,
               vv,
-              kind == 'journal' && field == 'text' && !weak ? [_JournalVersion(me, ts, v as String, vv)] : null,
+              kind == 'journal' && field == 'text' && !weak ? [_JournalVersion(me, regTs, v as String, vv)] : null,
               seq,
             ),
           );
@@ -798,7 +802,12 @@ class SyncEngine implements AutomaticWrites {
   void forgetCounts() {
     _lastTs = _lastSeq = null;
     _newerOrigins = null;
+    _startedFor = null;
+    _movedEdited = false;
   }
+
+  @override
+  void reset() => forgetCounts();
 
   /// Clears this computer's rows and registers, to take another's whole
   /// history in their place. The sleep schedule's rituals stay: they're
@@ -821,15 +830,18 @@ class SyncEngine implements AutomaticWrites {
       _db.execute('DELETE FROM settings WHERE key IN (${Store.syncedSettings.map((k) => "'$k'").join(', ')})');
       // How far this computer had made each repeat's times: the others'
       // history says that now.
-      _db.execute('DELETE FROM settings WHERE key = ?', [StoreTodos.walkedSetting]);
+      _db.execute('DELETE FROM settings WHERE key IN (?, ?, ?)', [
+        StoreTodos.walkedSetting,
+        StoreTodos.walkedHolidaysSetting,
+        StoreTodos.pausedTimesSetting,
+      ]);
       _db.execute('DELETE FROM habits WHERE id NOT IN (SELECT habit_id FROM sleep_habits)');
       _db.execute('DELETE FROM sync_reg');
       _db.execute('DELETE FROM sync_seen');
       _db.execute('DELETE FROM sync_dirty');
       _db.execute('DELETE FROM sync_local');
     });
-    _lastTs = _lastSeq = null;
-    _newerOrigins = null;
+    forgetCounts();
     return days;
   }
 
@@ -901,6 +913,7 @@ class SyncEngine implements AutomaticWrites {
     store.transaction(() {
       for (final (i, (regs, from)) in batches.indexed) {
         final kept = {..._keptBoth};
+        final lastTs = _lastTs, lastSeq = _lastSeq, newer = _newerOrigins;
         try {
           // A file at a time, so one this version can't take in is left as
           // it was, without holding up the rest.
@@ -928,6 +941,9 @@ class SyncEngine implements AutomaticWrites {
           });
         } on Object {
           failed.add(i);
+          _lastTs = lastTs;
+          _lastSeq = lastSeq;
+          _newerOrigins = newer;
           _keptBoth
             ..clear()
             ..addAll(kept);

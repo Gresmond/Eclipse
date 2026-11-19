@@ -1,4 +1,13 @@
-import { challengeFor, randomText, seal, stateCookie } from '../../_session.js';
+import {
+  answer,
+  challengeFor,
+  missingEnv,
+  randomText,
+  seal,
+  SECURITY_HEADERS,
+  SIGN_IN_PURPOSE,
+  stateCookie,
+} from '../../_session.js';
 
 const scopes = [
   'openid',
@@ -8,6 +17,9 @@ const scopes = [
 ];
 
 export async function onRequestGet({ request, env }) {
+  if (missingEnv(env, ['COOKIE_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'])) {
+    return answer(500, { error: 'misconfigured' });
+  }
   const origin = new URL(request.url).origin;
   const state = randomText(16);
   const verifier = randomText(48);
@@ -27,8 +39,8 @@ export async function onRequestGet({ request, env }) {
     status: 302,
     headers: {
       Location: page.toString(),
-      'Set-Cookie': stateCookie(await seal(env, { state, verifier })),
-      'Cache-Control': 'no-store',
+      'Set-Cookie': stateCookie(await seal(env, { state, verifier }, SIGN_IN_PURPOSE)),
+      ...SECURITY_HEADERS,
     },
   });
 }

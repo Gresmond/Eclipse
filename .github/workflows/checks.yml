@@ -68,3 +68,19 @@ jobs:
           cp lib/data/google_client.example.dart lib/data/google_client.dart
           flutter pub get
           bash tool/build_web.sh
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          flutter-version: 3.47.9
+          cache: true
+      - name: Build and lint Android
+        run: |
+          cp lib/data/google_client.example.dart lib/data/google_client.dart
+          flutter pub get
+          flutter build apk --debug --target-platform android-arm64
+          cd android && ./gradlew lintDebug

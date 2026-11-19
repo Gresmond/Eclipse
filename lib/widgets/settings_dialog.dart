@@ -78,7 +78,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
       _signingOut = true;
       _signOutProblem = null;
     });
-    final problem = await state.signOut!(force: force);
+    String? problem;
+    try {
+      problem = await state.signOut!(force: force);
+    } catch (e) {
+      problem = '$e';
+    }
     if (mounted) {
       setState(() {
         _signingOut = false;

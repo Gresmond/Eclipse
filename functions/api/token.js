@@ -1,7 +1,10 @@
-import { answer, fromOurPage, noSessionCookie, sessionOf } from '../_session.js';
+import { answer, fromOurPage, missingEnv, noSessionCookie, sessionOf } from '../_session.js';
 
 /// An hour's access to the signed-in person's Drive, for their own page.
 export async function onRequestPost({ request, env }) {
+  if (missingEnv(env, ['COOKIE_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'])) {
+    return answer(500, { error: 'misconfigured' });
+  }
   if (!fromOurPage(request)) return answer(403, { error: 'wrong_origin' });
   const session = await sessionOf(request, env);
   if (!session) return answer(401, { error: 'signed_out' });

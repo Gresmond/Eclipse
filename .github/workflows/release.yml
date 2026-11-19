@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   version:
@@ -155,7 +155,7 @@ jobs:
         run: |
           # 26.11.4, revision 1, is 261100401: always higher for a later release.
           IFS=. read -r year month release <<< "$VERSION"
-          code=$(( year * 10000000 + month * 100000 + release * 100 + BUILD ))
+          code=$(( 10#$year * 10000000 + 10#$month * 100000 + 10#$release * 100 + 10#$BUILD ))
           flutter pub get
           flutter build apk --release --target-platform android-arm64 --build-number "$code"
           mkdir -p build
@@ -170,7 +170,7 @@ jobs:
   # Puts the web version on Cloudflare Pages, once CLOUDFLARE_PROJECT is set as
   # a repository variable; it never holds up the downloads.
   web:
-    needs: version
+    needs: [version, arch]
     if: (needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch') && vars.CLOUDFLARE_PROJECT != ''
     runs-on: ubuntu-latest
     steps:
@@ -180,6 +180,8 @@ jobs:
           channel: stable
           flutter-version: 3.47.9
           cache: true
+      - name: Test the sign-in functions
+        run: node --test test/web/functions.test.mjs
       - name: Build
         run: |
           cp lib/data/google_client.example.dart lib/data/google_client.dart
@@ -195,6 +197,8 @@ jobs:
 
   publish:
     needs: [version, arch, android]
+    permissions:
+      contents: write
     # A manual run publishes too, replacing the downloads of a release that
     # already has this version (move its tag to the commit first).
     if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'

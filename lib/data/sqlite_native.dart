@@ -26,6 +26,7 @@ Future<T> _here<T>(Database db, T Function(Database db) job) => Future.sync(() =
 Future<T> _onOwnConnection<T>(String file, T Function(Database db) job) => Isolate.run(() {
   final own = sqlite3.open(file, mode: OpenMode.readOnly);
   try {
+    own.execute('PRAGMA busy_timeout = 5000');
     return job(own);
   } finally {
     own.close();

@@ -173,7 +173,7 @@ extension on _SettingsDialogState {
 
     final List<Widget> body;
     Widget? action;
-    if (sync.isOn) {
+    if (sync.isOn || (signOut != null && (_signingOut || _signOutProblem != null))) {
       final last = sync.lastSynced;
       final status = sync.busy
           ? 'Syncing…'
@@ -182,10 +182,10 @@ extension on _SettingsDialogState {
           : last == null
           ? 'Waiting to sync.'
           : 'Last synced ${_ago(last)}.';
-      action = button('Sync now', sync.busy ? null : () => sync.run());
+      action = sync.isOn ? button('Sync now', sync.busy ? null : () => sync.run()) : null;
       body = [
         SelectableText(
-          'Signed in as ${sync.email}',
+          'Signed in as ${sync.email ?? sync.accountEmail ?? 'your account'}',
           maxLines: 1,
           style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.ink),
         ),
@@ -246,7 +246,7 @@ extension on _SettingsDialogState {
         if (signOut != null)
           Text(
             _signOutProblem != null
-                ? 'Couldn’t sync first, so changes made here would be lost: $_signOutProblem'
+                ? 'Couldn’t sync first, so changes made here would be lost, and if you’re offline the server sign-in won’t end until you’re back online: $_signOutProblem'
                 : 'Signing out syncs, then erases the copy in this browser. Your data stays in your Drive.',
             style: _signOutProblem != null ? small.copyWith(color: p.missedInk) : small,
           ),

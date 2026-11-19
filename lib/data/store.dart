@@ -20,13 +20,15 @@ abstract interface class AutomaticWrites {
   /// [day]: the day a [Store.local] write moves things on to.
   void before({required bool local, String? day});
   void after({required bool local});
+  void reset();
 }
 
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 35;
+  static const schemaVersion = 36;
   Store._(this._db) {
+    _db.execute('PRAGMA busy_timeout = 5000');
     _db.execute('PRAGMA foreign_keys = ON');
     _db.execute('PRAGMA journal_mode = WAL');
     // A save no longer waits for the disk (about 6 ms each on btrfs, on the
@@ -105,7 +107,23 @@ class Store {
 
   /// Puts every save so far safely on the disk, so a power cut can't take
   /// it: when the window goes to the back, after sync, and before quitting.
-  void flushToDisk() => _db.select('PRAGMA wal_checkpoint(FULL)');
+  bool flushToDisk() {
+    bool checkpointedAll(String mode) {
+      final rows = _db.select('PRAGMA wal_checkpoint($mode)');
+      if (rows.isEmpty) return true;
+      final row = rows.first;
+      final busy = row.columnAt(0) as int? ?? 0;
+      final log = row.columnAt(1) as int? ?? 0;
+      final checkpointed = row.columnAt(2) as int? ?? 0;
+      return busy == 0 && (log <= 0 || checkpointed >= log);
+    }
+
+    try {
+      return checkpointedAll('FULL') || checkpointedAll('PASSIVE');
+    } on SqliteException {
+      return false;
+    }
+  }
 
   /// Settings that are the same on every computer. The theme isn't: each
   /// follows its own night light.
@@ -269,7 +287,7 @@ class Store {
     }
   }
 
-  Habit addHabit(int year, int month, String name, {DateTime? addedOn}) {
+  Habit addHabit(int year, int month, String name, {DateTime? addedOn}) => transaction(() {
     initializeMonth(year, month);
     _db.execute('INSERT INTO habits (uid) VALUES (lower(hex(randomblob(8))))');
     final id = _db.lastInsertRowId;
@@ -279,7 +297,7 @@ class Store {
       [year, month, id, name, year, month, addedOn == null ? null : dateKey(addedOn)],
     );
     return Habit(id, name, addedOn: addedOn);
-  }
+  });
 
   void renameHabit(int year, int month, int habitId, String name) {
     _db.execute('UPDATE month_habits SET name = ? WHERE year = ? AND month = ? AND habit_id = ?', [

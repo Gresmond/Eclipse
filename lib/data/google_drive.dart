@@ -191,19 +191,36 @@ ${ok ? 'You can close this tab and go back to Eclipse.' : 'Go back to Eclipse to
 ''';
 
 /// Posts a form to Google and returns its answer, or throws in words.
-Future<Map<String, dynamic>> _post(Uri uri, Map<String, String> form) async {
-  final (status, body) = await _send(
-    'POST',
-    uri,
-    body: utf8.encode(Uri(queryParameters: form).query),
-    type: 'application/x-www-form-urlencoded',
-  );
-  final json = _decode(body);
-  if (status == 200) return json;
-  if (json['error'] == 'invalid_grant') {
-    throw const DriveError('Google signed Eclipse out. Sign in again.', signedOut: true);
+Future<Map<String, dynamic>> _post(Uri uri, Map<String, String> form) =>
+    _postWith(uri, form, send: _send, wait: Future<void>.delayed);
+
+final _backoffJitter = Random();
+
+Future<Map<String, dynamic>> _postWith(
+  Uri uri,
+  Map<String, String> form, {
+  required HttpSend send,
+  required Future<void> Function(Duration) wait,
+}) async {
+  final encoded = utf8.encode(Uri(queryParameters: form).query);
+  for (var retry = 0; ; retry++) {
+    final (status, body) = await send(
+      'POST',
+      uri,
+      body: encoded,
+      type: 'application/x-www-form-urlencoded',
+    );
+    if ((status == 429 || (status >= 500 && status < 600)) && retry < 3) {
+      await wait(Duration(milliseconds: (500 << retry) + _backoffJitter.nextInt(250)));
+      continue;
+    }
+    final json = _decode(body);
+    if (status == 200) return json;
+    if (json['error'] == 'invalid_grant') {
+      throw const DriveError('Google signed Eclipse out. Sign in again.', signedOut: true);
+    }
+    throw DriveError('Google said: ${json['error_description'] ?? json['error'] ?? 'error $status'}');
   }
-  throw DriveError('Google said: ${json['error_description'] ?? json['error'] ?? 'error $status'}');
 }
 
 Map<String, dynamic> _decode(List<int> body) {
@@ -213,6 +230,14 @@ Map<String, dynamic> _decode(List<int> body) {
     return {};
   }
 }
+
+typedef HttpSend = Future<(int, Uint8List)> Function(
+  String method,
+  Uri uri, {
+  List<int>? body,
+  String? type,
+  String? bearer,
+});
 
 Future<(int, Uint8List)> _send(String method, Uri uri, {List<int>? body, String? type, String? bearer}) async {
   try {
@@ -283,39 +308,66 @@ abstract class JournalDrive {
 /// Eclipse's hidden app folder in the Drive of the account signed in, and
 /// the journal's folder there.
 class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
-  AppDataFolder(this.refreshToken, {this.accessToken});
+  AppDataFolder(
+    this.refreshToken, {
+    this.accessToken,
+    @visibleForTesting HttpSend? send,
+    @visibleForTesting Future<void> Function(Duration)? wait,
+  }) : _sendRequest = send ?? _send,
+       _wait = wait ?? Future<void>.delayed;
 
   final String refreshToken;
 
   /// Where a sign-in held elsewhere gets its access from, with the seconds it
   /// lasts: in a browser, [refreshToken] stays on Eclipse's server.
   final Future<(String, int)> Function()? accessToken;
+  final HttpSend _sendRequest;
+  final Future<void> Function(Duration) _wait;
   String? _access;
   DateTime _expires = DateTime(0);
+  Future<String>? _refreshing;
 
-  Future<String> _bearer() async {
-    if (_access != null && DateTime.now().isBefore(_expires)) return _access!;
+  Future<String> _bearer() {
+    if (_access != null && DateTime.now().isBefore(_expires)) return Future.value(_access!);
+    return _refreshing ??= _fetchBearer().whenComplete(() => _refreshing = null);
+  }
+
+  Future<String> _fetchBearer() async {
     if (accessToken case final fetch?) {
       final (token, seconds) = await fetch();
       _expires = DateTime.now().add(Duration(seconds: seconds - 120));
       return _access = token;
     }
-    final tokens = await _post(_token, {
-      'client_id': googleClientId,
-      'client_secret': googleClientSecret,
-      'refresh_token': refreshToken,
-      'grant_type': 'refresh_token',
-    });
+    final tokens = await _postWith(
+      _token,
+      {
+        'client_id': googleClientId,
+        'client_secret': googleClientSecret,
+        'refresh_token': refreshToken,
+        'grant_type': 'refresh_token',
+      },
+      send: _sendRequest,
+      wait: _wait,
+    );
     _expires = DateTime.now().add(Duration(seconds: (tokens['expires_in'] as num? ?? 3600).toInt() - 120));
     return _access = tokens['access_token'] as String;
   }
 
-  /// Sends with the sign-in, once more with a fresh one if it had run out.
+  /// Sends with the sign-in, once more with a fresh one if it had run out,
+  /// and retries transient rate limits or server errors with backoff.
   Future<Uint8List> _call(String method, Uri uri, {List<int>? body, String? type}) async {
-    for (var attempt = 0; ; attempt++) {
-      final (status, bytes) = await _send(method, uri, body: body, type: type, bearer: await _bearer());
-      if (status == 401 && attempt == 0) {
-        _access = null;
+    var retriedAuth = false;
+    for (var retry = 0; ; ) {
+      final used = await _bearer();
+      final (status, bytes) = await _sendRequest(method, uri, body: body, type: type, bearer: used);
+      if (status == 401 && !retriedAuth) {
+        retriedAuth = true;
+        if (_access == used) _access = null;
+        continue;
+      }
+      if ((status == 429 || (status >= 500 && status < 600)) && retry < 3) {
+        await _wait(Duration(milliseconds: (500 << retry) + _backoffJitter.nextInt(250)));
+        retry++;
         continue;
       }
       if (status >= 200 && status < 300) return bytes;
@@ -365,17 +417,18 @@ class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
     }
 
     const fields = 'id,name,modifiedTime';
+    final mediaType = name.endsWith('.db') ? 'application/octet-stream' : 'application/json';
     if (id != null) {
       return made(
         await _call(
           'PATCH',
           Uri.https('www.googleapis.com', '/upload/drive/v3/files/$id', {'uploadType': 'media', 'fields': fields}),
           body: bytes,
-          type: 'application/json',
+          type: mediaType,
         ),
       );
     }
-    const boundary = 'eclipse-sync-boundary';
+    final boundary = 'eclipse-sync-${_random(16)}';
     final body = BytesBuilder()
       ..add(
         utf8.encode(
@@ -384,7 +437,7 @@ class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
             'name': name,
             'parents': ['appDataFolder'],
           })}\r\n'
-          '--$boundary\r\nContent-Type: application/json\r\n\r\n',
+          '--$boundary\r\nContent-Type: $mediaType\r\n\r\n',
         ),
       )
       ..add(bytes)
@@ -492,17 +545,17 @@ class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
 
   @override
   Future<(Map<String, (String, String)>, Map<String, String>)> listJournal(String folder) async {
-    final years = {
-      for (final f in await _search(
-        "${_quote(folder)} in parents and mimeType = '$_folderType' and trashed = false",
-        'id,name',
-      ))
-        f['name'] as String: f['id'] as String,
-    };
+    final years = <String, String>{};
+    for (final f in await _search(
+      "${_quote(folder)} in parents and mimeType = '$_folderType' and trashed = false",
+      'id,name',
+    )) {
+      years.putIfAbsent(f['name'] as String, () => f['id'] as String);
+    }
     final files = <String, (String, String)>{};
     for (final MapEntry(key: year, value: id) in years.entries) {
       for (final f in await _search('${_quote(id)} in parents and trashed = false', 'id,name,md5Checksum')) {
-        files['$year/${f['name']}'] = (f['id'] as String, f['md5Checksum'] as String? ?? '');
+        files.putIfAbsent('$year/${f['name']}', () => (f['id'] as String, f['md5Checksum'] as String? ?? ''));
       }
     }
     return (files, years);
@@ -523,7 +576,7 @@ class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
         type: type,
       );
     } else {
-      const boundary = 'eclipse-journal-boundary';
+      final boundary = 'eclipse-journal-${_random(16)}';
       final body = BytesBuilder()
         ..add(
           utf8.encode(

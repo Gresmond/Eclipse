@@ -270,38 +270,48 @@ extension on Store {
       });
     }
     if (version < 10) {
-      if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'due_date')) {
-        _db.execute('ALTER TABLE todos ADD COLUMN due_date TEXT');
-      }
-      _db.execute('PRAGMA user_version = 10');
+      transaction(() {
+        if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'due_date')) {
+          _db.execute('ALTER TABLE todos ADD COLUMN due_date TEXT');
+        }
+        _db.execute('PRAGMA user_version = 10');
+      });
     }
     if (version < 11) {
-      if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'return_to_tomorrow')) {
-        _db.execute('ALTER TABLE todos ADD COLUMN return_to_tomorrow INTEGER NOT NULL DEFAULT 0');
-      }
-      _db.execute('PRAGMA user_version = 11');
+      transaction(() {
+        if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'return_to_tomorrow')) {
+          _db.execute('ALTER TABLE todos ADD COLUMN return_to_tomorrow INTEGER NOT NULL DEFAULT 0');
+        }
+        _db.execute('PRAGMA user_version = 11');
+      });
     }
     if (version < 12) {
-      if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'return_scope')) {
-        _db.execute('ALTER TABLE todos ADD COLUMN return_scope TEXT');
-        _db.execute("UPDATE todos SET return_scope = 'tomorrow' WHERE return_to_tomorrow = 1");
-      }
-      if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'defer_promotion_day')) {
-        _db.execute('ALTER TABLE todos ADD COLUMN defer_promotion_day TEXT');
-      }
-      _db.execute('PRAGMA user_version = 12');
+      transaction(() {
+        if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'return_scope')) {
+          _db.execute('ALTER TABLE todos ADD COLUMN return_scope TEXT');
+          _db.execute("UPDATE todos SET return_scope = 'tomorrow' WHERE return_to_tomorrow = 1");
+        }
+        if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'defer_promotion_day')) {
+          _db.execute('ALTER TABLE todos ADD COLUMN defer_promotion_day TEXT');
+        }
+        _db.execute('PRAGMA user_version = 12');
+      });
     }
     if (version < 13) {
-      if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'subtasks')) {
-        _db.execute("ALTER TABLE todos ADD COLUMN subtasks TEXT NOT NULL DEFAULT '[]'");
-      }
-      _db.execute('PRAGMA user_version = 13');
+      transaction(() {
+        if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'subtasks')) {
+          _db.execute("ALTER TABLE todos ADD COLUMN subtasks TEXT NOT NULL DEFAULT '[]'");
+        }
+        _db.execute('PRAGMA user_version = 13');
+      });
     }
     if (version < 14) {
-      if (!_db.select('PRAGMA table_info(month_habits)').any((r) => r['name'] == 'added_on')) {
-        _db.execute('ALTER TABLE month_habits ADD COLUMN added_on TEXT');
-      }
-      _db.execute('PRAGMA user_version = 14');
+      transaction(() {
+        if (!_db.select('PRAGMA table_info(month_habits)').any((r) => r['name'] == 'added_on')) {
+          _db.execute('ALTER TABLE month_habits ADD COLUMN added_on TEXT');
+        }
+        _db.execute('PRAGMA user_version = 14');
+      });
     }
     // Re-run the text migration for version 15 installs too: that version
     // only converted measurement marks, leaving dialogue quotes straight.
@@ -348,16 +358,20 @@ extension on Store {
       });
     }
     if (version < 17) {
-      if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'done_at')) {
-        _db.execute('ALTER TABLE todos ADD COLUMN done_at TEXT');
-      }
-      _db.execute('PRAGMA user_version = 17');
+      transaction(() {
+        if (!_db.select('PRAGMA table_info(todos)').any((r) => r['name'] == 'done_at')) {
+          _db.execute('ALTER TABLE todos ADD COLUMN done_at TEXT');
+        }
+        _db.execute('PRAGMA user_version = 17');
+      });
     }
     if (version < 18) {
-      if (!_db.select('PRAGMA table_info(month_habits)').any((r) => r['name'] == 'days')) {
-        _db.execute('ALTER TABLE month_habits ADD COLUMN days TEXT');
-      }
-      _db.execute('PRAGMA user_version = 18');
+      transaction(() {
+        if (!_db.select('PRAGMA table_info(month_habits)').any((r) => r['name'] == 'days')) {
+          _db.execute('ALTER TABLE month_habits ADD COLUMN days TEXT');
+        }
+        _db.execute('PRAGMA user_version = 18');
+      });
     }
     // Version 19 moved every ritual to weekdays only while weekends were
     // rest days, and a build that dropped ritual days entirely took version
@@ -431,18 +445,20 @@ extension on Store {
       });
     }
     if (version < 26) {
-      _db.execute('''
-        -- What a day start moved on this computer, field by field: the
-        -- value it left, which sync doesn't send as an edit.
-        CREATE TABLE IF NOT EXISTS sync_local (
-          kind TEXT NOT NULL,
-          rowkey TEXT NOT NULL,
-          field TEXT NOT NULL,
-          value TEXT NOT NULL,
-          PRIMARY KEY (kind, rowkey, field)
-        ) WITHOUT ROWID;
-        PRAGMA user_version = 26;
-      ''');
+      transaction(() {
+        _db.execute('''
+          -- What a day start moved on this computer, field by field: the
+          -- value it left, which sync doesn't send as an edit.
+          CREATE TABLE IF NOT EXISTS sync_local (
+            kind TEXT NOT NULL,
+            rowkey TEXT NOT NULL,
+            field TEXT NOT NULL,
+            value TEXT NOT NULL,
+            PRIMARY KEY (kind, rowkey, field)
+          ) WITHOUT ROWID;
+          PRAGMA user_version = 26;
+        ''');
+      });
     }
     if (version < 27) {
       transaction(() {
@@ -572,6 +588,18 @@ extension on Store {
           _db.execute('ALTER TABLE todos ADD COLUMN note TEXT');
         }
         _db.execute('PRAGMA user_version = 35');
+      });
+    }
+    if (version < 36) {
+      transaction(() {
+        // Deleting a todo_history row (for example when undoing a task
+        // deletion) must reach sync too.
+        _db.execute(
+          'CREATE TRIGGER IF NOT EXISTS todo_history_delete AFTER DELETE ON todo_history BEGIN '
+          "INSERT INTO sync_dirty VALUES ('todo_history', OLD.day || '/' || OLD.uid, ${Store._now}) "
+          'ON CONFLICT (kind, rowkey) DO UPDATE SET at = excluded.at; END',
+        );
+        _db.execute('PRAGMA user_version = 36');
       });
     }
 

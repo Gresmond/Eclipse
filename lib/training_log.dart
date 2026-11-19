@@ -58,14 +58,18 @@ class TrainingLog {
   /// The day being logged or edited; null for today.
   DateTime? day;
 
-  late TrainingAxis axis = TrainingAxis.values.asNameMap()[store.setting('trainingAxis')] ?? TrainingAxis.kg;
-  late TrainingLayout layout = TrainingLayout.values.asNameMap()[store.setting('trainingLayout')] ?? TrainingLayout.all;
-  late TrainingRange range = TrainingRange.values.asNameMap()[store.setting('trainingRange')] ?? TrainingRange.quarter;
+  TrainingAxis axis = TrainingAxis.kg;
+  TrainingLayout layout = TrainingLayout.all;
+  TrainingRange range = TrainingRange.quarter;
 
   /// Exercise uids and muscle group names hidden from the chart.
-  late Set<String> hidden = {...?store.setting('trainingHidden')?.split(',').where((s) => s.isNotEmpty)};
+  Set<String> hidden = {};
 
   void reload() {
+    axis = TrainingAxis.values.asNameMap()[store.setting('trainingAxis')] ?? TrainingAxis.kg;
+    layout = TrainingLayout.values.asNameMap()[store.setting('trainingLayout')] ?? TrainingLayout.all;
+    range = TrainingRange.values.asNameMap()[store.setting('trainingRange')] ?? TrainingRange.quarter;
+    hidden = {...?store.setting('trainingHidden')?.split(',').where((s) => s.isNotEmpty)};
     exercises = store.exercises();
     _byUid = {for (final e in exercises) e.uid: e};
     _sets = store.trainingSets();

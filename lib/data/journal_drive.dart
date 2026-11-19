@@ -126,12 +126,23 @@ class JournalFolder {
         await _save();
         await drive.bin(duplicate);
       } else {
-        // Files and year folders deleted in Drive are forgotten, to be
-        // written again below.
+        // Files and year folders deleted or changed in Drive are forgotten or
+        // refreshed with Drive's current checksum so reverted edits re-upload.
         final (files, years) = await drive.listJournal(folder);
         _years.removeWhere((year, id) => years[year] != id);
-        final there = {for (final MapEntry(key: path, value: (id, _)) in files.entries) ?_dayOf(path): id};
-        _up.removeWhere((day, file) => (file as List)[0] != '' && there[day] != file[0]);
+        final there = <String, (String, String)>{};
+        for (final MapEntry(key: path, value: file) in files.entries) {
+          if (_dayOf(path) case final day?) there[day] = file;
+        }
+        for (final day in _up.keys.toList()) {
+          final had = _up[day] as List;
+          final remote = there[day];
+          if (remote == null) {
+            if (had[0] != '') _up.remove(day);
+          } else if (had[0] != remote.$1 || had[1] != remote.$2) {
+            _up[day] = [remote.$1, remote.$2];
+          }
+        }
         _config['journalChecked'] = _now().toIso8601String();
         await _save();
       }

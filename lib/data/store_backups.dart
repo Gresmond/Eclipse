@@ -38,9 +38,11 @@ extension StoreBackups on Store {
         await _db.backup(original, nPage: -1).drain<void>();
         try {
           await staged.raw.backup(_db, nPage: -1).drain<void>();
+          automatic?.reset();
           _readAll();
         } catch (_) {
           await original.backup(_db, nPage: -1).drain<void>();
+          automatic?.reset();
           rethrow;
         }
       } finally {
@@ -54,6 +56,24 @@ extension StoreBackups on Store {
         staged.close();
       }
     }
+  }
+
+  /// Replaces the database verbatim with the copy at [path], used to roll
+  /// back a failed restore without re-merging journals or marking rows dirty.
+  Future<void> replaceRawFrom(String path) async {
+    final source = sqlite3.open(path, mode: OpenMode.readOnly);
+    try {
+      await source.backup(_db, nPage: -1).drain<void>();
+      automatic?.reset();
+    } finally {
+      source.close();
+    }
+  }
+
+  /// Validates every table, field, and reader over this database.
+  void validate() {
+    _validate();
+    _readAll();
   }
 
   void _prepareRestore(Store target) {
@@ -147,6 +167,9 @@ extension StoreBackups on Store {
     if (_db.select('PRAGMA foreign_key_check').isNotEmpty ||
         _db.select('SELECT 1 FROM entries WHERE status NOT BETWEEN 0 AND 3 LIMIT 1').isNotEmpty ||
         _db.select('SELECT 1 FROM habits WHERE uid IS NULL LIMIT 1').isNotEmpty ||
+        _db
+            .select("SELECT 1 FROM month_habits WHERE typeof(position) != 'integer' OR position < 0 LIMIT 1")
+            .isNotEmpty ||
         _db
             .select(
               "SELECT 1 FROM todos WHERE uid IS NULL OR scope NOT IN ('today', 'tomorrow', 'week', 'month') OR done NOT IN (0, 1) "

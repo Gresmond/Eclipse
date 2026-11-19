@@ -8,14 +8,24 @@ import { onRequestGet as start } from '../../functions/api/auth/start.js';
 import { onRequestGet as session } from '../../functions/api/session.js';
 import { onRequestPost as signout } from '../../functions/api/signout.js';
 import { onRequestPost as token } from '../../functions/api/token.js';
-import { seal, sessionCookie } from '../../functions/_session.js';
+import {
+  seal,
+  sessionCookie,
+  SESSION_PURPOSE,
+  SIGN_IN_PURPOSE,
+  stateCookie,
+} from '../../functions/_session.js';
 
 const env = { GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'secret', COOKIE_KEY: 'a test key' };
 const origin = 'https://eclipse.example';
 const realFetch = globalThis.fetch;
 afterEach(() => (globalThis.fetch = realFetch));
 
-const idToken = (claims) => `x.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.y`;
+const futureExp = () => Math.floor(Date.now() / 1000) + 3600;
+const idToken = (claims) =>
+  `x.${Buffer.from(
+    JSON.stringify({ iss: 'https://accounts.google.com', aud: env.GOOGLE_CLIENT_ID, exp: futureExp(), ...claims }),
+  ).toString('base64url')}.y`;
 const nameValue = (setCookie) => setCookie.split(';')[0];
 const request = (path, init = {}) => new Request(`${origin}${path}`, init);
 
@@ -136,9 +146,104 @@ test('Google being unreachable isn’t signing out', async () => {
   assert.equal(reply.headers.get('Set-Cookie'), null);
 });
 
-test('signing out ends the session, only from Eclipse’s own pages', async () => {
+test('signing out ends the session, revokes the refresh token, and only from Eclipse’s own pages', async () => {
   const away = await signout({ request: request('/api/signout', { method: 'POST', headers: { Origin: 'https://x.y' } }) });
   assert.equal(away.status, 403);
   const reply = await signout({ request: request('/api/signout', { method: 'POST', headers: { Origin: origin } }) });
   assert.match(reply.headers.get('Set-Cookie'), /Max-Age=0/);
+
+  const Cookie = await signedIn();
+  let revoked;
+  globalThis.fetch = async (url, init) => {
+    revoked = { url, token: init.body.get('token') };
+    return new Response(null, { status: 200 });
+  };
+  const withSession = await signout({
+    request: request('/api/signout', { method: 'POST', headers: { Cookie, Origin: origin } }),
+    env,
+  });
+  assert.equal(withSession.status, 200);
+  assert.match(withSession.headers.get('Set-Cookie'), /Max-Age=0/);
+  assert.deepEqual(revoked, { url: 'https://oauth2.googleapis.com/revoke', token: 'r1' });
+});
+
+test('missing server secrets fail closed with 500', async () => {
+  const noKey = { GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'secret' };
+  const noClient = { COOKIE_KEY: 'a test key', GOOGLE_CLIENT_ID: 'id' };
+  assert.equal((await start({ request: request('/api/auth/start'), env: noKey })).status, 500);
+  assert.equal((await start({ request: request('/api/auth/start'), env: noClient })).status, 500);
+  assert.equal((await callback({ request: request('/api/auth/callback'), env: noClient })).status, 500);
+  assert.equal((await session({ request: request('/api/session'), env: noKey })).status, 500);
+  assert.equal(
+    (await token({ request: request('/api/token', { method: 'POST', headers: { Origin: origin } }), env: noClient })).status,
+    500,
+  );
+});
+
+test('cookies cannot be swapped between sign-in state and session, nor used after expiry', async () => {
+  const signInSealed = await seal(env, { state: 's1', verifier: 'v1' }, SIGN_IN_PURPOSE);
+  const badSession = await session({
+    request: request('/api/session', { headers: { Cookie: nameValue(sessionCookie(signInSealed)) } }),
+    env,
+  });
+  assert.equal(badSession.status, 401);
+
+  const sessionSealed = await seal(env, { state: 's1', verifier: 'v1', refresh: 'r1' }, SESSION_PURPOSE);
+  const badCallback = await callback({
+    request: request('/api/auth/callback?code=c&state=s1', {
+      headers: { Cookie: nameValue(stateCookie(sessionSealed)) },
+    }),
+    env,
+  });
+  assert.equal(badCallback.headers.get('Location'), '/welcome.html?error=expired');
+
+  const expiredSession = await seal(
+    env,
+    { refresh: 'r1', email: 'a@b.c', id: '42', exp: Math.floor(Date.now() / 1000) - 10 },
+    SESSION_PURPOSE,
+  );
+  const expiredReply = await session({
+    request: request('/api/session', { headers: { Cookie: nameValue(sessionCookie(expiredSession)) } }),
+    env,
+  });
+  assert.equal(expiredReply.status, 401);
+});
+
+test('callback rejects OIDC tokens with wrong audience, wrong issuer, or expired exp', async () => {
+  for (const claims of [
+    { aud: 'wrong-client', email: 'a@b.c', sub: '1' },
+    { iss: 'https://evil.example', email: 'a@b.c', sub: '1' },
+    { exp: Math.floor(Date.now() / 1000) - 5, email: 'a@b.c', sub: '1' },
+    { email_verified: false, email: 'a@b.c', sub: '1' },
+  ]) {
+    const { state, cookie } = await begin();
+    globalThis.fetch = async () =>
+      Response.json({
+        refresh_token: 'r',
+        id_token: idToken(claims),
+        scope: 'openid https://www.googleapis.com/auth/drive.appdata',
+      });
+    const reply = await callback({
+      request: request(`/api/auth/callback?code=c&state=${state}`, { headers: { Cookie: cookie } }),
+      env,
+    });
+    assert.equal(reply.headers.get('Location'), '/welcome.html?error=google');
+    assert.equal(
+      reply.headers.getSetCookie().some((c) => c.startsWith('eclipse_session=')),
+      false,
+    );
+  }
+});
+
+test('API and auth responses carry hardening headers', async () => {
+  const Cookie = await signedIn();
+  const s = await session({ request: request('/api/session', { headers: { Cookie } }), env });
+  for (const [k, v] of [
+    ['Cache-Control', 'no-store'],
+    ['X-Content-Type-Options', 'nosniff'],
+    ['Referrer-Policy', 'no-referrer'],
+    ['Cross-Origin-Resource-Policy', 'same-origin'],
+  ]) {
+    assert.equal(s.headers.get(k), v);
+  }
 });

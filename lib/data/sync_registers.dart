@@ -72,16 +72,46 @@ class _Reg {
     return false;
   }
 
-  static final _monthKey = RegExp(r'^\d{4}-\d{1,2}$');
-  static bool _day(String s) => DateTime.tryParse(s) != null;
+  static final _monthKey = RegExp(r'^\d{4}-(0?[1-9]|1[0-2])$');
+  static bool _day(Object? s) {
+    if (s is! String) return false;
+    final day = DateTime.tryParse(s);
+    return day != null && dateKey(day) == s;
+  }
+
   static final _clock = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
   static bool _scope(String s) => TodoScope.values.any((scope) => scope.name == s);
 
+  static bool _validSubtasks(Object? encoded) {
+    if (encoded == null) return true; // Older snapshots have no subtasks.
+    if (encoded is! String) return false;
+    try {
+      final items = jsonDecode(encoded);
+      return items is List && items.every((item) => item is Map && item['text'] is String && item['done'] is bool);
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// A task as it stood on a day: what looking back at that day reads.
   static void _snapshot(String s) {
-    final json = jsonDecode(s) as Map;
-    if (!_scope(json['scope'] as String) || json['text'] is! String) throw const FormatException('Not a task');
-    TodoSubtask.decode(json['subtasks'] as String?);
+    final json = jsonDecode(s);
+    if (json is! Map ||
+        json['scope'] is! String ||
+        !_scope(json['scope'] as String) ||
+        json['text'] is! String ||
+        !_validSubtasks(json['subtasks']) ||
+        json['period'] is! String ||
+        !(_monthKey.hasMatch(json['period'] as String) || _day(json['period'])) ||
+        !_day(json['since']) ||
+        (json['due_date'] != null && !_day(json['due_date'])) ||
+        (json['due_time'] != null && (json['due_time'] is! String || !_clock.hasMatch(json['due_time'] as String))) ||
+        ![0, 1].contains(json['done']) ||
+        json['carried'] is! int ||
+        (json['carried'] as int) < 0 ||
+        json['deleted'] is! bool) {
+      throw const FormatException('Not a task');
+    }
   }
 
   /// Whether this version can write it into its row: a key of the kind's
@@ -116,14 +146,18 @@ class _Reg {
       ('todo', 'position') => v == null || v is int,
       ('todo', 'reminders') || ('todo_repeat', 'reminders') => v == null || v is int && v >= 0 && v <= 15,
       ('todo', 'text') || ('todo_repeat', 'text') => v == null || v is String,
-      ('todo', 'subtasks') || ('todo_repeat', 'subtasks') => readsAs(v, TodoSubtask.decode),
+      ('todo', 'subtasks') || ('todo_repeat', 'subtasks') => _validSubtasks(v),
+      ('month_habit', 'position') => v is int && v >= 0,
+      ('month_habit', 'name') => v is String,
+      ('month_habit', 'note') => v == null || v is String,
+      ('month_habit', 'added_on') => v == null || _day(v),
       ('month_habit', 'days') => readsAs(v, decodeDays),
       ('todo_history', 'snapshot') => readsAs(v, _snapshot),
       ('journal', 'text') => v is String,
       ('setting', 'value') || ('sleep_note', 'note') => v == null || v is String,
       ('todo_repeat', 'rule') => v is String && RepeatRule.decode(v) != null,
-      ('todo_repeat', 'start') => v is String && _day(v),
-      ('todo_repeat', 'until') => v == null || v is String && _day(v),
+      ('todo_repeat', 'start') => _day(v),
+      ('todo_repeat', 'until') => v == null || _day(v),
       ('todo', 'due_time') || ('todo_repeat', 'time') => v == null || v is String && _clock.hasMatch(v),
       // Any kind, as computers from before birthdays replaced categories send
       // others; only a birthday counts.
@@ -131,10 +165,11 @@ class _Reg {
       ('todo', 'location') || ('todo_repeat', 'location') || ('todo', 'note') => v == null || v is String,
       // Read as they are by Training: a set's day is parsed, and its place
       // and reps read as whole numbers.
-      ('training_set', 'day') => v is String && _day(v),
+      ('training_set', 'day') => _day(v),
       ('training_set', 'position') || ('training_set', 'reps') => v is int && v >= 0,
-      ('training_set', 'weight') => v == null || v is num,
-      ('training_set', 'exercise') || ('exercise', 'name') || ('exercise', 'muscle') => v is String,
+      ('training_set', 'weight') => v == null || v is num && v.isFinite && v >= 0,
+      ('training_set', 'exercise') || ('exercise', 'name') => v is String,
+      ('exercise', 'muscle') => v is String && MuscleGroup.named(v) != null,
       ('exercise', 'bodyweight') => v == 0 || v == 1,
       _ => v == null || v is num || v is String,
     };

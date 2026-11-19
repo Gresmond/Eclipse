@@ -9,7 +9,9 @@ Future<void> main(List<String> arguments) async {
     '--reporter=json',
     ...arguments,
   ]);
-  String escape(String s) => s.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+  String escapeData(String s) => s.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+  String escapeProperty(String s) =>
+      escapeData(s).replaceAll(':', '%3A').replaceAll(',', '%2C');
   var passed = 0;
   final names = <int, String>{};
   final output = process.stdout.transform(utf8.decoder).transform(const LineSplitter()).forEach((line) {
@@ -26,7 +28,7 @@ Future<void> main(List<String> arguments) async {
     } else if (event['type'] == 'error') {
       final message = event['error'].toString();
       final name = names[event['testID']] ?? 'Flutter test failure';
-      stderr.writeln('::error title=${escape(name)}::${escape(message)}');
+      stderr.writeln('::error title=${escapeProperty(name)}::${escapeData(message)}');
       stderr.writeln(event['stackTrace'] ?? '');
     } else if (event['type'] == 'testDone') {
       if (event['result'] == 'success') passed++;

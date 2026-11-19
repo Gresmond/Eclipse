@@ -313,7 +313,7 @@ class SyncService extends ChangeNotifier {
     try {
       await (() async {
         await _saving;
-        if (!isOn) return;
+        if (_stopped || !isOn) return;
         await _running;
         if (!_stopped && _changed) await run();
       })().timeout(const Duration(seconds: 5));
@@ -352,20 +352,23 @@ class SyncService extends ChangeNotifier {
   /// Looks in [account]'s Drive before turning sync on: true if another
   /// computer already keeps its data there, to join rather than start it.
   Future<bool> look(GoogleAccount account) async {
-    folder.disk.clear();
-    _config
-      ..remove('down')
-      ..remove('up')
-      ..remove('ids');
-    _drive = _connect(account.refreshToken);
-    final mine = await _pull(_drive!);
-    final there = {...folder.computers, if (mine.isNotEmpty) machine};
+    final drive = _connect(account.refreshToken);
+    final files = await drive.list();
+    final disk = folder.disk;
+    final there = <String>{};
+    var hasOthers = false;
+    for (final f in files) {
+      final (who, day) = _split(f.name) ?? (null, null);
+      if (who == null || day == null || !disk.holds(who, day)) continue;
+      there.add(who);
+      if (who != machine) hasOthers = true;
+    }
     _sharesHistoryWith =
         hasSynced &&
             store.raw.select('SELECT DISTINCT origin FROM sync_reg').any((r) => there.contains(r['origin'] as String))
         ? account.identity
         : null;
-    return folder.hasOthers;
+    return hasOthers;
   }
 
   /// Turns sync on with [account], after [look]. Joining replaces what's on
@@ -378,8 +381,20 @@ class SyncService extends ChangeNotifier {
       throw const DriveError('Choose whether to use this account’s data or transfer your local data first.');
     }
     beforeMerge?.call();
+    if (join) beforeJoin?.call();
+    folder.disk.clear();
+    _config
+      ..remove('down')
+      ..remove('up')
+      ..remove('ids');
+    _drive = _connect(account.refreshToken);
+    try {
+      await _pull(_drive!);
+    } catch (_) {
+      if (!isOn) _drive = null;
+      rethrow;
+    }
     if (join) {
-      beforeJoin?.call();
       // Nothing here goes until the others' history is all taken in: a file
       // this version can't read leaves this computer as it was.
       late final List<String> days;
@@ -481,10 +496,12 @@ class SyncService extends ChangeNotifier {
   Future<Map<String, String>> _pull(SyncDrive drive) async {
     final down = _seen('down'), ids = _seen('ids'), mine = <String, String>{};
     final files = await drive.list(), seen = <String, dynamic>{}, copies = <String, int>{};
+    if (_stopped) return mine;
     for (final f in files) {
       copies[f.name] = (copies[f.name] ?? 0) + 1;
     }
     for (final f in files) {
+      if (_stopped) return mine;
       final (who, day) = _split(f.name) ?? (null, null);
       if (who == null || day == null) continue;
       // Two files of one name (Drive's list lagged behind a new one): each
@@ -500,12 +517,14 @@ class SyncService extends ChangeNotifier {
         continue;
       }
       final bytes = await drive.download(f.id);
+      if (_stopped) return mine;
       try {
         jsonDecode(utf8.decode(bytes));
       } on FormatException {
         continue; // cut short: fetched again next round
       }
       await disk.writeBytes(who, name, bytes);
+      if (_stopped) return mine;
       if (who != machine) seen[f.id] = f.modified;
     }
     // By id, as names can repeat; files gone from Drive are forgotten.
@@ -519,6 +538,7 @@ class SyncService extends ChangeNotifier {
     final up = _seen('up'), ids = _seen('ids');
     final disk = folder.disk;
     for (final f in disk.files()) {
+      if (_stopped) return;
       if (f.who != machine || f.name.contains('~')) continue;
       final name = '${machine}_${f.name}';
       final stamp = disk.stamp(f.key);
@@ -532,6 +552,7 @@ class SyncService extends ChangeNotifier {
         if (!e.notFound || id == null) rethrow;
         made = await drive.upload(name, bytes); // deleted from Drive: made again
       }
+      if (_stopped) return;
       _timed(sent, made.modified);
       ids[name] = made.id;
       up[name] = stamp;
@@ -596,6 +617,7 @@ class SyncService extends ChangeNotifier {
       // the others with edits this computer has lost.
       store.flushToDisk();
       await persist?.call();
+      if (_stopped) return;
       await folder.write(engine, _pushed);
       if (_stopped) return;
       await _push(drive, mine);
@@ -661,21 +683,27 @@ class SyncService extends ChangeNotifier {
       if (_config['copied'] != today) {
         // Checked and copied away from the UI.
         final copy = await offThread(store.raw, checkedCopyOf);
+        if (_stopped) return;
         if (copy == null) throw StateError('The database failed its check');
         final files = await drive.list();
+        if (_stopped) return;
         final name = 'backup_${machine}_$today.db';
         final had = files.where((f) => f.name == name).firstOrNull;
         await drive.upload(name, copy, id: had?.id);
+        if (_stopped) return;
         final mine = [
           for (final f in files)
             if (_copyName.firstMatch(f.name) case final m? when m[1] == machine && m[2] != 'before-restore') f,
         ]..sort((a, b) => b.name.compareTo(a.name));
         // Today's is new when none had its name.
         for (final old in mine.skip(had == null ? _keepCopies - 1 : _keepCopies)) {
+          if (_stopped) return;
           await (drive as CopiesDrive).delete(old.id);
         }
+        if (_stopped) return;
         _config['copied'] = today;
         await _save();
+        if (_stopped) return;
       }
       afterDriveCopy?.call();
     } catch (e) {
@@ -794,7 +822,18 @@ class _FileSettings implements SyncSettings {
   @override
   void keepDamaged() {
     try {
-      _file.copySync('${_file.path}.damaged');
+      if (!_file.existsSync()) return;
+      final raw = _file.readAsStringSync();
+      final redacted = raw.replaceAll(RegExp(r'("refresh"\s*:\s*)"(?:[^"\\]|\\.)*"'), r'$1"<redacted>"');
+      replaceSafelySync('${_file.path}.damaged', (part) {
+        part.writeAsStringSync('');
+        final result = Process.runSync('chmod', ['600', part.path]);
+        if (result.exitCode != 0) {
+          if (part.existsSync()) part.deleteSync();
+          throw FileSystemException('Cannot protect damaged sync settings', part.path);
+        }
+        part.writeAsStringSync(redacted, flush: true);
+      });
     } on FileSystemException {
       // Nothing to keep.
     }
