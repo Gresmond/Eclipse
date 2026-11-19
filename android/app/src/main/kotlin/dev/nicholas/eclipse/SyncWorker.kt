@@ -41,9 +41,6 @@ object PhoneRuntime {
                 } catch (e: IllegalStateException) {
                     result.error("schedule", e.message, null)
                 }
-            } else if (call.method == "widget") {
-                TodayWidget.publish(context.applicationContext, call.arguments as String)
-                result.success(null)
             } else result.notImplemented()
         }
         engine = created
@@ -57,24 +54,6 @@ object PhoneRuntime {
             engine = null
             ready = CompletableDeferred()
         }
-    }
-
-    suspend fun capture(context: Context, text: String) {
-        check(withTimeoutOrNull(30_000) { ready.await(); true } == true) { "Eclipse couldn’t start. Try opening Eclipse." }
-        val saved = CompletableDeferred<Unit>()
-        channel.invokeMethod("captureTask", text, object : MethodChannel.Result {
-            override fun success(result: Any?) {
-                // The task is committed. A scheduling failure must never ask the user to save it twice.
-                runCatching { if (result is String) Reminders.schedule(context, result) }
-                runCatching { SyncWorker.syncAfterCapture(context) }
-                saved.complete(Unit)
-            }
-            override fun error(code: String, message: String?, details: Any?) {
-                saved.completeExceptionally(IllegalStateException(message ?: "Couldn’t add task"))
-            }
-            override fun notImplemented() { saved.completeExceptionally(IllegalStateException("Quick add unavailable")) }
-        })
-        saved.await()
     }
 
     suspend fun sync(context: Context, input: Data): Boolean = mutex.withLock {
@@ -115,13 +94,6 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         fun act(context: Context, data: Data) {
             val work = OneTimeWorkRequestBuilder<SyncWorker>().setInputData(data).build()
             WorkManager.getInstance(context).enqueueUniqueWork("eclipse-actions", ExistingWorkPolicy.APPEND_OR_REPLACE, work)
-        }
-
-        fun syncAfterCapture(context: Context) {
-            val work = OneTimeWorkRequestBuilder<SyncWorker>()
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .build()
-            WorkManager.getInstance(context).enqueueUniqueWork("eclipse-capture-sync", ExistingWorkPolicy.APPEND_OR_REPLACE, work)
         }
 
         fun schedule(context: Context) {

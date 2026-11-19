@@ -68,7 +68,7 @@ class _DatedAddState extends State<_DatedAdd> {
       final parsed = parseQuickTask(_controller.text, state.today);
       if (parsed.day case final day?) {
         final (scope, due) = scopeForDay(state.today, day);
-        state.addTodo(scope, parsed.name, dueDate: due, time: parsed.minutes, location: parsed.location);
+        state.quickAddTodo(scope, _controller.text, dueDate: due);
         _controller.clear();
         _focus.requestFocus();
         return;
@@ -150,14 +150,16 @@ class _AddTaskState extends State<_AddTask> {
     final text = _controller.text;
     if (text.trim().isEmpty) return _focus.requestFocus();
     if (widget.past case final past?) {
-      final parsed = state.smartAdd ? parseQuickTask(text, past) : null;
+      final parsed = state.smartAdd ? parseQuickTask(text, past, defaultDay: widget.day) : null;
       final day = parsed?.day ?? widget.day;
-      if (parsed?.day != null && day.isAfter(state.today)) {
+      if (parsed?.repeat case final rule?) {
+        state.addRepeat(parsed!.name, rule, day, until: parsed.until, time: parsed.minutes, location: parsed.location, reminders: parsed.reminders);
+      } else if (parsed?.day != null && day.isAfter(state.today)) {
         final (scope, due) = scopeForDay(state.today, day);
-        state.addTodo(scope, parsed!.name, dueDate: due, time: parsed.minutes, location: parsed.location);
+        state.addTodo(scope, parsed!.name, dueDate: due, time: parsed.minutes, location: parsed.location, reminders: parsed.reminders);
       } else {
         state.addTodo(day == past ? TodoScope.today : TodoScope.tomorrow, parsed?.name ?? text,
-            day: past, time: parsed?.minutes, location: parsed?.location);
+            day: past, time: parsed?.minutes, location: parsed?.location, reminders: parsed?.reminders ?? 0);
       }
     } else {
       switch (_choice) {

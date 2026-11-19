@@ -67,13 +67,19 @@ mixin _Todos on ChangeNotifier {
 
   bool get smartAdd;
 
-  void quickAddTodo(TodoScope scope, String text, {DateTime? dueDate, int? time, bool birthday = false, int reminders = 0, String? location, bool? smart}) {
-    if ((smart ?? smartAdd) && !birthday) {
-      final parsed = parseQuickTask(text, today);
+  void quickAddTodo(TodoScope scope, String text, {DateTime? dueDate, int? time, bool birthday = false, int reminders = 0, String? location}) {
+    if (smartAdd && !birthday) {
+      final defaultDay = dueDate ?? (scope == TodoScope.tomorrow ? DateTime(today.year, today.month, today.day + 1) : today);
+      final parsed = parseQuickTask(text, today, defaultDay: defaultDay, defaultTime: time);
       text = parsed.name;
       if (parsed.day case final day?) { (scope, dueDate) = scopeForDay(today, day); }
       time ??= parsed.minutes;
       location ??= parsed.location;
+      reminders |= parsed.reminders;
+      if (parsed.repeat case final rule?) {
+        addRepeat(text, rule, parsed.day!, until: parsed.until, time: time, location: location, reminders: reminders);
+        return;
+      }
     }
     addTodo(scope, text, dueDate: dueDate, time: time, birthday: birthday, reminders: reminders, location: location);
   }

@@ -221,7 +221,7 @@ extension StoreTodos on Store {
   }
 
   /// A stored set of reminders, or none for anything else.
-  static int _bits(Object? value) => value is int ? value & 15 : 0;
+  static int _bits(Object? value) => value is int ? value & 31 : 0;
 
   /// A stored place among a day's tasks, or none for anything else.
   static int? _position(Object? value) => value is int ? value : null;

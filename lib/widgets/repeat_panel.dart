@@ -616,6 +616,7 @@ class _NotifyRow extends StatelessWidget {
   static String _chip(Reminder r, bool birthday) => switch (r) {
     Reminder.dayBefore => birthday ? 'Day before' : '1 day',
     Reminder.hourBefore => '1 hour',
+    Reminder.twentyBefore => '20 min',
     Reminder.quarterBefore => '15 min',
     Reminder.onTheDay => 'On the day',
   };

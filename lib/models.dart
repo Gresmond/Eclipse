@@ -292,19 +292,20 @@ bool isBirthday(Object? kind) => kind == 'birthday';
 String? birthdayKind(bool birthday) => birthday ? 'birthday' : null;
 
 /// A reminder a task gives, as its bit in [TodoItem.reminders]. A timed
-/// task offers the first three; a birthday, which has no time, the day
+/// task offers the timed offsets; a birthday, which has no time, the day
 /// before and on the day, both at [birthdayHour].
 enum Reminder {
   dayBefore(1),
   hourBefore(2),
   quarterBefore(4),
-  onTheDay(8);
+  onTheDay(8),
+  twentyBefore(16);
 
   const Reminder(this.bit);
 
   final int bit;
 
-  static const timed = [dayBefore, hourBefore, quarterBefore];
+  static const timed = [dayBefore, hourBefore, twentyBefore, quarterBefore];
   static const forBirthday = [dayBefore, onTheDay];
 
   /// When a birthday's reminders go off.
@@ -322,7 +323,7 @@ enum Reminder {
       bits &
       (birthday
           ? dayBefore.bit | onTheDay.bit
-          : (time == null ? 0 : dayBefore.bit | hourBefore.bit | quarterBefore.bit));
+          : (time == null ? 0 : dayBefore.bit | hourBefore.bit | twentyBefore.bit | quarterBefore.bit));
 
   /// Those of [timed] already past, as of [now], for a one-off task on
   /// [day] at [time]; none without a [day], as for a repeating task, whose
@@ -355,6 +356,7 @@ enum Reminder {
     return switch (this) {
       dayBefore => DateTime(y, m, d - 1, 0, time),
       hourBefore => DateTime(y, m, d, 0, time).subtract(const Duration(hours: 1)),
+      twentyBefore => DateTime(y, m, d, 0, time).subtract(const Duration(minutes: 20)),
       quarterBefore => DateTime(y, m, d, 0, time).subtract(const Duration(minutes: 15)),
       onTheDay => DateTime(y, m, d, 0, time),
     };

@@ -5,7 +5,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -77,7 +76,7 @@ object ReminderPlanner {
                     title = reminder.getString("title"),
                     body = reminder.getString("body"),
                     key = reminder.getString("key"),
-                    account = reminder.optString("account", ""),
+                    account = if (reminder.isNull("account")) "" else reminder.getString("account"),
                 ),
             )
         }
@@ -101,10 +100,10 @@ object Reminders {
     fun schedule(context: Context, json: String) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val alarms = context.getSystemService(AlarmManager::class.java)
+        val planned = ReminderPlanner.plan(json, System.currentTimeMillis())
         for (i in 0 until prefs.getInt(COUNT, 0)) {
             alarms.cancel(pending(context, i, null))
         }
-        val planned = ReminderPlanner.plan(json, System.currentTimeMillis())
         var set = 0
         for (item in planned) {
             val intent = pending(context, set, item)
@@ -156,21 +155,13 @@ object Reminders {
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
-        if (action == "next") {
-            val id = intent.getIntExtra("widget", 0)
-            val prefs = context.getSharedPreferences("widget", Context.MODE_PRIVATE)
-            prefs.edit().putInt("page$id", prefs.getInt("page$id", 0) + 1).apply()
-            TodayWidget.draw(context, AppWidgetManager.getInstance(context), id)
-            return
-        }
-        if (action in setOf("task", "ritual", "done", "snooze")) {
+        if (action in setOf("done", "snooze")) {
             val key = intent.getStringExtra("key") ?: return
             SyncWorker.act(
                 context,
                 workDataOf(
                     "key" to key,
                     "action" to action,
-                    "day" to intent.getStringExtra("day"),
                     "account" to intent.getStringExtra("account"),
                 ),
             )
@@ -179,6 +170,7 @@ class ReminderReceiver : BroadcastReceiver() {
             }
             return
         }
+        if (action != null || !intent.hasExtra("id")) return
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(Reminders.CHANNEL, "Reminders", NotificationManager.IMPORTANCE_HIGH),
@@ -215,6 +207,9 @@ class ReminderReceiver : BroadcastReceiver() {
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            context.deleteSharedPreferences("widget")
+        }
         if (ReminderPlanner.shouldRestore(intent.action)) Reminders.restore(context)
     }
 }

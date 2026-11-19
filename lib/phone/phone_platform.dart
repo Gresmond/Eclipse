@@ -9,8 +9,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../app_state.dart';
-import '../models.dart';
-import '../data/app_log.dart';
 import '../data/http_request.dart' show downloadFile;
 import '../data/updates.dart' show ReleaseFetch, ReleaseUpdater, fetchReleaseBytes, isNewer;
 
@@ -23,22 +21,6 @@ class PhonePlatform {
       final sync = state.sync;
       state.checkDate();
       final activeSync = sync != null && sync.isOn;
-      if (call.method == 'captureTask') {
-        if (sync != null && !activeSync) throw StateError('Open Eclipse and sign in to add a task.');
-        final text = (call.arguments as String).trim();
-        if (text.isEmpty) throw ArgumentError('Enter a task name.');
-        state.store.transaction(() => state.quickAddTodo(TodoScope.today, text, smart: true));
-        state.store.flushToDisk();
-        // The task is already committed. Keep a launcher or alarm refresh
-        // failure from turning Save into a duplicate on the next tap.
-        try {
-          await publishWidget(state);
-          return _alarms(state);
-        } catch (error, stack) {
-          AppLog.failure('Refreshing the widget after adding a task', error, stack);
-          return null;
-        }
-      }
       if (call.method == 'action') {
         final args = call.arguments as Map;
         final key = args['key'] as String, action = args['action'] as String;
@@ -46,48 +28,17 @@ class PhonePlatform {
         final matchesAccount = activeSync ? account == sync.email : (account == null || account.isEmpty);
         if (action == 'snooze' || action == 'done') {
           if (matchesAccount) state.notificationAction(key, action);
-        } else if (args['day'] == dateKey(state.today) && matchesAccount) {
-          if (action == 'task') {
-            final task = state.orderedTodos(TodoScope.today).where((t) => t.uid == key && !t.done).firstOrNull;
-            if (task != null) state.toggleTodo(task);
-          } else if (action == 'ritual') {
-            final habit = state.habits.where((h) => '${h.id}' == key && h.onDay(state.today)).firstOrNull;
-            if (habit != null && state.statusOf(state.today, habit) != HabitStatus.done) {
-              state.selectStatus(state.today, habit, HabitStatus.done);
-            }
-          }
         }
       } else if (call.method != 'sync') {
         throw MissingPluginException();
       }
       state.saveDrafts();
-      await publishWidget(state);
       if (!activeSync) return _alarms(state);
       await sync.run();
       if (sync.error != null && call.method == 'sync') throw StateError(sync.error!);
-      await publishWidget(state);
       return _alarms(state);
     });
     await _background.invokeMethod<void>('ready');
-  }
-
-  static Future<void> publishWidget(AppState state) async {
-    final sync = state.sync;
-    final rows = [
-      for (final h in state.habits)
-        if (h.onDay(state.today) && h.startedBy(state.today) && state.statusOf(state.today, h) != HabitStatus.done)
-          {'action': 'ritual', 'key': '${h.id}', 'text': h.name},
-      for (final t in state.orderedTodos(TodoScope.today))
-        if (!t.done && t.uid != null) {'action': 'task', 'key': t.uid, 'text': t.text},
-    ];
-    try {
-      await _background.invokeMethod<void>(
-        'widget',
-        jsonEncode({'day': dateKey(state.today), 'account': sync?.email, 'rows': rows}),
-      );
-    } on MissingPluginException {
-      /* No launcher in tests. */
-    }
   }
 
   static const _channel = MethodChannel('eclipse/phone');

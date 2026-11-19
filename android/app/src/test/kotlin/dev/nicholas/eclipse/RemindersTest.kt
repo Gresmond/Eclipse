@@ -11,6 +11,12 @@ import java.time.ZoneId
 
 class RemindersTest {
     @Test
+    fun aLocalReminderWithAnExplicitNullAccountStillMatchesTheLocalAccount() {
+        val json = """[{"key":"r","at":1000,"title":"Train","body":"Soon","account":null}]"""
+        assertEquals("", ReminderPlanner.plan(json, 0).single().account)
+    }
+
+    @Test
     fun shouldRestoreMatchesBootUpdateTimezoneAndTimeSet() {
         assertTrue(ReminderPlanner.shouldRestore(Intent.ACTION_BOOT_COMPLETED))
         assertTrue(ReminderPlanner.shouldRestore(Intent.ACTION_MY_PACKAGE_REPLACED))

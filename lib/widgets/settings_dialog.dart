@@ -360,7 +360,7 @@ extension on _SettingsDialogState {
                   onTap: () => state.setRestWeekends(!state.restWeekends),
                 ),
                 const FadeMenuDivider(),
-                SettingSwitchRow(title: 'Smart quick-add', subtitle: 'Read a day, time and @place from a task name.', on: state.smartAdd, onTap: () => state.setSmartAdd(!state.smartAdd)),
+                SettingSwitchRow(title: 'Smart quick-add', subtitle: 'Read schedules and places from phrases like “tomorrow at 3pm at the library”.', on: state.smartAdd, onTap: () => state.setSmartAdd(!state.smartAdd)),
                 SettingSwitchRow(title: 'Daily focus', subtitle: 'Pin one task on Today.', on: state.focusEnabled, onTap: () => state.setFocusEnabled(!state.focusEnabled)),
                 const HolidaysRow(),
                 const FadeMenuDivider(),

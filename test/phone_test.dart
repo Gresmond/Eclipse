@@ -12,8 +12,6 @@ import 'package:eclipse/widgets/rolling_number.dart';
 import 'package:eclipse/widgets/tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/services.dart';
-import 'package:eclipse/phone/phone_platform.dart';
 
 void main() {
   (Store, AppState) make() {
@@ -34,26 +32,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('widget capture writes a normal Eclipse task even with in-app parsing switched off', (tester) async {
-    final (store, state) = make();
-    state.setSmartAdd(false);
-    const channel = MethodChannel('eclipse/background');
-    final messenger = tester.binding.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(channel, (_) async => null);
-    addTearDown(() {
-      messenger.setMockMethodCallHandler(channel, null);
-      channel.setMethodCallHandler(null);
-    });
-    await PhonePlatform.enableBackgroundSync(state);
-    await messenger.handlePlatformMessage(
-      channel.name,
-      channel.codec.encodeMethodCall(const MethodCall('captureTask', 'Call Marge Simpson due on Friday 13th at 7:35 pm')),
-      (reply) => channel.codec.decodeEnvelope(reply!),
-    );
-    final task = store.todos(TodoScope.week, TodoScope.week.period(state.today)).singleWhere((t) => t.text == 'Call Marge Simpson');
-    expect((task.dueDate, task.dueTime), (DateTime(2026, 11, 13), 1175));
-  });
-
   testWidgets('phone draws while opening storage and offers retry if storage is unavailable', (tester) async {
     final directory = Completer<Directory>();
     final startup = phoneMain(supportDirectory: () => directory.future);
@@ -64,6 +42,22 @@ void main() {
     await tester.pump();
     expect(tester.widget<StartupErrorApp>(find.byType(StartupErrorApp)).onRetry, isNotNull);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('in-app capture previews and saves a timed recurring task', (tester) async {
+    final (store, state) = make();
+    await show(tester, state);
+    await tester.tap(find.byTooltip('Add task'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Train every Monday at 8pm at Gym and remind me 20 minutes before');
+    await tester.pump();
+    expect(find.textContaining('Gym · Every Mon · Remind Mon 9 Nov at 7:40 pm'), findsOneWidget);
+    await tester.tap(find.byTooltip('Add'));
+    await tester.pumpAndSettle();
+    final series = store.repeats().single;
+    expect((series.text, series.start, series.time), ('Train', DateTime(2026, 11, 9), 1200));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
   });
 
   testWidgets('tapping a ritual goes round its marks', (tester) async {

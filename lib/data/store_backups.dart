@@ -176,7 +176,7 @@ extension StoreBackups on Store {
             .select(
               "SELECT 1 FROM todos WHERE uid IS NULL OR scope NOT IN ('today', 'tomorrow', 'week', 'month') OR done NOT IN (0, 1) "
               "OR (position IS NOT NULL AND typeof(position) != 'integer') "
-              "OR (reminders IS NOT NULL AND (typeof(reminders) != 'integer' OR reminders NOT BETWEEN 0 AND 15)) LIMIT 1",
+              "OR (reminders IS NOT NULL AND (typeof(reminders) != 'integer' OR reminders NOT BETWEEN 0 AND 31)) LIMIT 1",
             )
             .isNotEmpty ||
         _db.select('SELECT 1 FROM sleep_habits').length != SleepItem.values.length ||

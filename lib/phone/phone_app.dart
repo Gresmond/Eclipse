@@ -20,6 +20,7 @@ import '../data/google_drive.dart';
 import '../data/store.dart';
 import '../data/sync_service.dart';
 import '../models.dart';
+import '../smart_add.dart';
 import '../screens/startup_error.dart';
 import '../screens/today_view.dart' show JournalCard;
 import '../screens/training_view.dart' show AddSessionExercise;
@@ -141,7 +142,7 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   final _home = GlobalKey<_PhoneHomeState>();
   final _navigator = GlobalKey<NavigatorState>();
   Timer? _scheduling, _dateTimer;
-  Object? _reminderKey, _widgetKey;
+  Object? _reminderKey;
   bool _scheduleDirty = false;
 
   Object _currentReminderKey() => (
@@ -173,7 +174,6 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
       old.state.removeListener(_onStateChanged);
       old.state.sync?.removeListener(_onStateChanged);
       _state.sync?.addListener(_onStateChanged);
-      _widgetKey=null;
       _state.addListener(_onStateChanged);
       _reminderKey = _currentReminderKey();
       _scheduleDirty = true;
@@ -199,11 +199,6 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   }
 
   void _onStateChanged() {
-    final widgetKey = (_state.today, _state.todosRevision, _state.entriesRevision, _state.habitsRevision, _state.sync?.email);
-    if (_widgetKey != widgetKey) {
-      _widgetKey = widgetKey;
-      unawaited(PhonePlatform.publishWidget(_state));
-    }
     final key = _currentReminderKey();
     if (key == _reminderKey) return;
     _reminderKey = key;
@@ -994,6 +989,29 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
             ),
             onSubmitted: (_) => _save(),
           ),
+          if (AppScope.read(context).smartAdd)
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _name,
+              builder: (context, value, _) {
+                final parsed = parseQuickTask(value.text, today, defaultDay: _day);
+                if (parsed.name == value.text.trim()) return const SizedBox.shrink();
+                final day = parsed.day ?? _day;
+                final time = parsed.minutes;
+                final actualDay = afterMidnight(time, AppScope.read(context).dayStartHour)
+                    ? DateTime(day.year, day.month, day.day + 1)
+                    : day;
+                final details = [
+                  shortDay(actualDay, today: today),
+                  if (time != null) clockLabel(time),
+                  ?parsed.location,
+                  if (parsed.repeat case final rule?) rule.label,
+                  if (parsed.until case final end?) 'Until ${shortDay(end, today: today)}',
+                  for (final at in Reminder.of(parsed.reminders).map((r) => r.at(actualDay, time)))
+                    'Remind ${shortDay(at, today: today)} at ${clockLabel(at.hour * 60 + at.minute)}',
+                ];
+                return Text(details.join(' · '), style: _body(p, size: 13, colour: p.inkMuted));
+              },
+            ),
           const SizedBox(height: 8),
           Row(
             children: [

@@ -144,7 +144,7 @@ class _Reg {
       ('todo', 'done_at') => v == null || v is String && DateTime.tryParse(v) != null,
       ('todo', 'carried') => v == null || v is int && v >= 0,
       ('todo', 'position') => v == null || v is int,
-      ('todo', 'reminders') || ('todo_repeat', 'reminders') => v == null || v is int && v >= 0 && v <= 15,
+      ('todo', 'reminders') || ('todo_repeat', 'reminders') => v == null || v is int && v >= 0 && v <= 31,
       ('todo', 'text') || ('todo_repeat', 'text') => v == null || v is String,
       ('todo', 'subtasks') || ('todo_repeat', 'subtasks') => _validSubtasks(v),
       ('month_habit', 'position') => v is int && v >= 0,

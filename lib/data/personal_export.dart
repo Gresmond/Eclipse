@@ -75,11 +75,15 @@ String calendarExport(Store store, DateTime today, {required DateTime generated}
   }
   // The planner materializes only nearby repeats. Include the next timed
   // occurrence even when it falls beyond the current planning window.
-  final materialized = {for (final r in store.raw.select("SELECT uid FROM todos")) r['uid']};
+  final made = store.madeOccurrencesFrom(today);
+  final holidays = decodeHolidays(store.setting('holidays'));
   for (final repeat in store.repeats().where((r) => !r.birthday && r.time != null)) {
     var next = repeat.next(today);
-    while (next != null && materialized.contains('${repeat.uid}@${dateKey(next)}')) {
-      next = repeat.next(DateTime(next.year, next.month, next.day + 1));
+    while (next != null) {
+      final holiday = holidayOn(holidays, next);
+      if (holiday == null && !(made[repeat.uid]?.contains('${repeat.uid}@${dateKey(next)}') ?? false)) break;
+      final skipThrough = holiday?.end ?? next;
+      next = repeat.next(DateTime(skipThrough.year, skipThrough.month, skipThrough.day + 1));
     }
     if (next != null) {
       event('${repeat.uid}@${dateKey(next)}', repeat.text, next, repeat.time, location: repeat.location);

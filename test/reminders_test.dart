@@ -38,8 +38,8 @@ void main() {
     test('a time before a 4am day start is after midnight, still to come', () {
       // 1:30 am on today's list is tonight's small hours, 19 Nov.
       expect(Reminder.gone(today, 90, now, startHour: 4), day);
-      expect(Reminder.gone(today, 90, now), day | hour | quarter);
-      expect(Reminder.gone(today, 5 * 60, now, startHour: 4), day | hour | quarter);
+      expect(Reminder.gone(today, 90, now), day | hour | quarter | Reminder.twentyBefore.bit);
+      expect(Reminder.gone(today, 5 * 60, now, startHour: 4), day | hour | quarter | Reminder.twentyBefore.bit);
     });
 
     test('all chosen gone: 15 min stands in, or nothing', () {
