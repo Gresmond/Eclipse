@@ -13,7 +13,6 @@ import '../data/store.dart' show DatabaseTooNewException;
 import '../data/sync_service.dart';
 import '../data/updates.dart';
 import 'browser.dart';
-import '../widgets/drive_encryption.dart';
 import 'web_screens.dart';
 
 /// Built with no Eclipse server behind it, to look at locally: data stays in
@@ -199,13 +198,7 @@ Future<void> webMain({
     } else {
       runApp(const WebNotice(title: 'Bringing your data here', busy: true));
       try {
-        final others = await sync.look(account,unlock:() async {
-          final answer=Completer<String?>();
-          runApp(PassphrasePage(submit:(v){if(!answer.isCompleted)answer.complete(v);}));
-          final pass=await answer.future;
-          runApp(const WebNotice(title:'Bringing your data here',busy:true));
-          return pass;
-        });
+        final others = await sync.look(account);
         if (others && !sync.hasSynced) {
           await sync.turnOn(account, join: true);
         } else {

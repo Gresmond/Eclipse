@@ -1,5 +1,3 @@
-import '../widgets/drive_encryption.dart';
-import '../widgets/reflections.dart';
 import '../widgets/ritual_goal.dart';
 import '../widgets/workout_tools.dart';
 
@@ -29,7 +27,6 @@ import '../widgets/todo_panel.dart' show PhonePlan, TaskDetailsMenu;
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/app_dialog.dart';
-import '../widgets/daily_focus.dart';
 import '../widgets/holidays.dart';
 import '../widgets/search_glow.dart';
 import '../widgets/setting_rows.dart';
@@ -318,7 +315,7 @@ class _SignInPageState extends State<_SignInPage> {
       final GoogleAccount account = await sync.signIn(cancel: cancel.future);
       if (!mounted || cancel.isCompleted) return;
       unawaited(PhonePlatform.toFront());
-      final others = await sync.look(account,unlock:()=> mounted ? showDialog<String>(context:context,builder:(_)=>const PassphraseDialog()) : Future.value());
+      final others = await sync.look(account);
       if (!mounted || cancel.isCompleted) return;
       if (others && !sync.isReturning(account)) {
         if (sync.needsAccountChoice(account) && !await _confirmReplace(account.email)) {
@@ -508,7 +505,6 @@ class _TodayPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   _MarksCard(title: 'SLEEP', habits: state.sleepHabits, rest: rest),
                   const SizedBox(height: 12),
-                  const DailyFocus(),
                   const _TasksCard(),
                 ],
               ),
@@ -1086,7 +1082,7 @@ class _SettingsPageState extends State<_SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.themeName, s.restWeekends, s.dayStartHour, s.smartAdd, s.focusEnabled));
+    final state = AppScope.watch(context, (s) => (s.themeName, s.restWeekends, s.dayStartHour, s.smartAdd));
     final sync = state.sync;
     return Scaffold(
       backgroundColor: p.background,
@@ -1145,7 +1141,6 @@ class _SettingsPageState extends State<_SettingsPage> {
                   child: Text('DAYS', style: capsLabel(p.inkMuted)),
                 ),
                 SwitchListTile(title: const Text('Smart quick-add'), value: state.smartAdd, onChanged: state.setSmartAdd),
-                SwitchListTile(title: const Text('Daily focus'), value: state.focusEnabled, onChanged: state.setFocusEnabled),
                 InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: () => state.setRestWeekends(!state.restWeekends),
@@ -1217,8 +1212,6 @@ class _SettingsPageState extends State<_SettingsPage> {
               ],
             ),
           ),
-          const PersonalDataActions(),
-          if(sync!=null && sync.isOn)DriveEncryptionButton(sync:sync),
           if (widget.updater?.installed case final version?)
             Padding(
               padding: const EdgeInsets.all(16),

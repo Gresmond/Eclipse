@@ -1,5 +1,4 @@
 import '../widgets/ritual_goal.dart';
-import '../widgets/daily_focus.dart';
 import 'dart:io';
 import 'dart:math';
 
@@ -60,7 +59,7 @@ class _TodayViewState extends State<TodayView> {
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.habitsRevision));
     final day = state.shownDay;
-    return Column(children: [if (state.viewDay == null) const DailyFocus(), Expanded(child: Padding(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -124,7 +123,7 @@ class _TodayViewState extends State<TodayView> {
           );
         },
       ),
-    ))]);
+    );
   }
 }
 

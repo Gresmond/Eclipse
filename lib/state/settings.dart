@@ -12,17 +12,7 @@ mixin _Settings on ChangeNotifier {
   void _todosChanged();
 
   bool get smartAdd => store.setting('smartAdd') != '0';
-  bool get focusEnabled => store.setting('dailyFocus') == '1';
-  String? get focusUid => store.setting('focusDay') == dateKey(today) ? store.setting('focusUid') : null;
-  void setFocus(String? uid) {
-    store.transaction(() {
-      store.setSetting('focusDay', dateKey(today));
-      store.setSetting('focusUid', uid ?? '');
-    });
-    notifyListeners();
-  }
   void setSmartAdd(bool on) { store.setSetting('smartAdd', on ? '1' : '0'); notifyListeners(); }
-  void setFocusEnabled(bool on) { store.setSetting('dailyFocus', on ? '1' : '0'); notifyListeners(); }
 
   /// The hour a new day starts: 0 for midnight or 4 for night owls.
   late int dayStartHour = parseDayStartHour(store.setting('dayStartHour'));

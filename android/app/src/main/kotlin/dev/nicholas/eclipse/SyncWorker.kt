@@ -30,7 +30,6 @@ object PhoneRuntime {
             users++
             return
         }
-        Vault.register(created.dartExecutor.binaryMessenger)
         channel = MethodChannel(created.dartExecutor.binaryMessenger, "eclipse/background")
         channel.setMethodCallHandler { call, result ->
             if (call.method == "ready") {

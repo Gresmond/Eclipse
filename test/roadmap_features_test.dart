@@ -2,9 +2,7 @@ import 'dart:convert';
 
 import 'package:eclipse/data/google_drive.dart';
 
-import 'package:archive/archive.dart';
 import 'package:eclipse/app_state.dart';
-import 'package:eclipse/data/personal_export.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/smart_add.dart';
@@ -237,30 +235,5 @@ void main() {
     expect(row.weight, 10);
     expect(row.reps, 0);
     expect(log.session(day).single.$2.single.note, 'Strict');
-  });
-
-  test('calendar export honours removed occurrences and skips holidays', () {
-    final first = DateTime(2027, 1, 1);
-    state.addRepeat('Train', const RepeatRule.every(1), first, time: 480);
-    final repeat = store.repeats().single;
-    state.removeTodo(TodoScope.month, state.occurrence(repeat, first));
-    state.addHoliday(DateTime(2027, 1, 2), DateTime(2027, 1, 9));
-    final calendar = calendarExport(store, day, generated: day);
-    expect(calendar, contains('DTSTART:20270110T080000'));
-    expect('BEGIN:VEVENT'.allMatches(calendar).length, 1);
-  });
-
-  test('export round-trips journal Unicode and includes timed calendar events', () {
-    const note = '今日, read "Eclipse"';
-    store.raw.execute('INSERT INTO journal(day,text) VALUES(?,?)', [dateKey(day), note]);
-    store.raw.execute(
-      "INSERT INTO todos(uid,scope,period,text,since,due_date,due_time) VALUES('d','today','','Dentist, check','2026-11-19','2026-11-20','14:30')",
-    );
-    final archive = ZipDecoder().decodeBytes(exportBundle(store, day, generated: day));
-    String contents(String path) => utf8.decode(archive.findFile(path)!.content as List<int>);
-    expect(contents('journal/2026-11-19.md'), note);
-    expect(jsonDecode(contents('eclipse.json'))['tables']['journal'].single['text'], note);
-    expect(contents('csv/journal.csv'), contains('""Eclipse""'));
-    expect(contents('calendar.ics'), contains('DTSTART:20261120T143000\r\nSUMMARY:Dentist\\, check'));
   });
 }

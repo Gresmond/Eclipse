@@ -1,5 +1,3 @@
-import 'drive_encryption.dart';
-import 'reflections.dart';
 import 'confirm_on_enter.dart';
 import 'app_dialog.dart';
 import 'backup_row.dart';
@@ -116,7 +114,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     try {
       final account = await sync.signIn(cancel: cancel.future);
       if (!mounted || cancel.isCompleted) return;
-      final others = await sync.look(account,unlock:()=> mounted ? showDialog<String>(context:context,builder:(_)=>const PassphraseDialog()) : Future.value());
+      final others = await sync.look(account);
       if (!mounted || cancel.isCompleted) return;
       if ((others && !sync.isReturning(account)) || sync.needsAccountChoice(account)) {
         setState(() {
@@ -361,7 +359,6 @@ extension on _SettingsDialogState {
                 ),
                 const FadeMenuDivider(),
                 SettingSwitchRow(title: 'Smart quick-add', subtitle: 'Read schedules and places from phrases like “tomorrow at 3pm at the library”.', on: state.smartAdd, onTap: () => state.setSmartAdd(!state.smartAdd)),
-                SettingSwitchRow(title: 'Daily focus', subtitle: 'Pin one task on Today.', on: state.focusEnabled, onTap: () => state.setFocusEnabled(!state.focusEnabled)),
                 const HolidaysRow(),
                 const FadeMenuDivider(),
                 const DayStartPicker(),

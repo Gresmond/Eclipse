@@ -7,7 +7,6 @@
 
 #include "flutter/generated_plugin_registrant.h"
 #include "notifications.h"
-#include "vault.h"
 #include "tray.h"
 
 struct _MyApplication {
@@ -87,7 +86,6 @@ static void my_application_activate(GApplication* application) {
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
   tray_start(GTK_APPLICATION(application), window, view);
   notifications_start(window, view);
-  vault_start(view);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

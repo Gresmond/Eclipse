@@ -11,7 +11,6 @@ add_executable(${BINARY_NAME}
   "my_application.cc"
   "tray.cc"
   "notifications.cc"
-  "vault.cc"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
 )
 

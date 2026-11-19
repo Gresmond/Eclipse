@@ -14,7 +14,6 @@ import 'host.dart';
 import 'safe_write.dart';
 import 'sqlite.dart' show checkedCopyOf, copyOfDatabase, offThread;
 import 'journal_drive.dart';
-import 'drive_vault.dart';
 import 'store.dart';
 import 'sync.dart';
 import 'sync_disk.dart';
@@ -354,10 +353,9 @@ class SyncService extends ChangeNotifier {
 
   /// Looks in [account]'s Drive before turning sync on: true if another
   /// computer already keeps its data there, to join rather than start it.
-  Future<bool> look(GoogleAccount account, {Future<String?> Function()? unlock}) async {
+  Future<bool> look(GoogleAccount account) async {
     final drive = _connect(account.refreshToken);
     final files = await drive.list();
-    await _readVault(drive, files, unlock: unlock, account: account.identity);
     final disk = folder.disk;
     final there = <String>{};
     var hasOthers = false;
@@ -373,101 +371,6 @@ class SyncService extends ChangeNotifier {
         ? account.identity
         : null;
     return hasOthers;
-  }
-
-  Uint8List? _activeKey;
-  String? _verifiedMarker;
-  String? _joiningAccount;
-  bool get vaultUnlocked => _activeKey != null;
-
-  Future<void> _readVault(
-    SyncDrive drive,
-    List<DriveFile> files, {
-    Future<String?> Function()? unlock,
-    String? account,
-  }) async {
-    final markers = files.where((f) => f.name == DriveVault.marker).toList();
-    if (markers.length > 1) throw const DriveError('Drive contains conflicting encryption settings.');
-    final identity = account ?? _joiningAccount ?? _config['accountId'] ?? accountEmail;
-    final protected = _config['encryptedAccounts'];
-    if (markers.isEmpty) {
-      if (identity != null && protected is List && protected.contains(identity)) {
-        throw const DriveError('The encryption settings are missing from Drive. Sync has paused.');
-      }
-      _activeKey = null;
-      _verifiedMarker = null;
-      return;
-    }
-    final marker = markers.single, version = '${marker.id}/${marker.modified}';
-    if (_verifiedMarker == version && _activeKey != null) return;
-    _activeKey = null;
-    final info = jsonDecode(utf8.decode(await drive.download(marker.id))) as Map;
-    final salt = info['salt'] as String, proof = base64Decode(info['proof'] as String);
-    final saved = _config['vaultKeys'];
-    final cached = saved is Map ? saved[salt] : null;
-    Uint8List? key = cached is String ? base64Decode(cached) : null;
-    if (key == null) {
-      final phrase = await unlock?.call();
-      if (phrase == null || phrase.isEmpty) throw const DriveError('Unlock Drive file encryption to sync this device.');
-      key = await DriveVault.derive(phrase, base64Decode(salt));
-    }
-    try {
-      if (utf8.decode(await DriveVault.open(key, DriveVault.marker, proof)) != 'Eclipse') throw const FormatException();
-    } catch (_) {
-      throw const DriveError('The passphrase did not unlock this Drive.');
-    }
-    if (identity != null && (protected is! List || !protected.contains(identity))) {
-      _config['encryptedAccounts'] = [if (protected is List) ...protected, identity];
-      await _save();
-    }
-    if (cached == null) {
-      (_config['vaultKeys'] ??= <String, dynamic>{})[salt] = base64Encode(key);
-      await _save();
-    }
-    _activeKey = key;
-    _verifiedMarker = version;
-  }
-
-  Future<void> configureVault(Future<String?> Function(bool creating) ask) => exclusive(() async {
-    final drive = _signedIn;
-    final files = await drive.list();
-    if (files.any((f) => f.name == DriveVault.marker)) {
-      await _readVault(drive, files, unlock: () => ask(false));
-    } else {
-      await _readVault(drive, files);
-      final phrase = await ask(true);
-      if (phrase == null) return;
-      if (phrase.length < 12) throw const DriveError('Use at least 12 characters.');
-      final salt = DriveVault.random(16), key = await DriveVault.derive(phrase, salt);
-      final proof = await DriveVault.seal(key, DriveVault.marker, utf8.encode('Eclipse'));
-      if ((await drive.list()).any((f) => f.name == DriveVault.marker)) {
-        throw const DriveError('Encryption was enabled on another device. Unlock it here.');
-      }
-      final made = await drive.upload(
-        DriveVault.marker,
-        utf8.encode(jsonEncode({'salt': base64Encode(salt), 'proof': base64Encode(proof)})),
-      );
-      (_config['vaultKeys'] ??= <String, dynamic>{})[base64Encode(salt)] = base64Encode(key);
-      _config.remove('up');
-      _config.remove('copied');
-      _config.remove('driveInventory');
-      await _save();
-      await _readVault(drive, [made]);
-    }
-    notifyListeners();
-  });
-
-  Future<List<int>> _hiddenBytes(SyncDrive drive, String id, String name) async {
-    final bytes = await drive.download(id);
-    if (!DriveVault.sealed(bytes)) return bytes;
-    final key = _activeKey;
-    if (key == null) throw const DriveError('Unlock Drive file encryption to read this file.');
-    return DriveVault.open(key, name, bytes);
-  }
-
-  Future<DriveFile> _sendHidden(SyncDrive drive, String name, List<int> bytes, {String? id}) async {
-    final key = _activeKey;
-    return drive.upload(name, key == null ? bytes : await DriveVault.seal(key, name, bytes), id: id);
   }
 
   /// Turns sync on with [account], after [look]. Joining replaces what's on
@@ -488,14 +391,11 @@ class SyncService extends ChangeNotifier {
       ..remove('up')
       ..remove('ids');
     _drive = _connect(account.refreshToken);
-    _joiningAccount = account.identity;
     try {
       await _pull(_drive!);
     } catch (_) {
       if (!isOn) _drive = null;
       rethrow;
-    } finally {
-      _joiningAccount = null;
     }
     if (join) {
       // Nothing here goes until the others' history is all taken in: a file
@@ -630,7 +530,6 @@ class SyncService extends ChangeNotifier {
     final down = _seen('down'), ids = _seen('ids'), mine = <String, String>{};
     final files = await _inventory(drive), seen = <String, dynamic>{}, copies = <String, int>{};
     if (_stopped) return mine;
-    await _readVault(drive, files);
     for (final f in files) {
       copies[f.name] = (copies[f.name] ?? 0) + 1;
     }
@@ -650,7 +549,7 @@ class SyncService extends ChangeNotifier {
         seen[f.id] = f.modified;
         continue;
       }
-      final bytes = await _hiddenBytes(drive, f.id, f.name);
+      final bytes = await drive.download(f.id);
       if (_stopped) return mine;
       try {
         jsonDecode(utf8.decode(bytes));
@@ -681,10 +580,10 @@ class SyncService extends ChangeNotifier {
       final sent = DateTime.now();
       DriveFile made;
       try {
-        made = await _sendHidden(drive, name, bytes, id: id);
+        made = await drive.upload(name, bytes, id: id);
       } on DriveError catch (e) {
         if (!e.notFound || id == null) rethrow;
-        made = await _sendHidden(drive, name, bytes); // deleted from Drive: made again
+        made = await drive.upload(name, bytes); // deleted from Drive: made again
       }
       if (_stopped) return;
       _timed(sent, made.modified);
@@ -727,7 +626,7 @@ class SyncService extends ChangeNotifier {
         return true;
       }
 
-      if (id != null && !include(await _hiddenBytes(drive, id, remote))) return;
+      if (id != null && !include(await drive.download(id))) return;
       if (disk.exists(machine, archived) && !include(disk.readBytes('$machine/$archived'))) return;
       for (final name in days) {
         final data = disk.readBytes('$machine/$name');
@@ -735,9 +634,9 @@ class SyncService extends ChangeNotifier {
         sources[name] = data;
       }
       final bytes = utf8.encode(jsonEncode({'version': 1, 'name': computerName, 'registers': regs.values.toList()}));
-      final made = await _sendHidden(drive, remote, bytes, id: id);
+      final made = await drive.upload(remote, bytes, id: id);
       if (_stopped) return;
-      final verified = await _hiddenBytes(drive, made.id, remote);
+      final verified = await drive.download(made.id);
       if (!listEquals(bytes, verified)) throw const DriveError('Could not verify the compacted history.');
       await disk.writeBytes(machine, archived, bytes);
       _seen('ids')[remote] = made.id;
@@ -749,7 +648,7 @@ class SyncService extends ChangeNotifier {
         if (old == null) continue;
         // A second copy of this installation may have changed a file.
         // Keep it if the retrieved bytes differ from those just archived.
-        if (!listEquals(await _hiddenBytes(drive, old, original), sources[name]) ||
+        if (!listEquals(await drive.download(old), sources[name]) ||
             !listEquals(disk.readBytes('$machine/$name'), sources[name])) {
           continue;
         }
@@ -894,7 +793,7 @@ class SyncService extends ChangeNotifier {
         if (_stopped) return;
         final name = 'backup_${machine}_$today.db';
         final had = files.where((f) => f.name == name).firstOrNull;
-        await _sendHidden(drive, name, copy, id: had?.id);
+        await drive.upload(name, copy, id: had?.id);
         if (_stopped) return;
         final mine = [
           for (final f in files)
@@ -957,7 +856,6 @@ class SyncService extends ChangeNotifier {
         (connect ?? AppDataFolder.new)(refresh),
         machine,
         names is Map<String, dynamic> ? names : const {},
-        config['vaultKeys'] is Map ? Map<String, dynamic>.from(config['vaultKeys'] as Map) : const {},
       );
     } on Object {
       return null;
@@ -965,10 +863,7 @@ class SyncService extends ChangeNotifier {
   }
 
   /// The database as [copy] holds it.
-  Future<List<int>> fetchCopy(DriveBackup copy) async {
-    await _readVault(_signedIn, await _signedIn.list());
-    return _hiddenBytes(_signedIn, copy.id, copy.name);
-  }
+  Future<List<int>> fetchCopy(DriveBackup copy) => _signedIn.download(copy.id);
 
   /// Saves everything here to Drive, as the way back from a restore where
   /// there's no folder to keep it in.
@@ -976,8 +871,7 @@ class SyncService extends ChangeNotifier {
     final drive = _signedIn;
     final name = 'backup_${machine}_before-restore.db';
     final had = (await drive.list()).where((f) => f.name == name).firstOrNull;
-    await _readVault(drive, await drive.list());
-    await _sendHidden(drive, name, copyOfDatabase(store.raw), id: had?.id);
+    await drive.upload(name, copyOfDatabase(store.raw), id: had?.id);
   }
 
   /// Back from signing in again: whether the journal may go to Drive may
@@ -1009,8 +903,7 @@ class SyncService extends ChangeNotifier {
 /// holds the lasting sign-in.
 /// The copies in Drive, reached without the database.
 class DriveCopies {
-  DriveCopies._(this._drive, this._machine, this._names, this._keys);
-  final Map<String, dynamic> _keys;
+  DriveCopies._(this._drive, this._machine, this._names);
 
   final SyncDrive _drive;
   final String _machine;
@@ -1019,15 +912,7 @@ class DriveCopies {
   Future<List<DriveBackup>> list() async => SyncService._copiesIn(await _drive.list(), _machine, _names);
 
   /// The database as [copy] holds it.
-  Future<List<int>> fetch(DriveBackup copy) async {
-    final bytes = await _drive.download(copy.id);
-    if (!DriveVault.sealed(bytes)) return bytes;
-    final marker = (await _drive.list()).singleWhere((f) => f.name == DriveVault.marker);
-    final info = jsonDecode(utf8.decode(await _drive.download(marker.id))) as Map;
-    final saved = _keys[info['salt']];
-    if (saved is! String) throw const DriveError('Unlock this backup in Eclipse on a device with the passphrase.');
-    return DriveVault.open(base64Decode(saved), copy.name, bytes);
-  }
+  Future<List<int>> fetch(DriveBackup copy) => _drive.download(copy.id);
 }
 
 class _FileSettings implements SyncSettings {
@@ -1045,7 +930,7 @@ class _FileSettings implements SyncSettings {
       final raw = _file.readAsStringSync();
       // A damaged JSON string can end mid-key or mid-token. Preserve a
       // diagnostic without trying to redact secrets from truncated JSON.
-      final redacted = raw.contains('"vaultKeys"') || raw.contains('"refresh"')
+      final redacted = raw.contains('"refresh"')
           ? 'Damaged sync credentials: <redacted>'
           : raw;
       replaceSafelySync('${_file.path}.damaged', (part) {
