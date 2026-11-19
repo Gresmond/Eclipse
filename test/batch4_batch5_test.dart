@@ -520,6 +520,8 @@ void main() {
         late String callbackStatus;
         await expectLater(
           () => signInWithGoogle(
+            clientId: 'test-client',
+            clientSecret: 'test-secret',
             openUrl: (url) async {
               final authUri = Uri.parse(url);
               final redirect = Uri.parse(authUri.queryParameters['redirect_uri']!);
@@ -543,6 +545,8 @@ void main() {
         final cancel = Completer<void>();
         await expectLater(
           () => signInWithGoogle(
+            clientId: 'test-client',
+            clientSecret: 'test-secret',
             cancel: cancel.future,
             openUrl: (_) async {
               cancel.complete();

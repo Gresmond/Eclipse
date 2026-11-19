@@ -15,7 +15,9 @@ import java.io.File
 
 /** What Dart can't do by itself on a phone, over one channel. */
 class MainActivity : FlutterActivity() {
-    override fun provideFlutterEngine(context: android.content.Context): FlutterEngine = PhoneRuntime.acquire(context)
+    // On a cold launch, let FlutterActivity create and attach its own engine.
+    // A running worker already owns the database, so reuse its isolate.
+    override fun provideFlutterEngine(context: android.content.Context): FlutterEngine? = PhoneRuntime.current
     override fun shouldDestroyEngineWithHost(): Boolean = false
 
     override fun onDestroy() {
@@ -81,7 +83,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        SyncWorker.schedule(this)
+        PhoneRuntime.retain(applicationContext, flutterEngine)
         takeReminderUid(intent)?.let { pendingReminderUid = it }
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "eclipse/phone")
         phoneChannel = channel

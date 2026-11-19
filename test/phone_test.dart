@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/google_drive.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/screens/startup_error.dart';
 import 'package:eclipse/training.dart';
 import 'package:eclipse/phone/phone_app.dart';
 import 'package:eclipse/widgets/rolling_number.dart';
@@ -29,6 +31,18 @@ void main() {
     await tester.pumpWidget(PhoneApp(state: state, schedule: (_) async {}));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('phone draws while opening storage and offers retry if storage is unavailable', (tester) async {
+    final directory = Completer<Directory>();
+    final startup = phoneMain(supportDirectory: () => directory.future);
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    directory.completeError(const FileSystemException('Storage unavailable'));
+    await startup;
+    await tester.pump();
+    expect(tester.widget<StartupErrorApp>(find.byType(StartupErrorApp)).onRetry, isNotNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('tapping a ritual goes round its marks', (tester) async {
     final (_, state) = make();

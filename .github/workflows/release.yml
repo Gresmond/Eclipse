@@ -160,6 +160,12 @@ jobs:
           flutter build apk --release --target-platform android-arm64 --build-number "$code"
           mkdir -p build
           cp build/app/outputs/flutter-apk/app-release.apk build/Eclipse.apk
+      - name: Verify WorkManager's Room constructor in the release APK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" dex code \
+            --class androidx.work.impl.WorkDatabase_Impl --method '<init>()V' \
+            build/Eclipse.apk > "$RUNNER_TEMP/work-database-constructor.txt"
+          grep -Fq '.method public constructor <init>()V' "$RUNNER_TEMP/work-database-constructor.txt"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Eclipse-Android

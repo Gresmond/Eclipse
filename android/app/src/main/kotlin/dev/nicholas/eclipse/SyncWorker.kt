@@ -21,27 +21,33 @@ object PhoneRuntime {
     private val mutex = Mutex()
     private lateinit var channel: MethodChannel
 
-    fun acquire(context: Context): FlutterEngine {
-        users++
-        engine?.let { return it }
-        val loader = io.flutter.FlutterInjector.instance().flutterLoader()
-        loader.startInitialization(context.applicationContext)
-        loader.ensureInitializationComplete(context.applicationContext, null)
-        val created = FlutterEngine(context.applicationContext)
+    val current: FlutterEngine? get() = engine
+
+    // Called on Android's main thread by both the activity and the worker.
+    fun retain(context: Context, created: FlutterEngine) {
+        if (users > 0) {
+            check(engine === created)
+            users++
+            return
+        }
         Vault.register(created.dartExecutor.binaryMessenger)
-        engine = created
         channel = MethodChannel(created.dartExecutor.binaryMessenger, "eclipse/background")
         channel.setMethodCallHandler { call, result ->
             if (call.method == "ready") {
                 ready.complete(Unit)
-                result.success(null)
+                try {
+                    SyncWorker.schedule(context)
+                    result.success(null)
+                } catch (e: IllegalStateException) {
+                    result.error("schedule", e.message, null)
+                }
             } else if (call.method == "widget") {
                 TodayWidget.publish(context.applicationContext, call.arguments as String)
                 result.success(null)
             } else result.notImplemented()
         }
-        created.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
-        return created
+        engine = created
+        users = 1
     }
 
     fun release() {
@@ -72,8 +78,14 @@ object PhoneRuntime {
 
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.Main) {
-        PhoneRuntime.acquire(applicationContext)
+        // Start Dart headlessly only when the worker creates the engine.
+        val existing = PhoneRuntime.current
+        val engine = existing ?: FlutterEngine(applicationContext)
+        PhoneRuntime.retain(applicationContext, engine)
         try {
+            if (existing == null) {
+                engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
+            }
             if (withTimeoutOrNull(480_000) { PhoneRuntime.sync(applicationContext, inputData) } == true)
                 Result.success() else Result.retry()
         } finally {
@@ -89,6 +101,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 
         fun schedule(context: Context) {
             val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
+                .setInitialDelay(15, TimeUnit.MINUTES)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork("drive-sync", ExistingPeriodicWorkPolicy.KEEP, request)

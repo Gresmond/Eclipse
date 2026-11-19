@@ -66,8 +66,10 @@ class DriveError implements Exception {
 Future<GoogleAccount> signInWithGoogle({
   Future<void>? cancel,
   @visibleForTesting Future<void> Function(String url)? openUrl,
+  @visibleForTesting String clientId = googleClientId,
+  @visibleForTesting String clientSecret = googleClientSecret,
 }) async {
-  if (googleClientId.startsWith('SET-ME') || googleClientSecret == 'SET-ME') {
+  if (clientId.startsWith('SET-ME') || clientSecret == 'SET-ME') {
     throw const DriveError('Google sync is not configured for this build. Local data and backups still work.');
   }
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -75,7 +77,7 @@ Future<GoogleAccount> signInWithGoogle({
     final redirect = 'http://127.0.0.1:${server.port}';
     final state = _random(16), verifier = _random(48);
     final page = Uri.https('accounts.google.com', '/o/oauth2/v2/auth', {
-      'client_id': googleClientId,
+      'client_id': clientId,
       'redirect_uri': redirect,
       'response_type': 'code',
       'scope': _scopes,
@@ -121,8 +123,8 @@ Future<GoogleAccount> signInWithGoogle({
     await whenBackFromBrowser(cancel: cancel);
     final tokens = await _swapCode({
       'code': code,
-      'client_id': googleClientId,
-      'client_secret': googleClientSecret,
+      'client_id': clientId,
+      'client_secret': clientSecret,
       'redirect_uri': redirect,
       'grant_type': 'authorization_code',
       'code_verifier': verifier,

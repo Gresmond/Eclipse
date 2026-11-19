@@ -2,8 +2,10 @@ import '../widgets/drive_encryption.dart';
 import '../widgets/reflections.dart';
 import '../widgets/ritual_goal.dart';
 import '../widgets/workout_tools.dart';
+
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
@@ -37,28 +39,43 @@ part 'phone_tabs.dart';
 
 /// The phone's Eclipse: today's rituals, sleep and tasks, and adding tasks,
 /// on the same data as the computers through Drive sync.
-Future<void> phoneMain() async {
-  final dir = await getApplicationSupportDirectory();
-  await dir.create(recursive: true);
-  AppLog.start(dir);
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    AppLog.failure('Drawing', details.exception, details.stack);
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    AppLog.failure('Uncaught', error, stack);
-    return false;
-  };
-  final documents = await getApplicationDocumentsDirectory();
-  await _openPhone(dir, documents);
+Future<void> phoneMain({Future<Directory> Function() supportDirectory = getApplicationSupportDirectory}) async {
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(body: Center(child: CircularProgressIndicator())),
+    ),
+  );
+  await _openPhone(supportDirectory);
 }
 
-Future<void> _openPhone(Directory dir, Directory documents) async {
+Future<bool> _backupBeforeUpgrade(Directory home, String directory, String database) => Isolate.run(() {
+  AppLog.start(home);
+  final backups = Backups(Directory(directory))..beforeUpdating(database);
+  return backups.updateCopyFailed;
+});
+
+Future<void> _openPhone(Future<Directory> Function() supportDirectory) async {
+  Directory? home;
+  DataFolder? data;
   Store? opened;
   try {
-    final data = DataFolder.load(dir, documents);
+    final dir = home = await supportDirectory();
+    await dir.create(recursive: true);
+    AppLog.start(dir);
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      AppLog.failure('Drawing', details.exception, details.stack);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      AppLog.failure('Uncaught', error, stack);
+      return false;
+    };
+    final documents = await getApplicationDocumentsDirectory();
+    data = DataFolder.load(dir, documents);
     await data.root.create(recursive: true);
-    final backups = Backups(data.backups)..beforeUpdating(data.database);
+    final backups = Backups(data.backups);
+    backups.updateCopyFailed = await _backupBeforeUpgrade(dir, backups.dir.path, data.database);
     final store = opened = Store.open(data.database);
     SyncService? sync;
     try {
@@ -67,21 +84,23 @@ Future<void> _openPhone(Directory dir, Directory documents) async {
       AppLog.failure('Sync couldn’t start', error);
     }
     final state = AppState(store, backups: backups, dataFolder: data, sync: sync);
-    await PhonePlatform.enableBackgroundSync(state);
     state.endTour();
     sync?.start();
     if (sync?.isOn ?? false) unawaited(sync!.run());
     runApp(PhoneApp(state: state, updater: PhoneUpdater()));
+    unawaited(
+      PhonePlatform.enableBackgroundSync(state).catchError((Object error, StackTrace stack) {
+        AppLog.failure('Background sync couldn’t start', error, stack);
+      }),
+    );
   } catch (error, stack) {
     AppLog.failure('Couldn’t open the data', error, stack);
     try {
       opened?.close();
     } catch (_) {}
     String? theme;
-    DataFolder? data;
     try {
-      data = DataFolder.load(dir, documents);
-      theme = savedThemeName(data.database);
+      if (data != null) theme = savedThemeName(data.database);
     } catch (_) {}
     final updater = PhoneUpdater();
     unawaited(updater.check());
@@ -90,14 +109,14 @@ Future<void> _openPhone(Directory dir, Directory documents) async {
         error: error,
         phoneUpdater: updater,
         themeName: theme,
-        onRetry: () => unawaited(_openPhone(dir, documents)),
-        recovery: data == null
+        onRetry: () => _openPhone(supportDirectory),
+        recovery: data == null || home == null
             ? null
             : StartupRecovery(
                 backups: Backups(data.backups),
                 database: data.database,
-                driveCopies: SyncService.copiesAt(dir),
-                reopen: () => _openPhone(dir, documents),
+                driveCopies: SyncService.copiesAt(home),
+                reopen: () => _openPhone(supportDirectory),
               ),
       ),
     );
