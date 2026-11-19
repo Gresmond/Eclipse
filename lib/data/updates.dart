@@ -274,6 +274,7 @@ abstract class ReleaseUpdater extends Updater {
 }
 
 typedef ReleaseFetch = Future<(int, List<int>)> Function(Uri uri);
+typedef ReleaseDownload = Future<int> Function(Uri uri, File destination);
 typedef UpdateProcess = Future<ProcessResult> Function(String executable, List<String> arguments);
 
 Future<(int, List<int>)> fetchReleaseBytes(Uri uri) => sendHttpRequest('GET', uri, timeout: const Duration(minutes: 5));
@@ -289,7 +290,8 @@ class LinuxUpdater extends ReleaseUpdater {
     this.runProcess = Process.run,
     this.restart = restartApplication,
     super.fetch,
-  });
+    ReleaseDownload? download,
+  }) : _downloadFile = download;
 
   static LinuxUpdater? forExecutable(String executable, {Future<void> Function()? onRestart}) {
     try {
@@ -311,6 +313,7 @@ class LinuxUpdater extends ReleaseUpdater {
   final Future<void> Function()? onRestart;
   final UpdateProcess runProcess;
   final Future<void> Function({required Future<void> Function() beforeRestart, String? executable}) restart;
+  final ReleaseDownload? _downloadFile;
 
   @override
   String get actionLabel => 'Update';
@@ -369,12 +372,22 @@ class LinuxUpdater extends ReleaseUpdater {
       // Stage on the same user-owned filesystem as the installed releases.
       directory = await Directory(installRoot).createTemp('.update-');
       final archive = File(p.join(directory.path, 'Eclipse.tar.zst'));
-      final (code, bytes) = await fetch(uri);
-      if (code != 200) throw HttpException('Archive download failed (HTTP $code).');
-      if (sha256.convert(bytes).toString() != digest.substring(7).toLowerCase()) {
-        throw const FormatException('The downloaded archive checksum does not match.');
+      final expected = digest.substring(7).toLowerCase();
+      if (_downloadFile != null || identical(fetch, fetchReleaseBytes)) {
+        final code = await (_downloadFile ?? downloadFile)(uri, archive);
+        if (code != 200) throw HttpException('Archive download failed (HTTP $code).');
+        final actual = (await sha256.bind(archive.openRead()).first).toString();
+        if (actual != expected) {
+          throw const FormatException('The downloaded archive checksum does not match.');
+        }
+      } else {
+        final (code, bytes) = await fetch(uri);
+        if (code != 200) throw HttpException('Archive download failed (HTTP $code).');
+        if (sha256.convert(bytes).toString() != expected) {
+          throw const FormatException('The downloaded archive checksum does not match.');
+        }
+        await archive.writeAsBytes(bytes, flush: true);
       }
-      await archive.writeAsBytes(bytes, flush: true);
       await _run('tar', [
         '--zstd',
         '--extract',

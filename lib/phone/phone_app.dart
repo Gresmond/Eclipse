@@ -1,4 +1,9 @@
+import '../widgets/drive_encryption.dart';
+import '../widgets/reflections.dart';
+import '../widgets/ritual_goal.dart';
+import '../widgets/workout_tools.dart';
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
@@ -10,17 +15,25 @@ import '../data/app_log.dart';
 import '../data/backups.dart';
 import '../data/data_folder.dart';
 import '../data/google_drive.dart';
-import '../data/journal_files.dart';
 import '../data/store.dart';
 import '../data/sync_service.dart';
 import '../models.dart';
+import '../screens/startup_error.dart';
+import '../screens/today_view.dart' show JournalCard;
+import '../screens/training_view.dart' show AddSessionExercise;
+import '../training.dart';
+import '../widgets/todo_panel.dart' show PhonePlan, TaskDetailsMenu;
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/app_dialog.dart';
+import '../widgets/daily_focus.dart';
 import '../widgets/holidays.dart';
+import '../widgets/search_glow.dart';
 import '../widgets/setting_rows.dart';
 import '../widgets/tile.dart';
 import 'phone_platform.dart';
+
+part 'phone_tabs.dart';
 
 /// The phone's Eclipse: today's rituals, sleep and tasks, and adding tasks,
 /// on the same data as the computers through Drive sync.
@@ -37,21 +50,58 @@ Future<void> phoneMain() async {
     return false;
   };
   final documents = await getApplicationDocumentsDirectory();
-  final data = DataFolder.load(dir, documents);
-  await data.root.create(recursive: true);
-  final backups = Backups(data.backups)..beforeUpdating(data.database);
-  final store = Store.open(data.database);
-  SyncService? sync;
+  await _openPhone(dir, documents);
+}
+
+Future<void> _openPhone(Directory dir, Directory documents) async {
+  Store? opened;
   try {
-    sync = SyncService.load(dir, store)..copiesToDrive = true;
-  } catch (error) {
-    AppLog.failure('Sync couldn’t start', error);
+    final data = DataFolder.load(dir, documents);
+    await data.root.create(recursive: true);
+    final backups = Backups(data.backups)..beforeUpdating(data.database);
+    final store = opened = Store.open(data.database);
+    SyncService? sync;
+    try {
+      sync = SyncService.load(dir, store)..copiesToDrive = true;
+    } catch (error) {
+      AppLog.failure('Sync couldn’t start', error);
+    }
+    final state = AppState(store, backups: backups, dataFolder: data, sync: sync);
+    await PhonePlatform.enableBackgroundSync(state);
+    state.endTour();
+    sync?.start();
+    if (sync?.isOn ?? false) unawaited(sync!.run());
+    runApp(PhoneApp(state: state, updater: PhoneUpdater()));
+  } catch (error, stack) {
+    AppLog.failure('Couldn’t open the data', error, stack);
+    try {
+      opened?.close();
+    } catch (_) {}
+    String? theme;
+    DataFolder? data;
+    try {
+      data = DataFolder.load(dir, documents);
+      theme = savedThemeName(data.database);
+    } catch (_) {}
+    final updater = PhoneUpdater();
+    unawaited(updater.check());
+    runApp(
+      StartupErrorApp(
+        error: error,
+        phoneUpdater: updater,
+        themeName: theme,
+        onRetry: () => unawaited(_openPhone(dir, documents)),
+        recovery: data == null
+            ? null
+            : StartupRecovery(
+                backups: Backups(data.backups),
+                database: data.database,
+                driveCopies: SyncService.copiesAt(dir),
+                reopen: () => _openPhone(dir, documents),
+              ),
+      ),
+    );
   }
-  final state = AppState(store, backups: backups, journalFiles: JournalFiles(data.journal), dataFolder: data, sync: sync);
-  state.endTour();
-  sync?.start();
-  if (sync?.isOn ?? false) unawaited(sync!.run());
-  runApp(PhoneApp(state: state, updater: PhoneUpdater()));
 }
 
 class PhoneApp extends StatefulWidget {
@@ -69,31 +119,96 @@ class PhoneApp extends StatefulWidget {
 
 class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   AppState get _state => widget.state;
+  final _home = GlobalKey<_PhoneHomeState>();
+  final _navigator = GlobalKey<NavigatorState>();
   Timer? _scheduling, _dateTimer;
+  Object? _reminderKey, _widgetKey;
+  bool _scheduleDirty = false;
+
+  Object _currentReminderKey() => (
+    _state.today,
+    _state.todosRevision,
+    _state.dayStartHour,
+    Object.hashAll(_state.holidays),
+  );
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _state.addListener(_changed);
+    _state.addListener(_onStateChanged);
+    _reminderKey = _currentReminderKey();
+    _scheduleDirty = true;
+    _onStateChanged();
     _changed();
+    _state.sync?.addListener(_onStateChanged);
     _dateTimer = Timer.periodic(const Duration(seconds: 30), (_) => _state.checkDate());
     unawaited(widget.updater?.check());
+    unawaited(PhonePlatform.listenReminders(_openReminder));
+  }
+
+  @override
+  void didUpdateWidget(PhoneApp old) {
+    super.didUpdateWidget(old);
+    if (old.state != widget.state) {
+      old.state.removeListener(_onStateChanged);
+      old.state.sync?.removeListener(_onStateChanged);
+      _state.sync?.addListener(_onStateChanged);
+      _widgetKey=null;
+      _state.addListener(_onStateChanged);
+      _reminderKey = _currentReminderKey();
+      _scheduleDirty = true;
+      _onStateChanged();
+      _changed();
+    }
   }
 
   @override
   void dispose() {
     _scheduling?.cancel();
     _dateTimer?.cancel();
-    _state.removeListener(_changed);
+    _state.sync?.removeListener(_onStateChanged);
+    _state.removeListener(_onStateChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
+  void _openReminder(String uid) {
+    _state.openReminder(uid);
+    _home.currentState?.select(0);
+    _navigator.currentState?.popUntil((route) => route.isFirst);
+  }
+
+  void _onStateChanged() {
+    final widgetKey = (_state.today, _state.todosRevision, _state.entriesRevision, _state.habitsRevision, _state.sync?.email);
+    if (_widgetKey != widgetKey) {
+      _widgetKey = widgetKey;
+      unawaited(PhonePlatform.publishWidget(_state));
+    }
+    final key = _currentReminderKey();
+    if (key == _reminderKey) return;
+    _reminderKey = key;
+    _scheduleDirty = true;
+    _changed();
+  }
+
   /// Puts the alarms right once a burst of changes has settled.
   void _changed() {
+    if (!_scheduleDirty) return;
     _scheduling?.cancel();
-    _scheduling = Timer(const Duration(seconds: 1), () => unawaited(widget.schedule(_state).catchError((Object _) {})));
+    _scheduling = Timer(const Duration(seconds: 1), _runSchedule);
+  }
+
+  void _runSchedule() {
+    _scheduling = null;
+    _scheduleDirty = false;
+    unawaited(widget.schedule(_state).catchError((Object _) {}));
+  }
+
+  void _flushSchedule() {
+    if (_scheduling == null && !_scheduleDirty) return;
+    _scheduling?.cancel();
+    _runSchedule();
   }
 
   @override
@@ -107,6 +222,8 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
       case AppLifecycleState.paused:
         // What was just ticked reaches the computers before Android stops it.
         _state.saveDrafts();
+        _flushSchedule();
+        _state.store.flushToDisk();
         if (sync != null && sync.isOn) unawaited(sync.run());
       default:
     }
@@ -119,6 +236,7 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
       valueListenable: _state.themeNotifier,
       builder: (context, themeName, _) => MaterialApp(
         title: 'Eclipse',
+        navigatorKey: _navigator,
         debugShowCheckedModeBanner: false,
         // A finger has no hover, so a touch keeps Material's ripple here.
         theme: themeNamed(themeName).copyWith(splashFactory: InkSparkle.splashFactory),
@@ -129,11 +247,11 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
           child: ThemeMorph(target: paletteNamed(themeName), child: child!),
         ),
         home: _state.sync == null
-            ? _TodayPage(updater: widget.updater)
+            ? _PhoneHome(key: _home, updater: widget.updater)
             : ListenableBuilder(
                 listenable: _state.sync!,
                 builder: (context, _) =>
-                    _state.sync!.isOn ? _TodayPage(updater: widget.updater) : _SignInPage(sync: _state.sync!),
+                    _state.sync!.isOn ? _PhoneHome(key: _home, updater: widget.updater) : _SignInPage(sync: _state.sync!),
               ),
       ),
     ),
@@ -167,31 +285,62 @@ class _SignInPage extends StatefulWidget {
 class _SignInPageState extends State<_SignInPage> {
   bool _busy = false;
   String? _error;
+  Completer<void>? _cancel;
+
+  @override
+  void dispose() {
+    if (!(_cancel?.isCompleted ?? true)) _cancel!.complete();
+    super.dispose();
+  }
 
   Future<void> _signIn() async {
+    final cancel = _cancel = Completer<void>();
     setState(() {
       _busy = true;
       _error = null;
     });
     final sync = widget.sync;
     try {
-      final GoogleAccount account = await sync.signIn();
+      final GoogleAccount account = await sync.signIn(cancel: cancel.future);
+      if (!mounted || cancel.isCompleted) return;
       unawaited(PhonePlatform.toFront());
-      final others = await sync.look(account);
+      final others = await sync.look(account,unlock:()=> mounted ? showDialog<String>(context:context,builder:(_)=>const PassphraseDialog()) : Future.value());
+      if (!mounted || cancel.isCompleted) return;
       if (others && !sync.isReturning(account)) {
         if (sync.needsAccountChoice(account) && !await _confirmReplace(account.email)) {
           if (mounted) setState(() => _busy = false);
           return;
         }
+        if (!mounted || cancel.isCompleted) return;
         await sync.turnOn(account, join: true);
+      } else if (sync.needsAccountChoice(account)) {
+        if (!await _confirmTransfer(account.email)) {
+          if (mounted) setState(() => _busy = false);
+          return;
+        }
+        if (!mounted || cancel.isCompleted) return;
+        await sync.turnOn(account, join: false, transfer: true);
       } else {
         await sync.turnOn(account, join: false);
       }
+      if (!mounted || cancel.isCompleted) return;
       unawaited(PhonePlatform.askNotifications());
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted && !cancel.isCompleted) setState(() => _error = '$e');
     }
-    if (mounted) setState(() => _busy = false);
+    if (mounted && identical(_cancel, cancel)) {
+      _cancel = null;
+      setState(() => _busy = false);
+    }
+  }
+
+  void _cancelSignIn() {
+    final cancel = _cancel;
+    if (cancel != null && !cancel.isCompleted) cancel.complete();
+    setState(() {
+      _busy = false;
+      _error = null;
+    });
   }
 
   Future<bool> _confirmReplace(String email) async =>
@@ -203,6 +352,20 @@ class _SignInPageState extends State<_SignInPage> {
           actions: [
             DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(context, false)),
             DialogConfirm(label: 'Use it', onPressed: () => Navigator.pop(context, true)),
+          ],
+        ),
+      ) ??
+      false;
+
+  Future<bool> _confirmTransfer(String email) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (context) => AppAlertDialog(
+          title: 'Move this phone’s data into this account?',
+          content: Text('What’s on this phone will be moved into $email.'),
+          actions: [
+            DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(context, false)),
+            DialogConfirm(label: 'Move', onPressed: () => Navigator.pop(context, true)),
           ],
         ),
       ) ??
@@ -240,6 +403,12 @@ class _SignInPageState extends State<_SignInPage> {
                 ),
                 child: Text(_busy ? 'Waiting for Google…' : 'Sign in with Google'),
               ),
+              if (_busy) ...[
+                const SizedBox(height: 12),
+                Center(
+                  child: TextButton(onPressed: _cancelSignIn, child: const Text('Cancel')),
+                ),
+              ],
               const Spacer(),
             ],
           ),
@@ -325,6 +494,7 @@ class _TodayPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   _MarksCard(title: 'SLEEP', habits: state.sleepHabits, rest: rest),
                   const SizedBox(height: 12),
+                  const DailyFocus(),
                   const _TasksCard(),
                 ],
               ),
@@ -449,7 +619,7 @@ class _MarksCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
+    final state = AppScope.watch(context, (s) => (s.today, s.entriesRevision));
     if (habits.isEmpty) return const SizedBox.shrink();
     final done = habits.where((h) => state.statusOf(state.today, h) == HabitStatus.done).length;
     return Tile(
@@ -486,25 +656,29 @@ class _MarkRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.of(context);
+    final state = AppScope.watch(
+      context,
+      (s) => (s.today, s.entriesRevision, s.habitsRevision, s.restWeekends, s.holidays),
+    );
     final today = state.today;
     final status = state.statusOf(today, habit);
     final streak = state.currentStreak(habit);
     final (fill, ink, icon) = switch (status) {
-      HabitStatus.done => (p.done, p.onDone, Icons.check_rounded),
-      HabitStatus.missed => (p.missed, p.missedInk, Icons.close_rounded),
-      HabitStatus.other => (p.other, p.otherInk, Icons.remove_rounded),
+      HabitStatus.done => (p.done, p.onAccent, Icons.check_rounded),
+      HabitStatus.missed => (p.missed, p.onAccent, Icons.close_rounded),
+      HabitStatus.other => (p.other, p.onAccent, Icons.remove_rounded),
       HabitStatus.none => (p.empty, p.inkMuted, null),
     };
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () => state.selectStatus(today, habit, _next[status]!),
-      child: SizedBox(
-        height: 52,
+      onLongPress: state.habits.any((h)=>h.id==habit.id) ? ()=>editRitualGoal(context,habit,today.year,today.month) : null,
+      onTap: () => habit.target != null ? enterRitualAmount(context,today,habit) : state.selectStatus(today, habit, _next[status]!),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
         child: Row(
           children: [
             Expanded(
-              child: Text(habit.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: _body(p)),
+              child: Text(ritualProgress(state,today,habit), maxLines: 2, overflow: TextOverflow.ellipsis, style: _body(p)),
             ),
             if (streak > 1) ...[
               Text('$streak', style: _body(p, size: 13, colour: p.inkMuted)),
@@ -529,7 +703,7 @@ class _TasksCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.of(context);
+    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision));
     final tasks = state.orderedTodos(TodoScope.today);
     return Tile(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -559,9 +733,13 @@ class _TasksCard extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 padding: const EdgeInsets.only(right: 16),
                 decoration: BoxDecoration(color: p.missed, borderRadius: BorderRadius.circular(12)),
-                child: Icon(Icons.delete_rounded, size: 18, color: p.missedInk),
+                child: Icon(Icons.delete_rounded, size: 18, color: p.onAccent),
               ),
-              child: _TaskRow(key: ValueKey(task.id), task: task),
+              child: SearchGlow(
+                target: task.uid,
+                radius: 12,
+                child: _TaskRow(key: ValueKey(task.id), task: task),
+              ),
             ),
         ],
       ),
@@ -577,7 +755,7 @@ class _TaskRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.of(context);
+    final state = AppScope.read(context);
     final hasMeta = task.dueTime != null || task.location != null || task.repeatUid != null || task.birthday;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -658,6 +836,7 @@ class _TaskRow extends StatelessWidget {
                     ),
                   ),
                 ),
+                TaskDetailsMenu(scope: TodoScope.today, item: task),
               ],
             ),
           ),
@@ -746,7 +925,7 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
     if (text.isEmpty) return;
     final state = AppScope.read(context);
     final (scope, due) = scopeForDay(state.today, _day);
-    state.addTodo(scope, text, dueDate: due);
+    state.quickAddTodo(scope, text, dueDate: due);
     Navigator.pop(context);
   }
 
@@ -823,15 +1002,54 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
   }
 }
 
-class _SettingsPage extends StatelessWidget {
+class _SettingsPage extends StatefulWidget {
   const _SettingsPage({this.updater});
 
   final PhoneUpdater? updater;
 
   @override
+  State<_SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<_SettingsPage> {
+  bool _signingOut = false;
+
+  Future<void> _signOut(AppState state, SyncService sync) async {
+    if (_signingOut) return;
+    setState(() => _signingOut = true);
+    try {
+      state.saveDrafts();
+      await sync.run();
+      if (!mounted) return;
+      if (sync.error != null) {
+        final proceed =
+            await showDialog<bool>(
+              context: context,
+              builder: (context) => AppAlertDialog(
+                title: 'Sign out without syncing?',
+                content: Text(
+                  'Eclipse couldn’t sync first, so unsynced changes on this phone would be lost (${sync.error}).',
+                ),
+                actions: [
+                  DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(context, false)),
+                  DialogConfirm(label: 'Sign out anyway', onPressed: () => Navigator.pop(context, true)),
+                ],
+              ),
+            ) ??
+            false;
+        if (!proceed || !mounted) return;
+      }
+      await sync.turnOff();
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _signingOut = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.themeName, s.restWeekends, s.dayStartHour));
+    final state = AppScope.watch(context, (s) => (s.themeName, s.restWeekends, s.dayStartHour, s.smartAdd, s.focusEnabled));
     final sync = state.sync;
     return Scaffold(
       backgroundColor: p.background,
@@ -861,16 +1079,16 @@ class _SettingsPage extends StatelessWidget {
                       Text(error, style: _body(p, size: 14, colour: p.missedInk)),
                     ],
                     const SizedBox(height: 8),
-                    Row(
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
                       children: [
-                        TextButton(onPressed: sync.run, child: const Text('Sync now')),
-                        const Spacer(),
                         TextButton(
-                          onPressed: () async {
-                            await sync.turnOff();
-                            if (context.mounted) Navigator.pop(context);
-                          },
-                          child: const Text('Sign out'),
+                          onPressed: sync.busy || _signingOut ? null : sync.run,
+                          child: Text(sync.busy ? 'Syncing…' : 'Sync now'),
+                        ),
+                        TextButton(
+                          onPressed: _signingOut ? null : () => _signOut(state, sync),
+                          child: Text(_signingOut ? 'Signing out…' : 'Sign out'),
                         ),
                       ],
                     ),
@@ -889,6 +1107,8 @@ class _SettingsPage extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                   child: Text('DAYS', style: capsLabel(p.inkMuted)),
                 ),
+                SwitchListTile(title: const Text('Smart quick-add'), value: state.smartAdd, onChanged: state.setSmartAdd),
+                SwitchListTile(title: const Text('Daily focus'), value: state.focusEnabled, onChanged: state.setFocusEnabled),
                 InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: () => state.setRestWeekends(!state.restWeekends),
@@ -960,7 +1180,9 @@ class _SettingsPage extends StatelessWidget {
               ],
             ),
           ),
-          if (updater?.installed case final version?)
+          const PersonalDataActions(),
+          if(sync!=null && sync.isOn)DriveEncryptionButton(sync:sync),
+          if (widget.updater?.installed case final version?)
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text('Eclipse $version', style: _body(p, size: 13, colour: p.inkMuted)),

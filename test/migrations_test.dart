@@ -132,4 +132,35 @@ void main() {
     SyncEngine(store, 'pc');
     expect(decodeHolidays(store.setting('holidays')), [(start: DateTime(2026, 12, 20), end: DateTime(2026, 12, 27))]);
   });
+
+  test('upgrading to version 37 creates the query performance indexes', () {
+    final file = '${dir.path}/v1_indexes.db';
+    sqlite3.open(file)
+      ..execute('''
+        CREATE TABLE habits (id INTEGER PRIMARY KEY AUTOINCREMENT);
+        CREATE TABLE month_habits (year INTEGER NOT NULL, month INTEGER NOT NULL,
+          habit_id INTEGER NOT NULL REFERENCES habits(id), name TEXT NOT NULL, position INTEGER NOT NULL,
+          PRIMARY KEY (year, month, habit_id));
+        CREATE TABLE entries (day TEXT NOT NULL, habit_id INTEGER NOT NULL REFERENCES habits(id),
+          status INTEGER NOT NULL, note TEXT, PRIMARY KEY (day, habit_id));
+        CREATE TABLE todos (id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, period TEXT NOT NULL,
+          text TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, carried INTEGER NOT NULL DEFAULT 0);
+        CREATE INDEX todos_scope_period ON todos (scope, period);
+        CREATE TABLE journal (day TEXT PRIMARY KEY, text TEXT NOT NULL);
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        PRAGMA user_version = 1;
+      ''')
+      ..close();
+    final store = Store.open(file);
+    addTearDown(store.close);
+    expect(store.raw.select('PRAGMA user_version').single.columnAt(0), Store.schemaVersion);
+    final indexes = {
+      for (final row in store.raw.select("SELECT name FROM sqlite_master WHERE type = 'index'"))
+        row['name'] as String,
+    };
+    expect(
+      indexes,
+      containsAll(['todos_done_reminders', 'todos_since', 'todos_done_due_date', 'month_habits_habit_id']),
+    );
+  });
 }

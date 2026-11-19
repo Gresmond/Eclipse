@@ -1,3 +1,4 @@
+import 'ritual_goal.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show kPrimaryButton, kSecondaryButton, kTertiaryButton;
 import 'package:flutter/material.dart';
@@ -88,6 +89,19 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
   AnimationController? _scale, _opacity;
   double? _scaleTarget, _opacityTarget;
 
+  bool get _disabled => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_disabled) {
+      _progress?.value = 1;
+      if (_scaleTarget case final s?) _scale?.value = s;
+      if (_opacityTarget case final o?) _opacity?.value = o;
+      _hoverAnim?.value = _hover && widget.enabled && !widget.off ? 1 : 0;
+    }
+  }
+
   @override
   void didUpdateWidget(StatusCell old) {
     super.didUpdateWidget(old);
@@ -111,7 +125,9 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
   void _setHover(bool hover) {
     _hover = hover;
     final animation = _hoverAnim ??= AnimationController(vsync: this, duration: Motion.hover);
-    if (hover) {
+    if (_disabled) {
+      animation.value = hover ? 1 : 0;
+    } else if (hover) {
       animation.animateTo(1, curve: Motion.hoverCurve);
     } else {
       animation.animateBack(0, curve: Motion.hoverCurve);
@@ -127,6 +143,10 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     Curve curve,
     void Function(AnimationController) keep,
   ) {
+    if (_disabled || duration == Duration.zero) {
+      controller?.value = target;
+      return controller ?? AlwaysStoppedAnimation(target);
+    }
     if (from == null || from == target) return controller ?? AlwaysStoppedAnimation(target);
     final c = controller ?? AnimationController.unbounded(vsync: this, value: from);
     if (controller == null) keep(c);
@@ -177,15 +197,20 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     } else if (look != _to) {
       // A theme change recolours at once; a new mark eases in.
       final themeOnly = look.icon == _to!.icon;
-      _from = themeOnly ? look : _to;
-      _to = look;
-      _through = identical(_change, _day);
-      if (!themeOnly) {
-        final animation = _progress ??= AnimationController(vsync: this, value: 1);
-        _curved ??= CurvedAnimation(parent: animation, curve: _change.$2);
-        animation.duration = _change.$1;
-        _curved!.curve = _change.$2;
-        animation.forward(from: 0);
+      if (_disabled) {
+        _from = _to = look;
+        _progress?.value = 1;
+      } else {
+        _from = themeOnly ? look : _to;
+        _to = look;
+        _through = identical(_change, _day);
+        if (!themeOnly) {
+          final animation = _progress ??= AnimationController(vsync: this, value: 1);
+          _curved ??= CurvedAnimation(parent: animation, curve: _change.$2);
+          animation.duration = _change.$1;
+          _curved!.curve = _change.$2;
+          animation.forward(from: 0);
+        }
       }
     }
 
@@ -230,6 +255,27 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
 
     if (note != null && !widget.off) {
       cell = PixelTooltip(message: note, child: cell);
+    }
+
+    if (!widget.off) {
+      final label = status == HabitStatus.none
+          ? widget.habit.name
+          : '${widget.habit.name}, ${status.name}';
+      cell = Semantics(
+        button: enabled,
+        enabled: enabled,
+        label: label,
+        onTap: enabled
+            ? () => _selectStatus(
+                context,
+                state,
+                widget.day,
+                widget.habit,
+                status == HabitStatus.done ? HabitStatus.none : HabitStatus.done,
+              )
+            : null,
+        child: cell,
+      );
     }
 
     // The same widgets whether enabled or not, so a square that becomes a
@@ -427,12 +473,14 @@ class _SquarePainter extends CustomPainter {
 }
 
 Future<void> _selectStatus(BuildContext context, AppState state, DateTime day, Habit habit, HabitStatus status) async {
+  if (!state.canEditDay(day)) return;
+  if (status==HabitStatus.done && habit.target!=null) return enterRitualAmount(context,day,habit);
   if (state.selectStatus(day, habit, status) != HabitStatus.other) return;
   final note = await showAppDialog<String>(
     context: context,
     builder: (_) => _NoteDialog(habit: habit, initial: state.noteOf(day, habit)),
   );
-  if (note != null) state.setNote(day, habit, note);
+  if (note != null && state.canEditDay(day)) state.setNote(day, habit, note);
 }
 
 class _NoteDialog extends StatefulWidget {

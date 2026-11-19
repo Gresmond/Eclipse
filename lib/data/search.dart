@@ -1,9 +1,15 @@
 import '../models.dart';
 import 'store.dart';
+import 'sqlite.dart' show SqliteException;
 
 /// What a search found: a day's journal entry, or a task.
 class SearchHit {
-  const SearchHit.journal(this.day, this.text) : uid = null, done = false, subtask = null, subtaskIndex = null;
+  const SearchHit.journal(this.day, this.text)
+    : uid = null,
+      done = false,
+      subtask = null,
+      subtaskIndex = null,
+      kind = 'journal';
   const SearchHit.task(
     this.day,
     this.text, {
@@ -11,7 +17,13 @@ class SearchHit {
     required this.done,
     this.subtask,
     this.subtaskIndex,
-  });
+  }) : kind = 'task';
+  const SearchHit.record(this.kind, this.day, this.text)
+    : uid = null,
+      done = false,
+      subtask = null,
+      subtaskIndex = null;
+  final String kind;
 
   final DateTime day;
 
@@ -35,7 +47,7 @@ class SearchHit {
     final uid => subtaskIndex == null ? uid : '$uid#$subtaskIndex',
   };
 
-  bool get isJournal => uid == null;
+  bool get isJournal => kind == 'journal';
 }
 
 /// Everything search looks through, read once and matched as you type.
@@ -76,6 +88,58 @@ class SearchIndex {
     ];
   }();
 
+  late final _records = [
+    for (final r in _store.raw.select("""
+      SELECT 'ritual' AS kind, printf('%04d-%02d-01', year, month) AS day, name || ' · ' || note AS text
+      FROM month_habits WHERE trim(note) <> ''
+      UNION ALL SELECT 'entry', e.day, coalesce(m.name || ' · ', '') || e.note
+      FROM entries e LEFT JOIN month_habits m ON e.habit_id=m.habit_id AND substr(e.day,1,7)=printf('%04d-%02d',m.year,m.month)
+      WHERE trim(e.note) <> ''
+      UNION ALL SELECT 'training', s.day, group_concat(DISTINCT x.name)
+      FROM training_sets s JOIN exercises x ON x.uid=s.exercise GROUP BY s.day
+      """))
+      SearchHit.record(r['kind'] as String, DateTime.parse(r['day'] as String), r['text'] as String),
+  ];
+
+  // Trigrams preserve substring matching. Short queries and SQLite builds
+  // without FTS5 use the same matcher below.
+  static final _owners = Expando<SearchIndex>();
+  bool _ftsAvailable = true;
+  Set<int>? _candidates(List<String> words) {
+    final long = words.where((w) => w.runes.length >= 3 && !w.contains(String.fromCharCode(0))).toList();
+    if (!_ftsAvailable || long.isEmpty) return null;
+    final db = _store.raw;
+    if (_owners[_store] != this) {
+      try {
+        db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS temp.eclipse_search USING fts5(body, tokenize='trigram')");
+      } on SqliteException {
+        _ftsAvailable = false;
+        return null;
+      }
+      final bodies = [
+        for (final e in _journal) e.key,
+        for (final e in _todos) [e.key, ...e.subtasks.map((s) => s.key)].join('\n'),
+        for (final e in _records) _fold(e.text),
+      ];
+      _store.transaction(() {
+        db.execute('DELETE FROM temp.eclipse_search');
+        final insert = db.prepare('INSERT INTO temp.eclipse_search(rowid, body) VALUES (?, ?)');
+        try {
+          for (final (i, body) in bodies.indexed) {
+            insert.execute([i + 1, body]);
+          }
+        } finally {
+          insert.close();
+        }
+      });
+      _owners[_store] = this;
+    }
+    final query = long.map((term) => '"${term.replaceAll('"', '""')}"').join(' AND ');
+    return {
+      for (final r in db.select('SELECT rowid FROM temp.eclipse_search WHERE body MATCH ?', [query])) r['rowid'] as int,
+    };
+  }
+
   /// The words of [query], folded the way the text is.
   static List<String> words(String query) => _fold(query).split(_spaces).where((w) => w.isNotEmpty).toList();
 
@@ -86,10 +150,19 @@ class SearchIndex {
     if (words.isEmpty) return const [];
     bool all(String key) => words.every(key.contains);
     final hits = <(String, int, SearchHit)>[];
+    final candidates = _candidates(words);
+    var row = 0;
+    bool include() {
+      row++;
+      return candidates == null || candidates.contains(row);
+    }
+
     for (final e in _journal) {
+      if (!include()) continue;
       if (all(e.key)) hits.add((e.day, 0, SearchHit.journal(DateTime.parse(e.day), _excerpt(e.text, e.key, words))));
     }
     for (final (:todo, :key, :subtasks) in _todos) {
+      if (!include()) continue;
       ({int index, String text, String key})? subtask;
       if (!all(key)) {
         // A subtask holding them all, or between the name and it.
@@ -109,6 +182,9 @@ class SearchIndex {
         ),
       ));
     }
+    for (final record in _records) {
+      if (include() && all(_fold(record.text))) hits.add((dateKey(record.day), 2, record));
+    }
     hits.sort((a, b) {
       final byDay = b.$1.compareTo(a.$1);
       return byDay != 0 ? byDay : a.$2.compareTo(b.$2);
@@ -118,8 +194,27 @@ class SearchIndex {
 }
 
 /// Lower case, with curly quotes as straight ones, so either matches.
-/// Keeps the text's length, so a match's place is the same in both.
-String _fold(String text) => text.toLowerCase().replaceAll(_singleQuotes, "'").replaceAll(_doubleQuotes, '"');
+/// Keeps the text's UTF-16 length, so a match's place is the same in both.
+String _fold(String text) {
+  final lower = text.toLowerCase();
+  if (lower.length == text.length) {
+    return lower.replaceAll(_singleQuotes, "'").replaceAll(_doubleQuotes, '"');
+  }
+  final out = StringBuffer();
+  for (var i = 0; i < text.length; i++) {
+    final ch = text[i];
+    final lc = ch.toLowerCase();
+    final folded = lc.length == 1 ? lc : lc[0];
+    out.write(
+      _singleQuotes.hasMatch(folded)
+          ? "'"
+          : _doubleQuotes.hasMatch(folded)
+          ? '"'
+          : folded,
+    );
+  }
+  return out.toString();
+}
 
 final _spaces = RegExp(r'\s+');
 final _singleQuotes = RegExp('[‘’′]');
@@ -134,7 +229,10 @@ String _excerpt(String text, String key, List<String> words) {
   }
   var start = at <= 40 ? 0 : text.lastIndexOf(' ', at - 30) + 1;
   if (start < 0) start = 0;
-  final end = start + 240 < text.length ? start + 240 : text.length;
+  bool isLowSurrogate(int unit) => (unit & 0xFC00) == 0xDC00;
+  if (start > 0 && start < text.length && isLowSurrogate(text.codeUnitAt(start))) start++;
+  var end = start + 240 < text.length ? start + 240 : text.length;
+  if (end > start && end < text.length && isLowSurrogate(text.codeUnitAt(end))) end--;
   final line = text.substring(start, end).replaceAll(_spaces, ' ').trim();
   return start == 0 ? line : '…$line';
 }
@@ -144,8 +242,10 @@ List<(int, int)> matchRanges(String text, List<String> words) {
   final key = _fold(text);
   final ranges = <(int, int)>[];
   for (final w in words) {
-    for (var i = key.indexOf(w); i >= 0; i = key.indexOf(w, i + w.length)) {
-      ranges.add((i, i + w.length));
+    final word = _fold(w);
+    if (word.isEmpty) continue;
+    for (var i = key.indexOf(word); i >= 0; i = key.indexOf(word, i + word.length)) {
+      ranges.add((i, i + word.length));
     }
   }
   ranges.sort((a, b) => a.$1.compareTo(b.$1));

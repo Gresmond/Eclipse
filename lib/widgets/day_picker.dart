@@ -55,6 +55,14 @@ class MonthCalendar extends StatefulWidget {
 class _MonthCalendarState extends State<MonthCalendar> {
   late DateTime _month = DateTime(widget.initial.year, widget.initial.month);
 
+  @override
+  void didUpdateWidget(MonthCalendar old) {
+    super.didUpdateWidget(old);
+    if (widget.initial.year != old.initial.year || widget.initial.month != old.initial.month) {
+      _month = DateTime(widget.initial.year, widget.initial.month);
+    }
+  }
+
   void _shift(int delta) => setState(() => _month = DateTime(_month.year, _month.month + delta));
 
   @override

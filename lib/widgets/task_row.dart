@@ -1,9 +1,5 @@
 part of 'todo_panel.dart';
 
-/// Collapses every task again, as when the app opens.
-@visibleForTesting
-void collapseAllTasks() => _TodoRowState._opened.clear();
-
 class _TodoRow extends StatefulWidget {
   const _TodoRow({
     required this.scope,
@@ -50,42 +46,42 @@ class _TodoRow extends StatefulWidget {
   State<_TodoRow> createState() => _TodoRowState();
 }
 
-/// A task or subtask is being dragged. Rows show no hover tint, buttons or
-/// check ring meanwhile, so the nest highlight is the only one shown.
-final _dragging = ValueNotifier(false);
-
-/// Hides a row's hover look while [_dragging], bringing it back after if the
-/// pointer is still over the row.
+/// Hides a row's hover look while a task or subtask is being dragged, bringing
+/// it back after if the pointer is still over the row.
 mixin _HoverUnlessDragging<T extends StatefulWidget> on State<T> {
   bool _pointer = false;
-  bool get _hover => _pointer && !_dragging.value;
+  bool _focused = false;
+  ValueNotifier<bool>? _dragging;
+  bool get _hover => (_pointer || _focused) && !(_dragging?.value ?? false);
 
   void _dragChanged() => setState(() {});
 
   @override
-  void initState() {
-    super.initState();
-    _dragging.addListener(_dragChanged);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final notifier = AppScope.read(context).draggingTask;
+    if (notifier != _dragging) {
+      _dragging?.removeListener(_dragChanged);
+      _dragging = notifier;
+      _dragging?.addListener(_dragChanged);
+    }
   }
 
   @override
   void dispose() {
-    _dragging.removeListener(_dragChanged);
+    _dragging?.removeListener(_dragChanged);
     super.dispose();
   }
 }
 
 class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
-  /// Tasks opened since the app started. Every task starts collapsed when the
-  /// app opens, and one opened stays open while the app runs, across views.
-  static final _opened = <(TodoScope, int)>{};
-
   bool _pressed = false;
 
   /// The hover buttons exist only while shown or fading out: a long list
   /// would otherwise hold three hidden buttons per row.
   bool _actions = false;
 
+  Set<(TodoScope, int)> get _opened => AppScope.read(context).openedTasks;
   bool get _expanded => _opened.contains((widget.scope, widget.item.id));
   set _expanded(bool open) =>
       open ? _opened.add((widget.scope, widget.item.id)) : _opened.remove((widget.scope, widget.item.id));
@@ -136,6 +132,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
   bool _nests(AppState state, _TaskDrag drag) =>
       !widget.readOnly &&
       widget.make == null &&
+      !widget.item.done &&
       !_acceptingNest &&
       !drag.nesting &&
       widget.day == state.today &&
@@ -272,6 +269,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
     final item = widget.item;
     final child = item.subtasks[index];
     final canDrag = !widget.readOnly && !widget.leaving && item.subtasks.length > 1 && (item.numbered || !child.done);
+    final dragging = state.draggingTask;
     return DragTarget<_SubtaskDrag>(
       key: _subtaskKey(index),
       onWillAcceptWithDetails: (details) {
@@ -296,11 +294,11 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
         data: _SubtaskDrag(item.id, index),
         maxSimultaneousDrags: canDrag ? 1 : 0,
         onDragStarted: () {
-          _dragging.value = true;
+          dragging.value = true;
           _dragDim(subtask: index);
         },
-        onDragCompleted: () => _dragging.value = false,
-        onDraggableCanceled: (_, _) => _dragging.value = false,
+        onDragCompleted: () => dragging.value = false,
+        onDraggableCanceled: (_, _) => dragging.value = false,
         onDragEnd: (_) {
           _dragDim(clear: true);
           final order = _dragOrder;
@@ -435,21 +433,46 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
       animate: widget.fadeIn,
       shown: !widget.leaving && !_nestingOut,
       fadeBeforeCollapse: _nestingOut,
-      child: IgnorePointer(
-        ignoring: widget.readOnly || widget.leaving || _nestingOut,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _pointer = _actions = true),
-          onExit: (_) => setState(() {
-            _pointer = false;
-            _pressed = false;
-          }),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (_) => setState(() => _pressed = true),
-            onTapUp: (_) => setState(() => _pressed = false),
-            onTapCancel: () => setState(() => _pressed = false),
-            onTap: () => state.toggleTodo(_real(), day: widget.day, scope: widget.scope),
+      child: Focus(
+        canRequestFocus: !widget.readOnly,
+        descendantsAreFocusable: !widget.readOnly,
+        onFocusChange: (focused) {
+          if (_focused != focused) {
+            setState(() {
+              _focused = focused;
+              if (focused && !widget.readOnly) _actions = true;
+            });
+          }
+        },
+        onKeyEvent: widget.readOnly
+            ? null
+            : (node, event) {
+                if (node.hasPrimaryFocus &&
+                    event is KeyDownEvent &&
+                    (event.logicalKey == LogicalKeyboardKey.enter ||
+                        event.logicalKey == LogicalKeyboardKey.space)) {
+                  state.toggleTodo(_real(), day: widget.day, scope: widget.scope);
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+        child: IgnorePointer(
+          ignoring: widget.leaving || _nestingOut,
+          child: MouseRegion(
+            cursor: widget.readOnly ? MouseCursor.defer : SystemMouseCursors.click,
+            onEnter: widget.readOnly ? null : (_) => setState(() => _pointer = _actions = true),
+            onExit: widget.readOnly
+                ? null
+                : (_) => setState(() {
+                    _pointer = false;
+                    _pressed = false;
+                  }),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: widget.readOnly ? null : (_) => setState(() => _pressed = true),
+              onTapUp: widget.readOnly ? null : (_) => setState(() => _pressed = false),
+              onTapCancel: widget.readOnly ? null : () => setState(() => _pressed = false),
+              onTap: widget.readOnly ? null : () => state.toggleTodo(_real(), day: widget.day, scope: widget.scope),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: HoverFill(
@@ -556,7 +579,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                               excluding: !_hover || widget.leaving,
                               child: AnimatedOpacity(
                                 opacity: _hover ? 1 : 0,
-                                duration: Motion.hover,
+                                duration: context.themed(Motion.hover),
                                 curve: Motion.hoverCurve,
                                 onEnd: () {
                                   if (mounted && !_hover) {
@@ -598,6 +621,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
             ),
           ),
         ),
+      ),
       ),
     );
     final row = Column(
@@ -695,13 +719,14 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
       ..fadeForNesting = _fadeForNesting
       ..restoreAfterNesting = _restoreAfterNesting
       ..list = widget.order?._list;
+    final dragging = state.draggingTask;
     return Draggable<_TaskDrag>(
       data: drag,
       dragAnchorStrategy: (draggable, context, position) =>
           drag.grab = childDragAnchorStrategy(draggable, context, position),
       onDragStarted: () {
         _activeDrag = drag;
-        _dragging.value = true;
+        dragging.value = true;
         _dragDim(row: true);
         SmoothTaskScroll.dragPosition.value = Offset.zero;
       },
@@ -713,13 +738,13 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
       // Let go anywhere but on another task or day, it stays where it was
       // last shown among its day's tasks.
       onDraggableCanceled: (_, _) {
-        _dragging.value = false;
+        dragging.value = false;
         SmoothTaskScroll.dragPosition.value = null;
         _activeDrag?.onFinished?.call();
         widget.order?._keep();
       },
       onDragCompleted: () {
-        _dragging.value = false;
+        dragging.value = false;
         SmoothTaskScroll.dragPosition.value = null;
         _activeDrag?.onFinished?.call();
         widget.order?._discard();
@@ -758,14 +783,24 @@ class _CheckState extends State<_Check> with TickerProviderStateMixin {
   late final _curved = CurvedAnimation(parent: _fill, curve: Motion.clickCurve);
   late final _hover = AnimationController(vsync: this, duration: Motion.hover);
 
+  bool get _disabled => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
   @override
   void didUpdateWidget(_Check old) {
     super.didUpdateWidget(old);
     if (widget.done != old.done) {
-      widget.done ? _fill.forward() : _fill.reverse();
+      if (_disabled) {
+        _fill.value = widget.done ? 1 : 0;
+      } else {
+        widget.done ? _fill.forward() : _fill.reverse();
+      }
     }
     if (widget.hover != old.hover) {
-      widget.hover ? _hover.animateTo(1, curve: Motion.hoverCurve) : _hover.animateBack(0, curve: Motion.hoverCurve);
+      if (_disabled) {
+        _hover.value = widget.hover ? 1 : 0;
+      } else {
+        widget.hover ? _hover.animateTo(1, curve: Motion.hoverCurve) : _hover.animateBack(0, curve: Motion.hoverCurve);
+      }
     }
   }
 
@@ -872,21 +907,43 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
   Widget build(BuildContext context) {
     final p = context.palette;
     final done = widget.done;
-    return IgnorePointer(
-      ignoring: widget.readOnly,
+    return Focus(
+      canRequestFocus: !widget.readOnly,
+      descendantsAreFocusable: !widget.readOnly,
+      onFocusChange: (focused) {
+        if (_focused != focused) {
+          setState(() {
+            _focused = focused;
+            if (focused && !widget.readOnly) _actions = true;
+          });
+        }
+      },
+      onKeyEvent: widget.readOnly
+          ? null
+          : (node, event) {
+              if (node.hasPrimaryFocus &&
+                  event is KeyDownEvent &&
+                  (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.space)) {
+                widget.onToggle();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _pointer = _actions = true),
-        onExit: (_) => setState(() {
-          _pointer = false;
-          _pressed = false;
-        }),
+        cursor: widget.readOnly ? MouseCursor.defer : SystemMouseCursors.click,
+        onEnter: widget.readOnly ? null : (_) => setState(() => _pointer = _actions = true),
+        onExit: widget.readOnly
+            ? null
+            : (_) => setState(() {
+                _pointer = false;
+                _pressed = false;
+              }),
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTapDown: (_) => setState(() => _pressed = true),
-          onTapUp: (_) => setState(() => _pressed = false),
-          onTapCancel: () => setState(() => _pressed = false),
-          onTap: widget.onToggle,
+          onTapDown: widget.readOnly ? null : (_) => setState(() => _pressed = true),
+          onTapUp: widget.readOnly ? null : (_) => setState(() => _pressed = false),
+          onTapCancel: widget.readOnly ? null : () => setState(() => _pressed = false),
+          onTap: widget.readOnly ? null : widget.onToggle,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: HoverFill(
@@ -937,7 +994,7 @@ class _SubtaskRowState extends State<_SubtaskRow> with _HoverUnlessDragging {
                           excluding: !_hover,
                           child: AnimatedOpacity(
                             opacity: _hover ? 1 : 0,
-                            duration: Motion.hover,
+                            duration: context.themed(Motion.hover),
                             curve: Motion.hoverCurve,
                             onEnd: () {
                               if (mounted && !_hover) {

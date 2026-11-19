@@ -6,17 +6,33 @@ mixin _Settings on ChangeNotifier {
   Store get store;
   LruCache<int, (int, int)> get _streaks;
   DateTime get today;
-  void checkDate();
+  void checkDate({bool notify = true});
   void holidaysChanged();
+  void _removed(String label, List<RowsBefore> before);
+  void _todosChanged();
+
+  bool get smartAdd => store.setting('smartAdd') == '1';
+  bool get focusEnabled => store.setting('dailyFocus') == '1';
+  String? get focusUid => store.setting('focusDay') == dateKey(today) ? store.setting('focusUid') : null;
+  void setFocus(String? uid) {
+    store.transaction(() {
+      store.setSetting('focusDay', dateKey(today));
+      store.setSetting('focusUid', uid ?? '');
+    });
+    notifyListeners();
+  }
+  void setSmartAdd(bool on) { store.setSetting('smartAdd', on ? '1' : '0'); notifyListeners(); }
+  void setFocusEnabled(bool on) { store.setSetting('dailyFocus', on ? '1' : '0'); notifyListeners(); }
 
   /// The hour a new day starts: 0 for midnight or 4 for night owls.
-  late int dayStartHour = int.tryParse(store.setting('dayStartHour') ?? '') ?? 0;
+  late int dayStartHour = parseDayStartHour(store.setting('dayStartHour'));
 
   void setDayStartHour(int hour) {
+    if (hour < 0 || hour > 23) return;
     dayStartHour = hour;
     store.setSetting('dayStartHour', '$hour');
-    checkDate();
-    notifyListeners();
+    checkDate(notify: false);
+    _todosChanged();
   }
 
   /// Name of the chosen colour theme; null until one is picked.
@@ -55,14 +71,14 @@ mixin _Settings on ChangeNotifier {
 
   static const _themeNames = 4;
 
-  void setTheme(String name) {
+  void setTheme(String name, {bool notify = true}) {
     themeName = name;
-    themeNotifier.value = name;
     store.transaction(() {
       store.setSetting('theme', name);
       store.setSetting('themeNames', '$_themeNames');
     });
-    notifyListeners();
+    themeNotifier.value = name;
+    if (notify) notifyListeners();
   }
 
   /// True where night light can be read (a Hyprland session); the menu hides
@@ -84,7 +100,7 @@ mixin _Settings on ChangeNotifier {
   void setFollowNightLight(bool follow) {
     followNightLight = follow;
     store.setSetting('followNightLight', follow ? '1' : '0');
-    if (follow && _nightLight != null) _matchNightLight(_nightLight!);
+    if (follow && _nightLight != null) _matchNightLight(_nightLight!, notify: false);
     notifyListeners();
   }
 
@@ -99,9 +115,9 @@ mixin _Settings on ChangeNotifier {
     });
   }
 
-  void _matchNightLight(bool on) {
+  void _matchNightLight(bool on, {bool notify = true}) {
     final name = partnerOf(themeName, dark: on).name;
-    if (name != themeName) setTheme(name);
+    if (name != themeName) setTheme(name, notify: notify);
   }
 
   /// Weekends shown greyed as rest days. A blank rest day doesn't break a
@@ -174,11 +190,12 @@ mixin _Settings on ChangeNotifier {
   ]);
 
   void _setHolidays(List<Holiday> next) {
+    if (encodeHolidays(next) == encodeHolidays(holidays)) return;
+    _removed('Changed holidays', [store.rowsBefore('settings', ['key'], 'key = ?', ['holidays'])]);
     holidays = decodeHolidays(encodeHolidays(next));
     store.setSetting('holidays', encodeHolidays(holidays));
     _streaks.clear();
     holidaysChanged();
-    notifyListeners();
   }
 
   /// Whether Further ahead shows birthdays.

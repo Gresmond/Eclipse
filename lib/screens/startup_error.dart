@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/sqlite.dart' show OpenMode, placeDatabase, removeDatabase, sqlite3;
 
@@ -12,6 +13,7 @@ import '../data/store.dart' show DatabaseTooNewException;
 import '../data/sync_service.dart';
 import '../data/updates.dart';
 import '../models.dart';
+import '../phone/phone_platform.dart' show PhoneUpdater;
 import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
 import '../widgets/app_dialog.dart';
@@ -55,13 +57,31 @@ class StartupRecovery {
   final Future<void> Function() reopen;
 }
 
+void _quitApp() {
+  if (Platform.isAndroid) {
+    unawaited(SystemNavigator.pop());
+  } else {
+    exit(0);
+  }
+}
+
 /// Shown in place of the app when its data can't be opened, so the window
 /// says why instead of staying blank.
 class StartupErrorApp extends StatelessWidget {
-  const StartupErrorApp({super.key, required this.error, this.updater, this.themeName, this.recovery});
+  const StartupErrorApp({
+    super.key,
+    required this.error,
+    this.updater,
+    this.phoneUpdater,
+    this.onRetry,
+    this.themeName,
+    this.recovery,
+  });
 
   final Object error;
   final Updater? updater;
+  final PhoneUpdater? phoneUpdater;
+  final VoidCallback? onRetry;
 
   /// The saved theme, from [savedThemeName]; Sunrise when null.
   final String? themeName;
@@ -82,36 +102,52 @@ class StartupErrorApp extends StatelessWidget {
         builder: (context) {
           final p = context.palette;
           return Scaffold(
-            body: Align(
-              alignment: const PixelCentre(),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                // A long error and its backups can outgrow a small window.
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: PixelColumn(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _tooNew ? 'This copy of Eclipse is older than your data' : 'Eclipse couldn’t open your data',
-                        style: dialogTitleStyle(p),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _tooNew
-                            ? 'A newer build has already updated your data. Update this copy to open it. '
-                                  'Nothing has been changed or lost.'
-                            : curlyQuotes('$error'),
-                        style: _body(p),
-                      ),
-                      if (!_tooNew && recovery != null) _RecoveryList(recovery!),
-                      const SizedBox(height: 24),
-                      if (updater case final updater?)
-                        ListenableBuilder(listenable: updater, builder: (context, _) => _UpdateRow(updater))
-                      else
-                        DialogConfirm(label: 'Quit', onPressed: () => exit(0)),
-                    ],
+            body: SafeArea(
+              child: Align(
+                alignment: const PixelCentre(),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  // A long error and its backups can outgrow a small window.
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: PixelColumn(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _tooNew ? 'This copy of Eclipse is older than your data' : 'Eclipse couldn’t open your data',
+                          style: dialogTitleStyle(p),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _tooNew
+                              ? 'A newer build has already updated your data. Update this copy to open it. '
+                                    'Nothing has been changed or lost.'
+                              : curlyQuotes('$error'),
+                          style: _body(p),
+                        ),
+                        if (!_tooNew && recovery != null) _RecoveryList(recovery!),
+                        const SizedBox(height: 24),
+                        if (updater case final updater?)
+                          ListenableBuilder(listenable: updater, builder: (context, _) => _UpdateRow(updater))
+                        else if (phoneUpdater case final phone? when _tooNew)
+                          ListenableBuilder(
+                            listenable: phone,
+                            builder: (context, _) => _PhoneUpdateRow(phone, onRetry: onRetry),
+                          )
+                        else
+                          PixelRow(
+                            children: [
+                              if (onRetry case final retry?) ...[
+                                DialogConfirm(label: 'Try again', onPressed: retry),
+                                const SizedBox(width: 12),
+                                DialogDismiss(label: 'Quit', onPressed: _quitApp),
+                              ] else
+                                DialogConfirm(label: 'Quit', onPressed: _quitApp),
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -276,7 +312,44 @@ class _UpdateRow extends StatelessWidget {
           children: [
             if (canUpdate) DialogConfirm(label: updater.actionLabel, onPressed: busy ? null : updater.update),
             const SizedBox(width: 12),
-            DialogDismiss(label: 'Quit', onPressed: busy ? null : () => exit(0)),
+            DialogDismiss(label: 'Quit', onPressed: busy ? null : _quitApp),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _PhoneUpdateRow extends StatelessWidget {
+  const _PhoneUpdateRow(this.updater, {this.onRetry});
+
+  final PhoneUpdater updater;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final busy = updater.updating;
+    return PixelColumn(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (busy)
+          Text('Downloading Eclipse ${updater.available ?? ''}…', style: _body(p))
+        else if (updater.error case final error?)
+          Text(curlyQuotes(error), style: _body(p).copyWith(color: p.missedInk))
+        else if (updater.available case final version?)
+          Text('Eclipse $version is available.', style: _body(p)),
+        const SizedBox(height: 12),
+        PixelRow(
+          children: [
+            if (updater.available != null) ...[
+              DialogConfirm(label: 'Update', onPressed: busy ? null : updater.update),
+              const SizedBox(width: 12),
+            ] else if (onRetry case final retry?) ...[
+              DialogConfirm(label: 'Try again', onPressed: busy ? null : retry),
+              const SizedBox(width: 12),
+            ],
+            DialogDismiss(label: 'Quit', onPressed: busy ? null : _quitApp),
           ],
         ),
       ],

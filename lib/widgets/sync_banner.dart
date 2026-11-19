@@ -40,7 +40,18 @@ class _SyncBannerState extends State<SyncBanner> {
   }
 
   @override
+  void didUpdateWidget(SyncBanner old) {
+    super.didUpdateWidget(old);
+    if (widget.sync != old.sync) {
+      old.sync.removeListener(_changed);
+      _seen = widget.sync.incomingCount;
+      widget.sync.addListener(_changed);
+    }
+  }
+
+  @override
   void dispose() {
+    if (!(_cancel?.isCompleted ?? true)) _cancel!.complete();
     widget.sync.removeListener(_changed);
     _hide?.cancel();
     super.dispose();

@@ -22,8 +22,28 @@ for binary in bundle/eclipse bundle/lib/*.so; do
   absent="$(awk '/not found/ {print $1}' <<< "$dependencies")"
   [[ -z $absent ]] || missing+="$absent"$'\n'
 done
-if ! /usr/bin/ldconfig -p 2>/dev/null | awk '/libsqlite3\.so / {found=1} END {exit !found}'; then
-  missing+=$'libsqlite3.so\n'
+ldconfig_bin="$(command -v ldconfig || true)"
+if [[ -z $ldconfig_bin ]]; then
+  for candidate in /usr/bin/ldconfig /sbin/ldconfig /usr/sbin/ldconfig; do
+    if [[ -x $candidate ]]; then
+      ldconfig_bin="$candidate"
+      break
+    fi
+  done
+fi
+sqlite_found=false
+if [[ -n $ldconfig_bin ]] && "$ldconfig_bin" -p 2>/dev/null | awk '/libsqlite3\.so(\.0)? / {found=1} END {exit !found}'; then
+  sqlite_found=true
+else
+  for dir in /usr/lib /usr/lib64 /lib /lib64 /usr/lib/x86_64-linux-gnu; do
+    if compgen -G "$dir/libsqlite3.so*" > /dev/null; then
+      sqlite_found=true
+      break
+    fi
+  done
+fi
+if [[ $sqlite_found == false ]]; then
+  missing+=$'libsqlite3.so.0\n'
 fi
 if [[ -n $missing ]]; then
   printf 'Missing runtime libraries:\n%s\nOn Arch, install the required dependencies once:\nsudo pacman -S --needed gtk3 libdbusmenu-glib sqlite libglvnd libx11 xdg-utils\nThen run this installer again.\n' "$missing" >&2

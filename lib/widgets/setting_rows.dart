@@ -64,23 +64,16 @@ class SettingSwitchRow extends StatelessWidget {
   static const _titleLine = 22.0;
 }
 
-class DayStartPicker extends StatefulWidget {
+class DayStartPicker extends StatelessWidget {
   const DayStartPicker({super.key});
 
   static const hours = [0, 4];
 
   @override
-  State<DayStartPicker> createState() => _DayStartPickerState();
-}
-
-class _DayStartPickerState extends State<DayStartPicker> {
-  final _keys = [for (final _ in DayStartPicker.hours) GlobalKey()];
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.of(context);
-    final index = DayStartPicker.hours.indexOf(state.dayStartHour);
+    final state = AppScope.watch(context, (s) => s.dayStartHour);
+    final index = hours.indexOf(state.dayStartHour);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Column(
@@ -96,45 +89,11 @@ class _DayStartPickerState extends State<DayStartPicker> {
             style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.inkMuted),
           ),
           const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)),
-            // One pill glides to the chosen hour, like the tab bar's.
-            child: GlidePill(
-              target: index >= 0 ? _keys[index] : null,
-              color: p.done,
-              child: Row(
-                children: [
-                  for (final (i, hour) in DayStartPicker.hours.indexed)
-                    Expanded(
-                      key: _keys[i],
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => state.setDayStartHour(hour),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Center(
-                              child: AnimatedDefaultTextStyle(
-                                duration: context.themed(Motion.morph),
-                                curve: Motion.morphCurve,
-                                style: TextStyle(
-                                  fontFamily: Fonts.ui,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: hour == state.dayStartHour ? p.onDone : p.inkMuted,
-                                ),
-                                child: Text(hourLabel(hour)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+          SegmentedPills(
+            labels: [for (final hour in hours) hourLabel(hour)],
+            selected: index,
+            expand: true,
+            onSelect: (i) => state.setDayStartHour(hours[i]),
           ),
         ],
       ),
@@ -160,7 +119,7 @@ class SettingToggle extends StatelessWidget {
       builder: (context, t, _) => Container(
         width: 36,
         height: 22,
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(3),
         alignment: Alignment.lerp(Alignment.centerLeft, Alignment.centerRight, t),
         decoration: SmoothGradientDecoration(
           borderRadius: BorderRadius.circular(12),
@@ -170,8 +129,7 @@ class SettingToggle extends StatelessWidget {
         child: Container(
           width: 16,
           height: 16,
-          // One colour on and off: dark on light themes, light on dark ones.
-          decoration: BoxDecoration(color: p.ink, borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(color: Color.lerp(p.ink, p.onAccent, t)!, borderRadius: BorderRadius.circular(8)),
         ),
       ),
     );

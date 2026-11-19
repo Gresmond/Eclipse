@@ -93,6 +93,7 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _wait?.cancel();
       _wait = widget.delay == Duration.zero ? null : Timer(widget.delay, light);
       if (_wait == null) light();

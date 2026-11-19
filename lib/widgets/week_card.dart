@@ -193,9 +193,8 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
     _over[i].value = _overBy[i].isNotEmpty;
   }
 
-  /// [child], part of day [i], taking a task dropped on it for that day.
-  Widget _dropTarget(int i, Widget child) {
-    final by = Object();
+  /// [child], part of day [i] identified by [by], taking a task dropped on it for that day.
+  Widget _dropTarget(int i, Object by, Widget child) {
     return DragTarget<_TaskDrag>(
       onWillAcceptWithDetails: (details) {
         final ok = _accepts(details.data, i);
@@ -276,6 +275,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
         SliverToBoxAdapter(
           child: _dropTarget(
             i,
+            'head',
             _DayHeading(
               parts: [
                 if (isToday)
@@ -297,6 +297,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
           SliverToBoxAdapter(
             child: _dropTarget(
               i,
+              'empty',
               Padding(
                 padding: const EdgeInsets.fromLTRB(26, 6, 0, 2),
                 child: Text(
@@ -326,6 +327,7 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
               ),
               () => _dropTarget(
                 i,
+                (scope, item.id),
                 TaskRow(
                   key: ValueKey((scope, item.id)),
                   scope: scope,
@@ -342,27 +344,23 @@ class _WeekListState extends State<_WeekList> with _DayMotion, _RevealsFound {
             );
           },
         ),
-        if (foot != null) SliverToBoxAdapter(child: _dropTarget(i, foot)),
+        if (foot != null) SliverToBoxAdapter(child: _dropTarget(i, 'foot', foot)),
       ],
     );
     // A day a task is dragged over lights up.
     return ValueListenableBuilder(
       valueListenable: _over[i],
       builder: (context, over, sliver) => TweenAnimationBuilder<double>(
-        tween: Tween(
-          end: over
-              ? 0.08
-              : i == 0
-              ? 0.045
-              : 0,
-        ),
+        tween: Tween(end: over ? 0.08 : 0.0),
         duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         builder: (context, alpha, sliver) => DecoratedSliver(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            color: i == 0 ? p.todayPanel : p.accent.withValues(alpha: alpha),
-            border: i == 0 ? Border.all(color: p.todayPanelBorder) : null,
+            color: i == 0 ? Color.alphaBlend(p.accent.withValues(alpha: alpha), p.todayPanel) : p.accent.withValues(alpha: alpha),
+            border: i == 0
+                ? Border.all(color: Color.lerp(p.todayPanelBorder, p.accent.withValues(alpha: 0.45), alpha / 0.08)!)
+                : null,
           ),
           sliver: sliver!,
         ),
@@ -466,32 +464,4 @@ void _refocus(FocusNode focus, TextEditingController controller, TextSelection s
       controller.selection = selection;
     }
   });
-}
-
-/// [child] at a card's foot, folded away (while looking back) so it eases
-/// out and back rather than snapping.
-class _FoldAway extends StatelessWidget {
-  const _FoldAway({required this.folded, required this.child});
-
-  final bool folded;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => ClipRect(
-    child: AnimatedAlign(
-      duration: Motion.morph,
-      curve: Motion.morphCurve,
-      alignment: Alignment.topCenter,
-      heightFactor: folded ? 0 : 1,
-      child: AnimatedOpacity(
-        duration: Motion.morph,
-        curve: Motion.morphCurve,
-        opacity: folded ? 0 : 1,
-        child: IgnorePointer(
-          ignoring: folded,
-          child: ExcludeFocus(excluding: folded, child: child),
-        ),
-      ),
-    ),
-  );
 }

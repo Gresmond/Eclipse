@@ -12,7 +12,7 @@ Future<void> openExternal(String target) async {
   } else if (Platform.isAndroid) {
     await const MethodChannel('eclipse/phone').invokeMethod<void>('openUrl', target);
   } else {
-    await Process.run('xdg-open', [target]);
+    await Process.start('xdg-open', [target], mode: ProcessStartMode.detached);
   }
 }
 

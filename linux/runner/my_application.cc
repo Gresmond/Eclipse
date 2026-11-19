@@ -7,6 +7,7 @@
 
 #include "flutter/generated_plugin_registrant.h"
 #include "notifications.h"
+#include "vault.h"
 #include "tray.h"
 
 struct _MyApplication {
@@ -86,6 +87,7 @@ static void my_application_activate(GApplication* application) {
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
   tray_start(GTK_APPLICATION(application), window, view);
   notifications_start(window, view);
+  vault_start(view);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
@@ -107,7 +109,9 @@ static gboolean my_application_local_command_line(GApplication* application,
     return TRUE;
   }
 
-  g_application_activate(application);
+  if (!(self->background && g_application_get_is_remote(application))) {
+    g_application_activate(application);
+  }
   *exit_status = 0;
 
   return TRUE;
@@ -124,9 +128,7 @@ static void my_application_startup(GApplication* application) {
 
 // Implements GApplication::shutdown.
 static void my_application_shutdown(GApplication* application) {
-  // MyApplication* self = MY_APPLICATION(object);
-
-  // Perform any actions required at application shutdown.
+  tray_stop();
 
   G_APPLICATION_CLASS(my_application_parent_class)->shutdown(application);
 }

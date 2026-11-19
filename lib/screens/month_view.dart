@@ -1,3 +1,4 @@
+import '../widgets/ritual_goal.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OverflowBoxFit;
@@ -70,7 +71,8 @@ class _MonthViewState extends State<MonthView> {
         : 'RITUALS  ·  ${habits.length}';
     final sleep = state.sleepHabitsFor(year, month);
     // Squares as big as they can be with both cards on screen at once.
-    final maxCell = (height - _chrome) / (habits.length + sleep.length) - 5;
+    final total = habits.length + sleep.length;
+    final maxCell = total == 0 ? 34.0 : (height - _chrome) / total - 5;
 
     final Widget body;
     if (_editing) {

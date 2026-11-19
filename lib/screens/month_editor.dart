@@ -210,17 +210,16 @@ class _TimeButton extends StatelessWidget {
     final state = AppScope.read(context);
     final sleep = state.sleepHabitsFor(year, month);
     final index = sleep.indexWhere((h) => h.id == habit.id);
+    if (index < 0) return const SizedBox.shrink();
     return TimePill(
       minutes: habit.minutes,
       start: SleepItem.values[index].minutes,
       title: habit.name,
       // Found again each time, as setting a time makes a new list.
-      onChanged: (minutes) => state.setSleepTime(
-        year,
-        month,
-        state.sleepHabitsFor(year, month).firstWhere((h) => h.id == habit.id),
-        minutes,
-      ),
+      onChanged: (minutes) {
+        final current = state.sleepHabitsFor(year, month).where((h) => h.id == habit.id).firstOrNull;
+        if (current != null) state.setSleepTime(year, month, current, minutes);
+      },
     );
   }
 }
@@ -350,6 +349,7 @@ class _EditableRowState extends State<_EditableRow> {
               ],
             ),
           ),
+          PixelTooltip(message:'Ritual targets',child:IconButton(icon:const Icon(Icons.flag_rounded),onPressed:()=>editRitualGoal(context,widget.habit,widget.year,widget.month))),
           PixelTooltip(
             message: 'Remove from ${monthNames[widget.month - 1]}',
             child: IconButton(

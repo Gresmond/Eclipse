@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
+
+import 'todo_panel.dart' show addTaskAnywhere;
 
 import '../app_state.dart';
 import '../data/search.dart';
@@ -6,7 +10,6 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'app_dialog.dart';
-import 'confirm_on_enter.dart';
 import 'fade_menu.dart';
 import '../theme/pixels.dart';
 
@@ -29,7 +32,20 @@ class SearchDialog extends StatefulWidget {
 class _SearchDialogState extends State<SearchDialog> {
   final _controller = TextEditingController();
   late final _state = AppScope.read(context);
-  final _focus = FocusNode();
+  late final _focus = FocusNode(
+    onKeyEvent: (_, event) {
+      if (event is KeyUpEvent) return KeyEventResult.ignored;
+      if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+        if (event is KeyDownEvent) _activate(_selected);
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown || event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        _step(event.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    },
+  );
   late final SearchIndex _index;
   List<SearchHit> _hits = const [];
   List<String> _words = const [];
@@ -43,6 +59,7 @@ class _SearchDialogState extends State<SearchDialog> {
 
   @override
   void dispose() {
+    _scroll.dispose();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -50,6 +67,7 @@ class _SearchDialogState extends State<SearchDialog> {
 
   void _search(String query) {
     setState(() {
+      _selected = 0;
       _words = SearchIndex.words(query);
       _hits = _index.search(query);
     });
@@ -62,20 +80,84 @@ class _SearchDialogState extends State<SearchDialog> {
     _focus.requestFocus();
   }
 
-  /// Opens the first result, for Enter.
-  void openFirst() {
-    if (_hits.isNotEmpty) _open(_hits.first);
+  int _selected = 0;
+  final _scroll = ScrollController();
+
+  List<(String, VoidCallback)> get _commands {
+    final query = _controller.text.trim().toLowerCase();
+    final day = DateTime.tryParse(query);
+    return [
+      if (day != null && dateKey(day) == query && !day.isAfter(_state.today))
+        ('Go to ${dateKey(day)}', () => _state.showDay(day)),
+      ...<(String, VoidCallback)>[
+        ('Add task', () => addTaskAnywhere(appNavigator.currentContext!)),
+        ('Show Today', _state.showToday),
+        ('Show month', () => _state.showMonth(_state.today.month)),
+        ('Show year', _state.showYear),
+        (
+          'Show Training',
+          () {
+            if (!_state.showingTraining) _state.toggleTraining();
+          },
+        ),
+        (
+          'Toggle theme',
+          () {
+            if (kIsWeb && _state.followNightLight) _state.setFollowNightLight(false);
+            _state.setTheme(
+              partnerOf(_state.themeName, dark: paletteNamed(_state.themeName).brightness == Brightness.light).name,
+            );
+          },
+        ),
+        ('Undo', _state.undo),
+        ('Redo', _state.redo),
+      ].where((command) => command.$1.toLowerCase().contains(query)),
+    ];
+  }
+
+  void _activate(int index) {
+    final commands = _commands;
+    if (index < commands.length) {
+      Navigator.pop(context);
+      commands[index].$2();
+    } else if (index - commands.length < _hits.length) {
+      _open(_hits[index - commands.length]);
+    }
+  }
+
+  double get _rowHeight => 40 + 3 * MediaQuery.textScalerOf(context).scale(16);
+
+  void _step(int offset) {
+    final count = _commands.length + _hits.length.clamp(0, SearchDialog.shown);
+    if (count == 0) return;
+    setState(() => _selected = (_selected + offset).clamp(0, count - 1));
+    if (_scroll.hasClients) {
+      final top = _selected * _rowHeight;
+      final bottom = top + _rowHeight - _scroll.position.viewportDimension;
+      if (top < _scroll.offset || bottom > _scroll.offset) {
+        _scroll.jumpTo((top < _scroll.offset ? top : bottom).clamp(0.0, _scroll.position.maxScrollExtent));
+      }
+    }
   }
 
   void _open(SearchHit hit) {
     Navigator.pop(context);
-    _state.showFound(hit.day, hit.target);
+    if (hit.kind == 'training') {
+      if (!_state.showingTraining) _state.toggleTraining();
+      _state.training.showDay(hit.day);
+    } else if (hit.kind == 'ritual') {
+      _state.showToday();
+      _state.shiftYear(hit.day.year - _state.today.year);
+      _state.showMonth(hit.day.month);
+    } else {
+      _state.showFound(hit.day, hit.target);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final hits = _hits, words = _words;
+    final hits = _hits, words = _words, commands = _commands;
     final field = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -91,12 +173,13 @@ class _SearchDialogState extends State<SearchDialog> {
                   focusNode: _focus,
                   autofocus: true,
                   onChanged: _search,
+                  onSubmitted: (_) => _activate(_selected),
                   cursorColor: p.ink,
                   style: TextStyle(fontFamily: Fonts.body, fontSize: 15, color: p.ink),
                   decoration: InputDecoration(
                     isDense: true,
                     border: InputBorder.none,
-                    hintText: 'Search tasks and journal',
+                    hintText: 'Search or run a command',
                     hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted),
                     contentPadding: EdgeInsets.zero,
                   ),
@@ -130,50 +213,39 @@ class _SearchDialogState extends State<SearchDialog> {
         ),
         const SizedBox(height: 10),
         SizedBox(
-                  height: SearchDialog.height,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: p.empty.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: words.isEmpty
-                          ? _message(p, 'Find any task or journal entry, from any day.')
-                          : hits.isEmpty
-                          ? _message(p, curlyQuotes('Nothing matches "${_controller.text.trim()}".'))
-                          : ScrollConfiguration(
-                              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                              child: ListView.separated(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
-                                itemCount:
-                                    hits.length.clamp(0, SearchDialog.shown) +
-                                    (hits.length > SearchDialog.shown ? 1 : 0),
-                                separatorBuilder: (_, _) => const FadeMenuDivider(),
-                                itemBuilder: (context, i) => i == SearchDialog.shown
-                                    ? Padding(
-                                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                                        child: Text(
-                                          'Showing the newest ${SearchDialog.shown} of ${hits.length}. Add a word to narrow it.',
-                                          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
-                                        ),
-                                      )
-                                    : _HitRow(
-                                        hit: hits[i],
-                                        words: words,
-                                        today: _state.today,
-                                        onTap: () => _open(hits[i]),
-                                      ),
+          height: SearchDialog.height,
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(16)),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: hits.isEmpty && commands.isEmpty
+                  ? _message(p, curlyQuotes('Nothing matches "${_controller.text.trim()}".'))
+                  : ListView.builder(
+                      controller: _scroll,
+                      itemExtent: _rowHeight,
+                      itemCount: commands.length + hits.length.clamp(0, SearchDialog.shown),
+                      itemBuilder: (context, i) => Material(
+                        color: i == _selected ? p.empty : Colors.transparent,
+                        child: i < commands.length
+                            ? ListTile(title: Text(commands[i].$1), onTap: () => _activate(i))
+                            : _HitRow(
+                                hit: hits[i - commands.length],
+                                words: words,
+                                today: _state.today,
+                                onTap: () => _activate(i),
                               ),
-                            ),
+                      ),
                     ),
-                  ),
-                ),
+            ),
+          ),
+        ),
       ],
     );
-    return ConfirmOnEnter(
-      // Opens the first result while searching, else closes.
-      onConfirm: () => _controller.text.isEmpty ? Navigator.pop(context) : openFirst(),
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.arrowDown): () => _step(1),
+        const SingleActivator(LogicalKeyboardKey.arrowUp): () => _step(-1),
+      },
       child: Dialog(
         clipBehavior: Clip.antiAlias,
         backgroundColor: p.tile,
@@ -251,7 +323,7 @@ class _HitRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(hit.isJournal ? 'JOURNAL' : 'TASK', style: caption),
+              Text(hit.kind == 'entry' ? 'RITUAL NOTE' : hit.kind.toUpperCase(), style: caption),
               Text('  ·  ', style: caption),
               Text(_when.toUpperCase(), style: caption),
               if (hit.done) ...[const SizedBox(width: 8), Icon(Icons.check_rounded, size: 14, color: p.done)],

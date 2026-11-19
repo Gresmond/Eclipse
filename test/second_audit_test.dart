@@ -45,7 +45,7 @@ void main() {
   });
 
   Future<void> show(WidgetTester tester) async {
-    collapseAllTasks();
+    state.openedTasks.clear();
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

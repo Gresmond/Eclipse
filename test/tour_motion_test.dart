@@ -16,14 +16,16 @@ import 'package:eclipse/widgets/welcome_tour.dart';
 
 void main() {
   testWidgets('tour menus animate on entry and the sync spotlight travels between frames', (tester) async {
-    final manifest = jsonDecode(await rootBundle.loadString('FontManifest.json')) as List;
-    for (final family in manifest.cast<Map<String, dynamic>>()) {
-      final loader = FontLoader(family['family'] as String);
-      for (final font in (family['fonts'] as List).cast<Map<String, dynamic>>()) {
-        loader.addFont(rootBundle.load(font['asset'] as String));
+    await tester.runAsync(() async {
+      final manifest = jsonDecode(await rootBundle.loadString('FontManifest.json')) as List;
+      for (final family in manifest.cast<Map<String, dynamic>>()) {
+        final loader = FontLoader(family['family'] as String);
+        for (final font in (family['fonts'] as List).cast<Map<String, dynamic>>()) {
+          loader.addFont(rootBundle.load(font['asset'] as String));
+        }
+        await loader.load();
       }
-      await loader.load();
-    }
+    });
     tester.view.physicalSize = const Size(1280, 1100);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -220,7 +222,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(builds['SettingsDialog'] ?? 0, 0);
-    expect(builds['_Ribbons'] ?? 0, 0);
+    expect(builds['SegmentedPills'] ?? 0, 0);
     expect(builds['_Card'] ?? 0, 0);
     await tester.pumpAndSettle();
     state.endTour();

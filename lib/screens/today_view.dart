@@ -1,7 +1,10 @@
+import '../widgets/ritual_goal.dart';
+import '../widgets/daily_focus.dart';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../data/platform_files.dart';
 import '../app_state.dart';
@@ -57,7 +60,7 @@ class _TodayViewState extends State<TodayView> {
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.habitsRevision));
     final day = state.shownDay;
-    return Padding(
+    return Column(children: [if (state.viewDay == null) const DailyFocus(), Expanded(child: Padding(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -66,6 +69,18 @@ class _TodayViewState extends State<TodayView> {
           final textScale = MediaQuery.textScalerOf(context).scale(15) / 15;
           final minContentWidth = 1216.0 * max(1.0, textScale);
           final sleepHeight = _HabitColumn.sleepHeight(state, day, constraints.maxHeight);
+
+          if (kIsWeb && constraints.maxWidth < 900) {
+            return ListView(children: [
+              SizedBox(height: 550, child: _rituals),
+              const SizedBox(height: TodayView._gap),
+              const SizedBox(height: 460, child: WeekCard()),
+              const SizedBox(height: TodayView._gap),
+              SizedBox(height: 360, child: _further),
+              const SizedBox(height: TodayView._gap),
+              const SizedBox(height: 320, child: JournalCard()),
+            ]);
+          }
 
           final content = PixelRow(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -88,7 +103,7 @@ class _TodayViewState extends State<TodayView> {
                       height: sleepHeight,
                       child: const StagedBuild(
                         frames: 2,
-                        child: TourTarget(spot: TourSpot.journal, child: _JournalCard()),
+                        child: TourTarget(spot: TourSpot.journal, child: JournalCard()),
                       ),
                     ),
                   ],
@@ -109,7 +124,7 @@ class _TodayViewState extends State<TodayView> {
           );
         },
       ),
-    );
+    ))]);
   }
 }
 
@@ -266,7 +281,6 @@ class _HabitsCard extends StatelessWidget {
       (s) => (s.shownDay, s.today, s.habitsRevision, s.entriesRevision, s.restWeekends, s.holidays),
     );
     final day = state.shownDay;
-    final readOnly = !state.canEditDay(day);
     // A holiday needs nothing tracked.
     final onHoliday = holidayOn(state.holidays, day) != null;
 
@@ -329,24 +343,21 @@ class _HabitsCard extends StatelessWidget {
                 }
                 // Yesterday stays editable. A different month's ritual list
                 // fades through; otherwise only the marks change.
-                return IgnorePointer(
-                  ignoring: readOnly,
-                  child: FadeThrough(
-                    layoutBuilder: FadeThrough.fill,
-                    child: ListView.builder(
-                      key: ValueKey([for (final h in habits) '${h.id} ${h.name}'].join('|')),
-                      padding: EdgeInsets.zero,
-                      itemExtentBuilder: (i, _) => i < habits.length ? rows.heights[i] : null,
-                      itemCount: habits.length,
-                      itemBuilder: (context, i) => _HabitRow(
-                        habit: habits[i],
-                        day: day,
-                        cellSize: rows.cell,
-                        badgeWidth: badge,
-                        weekTrail: rows.trail,
-                        divider: i > 0,
-                        names: times ? [for (final h in habits) h.name] : null,
-                      ),
+                return FadeThrough(
+                  layoutBuilder: FadeThrough.fill,
+                  child: ListView.builder(
+                    key: ValueKey([for (final h in habits) '${h.id} ${h.name}'].join('|')),
+                    padding: EdgeInsets.zero,
+                    itemExtentBuilder: (i, _) => i < habits.length ? rows.heights[i] : null,
+                    itemCount: habits.length,
+                    itemBuilder: (context, i) => _HabitRow(
+                      habit: habits[i],
+                      day: day,
+                      cellSize: rows.cell,
+                      badgeWidth: badge,
+                      weekTrail: rows.trail,
+                      divider: i > 0,
+                      names: times ? [for (final h in habits) h.name] : null,
                     ),
                   ),
                 );
@@ -419,7 +430,7 @@ class _HabitRow extends StatelessWidget {
 
   /// Rows at least this wide show the last week's marks.
   static const weekTrailFrom = 240.0;
-  static const weekTrailWidth = 10.0 + 7 * (6 + 3);
+  static const weekTrailWidth = 10.0 + 7 * (6 + 4);
 
   /// Padding, gaps and the streak badge: the row less its name, week trail
   /// and square.
@@ -481,7 +492,7 @@ class _HabitRow extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    habit.name,
+                    ritualProgress(state,day,habit),
                     maxLines: nameLines,
                     overflow: TextOverflow.ellipsis,
                     style: nameStyle.copyWith(color: p.ink),
@@ -493,7 +504,7 @@ class _HabitRow extends StatelessWidget {
             const SizedBox(width: 8),
             SizedBox(
               width: badgeWidth,
-              child: _StreakBadge(day: day, streak: streak, best: best),
+              child: habit.weekly == null ? _StreakBadge(day: day, streak: streak, best: best) : const Icon(Icons.date_range_rounded, size: 18),
             ),
             const SizedBox(width: 8),
             StatusCell(
@@ -631,8 +642,8 @@ class _WeekTrail extends StatelessWidget {
 }
 
 /// Stays put from day to day; another day's words fade through inside it.
-class _JournalCard extends StatelessWidget {
-  const _JournalCard();
+class JournalCard extends StatelessWidget {
+  const JournalCard({super.key});
 
   @override
   Widget build(BuildContext context) {

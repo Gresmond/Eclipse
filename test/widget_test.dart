@@ -64,6 +64,14 @@ void _undoSync(Database db) {
     db.execute('DROP TRIGGER ${r['name']}');
   }
   db.execute('''
+    DROP INDEX IF EXISTS todos_done_reminders;
+    DROP INDEX IF EXISTS todos_since;
+    DROP INDEX IF EXISTS todos_done_due_date;
+    DROP INDEX IF EXISTS month_habits_habit_id;
+    DROP TABLE routines; DROP TABLE weigh_ins;
+    ALTER TABLE month_habits DROP COLUMN weekly; ALTER TABLE month_habits DROP COLUMN target;
+    ALTER TABLE month_habits DROP COLUMN unit; ALTER TABLE entries DROP COLUMN amount;
+    ALTER TABLE training_sets DROP COLUMN note; ALTER TABLE training_sets DROP COLUMN rpe;
     ALTER TABLE month_habits DROP COLUMN added_on; ALTER TABLE month_habits DROP COLUMN days;
     DROP TABLE habit_months; DROP TABLE todo_history;
     DROP INDEX entries_habit_day; DROP INDEX sleep_notes_item_month;
@@ -473,7 +481,7 @@ void main() {
       Store.memory(),
       journalFiles: JournalFiles(old),
       dataFolder: data,
-      clock: () => DateTime(2026, 10, 24),
+      clock: () => DateTime(2026, 10, 25),
     );
     await state.setJournal(DateTime(2026, 10, 23), 'Friday.');
     await state.setJournal(DateTime(2026, 10, 24), 'Saturday.');
@@ -979,7 +987,7 @@ void main() {
   });
 
   testWidgets('backups dialog restores after asking', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1046,7 +1054,7 @@ void main() {
   });
 
   testWidgets('Today view, month grid and ritual editor', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1154,7 +1162,7 @@ void main() {
   });
 
   testWidgets('the journal shows what syncs in where you are, and never over unsaved typing', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1190,7 +1198,7 @@ void main() {
   });
 
   testWidgets('the month view fits rituals and sleep schedule without scrolling', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 23));
@@ -1210,7 +1218,7 @@ void main() {
   });
 
   testWidgets('a long ritual wraps onto more lines, its row growing to fit', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     // A tiled window; the rituals' column is the narrower middle one.
     tester.view.physicalSize = const Size(1000, 1040);
     tester.view.devicePixelRatio = 1;
@@ -1232,7 +1240,7 @@ void main() {
   });
 
   testWidgets('choosing when the day starts, and the header after midnight', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1259,7 +1267,7 @@ void main() {
   });
 
   testWidgets('date pill keeps resizing when entering and leaving Today', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1298,7 +1306,7 @@ void main() {
   });
 
   testWidgets('switching views and months never shows two at once', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1393,7 +1401,7 @@ void main() {
   });
 
   testWidgets('repeating right-click clears not done, and the hover only covers squares', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1705,7 +1713,7 @@ void main() {
   });
 
   testWidgets('completing yesterday’s carried task removes it from today and undo restores it', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1749,7 +1757,7 @@ void main() {
   });
 
   testWidgets('tasks can be edited and dated; only yesterday stays editable', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1865,7 +1873,7 @@ void main() {
   });
 
   testWidgets('update banner', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1904,7 +1912,7 @@ void main() {
   });
 
   testWidgets('the big date opens a past day to look at', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1987,7 +1995,7 @@ void main() {
   });
 
   testWidgets('the year tab adds up every month', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -2049,7 +2057,7 @@ void main() {
   });
 
   testWidgets('the welcome tour walks round, and opens again from the appearance menu', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -2121,7 +2129,7 @@ void main() {
   });
 
   testWidgets('theme switcher, and every theme renders', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -2259,7 +2267,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'dentist');
+    await tester.enterText(find.widgetWithText(TextField, 'Search or run a command'), 'dentist');
     await tester.pumpAndSettle();
     expect(find.textContaining('TASK'), findsWidgets);
     await sweep('Search results');
@@ -2292,7 +2300,7 @@ void main() {
   });
 
   testWidgets('Search finds an old task and opens its day', (tester) async {
-    await _loadFonts();
+    await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -2306,7 +2314,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
+    await tester.enterText(find.widgetWithText(TextField, 'Search or run a command'), 'passport');
     await tester.pumpAndSettle();
     expect(find.textContaining('JOURNAL'), findsOneWidget);
     expect(find.textContaining('TASK'), findsOneWidget);
@@ -2314,7 +2322,7 @@ void main() {
     await tester.tap(find.byTooltip('Clear'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('Clear'), findsNothing, reason: 'only shown with something to clear');
-    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
+    await tester.enterText(find.widgetWithText(TextField, 'Search or run a command'), 'passport');
     await tester.pumpAndSettle();
 
     // Enter opens the newest: the journal entry.
@@ -2332,7 +2340,7 @@ void main() {
     // Search opens empty again; a click opens a result.
     await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'renew');
+    await tester.enterText(find.widgetWithText(TextField, 'Search or run a command'), 'renew');
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Renew the'));
     for (var i = 0; i < 6; i++) {
@@ -2364,7 +2372,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'Search tasks and journal'), 'passport');
+    await tester.enterText(find.widgetWithText(TextField, 'Search or run a command'), 'passport');
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump(const Duration(milliseconds: 300));

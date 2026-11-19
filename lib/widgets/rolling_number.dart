@@ -81,13 +81,14 @@ class _Digit extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = ValueKey(digit);
+    final d = context.themed(duration);
     return AnimatedSize(
-      duration: duration,
+      duration: d,
       curve: Motion.morphCurve,
       alignment: Alignment.centerRight,
       clipBehavior: Clip.none,
       child: AnimatedSwitcher(
-        duration: duration,
+        duration: d,
         switchInCurve: Motion.morphCurve,
         switchOutCurve: Motion.morphCurve,
         // Only the incoming digit sizes the slot; the outgoing one rolls

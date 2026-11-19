@@ -14,6 +14,7 @@ class _MonthCalendar extends StatefulWidget {
     required this.onSelected,
     this.endable,
     this.onEnd,
+    this.pickingEnd = false,
   });
 
   final DateTime first;
@@ -23,6 +24,7 @@ class _MonthCalendar extends StatefulWidget {
   final bool Function(DateTime day)? marked;
   final ValueChanged<DateTime> onSelected;
   final bool Function(DateTime day)? endable;
+  final bool pickingEnd;
 
   /// A right-clicked day: the last, or on the last, null for no end.
   final ValueChanged<DateTime?>? onEnd;
@@ -54,6 +56,7 @@ class _MonthCalendarState extends State<_MonthCalendar> {
     final today = DateUtils.isSameDay(date, AppScope.read(context).today);
     final marked = !selected && (widget.marked?.call(date) ?? false);
     final endable = _endable(date);
+    final dayEnabled = widget.pickingEnd ? (endable || end) : enabled;
     return GestureDetector(
       onSecondaryTap: end && widget.onEnd != null
           ? () => widget.onEnd!(null)
@@ -61,10 +64,10 @@ class _MonthCalendarState extends State<_MonthCalendar> {
           ? () => widget.onEnd!(date)
           : null,
       child: MouseRegion(
-        cursor: enabled || endable || end ? SystemMouseCursors.click : MouseCursor.defer,
+        cursor: dayEnabled || endable || end ? SystemMouseCursors.click : MouseCursor.defer,
         child: Semantics(
           button: true,
-          enabled: enabled,
+          enabled: dayEnabled,
           selected: selected,
           label: localizations.formatFullDate(date),
           excludeSemantics: true,
@@ -73,9 +76,15 @@ class _MonthCalendarState extends State<_MonthCalendar> {
             selected: selected,
             within: end,
             isToday: today,
-            enabled: enabled,
+            enabled: dayEnabled,
             marked: marked,
-            onTap: () => widget.onSelected(date),
+            onTap: () {
+              if (widget.pickingEnd && widget.onEnd != null) {
+                widget.onEnd!(end ? null : date);
+              } else {
+                widget.onSelected(date);
+              }
+            },
           ),
         ),
       ),

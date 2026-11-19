@@ -172,7 +172,7 @@ class Palette extends ThemeExtension<Palette> {
     todayPanelBorder,
   ];
 
-  bool _sameColours(Palette other) => listEquals(_colours, other._colours);
+  bool sameColours(Palette other) => listEquals(_colours, other._colours);
 
   /// Blends every colour, so switching themes cross-fades.
   @override
@@ -532,7 +532,7 @@ class ThemeMorph extends StatelessWidget {
       context.dependOnInheritedWidgetOfExactType<_ThemeMorphScope>()?.active ?? false;
 
   @override
-  Widget build(BuildContext context) => _ThemeMorphScope(active: !context.palette._sameColours(target), child: child);
+  Widget build(BuildContext context) => _ThemeMorphScope(active: !context.palette.sameColours(target), child: child);
 }
 
 class _ThemeMorphScope extends InheritedWidget {

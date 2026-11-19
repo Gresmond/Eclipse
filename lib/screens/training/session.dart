@@ -25,7 +25,7 @@ class _SessionTile extends StatelessWidget {
             TileHeader(
               title: isToday ? "Today’s session" : '${weekdayNames[day.weekday - 1]}  ·  ${_shortDate(day)}',
               trailingAtEnd: true,
-              trailing: Builder(
+              trailing: Row(mainAxisSize:MainAxisSize.min,children:[WorkoutToolsButton(day:day), Builder(
                 builder: (anchor) => _TextButton(
                   label: isToday ? 'Another day' : 'Back to today',
                   icon: isToday ? Icons.calendar_today_rounded : null,
@@ -43,6 +43,7 @@ class _SessionTile extends StatelessWidget {
                       : () => log.showDay(null),
                 ),
               ),
+              ]),
             ),
             const SizedBox(height: 10),
             Expanded(
@@ -55,7 +56,7 @@ class _SessionTile extends StatelessWidget {
                         _ExerciseBlock(key: ValueKey(e.uid), day: day, exercise: e, sets: sets),
                     ],
                   ),
-                  _AddExercise(key: ValueKey(dateKey(day)), day: day, logged: {for (final (e, _) in session) e.uid}),
+                  AddSessionExercise(key: ValueKey(dateKey(day)), day: day, logged: {for (final (e, _) in session) e.uid}),
                 ],
               ),
             ),
@@ -248,8 +249,13 @@ class _SetRow extends StatefulWidget {
 class _SetRowState extends State<_SetRow> {
   late final _weight = TextEditingController(text: widget.set.weight == null ? '' : _kg(widget.set.weight!));
   late final _reps = TextEditingController(text: widget.set.reps == 0 ? '' : '${widget.set.reps}');
-  final _repsFocus = FocusNode();
+  late final _weightFocus = FocusNode()..addListener(_focusChanged);
+  late final _repsFocus = FocusNode()..addListener(_focusChanged);
   bool _hover = false;
+
+  void _focusChanged() {
+    if (mounted) setState(() {});
+  }
 
   /// A change made elsewhere (on another computer, or by undo) shows here,
   /// unless it's what's being typed.
@@ -267,9 +273,14 @@ class _SetRowState extends State<_SetRow> {
 
   @override
   void dispose() {
+    _weightFocus
+      ..removeListener(_focusChanged)
+      ..dispose();
+    _repsFocus
+      ..removeListener(_focusChanged)
+      ..dispose();
     _weight.dispose();
     _reps.dispose();
-    _repsFocus.dispose();
     super.dispose();
   }
 
@@ -297,6 +308,7 @@ class _SetRowState extends State<_SetRow> {
             else ...[
               _NumberBox(
                 controller: _weight,
+                focusNode: _weightFocus,
                 decimal: true,
                 autofocus: widget.last && s.reps == 0 && s.weight == null,
                 onChanged: (v) {
@@ -343,11 +355,22 @@ class _SetRowState extends State<_SetRow> {
                 ),
               ),
             const Spacer(),
-            AnimatedOpacity(
-              opacity: _hover ? 1 : 0,
-              duration: Motion.hover,
-              curve: Motion.hoverCurve,
-              child: _IconAction(icon: Icons.remove_rounded, tooltip: 'Remove set', onTap: () => log.deleteSet(s)),
+            _IconAction(icon: Icons.notes, tooltip: 'Set note and effort', onTap: () => editSetDetails(context,s,widget.exercise)),
+            Focus(
+              onFocusChange: (_) {
+                if (mounted) setState(() {});
+              },
+              child: Builder(
+                builder: (context) {
+                  final showRemove = _hover || _weightFocus.hasFocus || _repsFocus.hasFocus || Focus.of(context).hasFocus;
+                  return AnimatedOpacity(
+                    opacity: showRemove ? 1 : 0,
+                    duration: context.themed(Motion.hover),
+                    curve: Motion.hoverCurve,
+                    child: _IconAction(icon: Icons.remove_rounded, tooltip: 'Remove set', onTap: () => log.deleteSet(s)),
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -563,8 +586,8 @@ class _GroupMenu extends StatelessWidget {
 
 /// The field to put an exercise on the session: picks one of yours as you
 /// type, or makes a new one once you say what it trains.
-class _AddExercise extends StatefulWidget {
-  const _AddExercise({super.key, required this.day, required this.logged});
+class AddSessionExercise extends StatefulWidget {
+  const AddSessionExercise({super.key, required this.day, required this.logged});
 
   final DateTime day;
 
@@ -572,10 +595,10 @@ class _AddExercise extends StatefulWidget {
   final Set<String> logged;
 
   @override
-  State<_AddExercise> createState() => _AddExerciseState();
+  State<AddSessionExercise> createState() => AddSessionExerciseState();
 }
 
-class _AddExerciseState extends State<_AddExercise> {
+class AddSessionExerciseState extends State<AddSessionExercise> {
   final _text = TextEditingController();
   final _focus = FocusNode();
   bool _bodyweight = false;
@@ -584,13 +607,19 @@ class _AddExerciseState extends State<_AddExercise> {
   void initState() {
     super.initState();
     // The most-used exercises show while the empty field has the cursor.
-    _focus.addListener(() => setState(() {}));
+    _focus.addListener(_focusChanged);
+  }
+
+  void _focusChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _focus
+      ..removeListener(_focusChanged)
+      ..dispose();
     _text.dispose();
-    _focus.dispose();
     super.dispose();
   }
 
@@ -675,7 +704,8 @@ class _AddExerciseState extends State<_AddExercise> {
                 ),
               if (query.isNotEmpty && !exact) ...[
                 const SizedBox(height: 10),
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text('New: what does “${_text.text.trim()}” train?', style: _label(p, size: 14, color: p.inkMuted)),
                     const SizedBox(width: 10),
@@ -695,6 +725,7 @@ class _AddExerciseState extends State<_AddExercise> {
                   selected: null,
                   onPick: (g) {
                     final name = _text.text.trim();
+                    if (name.isEmpty) return;
                     final e = log.createExercise(name[0].toUpperCase() + name.substring(1), g, bodyweight: _bodyweight);
                     _add(e);
                   },

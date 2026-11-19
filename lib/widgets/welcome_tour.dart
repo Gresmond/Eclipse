@@ -126,7 +126,7 @@ List<_Step> _steps(AppState state) => [
     'Daily rituals',
     'Click a square for done, right-click for not done, or middle-click for other. '
         'Repeat the same mouse button to clear the mark. '
-        'Done days build each streak and fill the ring.',
+        'Done days build each streak and your daily score.',
     TourSpot.rituals,
   ),
   const _Step(
@@ -139,7 +139,7 @@ List<_Step> _steps(AppState state) => [
     'The week ahead',
     'Every task from today to a week out, under its day. Click Add task under a day, '
         'then tick tasks off when done. Unfinished tasks carry into Today with the day '
-        'they came from. The repeat button makes a task come round again.',
+        'they came from. Pick a day to set a due date, reminder, or repeat.',
     TourSpot.week,
   ),
   const _Step(
@@ -238,7 +238,18 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
 
   // Follow the actual dialog bounds while its ribbon changes height.
   late final _layoutWatch = AnimationController(vsync: this, duration: Motion.morph + Motion.click)
-    ..addListener(() => _measure(_steps(AppScope.of(context))[_index].spot));
+    ..addListener(() => _measure(_steps(AppScope.read(context))[_index].spot));
+
+  bool get _disabled => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_disabled) {
+      _travel.value = 1;
+      _layoutWatch.value = 1;
+    }
+  }
 
   @override
   void dispose() {
@@ -261,17 +272,31 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
   void _go(int index, int count) {
     if (index < 0) return;
     if (index >= count) return _close();
-    final steps = _steps(AppScope.of(context));
+    final steps = _steps(AppScope.read(context));
     final current = _geometry;
     _followSettingsResize =
         steps[_index].spot == TourSpot.settingsPreview && steps[index].spot == TourSpot.settingsPreview;
     _from = current;
     setState(() => _index = index);
-    _travel.forward(from: 0);
-    _layoutWatch.forward(from: 0);
+    if (_disabled) {
+      _travel.value = 1;
+      _layoutWatch.value = 1;
+      _measure(steps[index].spot);
+    } else {
+      _travel.forward(from: 0);
+      _layoutWatch.forward(from: 0);
+    }
   }
 
-  void _close() => setState(() => _shown = false);
+  void _close() {
+    setState(() => _shown = false);
+    if (_disabled) {
+      final state = AppScope.read(context);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_shown) state.endTour();
+      });
+    }
+  }
 
   /// Where the current step's spot is now. Measured after layout, since the
   /// window can be resized under the tour.
@@ -283,7 +308,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
       if (!mounted) return;
       final box = context.findRenderObject() as RenderBox?;
       if (box == null || !box.hasSize) return;
-      if (spot != _steps(AppScope.of(context))[_index].spot) return;
+      if (spot != _steps(AppScope.read(context))[_index].spot) return;
       final bounds = spot == null ? null : TourTarget.rectOf(spot, box, layoutBounds: true);
       final appearanceAnchor = TourTarget.rectOf(TourSpot.appearance, box);
       final exact =
@@ -303,7 +328,11 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
         // The spotlight follows the panel's own resize. The guide keeps
         // the same travel clock as every other slide, without restarting
         // or rebasing the easing on each measurement.
-        if (_followSettingsResize) {
+        if (_disabled) {
+          _from = target;
+          _to = target;
+          _travel.value = 1;
+        } else if (_followSettingsResize) {
           _to = target;
         } else {
           if (!_travel.isAnimating && target != _to) {
@@ -324,7 +353,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
 
   _GuideSide _guideSide(Rect? spot, double width, Size size) {
     if (spot == null) return _GuideSide.center;
-    if (_steps(AppScope.of(context))[_index].spot == TourSpot.settingsPreview) {
+    if (_steps(AppScope.read(context))[_index].spot == TourSpot.settingsPreview) {
       if (size.width - spot.right >= width + _gap + _margin) return _GuideSide.right;
       if (spot.left >= width + _gap + _margin) return _GuideSide.left;
       return _GuideSide.above;
@@ -395,7 +424,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
           },
           child: AnimatedOpacity(
             opacity: _shown ? 1 : 0,
-            duration: Motion.morph,
+            duration: context.themed(Motion.morph),
             curve: Motion.morphCurve,
             onEnd: () {
               if (!_shown) state.endTour();
@@ -411,7 +440,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
                   child: ExcludeFocus(
                     child: IgnorePointer(
                       child: AnimatedSwitcher(
-                        duration: Motion.morph,
+                        duration: context.themed(Motion.morph),
                         transitionBuilder: (child, animation) => dialogTransition(animation, child),
                         child: step.settingsRibbon == null
                             ? const SizedBox.expand()
@@ -436,7 +465,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
                     child: ExcludeFocus(
                       child: IgnorePointer(
                         child: AnimatedSwitcher(
-                          duration: Motion.morph,
+                          duration: context.themed(Motion.morph),
                           transitionBuilder: (child, animation) => fadeMenuTransition(animation, child),
                           child: step.spot != TourSpot.appearancePreview
                               ? const SizedBox.shrink()
@@ -483,6 +512,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
                   child: _Card(
                     index: _index,
                     count: steps.length,
+                    maxHeight: math.max(120.0, size.height - 2 * _margin),
                     child: FadeThrough(
                       layoutBuilder: FadeThrough.sizeToCurrent,
                       child: _StepBody(
@@ -618,45 +648,51 @@ class _SpotlightPainter extends CustomPainter {
 
 /// The tour's card: a tile with the step dots along the top.
 class _Card extends StatelessWidget {
-  const _Card({required this.index, required this.count, required this.child});
+  const _Card({required this.index, required this.count, required this.maxHeight, required this.child});
 
   final int index, count;
+  final double maxHeight;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
-      decoration: BoxDecoration(
-        color: p.tile,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: p.border),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
+        decoration: BoxDecoration(
+          color: p.tile,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: p.border),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (var i = 0; i < count; i++)
-                AnimatedContainer(
-                  duration: context.themed(Motion.morph),
-                  curve: Motion.morphCurve,
-                  width: i == index ? 20 : 6,
-                  height: 6,
-                  margin: const EdgeInsets.only(right: 4),
-                  decoration: SmoothGradientDecoration(
-                    borderRadius: BorderRadius.circular(4),
-                    color: i < index ? p.done : (i == index ? null : p.empty),
-                    gradient: i == index ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
-                  ),
-                ),
+              Row(
+                children: [
+                  for (var i = 0; i < count; i++)
+                    AnimatedContainer(
+                      duration: context.themed(Motion.morph),
+                      curve: Motion.morphCurve,
+                      width: i == index ? 20 : 6,
+                      height: 6,
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: SmoothGradientDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        color: i < index ? p.done : (i == index ? null : p.empty),
+                        gradient: i == index ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              child,
             ],
           ),
-          const SizedBox(height: 18),
-          child,
-        ],
+        ),
       ),
     );
   }
@@ -759,7 +795,7 @@ class _PillButton extends StatelessWidget {
       onTap: onTap,
       builder: (hover) => TweenAnimationBuilder<double>(
         tween: Tween(end: hover ? -1 : 0),
-        duration: Motion.hover,
+        duration: context.themed(Motion.hover),
         curve: Motion.hoverCurve,
         builder: (_, lift, child) => Transform.translate(offset: Offset(0, lift), child: child),
         child: Container(

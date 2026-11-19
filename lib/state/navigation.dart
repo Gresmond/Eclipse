@@ -39,7 +39,12 @@ mixin _Navigation on ChangeNotifier {
   );
 
   /// Gym training, every exercise's progress.
-  late final training = TrainingLog(store, notifyListeners, onRemoved: _removed);
+  late final training = TrainingLog(
+    store,
+    notifyListeners,
+    onRemoved: _removed,
+    onActivityChanged: _invalidateFirstDay,
+  );
 
   /// The Training page is open, in place of whichever view was.
   bool showingTraining = false;
@@ -101,6 +106,7 @@ mixin _Navigation on ChangeNotifier {
   void showYear() {
     _closePages();
     saveHabitDrafts();
+    _invalidateFirstDay();
     viewMonth = null;
     viewDay = null;
     viewingYear = true;
@@ -126,13 +132,24 @@ mixin _Navigation on ChangeNotifier {
     notifyListeners();
   }
 
-  /// Worked out again after each change, as one can log an earlier day.
+  /// Worked out again after date-bearing data changes, as one can log an earlier day.
   DateTime? _firstDay;
+
+  /// How many times [firstMonth] queried [Store.firstActivity]; for tests.
+  @visibleForTesting
+  int debugFirstMonthLookups = 0;
+
+  void _invalidateFirstDay() {
+    _firstDay = null;
+  }
 
   /// The month you started using the app, or this month before anything
   /// is logged. No earlier month is shown.
   (int, int) get firstMonth {
-    final day = _firstDay ??= store.firstActivity() ?? today;
+    final day = _firstDay ??= () {
+      debugFirstMonthLookups++;
+      return store.firstActivity() ?? today;
+    }();
     return day.isAfter(today) ? (today.year, today.month) : (day.year, day.month);
   }
 

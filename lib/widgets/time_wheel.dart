@@ -92,7 +92,7 @@ class TimePill extends StatelessWidget {
 
   Future<void> _open(BuildContext context) async {
     final picked = await pickTime(context, minutes: minutes, start: start, title: title, alignLeft: alignLeft);
-    if (picked != null) onChanged(picked);
+    if (picked != null && context.mounted) onChanged(picked);
   }
 
   @override
@@ -189,10 +189,11 @@ class _Colon extends StatelessWidget {
 }
 
 /// How wide two digits are in [style], as the minutes always are.
-double _digitsWidth(TextStyle style) {
+double _digitsWidth(TextStyle style, TextScaler textScaler) {
   final painter = TextPainter(
     text: TextSpan(text: '00', style: style),
     textDirection: TextDirection.ltr,
+    textScaler: textScaler,
   )..layout();
   final width = painter.width;
   painter.dispose();
@@ -215,7 +216,11 @@ class _TimeWheelState extends State<TimeWheel> {
   @override
   void initState() {
     super.initState();
-    if (widget.unset) WidgetsBinding.instance.addPostFrameCallback((_) => _save());
+    if (widget.unset) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _save();
+      });
+    }
   }
 
   @override
@@ -284,7 +289,7 @@ class _TimeWheelState extends State<TimeWheel> {
           child: NotificationListener<ScrollEndNotification>(
             onNotification: (_) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!controller.hasClients) return;
+                if (!mounted || !controller.hasClients) return;
                 final exact = controller.selectedItem * _row;
                 if (controller.offset != exact) controller.jumpTo(exact);
               });
@@ -351,7 +356,9 @@ class _TimeWheelState extends State<TimeWheel> {
                         // Against the colon, as far from it as the
                         // minutes are, however many digits.
                         alignment: Alignment.centerRight,
-                        padding: EdgeInsets.only(right: (56 - _digitsWidth(style)) / 2),
+                        padding: EdgeInsets.only(
+                          right: (56 - _digitsWidth(style, MediaQuery.textScalerOf(context))) / 2,
+                        ),
                         selected: _hour,
                         onChanged: (i) => setState(() => _hour = i),
                       ),

@@ -79,6 +79,16 @@ class _RepeatPanelState extends State<_RepeatPanel> {
     _ => widget.start.day,
   };
 
+  /// Whether a left-click on the calendar picks the repeat's end date instead
+  /// of its start date.
+  bool _pickingEnd = false;
+
+  @override
+  void didUpdateWidget(_RepeatPanel old) {
+    super.didUpdateWidget(old);
+    if (widget.repeat == null || _birthday) _pickingEnd = false;
+  }
+
   RepeatRule get _rule => switch (_kind) {
     RepeatKind.weekly => RepeatRule.weekly({
       for (var d = 1; d <= 7; d++)
@@ -115,6 +125,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
 
   void _toggle() {
     if (widget.repeat == null && !_birthday) return _set(() {});
+    setState(() => _pickingEnd = false);
     widget.onRepeat(null);
     if (_birthday) widget.onBirthday!(false);
   }
@@ -157,9 +168,10 @@ class _RepeatPanelState extends State<_RepeatPanel> {
           onSelected: _tap,
           endable: repeat == null ? null : comesRound,
           onEnd: repeat == null ? null : _end,
+          pickingEnd: repeat != null && _pickingEnd,
         ),
         const SizedBox(height: 8),
-        if (widget.time case final time?) _BirthdayFold(folded: _birthday, child: time),
+        if (widget.time case final time?) Fold(open: !_birthday, opacityCurve: Motion.secondHalf, child: time),
         ?widget.notify,
         ?widget.location,
         _RepeatSwitch(
@@ -167,7 +179,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
           label: on ? (_birthday ? 'Birthday' : _summary(widget.repeat)) : 'Repeat',
           onTap: _toggle,
         ),
-        _Unfold(
+        Fold(
           open: on,
           child: Padding(padding: const EdgeInsets.fromLTRB(0, 6, 0, 8), child: _options(p)),
         ),
@@ -215,8 +227,8 @@ class _RepeatPanelState extends State<_RepeatPanel> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _Pills(
-                  options: const ['Weekly', 'Monthly', 'Custom'],
+                SegmentedPills(
+                  labels: const ['Weekly', 'Monthly', 'Custom'],
                   selected: _birthday
                       ? -1
                       : switch (_kind) {
@@ -234,8 +246,8 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                 ),
                 if (widget.birthday != null) ...[
                   const SizedBox(width: 8),
-                  _Pills(
-                    options: const ['Birthday'],
+                  SegmentedPills(
+                    labels: const ['Birthday'],
                     selected: _birthday ? 0 : -1,
                     onSelect: (_) => widget.onBirthday!(true),
                   ),
@@ -244,8 +256,9 @@ class _RepeatPanelState extends State<_RepeatPanel> {
             ),
           ),
         ),
-        _BirthdayFold(
-          folded: _birthday,
+        Fold(
+          open: !_birthday,
+          opacityCurve: Motion.secondHalf,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -269,8 +282,8 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                           Text('Every', style: label),
                           _Stepper(value: _every, min: 1, max: 99, onChanged: (v) => _set(() => _every = v)),
                           const SizedBox(width: 6),
-                          _Pills(
-                            options: const ['days', 'weeks', 'months', 'years'],
+                          SegmentedPills(
+                            labels: const ['days', 'weeks', 'months', 'years'],
                             selected: const [
                               RepeatKind.days,
                               RepeatKind.weeks,
@@ -292,20 +305,25 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                   ),
                 ),
               ],
-              Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_kind == RepeatKind.monthly && _date > 28) const SizedBox(height: 8),
-                    if ((_kind == RepeatKind.monthly && _date > 28) ||
-                        (custom && _unit == RepeatKind.months && start.day > 28))
-                      Text('In shorter months, on the last day.', style: note),
-                    if (custom && _unit == RepeatKind.yearly && start.month == 2 && start.day == 29)
-                      Text('Only in leap years.', style: note),
-                  ],
-                ),
+              Builder(
+                builder: (context) {
+                  final shorterMonth =
+                      (_kind == RepeatKind.monthly && _date > 28) ||
+                      (custom && _unit == RepeatKind.months && start.day > 28);
+                  final leapDay = custom && _unit == RepeatKind.yearly && start.month == 2 && start.day == 29;
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (shorterMonth || leapDay) const SizedBox(height: 8),
+                        if (shorterMonth) Text('In shorter months, on the last day.', style: note),
+                        if (leapDay) Text('In other years, on 28 February.', style: note),
+                      ],
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 12),
               Row(
@@ -317,6 +335,10 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                       child: _DateTags(
                         starts: 'Starts ${dayAndMonth(start, today: start)}',
                         ends: until == null ? 'Ends never' : 'Ends ${dayAndMonth(until, today: until)}',
+                        canPickEnd: !_birthday && widget.repeat != null,
+                        pickingEnd: !_birthday && widget.repeat != null && _pickingEnd,
+                        onPickStart: () => setState(() => _pickingEnd = false),
+                        onPickEnd: () => setState(() => _pickingEnd = true),
                       ),
                     ),
                   ),
@@ -326,7 +348,10 @@ class _RepeatPanelState extends State<_RepeatPanel> {
                       child: _TaskAction(
                         tooltip: 'No end date',
                         icon: Icons.close_rounded,
-                        onPressed: () => widget.onRepeat((rule: _rule, until: null)),
+                        onPressed: () {
+                          setState(() => _pickingEnd = false);
+                          widget.onRepeat((rule: _rule, until: null));
+                        },
                       ),
                     ),
                 ],
@@ -391,48 +416,6 @@ class _RepeatSwitch extends StatelessWidget {
   }
 }
 
-/// [child] unfolding down from nothing when [open], and folding away.
-class _Unfold extends StatefulWidget {
-  const _Unfold({required this.open, required this.child});
-
-  final bool open;
-  final Widget child;
-
-  @override
-  State<_Unfold> createState() => _UnfoldState();
-}
-
-class _UnfoldState extends State<_Unfold> with SingleTickerProviderStateMixin {
-  late final _controller = AnimationController(vsync: this, duration: Motion.morph, value: widget.open ? 1 : 0);
-  late final _height = CurvedAnimation(parent: _controller, curve: Motion.morphCurve);
-
-  @override
-  void didUpdateWidget(_Unfold old) {
-    super.didUpdateWidget(old);
-    if (widget.open != old.open) widget.open ? _controller.forward() : _controller.reverse();
-  }
-
-  @override
-  void dispose() {
-    _height.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => SizeTransition(
-    sizeFactor: _height,
-    alignment: Alignment.topCenter,
-    child: FadeTransition(
-      opacity: _height,
-      child: IgnorePointer(
-        ignoring: !widget.open,
-        child: ExcludeFocus(excluding: !widget.open, child: widget.child),
-      ),
-    ),
-  );
-}
-
 /// [child] at its own size, at the left, or smaller to fit if it's too
 /// wide.
 class _ScaleDown extends StatelessWidget {
@@ -445,137 +428,59 @@ class _ScaleDown extends StatelessWidget {
   Widget build(BuildContext context) => FittedBox(fit: BoxFit.scaleDown, alignment: alignment, child: child);
 }
 
-/// When it starts and ends, to read, not to press: the calendar sets them.
+/// When it starts and ends: click either tag to choose whether tapping a day
+/// sets the start or end date (right-clicking a marked day sets its end too).
 class _DateTags extends StatelessWidget {
-  const _DateTags({required this.starts, required this.ends});
+  const _DateTags({
+    required this.starts,
+    required this.ends,
+    required this.canPickEnd,
+    required this.pickingEnd,
+    required this.onPickStart,
+    required this.onPickEnd,
+  });
 
   final String starts, ends;
-
-  @override
-  Widget build(BuildContext context) {
-    final style = TextStyle(
-      fontFamily: Fonts.ui,
-      fontSize: 14,
-      fontWeight: FontWeight.w600,
-      color: context.palette.inkMuted,
-    );
-    return PixelTooltip(
-      message: 'Left-click to set a start date. Right-click to set an end date.',
-      child: Text('$starts  ·  $ends', style: style),
-    );
-  }
-}
-
-/// A row of choices, one filled, or with [chosen] any of them.
-class _Pills extends StatefulWidget {
-  const _Pills({required this.options, this.selected = -1, this.chosen, required this.onSelect});
-
-  final List<String> options;
-  final int selected;
-  final Set<int>? chosen;
-  final ValueChanged<int> onSelect;
-
-  @override
-  State<_Pills> createState() => _PillsState();
-}
-
-class _PillsState extends State<_Pills> {
-  late List<GlobalKey> _keys = [for (final _ in widget.options) GlobalKey()];
-
-  @override
-  void didUpdateWidget(_Pills old) {
-    super.didUpdateWidget(old);
-    if (widget.options.length != _keys.length) {
-      _keys = [for (final _ in widget.options) GlobalKey()];
-    }
-  }
-
-  bool _on(int i) => widget.chosen?.contains(i) ?? i == widget.selected;
+  final bool canPickEnd, pickingEnd;
+  final VoidCallback onPickStart, onPickEnd;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final row = widget.chosen == null
-        ? GlidePill(
-            target: widget.selected >= 0 && widget.selected < _keys.length ? _keys[widget.selected] : null,
-            color: p.done,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final (i, option) in widget.options.indexed)
-                  MouseRegion(
-                    key: _keys[i],
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => widget.onSelect(i),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        child: PixelFit(
-                          child: TweenAnimationBuilder<Color?>(
-                            tween: ColorTween(end: _on(i) ? p.onDone : p.inkMuted),
-                            duration: context.themed(Motion.morph),
-                            curve: Motion.morphCurve,
-                            builder: (context, color, _) => Text(
-                              option,
-                              style: TextStyle(
-                                fontFamily: Fonts.ui,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: color,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+    final base = TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.inkMuted);
+
+    Widget tag(String label, {required bool active, required VoidCallback? onTap}) {
+      if (!canPickEnd) return PixelFit(child: Text(label, style: base));
+      return Hoverable(
+        focusable: true,
+        semanticLabel: label,
+        onTap: onTap,
+        builder: (hover) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          child: PixelFit(
+            child: AnimatedDefaultTextStyle(
+              duration: context.themed(Motion.hover),
+              curve: Motion.hoverCurve,
+              style: base.copyWith(color: active ? p.accent : (hover ? p.ink : p.inkMuted)),
+              child: Text(label),
             ),
-          )
-        : Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final (i, option) in widget.options.indexed)
-                MouseRegion(
-                  // Each pill keeps its own state as others come and go.
-                  key: ValueKey(option),
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => widget.onSelect(i),
-                    child: AnimatedContainer(
-                      duration: context.themed(Motion.click),
-                      curve: Motion.clickCurve,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: p.done.withValues(alpha: _on(i) ? 1 : 0),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: PixelFit(
-                        child: Text(
-                          option,
-                          style: TextStyle(
-                            fontFamily: Fonts.ui,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: _on(i) ? p.onDone : p.inkMuted,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          );
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: p.empty.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.border),
+          ),
+        ),
+      );
+    }
+
+    return PixelTooltip(
+      message: pickingEnd
+          ? 'Click a marked day on the calendar to set an end date.'
+          : 'Left-click to set a start date. Click “Ends” or right-click a day for an end date.',
+      child: PixelRow(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          tag(starts, active: !pickingEnd, onTap: onPickStart),
+          PixelFit(child: Text('  ·  ', style: base)),
+          tag(ends, active: pickingEnd, onTap: onPickEnd),
+        ],
       ),
-      child: row,
     );
   }
 }
@@ -739,7 +644,7 @@ class _NotifyRow extends StatelessWidget {
     final shows = (birthday || time != null) && offered.isNotEmpty;
     final kept = Reminder.given(bits, birthday: birthday, time: time, gone: gone);
     final on = Reminder.of(kept);
-    return _Unfold(
+    return Fold(
       open: shows,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -756,7 +661,7 @@ class _NotifyRow extends StatelessWidget {
                   : bits | (birthday ? Reminder.onTheDay : Reminder.quarterBefore).bit,
             ),
           ),
-          _Unfold(
+          Fold(
             open: kept != 0,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(0, 6, 0, 8),
@@ -764,8 +669,8 @@ class _NotifyRow extends StatelessWidget {
                 alignment: const PixelCentre(),
                 child: _ScaleDown(
                   alignment: Alignment.center,
-                  child: _Pills(
-                    options: [for (final r in offered) _chip(r, birthday)],
+                  child: SegmentedPills(
+                    labels: [for (final r in offered) _chip(r, birthday)],
                     chosen: {
                       for (final (i, r) in offered.indexed)
                         if (kept & r.bit != 0) i,

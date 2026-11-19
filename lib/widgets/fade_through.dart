@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../theme/app_theme.dart';
+import 'fold.dart';
 
 /// Like an [AnimatedSwitcher], fades the old child out before the new one
 /// fades in, so the two never show together at any real strength. A child
@@ -229,22 +230,14 @@ class DayFold extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ClipRect(
-    child: AnimatedAlign(
-      duration: Motion.page,
-      curve: folded ? Motion.roomCloses : Motion.roomOpens,
-      alignment: Alignment.topCenter,
-      heightFactor: folded ? 0 : 1,
-      child: AnimatedOpacity(
-        duration: Motion.page,
-        curve: folded ? Motion.outgoingCurve : Motion.incoming,
-        opacity: folded ? 0 : 1,
-        child: IgnorePointer(
-          ignoring: folded,
-          child: ExcludeFocus(excluding: folded, child: child),
-        ),
-      ),
-    ),
+  Widget build(BuildContext context) => Fold(
+    open: !folded,
+    duration: context.themed(Motion.page),
+    sizeCurve: Motion.roomOpens,
+    reverseSizeCurve: Motion.roomCloses,
+    opacityCurve: Motion.incoming,
+    reverseOpacityCurve: Motion.outgoingCurve,
+    child: child,
   );
 }
 
@@ -265,8 +258,10 @@ class StagedBuild extends StatefulWidget {
 
 class _StagedBuildState extends State<StagedBuild> {
   late int _left = FadeThrough.arriving(context) ? widget.frames : 0;
+  bool _scheduled = false;
 
   void _next(Duration _) {
+    _scheduled = false;
     if (!mounted) return;
     setState(() => _left--);
   }
@@ -274,8 +269,11 @@ class _StagedBuildState extends State<StagedBuild> {
   @override
   Widget build(BuildContext context) {
     if (_left <= 0) return widget.child;
-    WidgetsBinding.instance.addPostFrameCallback(_next);
-    WidgetsBinding.instance.scheduleFrame();
+    if (!_scheduled) {
+      _scheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback(_next);
+      WidgetsBinding.instance.scheduleFrame();
+    }
     return widget.placeholder;
   }
 }
@@ -296,21 +294,24 @@ class StagedHeight extends StatefulWidget {
 
 class _StagedHeightState extends State<StagedHeight> {
   late int _step = FadeThrough.arriving(context) ? 1 : widget.steps;
+  bool _scheduled = false;
 
   void _next(Duration _) {
+    _scheduled = false;
     if (!mounted) return;
     setState(() => _step++);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_step < widget.steps) {
+    if (_step < widget.steps && !_scheduled) {
+      _scheduled = true;
       WidgetsBinding.instance.addPostFrameCallback(_next);
       WidgetsBinding.instance.scheduleFrame();
     }
     // The same widgets throughout, so the list keeps its state as it opens.
     return FractionallySizedBox(
-      heightFactor: _step / widget.steps,
+      heightFactor: (_step / widget.steps).clamp(0.0, 1.0),
       alignment: Alignment.topCenter,
       child: widget.child,
     );
@@ -468,7 +469,7 @@ class PageSize extends StatefulWidget {
 class _PageSizeState extends State<PageSize> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) =>
-      _PageSizeBox(page: widget.page, duration: widget.duration, vsync: this, child: widget.child);
+      _PageSizeBox(page: widget.page, duration: context.themed(widget.duration), vsync: this, child: widget.child);
 }
 
 class _PageSizeBox extends SingleChildRenderObjectWidget {
@@ -522,6 +523,12 @@ class _RenderPageSize extends RenderProxyBox {
       from + (to - from) * (to >= from ? Motion.roomOpens : Motion.roomCloses).transform(t);
 
   void _start() {
+    if (duration == Duration.zero) {
+      _from = null;
+      _last = 1;
+      _controller.value = 1;
+      return;
+    }
     _from = size;
     _controller.duration = duration;
     _last = 0;

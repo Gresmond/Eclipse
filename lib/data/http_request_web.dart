@@ -21,17 +21,22 @@ Future<(int, Uint8List)> sendHttpRequest(
   if (type != null) headers.set('Content-Type', type);
   final init = web.RequestInit(method: method, headers: headers, signal: abort.signal, cache: 'no-store');
   if (body != null) init.body = Uint8List.fromList(body).toJS;
-  final timer = Timer(timeout, () => abort.abort());
+  var timedOut = false;
+  final timer = Timer(timeout, () {
+    timedOut = true;
+    abort.abort();
+  });
   try {
     return await (() async {
       final web.Response response;
+      final Uint8List bytes;
       try {
         response = await web.window.fetch(uri.toString().toJS, init).toDart;
+        bytes = (await response.arrayBuffer().toDart).toDart.asUint8List();
       } on Object {
-        if (!timer.isActive) rethrow;
+        if (timedOut) throw TimeoutException('Request timed out', timeout);
         throw const SocketException('Couldn’t reach the server');
       }
-      final bytes = (await response.arrayBuffer().toDart).toDart.asUint8List();
       return (response.status, bytes);
     })().timeout(timeout);
   } finally {

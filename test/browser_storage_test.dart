@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:eclipse/app_state.dart';
@@ -101,6 +102,49 @@ void main() {
     expect(pc.journal('2026-01-02'), 'Written in the browser');
     first.stop();
     second.stop();
+  });
+
+  test('compacted daily files still restore both journal entries on a new device', () async {
+    final drive = _Drive();
+    final firstStore = Store.memory(), secondStore = Store.memory();
+    addTearDown(firstStore.close);
+    addTearDown(secondStore.close);
+    final first = _inBrowser(firstStore, drive);
+    addTearDown(first.stop);
+    for (final d in [1, 2]) {
+      final day = '2001-01-0$d';
+      await drive.upload(
+        '${first.machine}_$day.json',
+        utf8.encode(
+          jsonEncode({
+            'version': 1,
+            'name': 'old device',
+            'registers': [
+              [
+                'journal',
+                day,
+                'text',
+                jsonEncode('Entry $d'),
+                d,
+                first.machine,
+                {first.machine: d},
+              ],
+            ],
+          }),
+        ),
+      );
+    }
+    await first.look(_account);
+    await first.turnOn(_account, join: false);
+    expect(first.error, isNull);
+    final files = await drive.list();
+    expect(files.where((f) => f.name.contains('2001-01')).map((f) => f.name), ['${first.machine}_2001-01-00.json']);
+    final second = _inBrowser(secondStore, drive);
+    addTearDown(second.stop);
+    await second.look(_account);
+    await second.turnOn(_account, join: true);
+    expect(secondStore.journal('2001-01-01'), 'Entry 1');
+    expect(secondStore.journal('2001-01-02'), 'Entry 2');
   });
 
   test('signing in on a browser again finds its earlier edits as another computer’s', () async {

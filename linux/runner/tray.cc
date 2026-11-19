@@ -39,6 +39,10 @@ struct Tray {
   DbusmenuServer* menu;
   DbusmenuMenuitem* toggle_item;
   FlMethodChannel* lifecycle;
+  guint name_owner_id;
+  guint watcher_id;
+  guint object_id;
+  guint quit_timeout_id;
   bool quitting;
 };
 
@@ -56,7 +60,7 @@ void toggle_window() {
 }
 
 void update_toggle_label() {
-  if (tray.toggle_item == nullptr) return;
+  if (tray.toggle_item == nullptr || tray.window == nullptr) return;
   dbusmenu_menuitem_property_set(
       tray.toggle_item, DBUSMENU_MENUITEM_PROP_LABEL,
       gtk_widget_get_visible(GTK_WIDGET(tray.window)) ? "Hide Eclipse"
@@ -66,6 +70,7 @@ void update_toggle_label() {
 void on_visibility_changed(GtkWidget*, gpointer) { update_toggle_label(); }
 
 void on_toggle_clicked(DbusmenuMenuitem*, guint, gpointer) {
+  if (tray.window == nullptr) return;
   if (gtk_widget_get_visible(GTK_WIDGET(tray.window))) {
     gtk_widget_hide(GTK_WIDGET(tray.window));
   } else {
@@ -73,22 +78,44 @@ void on_toggle_clicked(DbusmenuMenuitem*, guint, gpointer) {
   }
 }
 
+void finish_quit() {
+  if (tray.quit_timeout_id != 0) {
+    g_source_remove(tray.quit_timeout_id);
+    tray.quit_timeout_id = 0;
+  }
+  if (tray.app != nullptr) {
+    g_application_quit(G_APPLICATION(tray.app));
+  }
+}
+
+gboolean on_quit_timeout(gpointer) {
+  tray.quit_timeout_id = 0;
+  if (!tray.quitting) return G_SOURCE_REMOVE;
+  g_warning("Timed out waiting for Eclipse to save before quitting; exiting anyway.");
+  finish_quit();
+  return G_SOURCE_REMOVE;
+}
+
 void on_quit_ready(GObject* object, GAsyncResult* result, gpointer) {
+  if (!tray.quitting) return;
   g_autoptr(GError) error = nullptr;
   g_autoptr(FlMethodResponse) response = fl_method_channel_invoke_method_finish(
       FL_METHOD_CHANNEL(object), result, &error);
   if (response == nullptr || !FL_IS_METHOD_SUCCESS_RESPONSE(response)) {
     g_warning("Could not save Eclipse before quitting: %s",
               error != nullptr ? error->message : "shutdown was not completed");
-    tray.quitting = false;
-    return;
   }
-  g_application_quit(G_APPLICATION(tray.app));
+  finish_quit();
 }
 
 void on_quit_clicked(DbusmenuMenuitem*, guint, gpointer) {
   if (tray.quitting) return;
   tray.quitting = true;
+  if (tray.lifecycle == nullptr) {
+    finish_quit();
+    return;
+  }
+  tray.quit_timeout_id = g_timeout_add_seconds(8, on_quit_timeout, nullptr);
   fl_method_channel_invoke_method(tray.lifecycle, "quit", nullptr, nullptr,
                                   on_quit_ready, nullptr);
 }
@@ -101,11 +128,13 @@ void build_menu() {
                    G_CALLBACK(on_toggle_clicked), nullptr);
   dbusmenu_menuitem_child_append(root, tray.toggle_item);
   update_toggle_label();
+  g_object_unref(tray.toggle_item);
 
   DbusmenuMenuitem* separator = dbusmenu_menuitem_new();
   dbusmenu_menuitem_property_set(separator, DBUSMENU_MENUITEM_PROP_TYPE,
                                  "separator");
   dbusmenu_menuitem_child_append(root, separator);
+  g_object_unref(separator);
 
   DbusmenuMenuitem* quit = dbusmenu_menuitem_new();
   dbusmenu_menuitem_property_set(quit, DBUSMENU_MENUITEM_PROP_LABEL,
@@ -113,6 +142,7 @@ void build_menu() {
   g_signal_connect(quit, DBUSMENU_MENUITEM_SIGNAL_ITEM_ACTIVATED,
                    G_CALLBACK(on_quit_clicked), nullptr);
   dbusmenu_menuitem_child_append(root, quit);
+  g_object_unref(quit);
 
   tray.menu = dbusmenu_server_new(kMenuPath);
   dbusmenu_server_set_root(tray.menu, root);
@@ -161,7 +191,7 @@ const GDBusInterfaceVTable kVtable = {handle_method, handle_property, nullptr,
                                       {nullptr}};
 
 void register_with_watcher() {
-  if (tray.connection == nullptr) return;
+  if (tray.connection == nullptr || tray.bus_name == nullptr) return;
   g_dbus_connection_call(tray.connection, kWatcher, "/StatusNotifierWatcher",
                          kWatcher, "RegisterStatusNotifierItem",
                          g_variant_new("(s)", tray.bus_name), nullptr,
@@ -179,22 +209,27 @@ void on_bus_acquired(GDBusConnection* connection, const gchar*, gpointer) {
   tray.connection = connection;
   g_autoptr(GDBusNodeInfo) info =
       g_dbus_node_info_new_for_xml(kIntrospection, nullptr);
-  g_dbus_connection_register_object(connection, kItemPath,
-                                    info->interfaces[0], &kVtable, nullptr,
-                                    nullptr, nullptr);
+  tray.object_id = g_dbus_connection_register_object(
+      connection, kItemPath, info->interfaces[0], &kVtable, nullptr, nullptr,
+      nullptr);
   build_menu();
-  g_bus_watch_name_on_connection(connection, kWatcher,
-                                 G_BUS_NAME_WATCHER_FLAGS_NONE,
-                                 on_watcher_appeared, nullptr, nullptr,
-                                 nullptr);
+}
+
+void on_name_acquired(GDBusConnection* connection, const gchar*, gpointer) {
+  if (tray.watcher_id != 0) return;
+  tray.watcher_id = g_bus_watch_name_on_connection(
+      connection, kWatcher, G_BUS_NAME_WATCHER_FLAGS_NONE,
+      on_watcher_appeared, nullptr, nullptr, nullptr);
 }
 
 }  // namespace
 
 void tray_show_window(GtkWindow* window) {
-  // A window left mapped in a closed scratchpad is "visible" but unseen;
-  // hiding first makes showing map it again, so the scratchpad rule opens it.
-  if (gtk_widget_get_visible(GTK_WIDGET(window)) &&
+  // A window left mapped in a closed Hyprland scratchpad is "visible" but
+  // unseen; hiding first makes showing map it again, so the scratchpad rule
+  // opens it.
+  if (g_getenv("HYPRLAND_INSTANCE_SIGNATURE") != nullptr &&
+      gtk_widget_get_visible(GTK_WIDGET(window)) &&
       !gtk_window_is_active(window)) {
     gtk_widget_hide(GTK_WIDGET(window));
   }
@@ -213,6 +248,38 @@ void tray_start(GtkApplication* app, GtkWindow* window, FlView* view) {
   g_signal_connect(window, "hide", G_CALLBACK(on_visibility_changed), nullptr);
   tray.bus_name =
       g_strdup_printf("org.kde.StatusNotifierItem-%d-1", getpid());
-  g_bus_own_name(G_BUS_TYPE_SESSION, tray.bus_name, G_BUS_NAME_OWNER_FLAGS_NONE,
-                 on_bus_acquired, nullptr, nullptr, nullptr, nullptr);
+  tray.name_owner_id = g_bus_own_name(
+      G_BUS_TYPE_SESSION, tray.bus_name, G_BUS_NAME_OWNER_FLAGS_NONE,
+      on_bus_acquired, on_name_acquired, nullptr, nullptr, nullptr);
+}
+
+void tray_stop() {
+  if (tray.quit_timeout_id != 0) {
+    g_source_remove(tray.quit_timeout_id);
+    tray.quit_timeout_id = 0;
+  }
+  if (tray.watcher_id != 0) {
+    g_bus_unwatch_name(tray.watcher_id);
+    tray.watcher_id = 0;
+  }
+  if (tray.object_id != 0 && tray.connection != nullptr) {
+    g_dbus_connection_unregister_object(tray.connection, tray.object_id);
+    tray.object_id = 0;
+  }
+  if (tray.name_owner_id != 0) {
+    g_bus_unown_name(tray.name_owner_id);
+    tray.name_owner_id = 0;
+  }
+  if (tray.window != nullptr) {
+    g_signal_handlers_disconnect_by_func(
+        tray.window, reinterpret_cast<gpointer>(on_visibility_changed), nullptr);
+  }
+  tray.toggle_item = nullptr;
+  g_clear_object(&tray.menu);
+  g_clear_object(&tray.lifecycle);
+  g_clear_pointer(&tray.bus_name, g_free);
+  tray.connection = nullptr;
+  tray.window = nullptr;
+  tray.app = nullptr;
+  tray.quitting = false;
 }

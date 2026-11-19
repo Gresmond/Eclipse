@@ -11,7 +11,6 @@ void main() {
   late AppState state;
 
   setUp(() {
-    collapseAllTasks();
     store = Store.memory();
     state = AppState(store, clock: () => DateTime(2026, 10, 26));
     for (final task in [...state.todos[TodoScope.today]!]) {

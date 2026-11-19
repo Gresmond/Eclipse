@@ -307,7 +307,7 @@ void _addDue(
   // Due later this week files under This week, anything after under This
   // month; both move into Tomorrow and Today as the day nears.
   final (scope, due) = scopeForDay(state.today, day);
-  state.addTodo(scope, text, dueDate: due, time: time, birthday: birthday, reminders: reminders, location: location);
+  state.quickAddTodo(scope, text, dueDate: due, time: time, birthday: birthday, reminders: reminders, location: location);
 }
 
 /// Adds [text] on [day] as [choice] says: a task, or a repeating one.

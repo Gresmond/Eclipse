@@ -13,4 +13,7 @@ void tray_start(GtkApplication* app, GtkWindow* window, FlView* view);
 // Shows [window], mapped afresh so window rules (the scratchpad) apply.
 void tray_show_window(GtkWindow* window);
 
+// Releases tray resources on shutdown.
+void tray_stop();
+
 #endif  // RUNNER_TRAY_H_

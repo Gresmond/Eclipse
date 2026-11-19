@@ -56,6 +56,8 @@ class Incoming {
 /// like a new month's list, goes without counting as having seen anything
 /// ([Store.weak]), so any edit it hadn't heard of wins over it.
 class SyncEngine implements AutomaticWrites {
+  static bool validRegister(List<Object?> row) => _Reg.valid(row);
+
   /// [clock] stands in for the time, in tests.
   SyncEngine(this.store, this.me, {this._clock}) {
     store.automatic = this;
@@ -117,7 +119,7 @@ class SyncEngine implements AutomaticWrites {
   static const _present = '_';
 
   /// Kinds whose rows can be removed; the others always exist, blank.
-  static const _removable = {'month_habit', 'todo', 'exercise', 'training_set', 'todo_repeat'};
+  static const _removable = {'month_habit', 'todo', 'exercise', 'training_set', 'todo_repeat', 'routine','weigh_in'};
 
   /// What each kind of row keeps, by field, with the database version that
   /// first kept it. An older version keeps another computer's edit of a
@@ -127,8 +129,8 @@ class SyncEngine implements AutomaticWrites {
   static const fields = <String, Map<String, int>>{
     'habit_month': {'initialized': 9},
     'todo_history': {'snapshot': 9},
-    'month_habit': {_present: 8, 'name': 8, 'position': 8, 'note': 8, 'added_on': 14, 'days': 18},
-    'entry': {'status': 8, 'note': 8},
+    'month_habit': {_present: 8, 'name': 8, 'position': 8, 'note': 8, 'added_on': 14, 'days': 18,'weekly':38,'target':38,'unit':38},
+    'entry': {'status': 8, 'note': 8,'amount':38},
     'todo': {
       _present: 8,
       'scope': 8,
@@ -157,7 +159,9 @@ class SyncEngine implements AutomaticWrites {
     // 'holidays' setting keeps them all, as versions before 34 sync it.
     'holiday': {_present: 34},
     'exercise': {_present: 22, 'name': 22, 'muscle': 22, 'bodyweight': 22},
-    'training_set': {_present: 22, 'day': 22, 'exercise': 22, 'position': 22, 'weight': 22, 'reps': 22},
+    'training_set': {_present: 22, 'day': 22, 'exercise': 22, 'position': 22, 'weight': 22, 'reps': 22,'note':38,'rpe':38},
+    'routine': {_present:38,'name':38,'sets':38},
+    'weigh_in': {_present:38,'kg':38},
     'todo_repeat': {
       _present: 28,
       'text': 28,
@@ -219,17 +223,17 @@ class SyncEngine implements AutomaticWrites {
         final (month, uid) = _split(rowkey);
         final (y, m) = _month(month);
         fields = row(
-          'SELECT name, position, note, added_on, days FROM month_habits JOIN habits h ON h.id = habit_id '
+          'SELECT name, position, note, added_on, days,weekly,target,unit FROM month_habits JOIN habits h ON h.id = habit_id '
           'WHERE year = ? AND month = ? AND h.uid = ?',
           [y, m, uid],
         );
       case 'entry':
         final (day, uid) = _split(rowkey);
-        return row('SELECT status, note FROM entries JOIN habits h ON h.id = habit_id WHERE day = ? AND h.uid = ?', [
+        return row('SELECT status, note,amount FROM entries JOIN habits h ON h.id = habit_id WHERE day = ? AND h.uid = ?', [
               day,
               uid,
             ]) ??
-            {'status': 0, 'note': null};
+            {'status': 0, 'note': null,'amount':null};
       case 'todo':
         fields = row(
           'SELECT scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category, position, reminders, location, note FROM todos WHERE uid = ?',
@@ -251,10 +255,14 @@ class SyncEngine implements AutomaticWrites {
         };
       case 'holiday':
         return {_present: _holidays().contains(rowkey)};
+      case 'routine':
+        fields = row('SELECT name,sets FROM routines WHERE uid=?',[rowkey]);
+      case 'weigh_in':
+        fields = row('SELECT kg FROM weigh_ins WHERE uid=?',[rowkey]);
       case 'exercise':
         fields = row('SELECT name, muscle, bodyweight FROM exercises WHERE uid = ?', [rowkey]);
       case 'training_set':
-        fields = row('SELECT day, exercise, position, weight, reps FROM training_sets WHERE uid = ?', [rowkey]);
+        fields = row('SELECT day, exercise, position, weight, reps,note,rpe FROM training_sets WHERE uid = ?', [rowkey]);
       case 'todo_repeat':
         fields = row(
           'SELECT text, rule, start, until, time, category, reminders, subtasks, location FROM todo_repeats WHERE uid = ?',
@@ -277,6 +285,8 @@ class SyncEngine implements AutomaticWrites {
   static const _made = <String, List<String>>{
     'todo': ['since'],
     'month_habit': ['name'],
+    'routine':['name','sets'],
+    'weigh_in':['kg'],
     'exercise': ['name'],
     'training_set': ['day', 'exercise'],
     'todo_repeat': ['start'],
@@ -309,23 +319,23 @@ class SyncEngine implements AutomaticWrites {
           _db.execute('DELETE FROM month_habits WHERE year = ? AND month = ? AND habit_id = ?', [y, m, id]);
         } else {
           _db.execute(
-            'INSERT INTO month_habits (year, month, habit_id, name, position, note, added_on, days) VALUES (?, ?, ?, ?, ?, ?, ?, ?) '
+            'INSERT INTO month_habits (year, month, habit_id, name, position, note, added_on, days,weekly,target,unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?,?,?,?) '
             'ON CONFLICT (year, month, habit_id) DO UPDATE SET name = excluded.name, position = excluded.position, '
-            'note = excluded.note, added_on = excluded.added_on, days = excluded.days',
-            [y, m, id, f['name'] ?? '', f['position'] ?? 0, f['note'], f['added_on'], f['days']],
+            'note = excluded.note, added_on = excluded.added_on, days = excluded.days, weekly=excluded.weekly,target=excluded.target,unit=excluded.unit',
+            [y, m, id, f['name'] ?? '', f['position'] ?? 0, f['note'], f['added_on'], f['days'],f['weekly'],f['target'],f['unit']],
           );
         }
       case 'entry':
         final (day, uid) = _split(rowkey);
         final id = _habit(uid);
         final status = f['status'] as int? ?? 0;
-        if (status == 0) {
+        if (status == 0 && f['amount'] == null) {
           _db.execute('DELETE FROM entries WHERE day = ? AND habit_id = ?', [day, id]);
         } else {
           _db.execute(
-            'INSERT INTO entries (day, habit_id, status, note) VALUES (?, ?, ?, ?) '
-            'ON CONFLICT (day, habit_id) DO UPDATE SET status = excluded.status, note = excluded.note',
-            [day, id, status, f['note']],
+            'INSERT INTO entries (day, habit_id, status, note,amount) VALUES (?, ?, ?, ?,?) '
+            'ON CONFLICT (day, habit_id) DO UPDATE SET status = excluded.status, note = excluded.note, amount=excluded.amount',
+            [day, id, status, f['note'],f['amount']],
           );
         }
       case 'todo':
@@ -397,6 +407,18 @@ class SyncEngine implements AutomaticWrites {
         }
       case 'holiday':
         _setHolidays({..._holidays()..remove(rowkey), if (f[_present] == true) rowkey});
+      case 'routine':
+        if (gone) {
+          _db.execute('DELETE FROM routines WHERE uid=?',[rowkey]);
+        } else {
+          _db.execute('INSERT INTO routines(uid,name,sets) VALUES(?,?,?) ON CONFLICT(uid) DO UPDATE SET name=excluded.name,sets=excluded.sets',[rowkey,f['name'],f['sets']]);
+        }
+      case 'weigh_in':
+        if (gone) {
+          _db.execute('DELETE FROM weigh_ins WHERE uid=?',[rowkey]);
+        } else {
+          _db.execute('INSERT INTO weigh_ins(uid,kg) VALUES(?,?) ON CONFLICT(uid) DO UPDATE SET kg=excluded.kg',[rowkey,f['kg']]);
+        }
       case 'exercise':
         if (gone) {
           _db.execute('DELETE FROM exercises WHERE uid = ?', [rowkey]);
@@ -412,10 +434,10 @@ class SyncEngine implements AutomaticWrites {
           _db.execute('DELETE FROM training_sets WHERE uid = ?', [rowkey]);
         } else {
           _db.execute(
-            'INSERT INTO training_sets (uid, day, exercise, position, weight, reps) VALUES (?, ?, ?, ?, ?, ?) '
+            'INSERT INTO training_sets (uid, day, exercise, position, weight, reps,note,rpe) VALUES (?, ?, ?, ?, ?, ?,?,?) '
             'ON CONFLICT (uid) DO UPDATE SET day = excluded.day, exercise = excluded.exercise, '
-            'position = excluded.position, weight = excluded.weight, reps = excluded.reps',
-            [rowkey, f['day'] ?? '', f['exercise'] ?? '', f['position'] ?? 0, f['weight'], f['reps'] ?? 0],
+            'position = excluded.position, weight = excluded.weight, reps = excluded.reps,note=excluded.note,rpe=excluded.rpe',
+            [rowkey, f['day'] ?? '', f['exercise'] ?? '', f['position'] ?? 0, f['weight'], f['reps'] ?? 0,f['note'],f['rpe']],
           );
         }
       case 'todo_repeat':
@@ -824,6 +846,8 @@ class SyncEngine implements AutomaticWrites {
       _db.execute('DELETE FROM todos');
       _db.execute('DELETE FROM journal');
       _db.execute('DELETE FROM sleep_notes');
+      _db.execute('DELETE FROM routines');
+      _db.execute('DELETE FROM weigh_ins');
       _db.execute('DELETE FROM exercises');
       _db.execute('DELETE FROM training_sets');
       _db.execute('DELETE FROM todo_repeats');

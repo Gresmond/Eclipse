@@ -1,3 +1,5 @@
+import 'drive_encryption.dart';
+import 'reflections.dart';
 import 'confirm_on_enter.dart';
 import 'app_dialog.dart';
 import 'backup_row.dart';
@@ -114,7 +116,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     try {
       final account = await sync.signIn(cancel: cancel.future);
       if (!mounted || cancel.isCompleted) return;
-      final others = await sync.look(account);
+      final others = await sync.look(account,unlock:()=> mounted ? showDialog<String>(context:context,builder:(_)=>const PassphraseDialog()) : Future.value());
       if (!mounted || cancel.isCompleted) return;
       if ((others && !sync.isReturning(account)) || sync.needsAccountChoice(account)) {
         setState(() {
@@ -168,7 +170,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     setState(() {
       _signingIn = false;
       // Shows the copy saved before joining, even if the join stopped later.
-      _backups = AppScope.of(context).backups?.list() ?? [];
+      _backups = AppScope.read(context).backups?.list() ?? [];
     });
   }
 
@@ -180,7 +182,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   String? _journalError;
 
   Future<void> _pickJournal() async {
-    final state = AppScope.of(context);
+    final state = AppScope.read(context);
     final current = state.journalFiles!.dir;
     final picked = await DataFolder.pick(start: current.parent.path, title: 'Save journal entries in');
     if (picked == null || !mounted) return;
@@ -199,7 +201,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   void _ask(Backup? b) => setState(() => _confirming = b);
 
   void _setKeepsBackups(bool keep) {
-    final state = AppScope.of(context);
+    final state = AppScope.read(context);
     state.setKeepsBackupFiles(keep);
     setState(() => _backups = state.backups?.list() ?? []);
   }
@@ -226,12 +228,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 
   Future<void> _restore(Backup b) async {
+    if (_restoring) return;
     setState(() {
       _restoring = true;
       _error = null;
     });
     try {
-      await AppScope.of(context).restore(b);
+      await AppScope.read(context).restore(b);
       if (mounted) Navigator.pop(context, b);
     } catch (e) {
       if (!mounted) return;
@@ -260,7 +263,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget build(BuildContext context) {
     final p = context.palette;
     return ConfirmOnEnter(
-      onConfirm: _restoring || _moving || _signingIn || _confirming != null || _newJournal != null || _joining != null
+      onConfirm:
+          _restoring || _moving || _signingIn || _signingOut || _confirming != null || _newJournal != null || _joining != null
           ? null
           : () => Navigator.pop(context),
       child: Dialog(
@@ -282,14 +286,18 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   PixelRow(
                     children: [
                       Expanded(child: Text('Settings', style: dialogTitleStyle(p))),
-                      _Ribbons(
-                        labels: const ['General', 'Data'],
-                        selected: _ribbon,
-                        onSelect: (i) => setState(() {
-                          _ribbon = i;
-                          _error = null;
-                          _journalError = null;
-                        }),
+                      SizedBox(
+                        width: 270,
+                        child: SegmentedPills(
+                          labels: const ['General', 'Data'],
+                          selected: _ribbon,
+                          expand: true,
+                          onSelect: (i) => setState(() {
+                            _ribbon = i;
+                            _error = null;
+                            _journalError = null;
+                          }),
+                        ),
                       ),
                     ],
                   ),
@@ -297,7 +305,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   // Clipped, so the old page never lies over Close as it fades.
                   ClipRect(
                     child: AnimatedSize(
-                      duration: Motion.morph,
+                      duration: context.themed(Motion.morph),
                       curve: Motion.morphCurve,
                       alignment: Alignment.topCenter,
                       clipBehavior: Clip.none,
@@ -314,7 +322,10 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   Row(
                     children: [
                       const Spacer(),
-                      DialogDismiss(label: 'Close', onPressed: _restoring ? null : () => Navigator.pop(context)),
+                      DialogDismiss(
+                        label: 'Close',
+                        onPressed: _restoring || _moving || _signingOut ? null : () => Navigator.pop(context),
+                      ),
                     ],
                   ),
                 ],
@@ -349,6 +360,8 @@ extension on _SettingsDialogState {
                   onTap: () => state.setRestWeekends(!state.restWeekends),
                 ),
                 const FadeMenuDivider(),
+                SettingSwitchRow(title: 'Smart quick-add', subtitle: 'Read a day, time and @place from a task name.', on: state.smartAdd, onTap: () => state.setSmartAdd(!state.smartAdd)),
+                SettingSwitchRow(title: 'Daily focus', subtitle: 'Pin one task on Today.', on: state.focusEnabled, onTap: () => state.setFocusEnabled(!state.focusEnabled)),
                 const HolidaysRow(),
                 const FadeMenuDivider(),
                 const DayStartPicker(),
@@ -500,70 +513,6 @@ extension on _SettingsDialogState {
           Text(curlyQuotes(_journalError!), style: small.copyWith(color: p.missedInk)),
         ],
       ],
-    );
-  }
-}
-
-/// The ribbons along the top of Settings: one pill, in the done colour like
-/// the tab bar's, glides to the chosen one.
-class _Ribbons extends StatefulWidget {
-  const _Ribbons({required this.labels, required this.selected, required this.onSelect});
-
-  final List<String> labels;
-  final int selected;
-  final ValueChanged<int> onSelect;
-
-  @override
-  State<_Ribbons> createState() => _RibbonsState();
-}
-
-class _RibbonsState extends State<_Ribbons> {
-  late final _keys = [for (final _ in widget.labels) GlobalKey()];
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final labels = widget.labels;
-    return Container(
-      width: 270,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: p.empty.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(20)),
-      // The same pill as the tab bar's.
-      child: GlidePill(
-        target: _keys[widget.selected],
-        color: p.done,
-        child: Row(
-          children: [
-            for (final (i, label) in labels.indexed)
-              Expanded(
-                key: _keys[i],
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => widget.onSelect(i),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Center(
-                        child: AnimatedDefaultTextStyle(
-                          duration: context.themed(Motion.morph),
-                          curve: Motion.morphCurve,
-                          style: TextStyle(
-                            fontFamily: Fonts.ui,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: i == widget.selected ? p.onAccent : p.inkMuted,
-                          ),
-                          child: Text(label),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }

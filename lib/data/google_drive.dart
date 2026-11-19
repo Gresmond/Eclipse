@@ -36,9 +36,16 @@ class GoogleAccount {
 
 /// Something went wrong talking to Google, in words to show.
 class DriveError implements Exception {
-  const DriveError(this.message, {this.signedOut = false, this.notFound = false, this.unreachable = false});
+  const DriveError(
+    this.message, {
+    this.signedOut = false,
+    this.notFound = false,
+    this.unreachable = false,
+    this.status,
+  });
 
   final String message;
+  final int? status;
 
   /// What it was about isn't in Drive any more.
   final bool notFound;
@@ -56,7 +63,10 @@ class DriveError implements Exception {
 /// Signs in through the browser: opens Google's page, and waits for it to
 /// come back to a one-off address on this computer with a code, which is
 /// swapped for the lasting sign-in. Stops waiting when [cancel] completes.
-Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
+Future<GoogleAccount> signInWithGoogle({
+  Future<void>? cancel,
+  @visibleForTesting Future<void> Function(String url)? openUrl,
+}) async {
   if (googleClientId.startsWith('SET-ME') || googleClientSecret == 'SET-ME') {
     throw const DriveError('Google sync is not configured for this build. Local data and backups still work.');
   }
@@ -75,9 +85,9 @@ Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
       'access_type': 'offline',
       'prompt': 'consent',
     });
-    await openExternal(page.toString());
 
     final reply = Completer<Map<String, String>>();
+    reply.future.ignore();
     server.listen((request) async {
       final query = request.uri.queryParameters;
       if (query['state'] != state) {
@@ -96,6 +106,9 @@ Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
         if (!reply.isCompleted) reply.completeError(const DriveError('Sign-in cancelled.'));
       }),
     );
+
+    await (openUrl ?? openExternal)(page.toString());
+
     final query = await reply.future.timeout(
       const Duration(minutes: 10),
       onTimeout: () => throw const DriveError('Sign-in took too long. Try again.'),
@@ -105,7 +118,7 @@ Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
       throw DriveError(query['error'] == 'access_denied' ? 'Sign-in was cancelled in the browser.' : 'Google said no.');
     }
 
-    await whenBackFromBrowser();
+    await whenBackFromBrowser(cancel: cancel);
     final tokens = await _swapCode({
       'code': code,
       'client_id': googleClientId,
@@ -133,17 +146,26 @@ Future<GoogleAccount> signInWithGoogle({Future<void>? cancel}) async {
 /// A phone can cut an app in the background off from the network, though the
 /// browser still reaches its one-off address, so the code is only swapped once
 /// the person is back. A computer's app is never cut off, so it doesn't wait.
-Future<void> whenBackFromBrowser() async {
+Future<void> whenBackFromBrowser({Future<void>? cancel}) async {
   if (defaultTargetPlatform != TargetPlatform.android) return;
   if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) return;
   final back = Completer<void>();
+  back.future.ignore();
   final listener = AppLifecycleListener(
     onResume: () {
       if (!back.isCompleted) back.complete();
     },
   );
-  await back.future;
-  listener.dispose();
+  unawaited(
+    cancel?.then((_) {
+      if (!back.isCompleted) back.completeError(const DriveError('Sign-in cancelled.'));
+    }),
+  );
+  try {
+    await back.future;
+  } finally {
+    listener.dispose();
+  }
 }
 
 /// Swaps the browser's code for the lasting sign-in. A phone just back in
@@ -204,12 +226,7 @@ Future<Map<String, dynamic>> _postWith(
 }) async {
   final encoded = utf8.encode(Uri(queryParameters: form).query);
   for (var retry = 0; ; retry++) {
-    final (status, body) = await send(
-      'POST',
-      uri,
-      body: encoded,
-      type: 'application/x-www-form-urlencoded',
-    );
+    final (status, body) = await send('POST', uri, body: encoded, type: 'application/x-www-form-urlencoded');
     if ((status == 429 || (status >= 500 && status < 600)) && retry < 3) {
       await wait(Duration(milliseconds: (500 << retry) + _backoffJitter.nextInt(250)));
       continue;
@@ -357,7 +374,7 @@ class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
   /// and retries transient rate limits or server errors with backoff.
   Future<Uint8List> _call(String method, Uri uri, {List<int>? body, String? type}) async {
     var retriedAuth = false;
-    for (var retry = 0; ; ) {
+    for (var retry = 0; ;) {
       final used = await _bearer();
       final (status, bytes) = await _sendRequest(method, uri, body: body, type: type, bearer: used);
       if (status == 401 && !retriedAuth) {
@@ -373,7 +390,50 @@ class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
       if (status >= 200 && status < 300) return bytes;
       final error = _decode(bytes)['error'];
       final message = error is Map ? error['message'] : null;
-      throw DriveError('Google Drive said: ${message ?? 'error $status'}', notFound: status == 404);
+      throw DriveError('Google Drive said: ${message ?? 'error $status'}', notFound: status == 404, status: status);
+    }
+  }
+
+  /// Read the token before the initial listing so files changed during
+  /// pagination appear on the following incremental pass.
+  Future<(String, List<DriveFile>)> inventory(String? token, List<DriveFile> previous) async {
+    Future<(String, List<DriveFile>)> baseline() async {
+      final data = _decode(await _call('GET', Uri.https('www.googleapis.com', '/drive/v3/changes/startPageToken')));
+      return (data['startPageToken'] as String, await list());
+    }
+
+    if (token == null) return baseline();
+    final files = {for (final f in previous) f.id: f};
+    var page = token;
+    try {
+      while (true) {
+        final data = _decode(
+          await _call(
+            'GET',
+            Uri.https('www.googleapis.com', '/drive/v3/changes', {
+              'pageToken': page,
+              'spaces': 'appDataFolder',
+              'pageSize': '1000',
+              'includeRemoved': 'true',
+              'fields': 'nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,trashed,modifiedTime))',
+            }),
+          ),
+        );
+        for (final change in data['changes'] as List) {
+          final file = change['file'];
+          if (change['removed'] == true || file == null || file['trashed'] == true) {
+            files.remove(change['fileId']);
+          } else {
+            final id = file['id'] as String;
+            files[id] = DriveFile(id: id, name: file['name'] as String, modified: file['modifiedTime'] as String);
+          }
+        }
+        if (data['nextPageToken'] == null) return (data['newStartPageToken'] as String, files.values.toList());
+        page = data['nextPageToken'] as String;
+      }
+    } on DriveError catch (error) {
+      if (error.status == 410 || error.status == 404) return baseline();
+      rethrow;
     }
   }
 

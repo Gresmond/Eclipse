@@ -145,16 +145,18 @@ extension StoreBackups on Store {
     const columns = {
       'habits': 'id, uid',
       'habit_months': 'year, month',
-      'month_habits': 'year, month, habit_id, name, position, note, added_on, days',
-      'entries': 'day, habit_id, status, note',
+      'month_habits': 'year, month, habit_id, name, position, note, added_on, days, weekly, target, unit',
+      'entries': 'day, habit_id, status, note, amount',
       'todos': 'id, uid, scope, period, text, done, carried, since, due_date, return_to_tomorrow, return_scope, defer_promotion_day, subtasks, done_at, due_time, category, position, reminders, location, note',
       'todo_history': 'uid, day, snapshot',
       'journal': 'day, text',
       'sleep_habits': 'item, habit_id',
       'sleep_notes': 'year, month, item, note',
       'settings': 'key, value',
+      'routines': 'uid,name,sets',
+      'weigh_ins': 'uid,kg',
       'exercises': 'uid, name, muscle, bodyweight',
-      'training_sets': 'uid, day, exercise, position, weight, reps',
+      'training_sets': 'uid, day, exercise, position, weight, reps,note,rpe',
       'todo_repeats': 'uid, text, rule, start, until, time, category, reminders, subtasks, location',
       'sync_reg': 'kind, rowkey, field, value, ts, origin, vv, journal_versions, seq',
       'sync_dirty': 'kind, rowkey, at',
@@ -183,13 +185,21 @@ extension StoreBackups on Store {
               'SELECT 1 FROM exercises WHERE muscle NOT IN (${MuscleGroup.values.map((g) => "'${g.name}'").join(', ')}) LIMIT 1',
             )
             .isNotEmpty ||
-        _db.select('SELECT 1 FROM training_sets WHERE reps < 0 OR weight < 0 LIMIT 1').isNotEmpty) {
+        _db.select('SELECT 1 FROM month_habits WHERE weekly NOT BETWEEN 1 AND 7 OR target <= 0 LIMIT 1').isNotEmpty ||
+        _db.select('SELECT 1 FROM entries WHERE amount < 0 LIMIT 1').isNotEmpty ||
+        _db.select('SELECT 1 FROM weigh_ins WHERE kg <= 0 LIMIT 1').isNotEmpty ||
+        _db
+            .select('SELECT sets FROM routines')
+            .any((r) => r['sets'] is! String || !validRoutine(r['sets'] as String)) ||
+        _db
+            .select('SELECT 1 FROM training_sets WHERE reps < 0 OR weight < 0 OR rpe NOT BETWEEN 1 AND 10 LIMIT 1')
+            .isNotEmpty) {
       throw StateError('Backup contains invalid data');
     }
     for (final r in _db.select(
       'SELECT day FROM entries UNION SELECT day FROM journal UNION SELECT since AS day FROM todos '
       'UNION SELECT due_date AS day FROM todos WHERE due_date IS NOT NULL UNION SELECT day FROM training_sets '
-      'UNION SELECT start AS day FROM todo_repeats UNION SELECT until AS day FROM todo_repeats WHERE until IS NOT NULL',
+      'UNION SELECT uid AS day FROM weigh_ins UNION SELECT start AS day FROM todo_repeats UNION SELECT until AS day FROM todo_repeats WHERE until IS NOT NULL',
     )) {
       final day = r['day'];
       if (!_validDay(day)) throw StateError('Backup contains an invalid date');

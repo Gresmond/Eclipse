@@ -30,6 +30,7 @@ abstract interface class SyncDisk {
   /// Replaces the file whole, so a crash never leaves half of it.
   void writeText(String who, String name, String text);
   Future<void> writeBytes(String who, String name, List<int> bytes);
+  void remove(String who, String name);
   void clear();
 
   /// Runs [job] away from the drawing, where that's possible. [job] gets the
@@ -90,6 +91,13 @@ class FolderDisk implements SyncDisk {
     final file = File(_path(who, name));
     await file.parent.create(recursive: true);
     await replaceSafely(file.path, (part) => part.writeAsBytes(bytes, flush: true));
+  }
+
+  @override
+  void remove(String who, String name) {
+    if (!holds(who, name)) throw ArgumentError('Invalid sync file');
+    final file = File(_path(who, name));
+    if (file.existsSync()) file.deleteSync();
   }
 
   @override
@@ -162,6 +170,9 @@ class DatabaseDisk implements SyncDisk {
     'ON CONFLICT (key) DO UPDATE SET bytes = ?4, version = (SELECT MAX(version) + 1 FROM sync_files)',
     ['$who/$name', who, name, Uint8List.fromList(bytes)],
   );
+
+  @override
+  void remove(String who, String name) => _db.execute('DELETE FROM sync_files WHERE key=?', ['$who/$name']);
 
   @override
   void clear() => _db.execute('DELETE FROM sync_files');

@@ -1,6 +1,9 @@
+import 'package:eclipse/screens/training_view.dart';
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/theme/oklch.dart' show contrast;
 import 'package:eclipse/theme/tokens.dart';
+import 'package:eclipse/training.dart';
+import 'package:eclipse/widgets/corner_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -70,6 +73,36 @@ void main() {
       });
 
       test('the theme’s tooltips read', () => passes('tooltip', p.tile, p.ink, text));
+
+      test('setting toggle ON knob reads on gradient track', () {
+        for (final stop in p.gradient.skip(1)) {
+          passes('onAccent knob on $stop', p.onAccent, stop, mark);
+        }
+      });
+
+      test('training muscle group colours read on surfaces', () {
+        for (final g in MuscleGroup.values) {
+          final c = groupColour(g, p);
+          passes('${g.name} on tile', c, p.tile, text);
+          passes('${g.name} on background', c, p.background, text);
+          passes('${g.name} on empty', c, p.empty, text);
+        }
+      });
+
+      test('brief and reminder card badge icons read', () {
+        final badge = over(p.done.withValues(alpha: 0.16), p.tile);
+        passes('briefBadgeInk on badge', briefBadgeInk(p), badge, mark);
+      });
+
+      test('year view interpolated percentage cells read', () {
+        const darkInk = Color(0xFF030305);
+        for (var i = 0; i <= 10; i++) {
+          final r = i / 10;
+          final fill = r < 0.5 ? Color.lerp(p.missed, p.other, r * 2)! : Color.lerp(p.other, p.done, r * 2 - 1)!;
+          final fg = contrast(fill, Colors.white) >= contrast(fill, darkInk) ? Colors.white : darkInk;
+          passes('year cell $r', fg, fill, text);
+        }
+      });
     });
   }
 

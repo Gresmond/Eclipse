@@ -9,13 +9,85 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../app_state.dart';
+import '../models.dart';
+import '../data/http_request.dart' show downloadFile;
 import '../data/updates.dart' show ReleaseFetch, ReleaseUpdater, fetchReleaseBytes, isNewer;
 
 /// The Android side of things, over its channel.
 class PhonePlatform {
+  static const _background = MethodChannel('eclipse/background');
+
+  static Future<void> enableBackgroundSync(AppState state) async {
+    _background.setMethodCallHandler((call) async {
+      final sync = state.sync;
+      state.checkDate();
+      final activeSync = sync != null && sync.isOn;
+      if (call.method == 'action') {
+        final args = call.arguments as Map;
+        final key = args['key'] as String, action = args['action'] as String;
+        final account = args['account'] as String?;
+        final matchesAccount = activeSync ? account == sync.email : (account == null || account.isEmpty);
+        if (action == 'snooze' || action == 'done') {
+          if (matchesAccount) state.notificationAction(key, action);
+        } else if (args['day'] == dateKey(state.today) && matchesAccount) {
+          if (action == 'task') {
+            final task = state.orderedTodos(TodoScope.today).where((t) => t.uid == key && !t.done).firstOrNull;
+            if (task != null) state.toggleTodo(task);
+          } else if (action == 'ritual') {
+            final habit = state.habits.where((h) => '${h.id}' == key && h.onDay(state.today)).firstOrNull;
+            if (habit != null && state.statusOf(state.today, habit) != HabitStatus.done) {
+              state.selectStatus(state.today, habit, HabitStatus.done);
+            }
+          }
+        }
+      } else if (call.method != 'sync') {
+        throw MissingPluginException();
+      }
+      state.saveDrafts();
+      await publishWidget(state);
+      if (!activeSync) return _alarms(state);
+      await sync.run();
+      if (sync.error != null && call.method == 'sync') throw StateError(sync.error!);
+      await publishWidget(state);
+      return _alarms(state);
+    });
+    await _background.invokeMethod<void>('ready');
+  }
+
+  static Future<void> publishWidget(AppState state) async {
+    final sync = state.sync;
+    final rows = [
+      for (final h in state.habits)
+        if (h.onDay(state.today) && h.startedBy(state.today) && state.statusOf(state.today, h) != HabitStatus.done)
+          {'action': 'ritual', 'key': '${h.id}', 'text': h.name},
+      for (final t in state.orderedTodos(TodoScope.today))
+        if (!t.done && t.uid != null) {'action': 'task', 'key': t.uid, 'text': t.text},
+    ];
+    try {
+      await _background.invokeMethod<void>(
+        'widget',
+        jsonEncode({'day': dateKey(state.today), 'account': sync?.email, 'rows': rows}),
+      );
+    } on MissingPluginException {
+      /* No launcher in tests. */
+    }
+  }
+
   static const _channel = MethodChannel('eclipse/phone');
 
-  static Future<void> toFront() => _channel.invokeMethod<void>('toFront');
+  static Future<void> toFront() async {
+    try {
+      await _channel.invokeMethod<void>('toFront');
+    } on MissingPluginException {
+      // Tests don't register the Android platform channel.
+    }
+  }
+
+  static Future<void> startRest(int seconds) async {
+    await askNotifications();
+    await _channel.invokeMethod<void>('startRest', seconds);
+  }
+
   static Future<String?> version() => _channel.invokeMethod<String>('version');
 
   static Future<int?> build() async {
@@ -25,17 +97,50 @@ class PhonePlatform {
     return n >= 100 ? n % 100 : n;
   }
 
-  static Future<void> askNotifications() => _channel.invokeMethod<void>('askNotifications');
+  static Future<void> askNotifications() async {
+    try {
+      await _channel.invokeMethod<void>('askNotifications');
+    } on MissingPluginException {
+      // Tests don't register the Android platform channel.
+    }
+  }
+
+  /// Registers [onOpen] for reminder notifications tapped while open or on
+  /// cold start.
+  static Future<void> listenReminders(void Function(String uid) onOpen) async {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'openReminder' && call.arguments is String) {
+        onOpen(call.arguments as String);
+      }
+    });
+    try {
+      final initial = await _channel.invokeMethod<String>('initialReminder');
+      if (initial != null && initial.isNotEmpty) onOpen(initial);
+    } on MissingPluginException {
+      // Tests don't register the Android platform channel.
+    }
+  }
 
   /// Sets [state]'s reminders still to come as the phone's alarms, in place
   /// of those set before.
-  static Future<void> schedule(AppState state) => _channel.invokeMethod<void>(
-    'schedule',
-    jsonEncode([
-      for (final r in state.upcomingReminders())
-        {'key': r.key, 'at': r.at.millisecondsSinceEpoch, 'title': r.title, 'body': r.body},
-    ]),
-  );
+  static Future<void> schedule(AppState state) => _channel.invokeMethod<void>('schedule', _alarms(state));
+
+  static String _alarms(AppState state) => jsonEncode([
+    for (final r in state.upcomingReminders())
+      {
+        'key': r.key,
+        'account': state.sync?.email,
+        'uid': r.uid,
+        'at': r.at.millisecondsSinceEpoch,
+        'year': r.at.year,
+        'month': r.at.month,
+        'day': r.at.day,
+        'hour': r.at.hour,
+        'minute': r.at.minute,
+        'title': r.title,
+        'body': r.body,
+      },
+  ]);
 
   /// Opens Android's installer on [apk]; false if it first had to ask to be
   /// allowed to, and so wants trying again.
@@ -105,7 +210,8 @@ class PhoneUpdater extends ChangeNotifier {
     }
   }
 
-  static Future<Directory> _defaultUpdatesDir() async => Directory(p.join((await getTemporaryDirectory()).path, 'updates'));
+  static Future<Directory> _defaultUpdatesDir() async =>
+      Directory(p.join((await getTemporaryDirectory()).path, 'updates'));
 
   static bool isValidAssetUri(Uri? uri, String assetName) =>
       uri != null &&
@@ -169,10 +275,7 @@ class PhoneUpdater extends ChangeNotifier {
     if (sumsUri != null && isValidAssetUri(sumsUri, 'SHA256SUMS')) {
       final (status, body) = await fetch(sumsUri);
       if (status != 200) throw HttpException('Checksum download failed (HTTP $status).');
-      final match = RegExp(
-        r'^([0-9a-fA-F]{64})\s+\*?Eclipse\.apk$',
-        multiLine: true,
-      ).firstMatch(utf8.decode(body));
+      final match = RegExp(r'^([0-9a-fA-F]{64})\s+\*?Eclipse\.apk$', multiLine: true).firstMatch(utf8.decode(body));
       if (match != null) return _sha256 = match.group(1)!.toLowerCase();
     }
     throw const FormatException('The update has no SHA-256 checksum.');
@@ -185,40 +288,8 @@ class PhoneUpdater extends ChangeNotifier {
   }
 
   static Future<void> _defaultDownload(Uri uri, File partFile) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
-    try {
-      await (() async {
-        var current = uri;
-        late HttpClientResponse response;
-        for (var redirects = 0; ; redirects++) {
-          final request = await client.getUrl(current);
-          request.followRedirects = false;
-          response = await request.close();
-          if (response.isRedirect && redirects < 5) {
-            final location = response.headers.value(HttpHeaders.locationHeader);
-            await response.drain<void>();
-            if (location == null) throw const HttpException('Missing redirect location');
-            final next = current.resolve(location);
-            if (next.scheme != 'https') {
-              throw const FormatException('Update redirect must use HTTPS.');
-            }
-            current = next;
-            continue;
-          }
-          break;
-        }
-        if (response.statusCode != 200) throw HttpException('status ${response.statusCode}');
-        final sink = partFile.openWrite();
-        try {
-          await response.pipe(sink);
-        } catch (_) {
-          await sink.close();
-          rethrow;
-        }
-      })().timeout(const Duration(minutes: 5));
-    } finally {
-      client.close(force: true);
-    }
+    final status = await downloadFile(uri, partFile);
+    if (status != 200) throw HttpException('status $status');
   }
 
   Future<void> update() async {

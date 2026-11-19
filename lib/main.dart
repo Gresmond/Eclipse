@@ -27,8 +27,8 @@ import 'screens/startup_error.dart';
 import 'screens/warm_up.dart';
 import 'theme/app_theme.dart';
 import 'web/web_app.dart';
-import 'web/web_screens.dart';
 import 'widgets/app_dialog.dart';
+import 'widgets/search_dialog.dart';
 import 'widgets/todo_panel.dart' show addTaskAnywhere;
 import 'widgets/undo_card.dart';
 
@@ -88,6 +88,7 @@ Future<void> main() async {
       dataFolder: data,
       sync: sync,
       notifier: SystemNotifications(),
+      clock: SystemTimeZone.now,
     );
   } catch (error, stack) {
     AppLog.failure('Couldn’t open the data', error, stack);
@@ -174,14 +175,16 @@ void Function() _watchDate(AppState state) {
 
   void schedule() {
     if (state.closing) return;
-    final now = DateTime.now();
+    final now = SystemTimeZone.now();
     // Midnight is looked at too, for the "until 4am" in the header.
     final until = [
       DateTime(now.year, now.month, now.day + 1),
       nextDayStart(now, state.dayStartHour),
     ].map((t) => t.difference(now)).reduce((a, b) => a < b ? a : b);
     // Just past the hour, so the clock has certainly turned.
-    final wait = until < const Duration(minutes: 1)
+    final wait = until <= Duration.zero
+        ? const Duration(milliseconds: 20)
+        : until < const Duration(minutes: 1)
         ? until + const Duration(milliseconds: 20)
         : const Duration(minutes: 1);
     timer = Timer(wait, () {
@@ -207,6 +210,7 @@ void Function() _watchWindow(AppState state) {
     if (state.closing) return;
     state.saveDrafts();
     state.store.flushToDisk();
+    unawaited(state.persist?.call());
     state.sync?.sendChanges();
   }
 
@@ -301,6 +305,12 @@ class EclipseApp extends StatelessWidget {
   final AppState state;
   final Updater? updater;
 
+  void _search() {
+    final navigator = appNavigator.currentState;
+    if (navigator == null || navigator.canPop() || state.touring || state.closing) return;
+    showAppDialog<void>(context: navigator.context, builder: (_) => const SearchDialog());
+  }
+
   /// Ctrl+N, unless a dialog or the tour is open.
   void _newTask() {
     final navigator = appNavigator.currentState;
@@ -330,20 +340,14 @@ class EclipseApp extends StatelessWidget {
               target: paletteNamed(themeName),
               child: CallbackShortcuts(
                 bindings: {
+                  const SingleActivator(LogicalKeyboardKey.keyK, control: true): _search,
+                  const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _search,
+                  const SingleActivator(LogicalKeyboardKey.keyF, control: true): _search,
+                  const SingleActivator(LogicalKeyboardKey.keyF, meta: true): _search,
                   const SingleActivator(LogicalKeyboardKey.keyN, control: true): _newTask,
                   const SingleActivator(LogicalKeyboardKey.keyN, meta: true): _newTask,
                 },
-                child: kIsWeb
-                    ? WindowSizeGate(
-                        child: UndoLayer(
-                          cards: CornerCards(updater: updater),
-                          child: child!,
-                        ),
-                      )
-                    : UndoLayer(
-                        cards: CornerCards(updater: updater),
-                        child: child!,
-                      ),
+                child: UndoLayer(cards: CornerCards(updater: updater), child: child!),
               ),
             ),
           ),

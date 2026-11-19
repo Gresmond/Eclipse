@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 /// What an exercise mainly trains. One per exercise; it sets the colour of
@@ -44,7 +45,7 @@ class TrainingSet {
     required this.exercise,
     required this.position,
     required this.weight,
-    required this.reps,
+    required this.reps, this.note, this.rpe,
   });
 
   final String uid;
@@ -62,14 +63,17 @@ class TrainingSet {
   /// Kilograms; null for a bodyweight set.
   final double? weight;
   final int reps;
+  final String? note;
+  final double? rpe;
 
-  TrainingSet copyWith({double? weight, bool clearWeight = false, int? reps, int? position}) => TrainingSet(
+  TrainingSet copyWith({double? weight, bool clearWeight = false, int? reps, int? position, String? note, double? rpe, bool replaceDetails = false}) => TrainingSet(
     uid: uid,
     day: day,
     exercise: exercise,
     position: position ?? this.position,
     weight: clearWeight ? null : weight ?? this.weight,
     reps: reps ?? this.reps,
+    note: replaceDetails ? note : this.note, rpe: replaceDetails ? rpe : this.rpe,
   );
 }
 
@@ -140,10 +144,10 @@ List<TrainingPoint> trainingPoints(Iterable<(DateTime, List<TrainingSet>)> days,
   for (final (day, sets) in days) {
     final worth = <int, double>{};
     final counted = <TrainingSet>[];
-    for (final (i, s) in sets.indexed) {
+    for (final s in sets) {
       final w = setWorth(s, bodyweight: bodyweight);
       if (w == null) continue;
-      worth[i] = w;
+      worth[counted.length] = w;
       counted.add(s);
     }
     if (worth.isEmpty) continue;
@@ -151,11 +155,14 @@ List<TrainingPoint> trainingPoints(Iterable<(DateTime, List<TrainingSet>)> days,
       for (final MapEntry(key: i, value: w) in worth.entries)
         if (last[i] case final was?) w - was,
     ];
-    value = value == null
+    final dayMin = worth.values.reduce(math.min);
+    final dayMax = worth.values.reduce(math.max);
+    final next = value == null
         ? mean(worth.values)
         : changes.isEmpty
         ? value
         : value + mean(changes);
+    value = next.clamp(dayMin * 0.5, dayMax * 1.5);
     last.addAll(worth);
     points.add(
       TrainingPoint(day, value, rough: !bodyweight && counted.any((s) => s.reps >= roughEstimateReps), sets: counted),
@@ -168,3 +175,14 @@ List<TrainingPoint> trainingPoints(Iterable<(DateTime, List<TrainingSet>)> days,
 /// Null when no set counts.
 TrainingPoint? trainingPoint(DateTime day, List<TrainingSet> sets, {required bool bodyweight}) =>
     trainingPoints([(day, sets)], bodyweight: bodyweight).firstOrNull;
+
+/// A routine stores exercise IDs and starting weights. Applied sets begin
+/// with zero reps so they enter the charts only after the workout.
+bool validRoutine(String encoded) {
+  try {
+    final rows = jsonDecode(encoded);
+    return rows is List && rows.isNotEmpty && rows.every((r) =>
+      r is List && r.length == 2 && r.first is String &&
+      (r.last == null || r.last is num && (r.last as num).isFinite && (r.last as num) >= 0));
+  } on FormatException { return false; }
+}

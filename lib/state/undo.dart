@@ -20,6 +20,9 @@ mixin _Undo on ChangeNotifier {
 
   static const _kept = 3;
 
+  final _redone = <Removal>[];
+  bool get canRedo => _redone.isNotEmpty;
+
   final _removals = <Removal>[];
 
   /// The removal the undo card names, while it shows.
@@ -47,24 +50,41 @@ mixin _Undo on ChangeNotifier {
   void _undoable(String label, List<RowsBefore> before) {
     final removal = Removal._(label, before);
     final together = _together;
-    together == null ? _remember(removal) : together.add(removal);
+    together == null ? _remember(removal, notify: false) : together.add(removal);
   }
 
-  void _remember(Removal removal) {
+  void _remember(Removal removal, {bool notify = true}) {
+    _redone.clear();
     _removals.add(removal);
     if (_removals.length > _kept) _removals.removeAt(0);
     shownRemoval = removal;
-    notifyListeners();
+    if (notify) notifyListeners();
   }
 
   /// Puts back the latest removal.
   void undo() {
     if (_removals.isEmpty) return;
-    final removal = _removals.removeLast();
-    // Later removals first: each was taken after the one before it.
-    store.putBack(removal._before.reversed);
-    if (identical(shownRemoval, removal)) shownRemoval = null;
-    _reloadAfterUndo({for (final b in removal._before) b.table});
+    _apply(_removals, _redone);
+  }
+
+  void redo() {
+    if (_redone.isNotEmpty) _apply(_redone, _removals);
+  }
+
+  void _apply(List<Removal> source, List<Removal> destination) {
+    final action = source.last;
+    final inverse = store.transaction(() {
+      final snapshots = <RowsBefore>[];
+      for (final row in action._before.reversed) {
+        snapshots.add(store.rowsBefore(row.table, row.key, row.where, row.args));
+        store.putBack([row]);
+      }
+      return snapshots;
+    });
+    source.removeLast();
+    destination.add(Removal._(action.label, inverse));
+    shownRemoval = null;
+    _reloadAfterUndo({for (final b in inverse) b.table});
   }
 
   /// The card naming [removal] has had its time.
@@ -76,6 +96,7 @@ mixin _Undo on ChangeNotifier {
 
   /// A new day: what was removed yesterday stays removed.
   void _forgetRemovals() {
+    _redone.clear();
     _removals.clear();
     shownRemoval = null;
   }

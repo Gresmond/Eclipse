@@ -10,33 +10,41 @@ import 'smooth_gradient.dart';
 
 /// Identical hit target, icon and hover pill for card-header actions.
 class HeaderIconButton extends StatelessWidget {
-  const HeaderIconButton({super.key, required this.icon, required this.onPressed, this.tooltip});
+  const HeaderIconButton({super.key, required this.icon, required this.onPressed, this.tooltip, this.active = false});
 
   final IconData icon;
   final VoidCallback onPressed;
   final String? tooltip;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return PixelTooltip(
-      message: tooltip ?? '',
-      child: IconButton(
-        onPressed: onPressed,
-        constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-        padding: EdgeInsets.zero,
-        style: ButtonStyle(
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          minimumSize: const WidgetStatePropertyAll(Size.square(28)),
-          maximumSize: const WidgetStatePropertyAll(Size.square(28)),
-          shape: const WidgetStatePropertyAll(CircleBorder()),
-          foregroundColor: WidgetStatePropertyAll(p.inkMuted.withValues(alpha: 0.8)),
-          backgroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.hovered) ? p.empty.withValues(alpha: 0.8) : Colors.transparent,
+    return Semantics(
+      toggled: active,
+      child: PixelTooltip(
+        message: tooltip ?? '',
+        child: IconButton(
+          onPressed: onPressed,
+          constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+          padding: EdgeInsets.zero,
+          style: ButtonStyle(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            minimumSize: const WidgetStatePropertyAll(Size.square(28)),
+            maximumSize: const WidgetStatePropertyAll(Size.square(28)),
+            shape: const WidgetStatePropertyAll(CircleBorder()),
+            foregroundColor: WidgetStatePropertyAll(active ? p.onDone : p.inkMuted.withValues(alpha: 0.8)),
+            backgroundColor: WidgetStateProperty.resolveWith(
+              (states) => active
+                  ? p.done
+                  : (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused))
+                  ? p.empty.withValues(alpha: 0.8)
+                  : Colors.transparent,
+            ),
+            overlayColor: const WidgetStatePropertyAll(Colors.transparent),
           ),
-          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+          icon: Icon(icon, size: 16),
         ),
-        icon: Icon(icon, size: 16),
       ),
     );
   }

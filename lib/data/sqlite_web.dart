@@ -46,8 +46,10 @@ var _placed = 0;
 /// Puts a database's [bytes] where SQLite can open them, and says where.
 String placeDatabase(List<int> bytes) {
   final path = '/eclipse-placed-${_placed++}.db';
+  _remove(path);
   final opened = browserFiles.xOpen(Sqlite3Filename(path), SqlFlag.SQLITE_OPEN_READWRITE | SqlFlag.SQLITE_OPEN_CREATE);
   try {
+    opened.file.xTruncate(0);
     opened.file.xWrite(Uint8List.fromList(bytes), 0);
   } finally {
     opened.file.xClose();

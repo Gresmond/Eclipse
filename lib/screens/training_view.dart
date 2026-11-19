@@ -1,3 +1,4 @@
+import '../widgets/workout_tools.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,7 @@ import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/oklch.dart';
+import '../theme/palette_recipe.dart' show readable;
 import '../training.dart';
 import '../training_log.dart';
 import '../widgets/appear.dart';
@@ -33,6 +35,15 @@ class TrainingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb && MediaQuery.sizeOf(context).width < 900) {
+      return ListView(padding: const EdgeInsets.all(16), children: const [
+        SizedBox(height: 420, child: _SessionTile()),
+        SizedBox(height: 16),
+        SizedBox(height: 380, child: _ChartTile()),
+        SizedBox(height: 16),
+        SizedBox(height: 320, child: _HistoryTile()),
+      ]);
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
       child: PixelColumn(
@@ -63,7 +74,8 @@ Color groupColour(MuscleGroup g, Palette p) {
   final dark = p.brightness == Brightness.dark;
   final h = (20 + g.index * 360 / MuscleGroup.values.length) % 360;
   final l = dark ? 0.78 : 0.62;
-  return Oklch(l, math.min(0.13, Oklch.maxChroma(l, h)), h).toColor();
+  final raw = Oklch(l, math.min(0.13, Oklch.maxChroma(l, h)), h).toColor();
+  return readable(raw, [p.tile, p.background, p.empty], dark: dark);
 }
 
 /// Line styles that tell apart exercises of one group: solid, then dashes.
@@ -76,7 +88,13 @@ const _dashes = <List<double>>[
   [5, 3],
 ];
 
-String _kg(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+String _kg(double v) {
+  if (v.abs() < 1e-9) return '0';
+  if ((v - v.roundToDouble()).abs() < 1e-9) return v.toStringAsFixed(0);
+  final two = v.toStringAsFixed(2);
+  if ((v - double.parse(two)).abs() < 1e-9 && !two.endsWith('0')) return two;
+  return v.toStringAsFixed(1);
+}
 
 String _shortDate(DateTime d) => '${d.day} ${monthNames[d.month - 1].substring(0, 3)}';
 
@@ -270,12 +288,15 @@ class _HistoryRow extends StatelessWidget {
                 child: OverflowBox(
                   maxHeight: 24,
                   child: IgnorePointer(
-                    ignoring: !hover,
-                    child: AnimatedOpacity(
-                      opacity: hover ? 1 : 0,
-                      duration: Motion.hover,
-                      curve: Motion.hoverCurve,
-                      child: _IconAction(icon: Icons.replay_rounded, tooltip: 'Repeat today', onTap: onRepeat!),
+                    ignoring: !hover && !selected,
+                    child: ExcludeFocus(
+                      excluding: !hover && !selected,
+                      child: AnimatedOpacity(
+                        opacity: hover || selected ? 1 : 0,
+                        duration: context.themed(Motion.hover),
+                        curve: Motion.hoverCurve,
+                        child: _IconAction(icon: Icons.replay_rounded, tooltip: 'Repeat today', onTap: onRepeat!),
+                      ),
                     ),
                   ),
                 ),

@@ -780,6 +780,11 @@ void main() {
       subtasks: [const TodoSubtask('Shoes')],
     );
     store.setSetting('holidays', encodeHolidays([(start: DateTime(2026, 12, 24), end: DateTime(2026, 12, 26))]));
+    store.raw.execute("UPDATE month_habits SET weekly=3,target=10,unit='pages'");
+    store.raw.execute('UPDATE entries SET amount=5');
+    store.raw.execute("UPDATE training_sets SET note='Paused',rpe=8");
+    store.raw.execute("INSERT INTO routines VALUES('pull','Pull',?)",[jsonEncode([[squat.uid,20]])]);
+    store.raw.execute("INSERT INTO weigh_ins VALUES('2026-10-24',80)");
     pc.engine.claimAll();
     final sent = {
       for (final r in store.raw.select('SELECT DISTINCT kind, field FROM sync_reg'))

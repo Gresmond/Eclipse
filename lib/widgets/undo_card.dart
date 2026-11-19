@@ -62,6 +62,8 @@ class _UndoLayerState extends State<UndoLayer> {
       shortcuts: const {
         SingleActivator(LogicalKeyboardKey.keyZ, control: true): _UndoIntent(),
         SingleActivator(LogicalKeyboardKey.keyZ, meta: true): _UndoIntent(),
+        SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true): _UndoIntent(redo: true),
+        SingleActivator(LogicalKeyboardKey.keyY, control: true): _UndoIntent(redo: true),
       },
       child: Actions(
         actions: {_UndoIntent: _UndoAction(state)},
@@ -104,7 +106,8 @@ class _UndoLayerState extends State<UndoLayer> {
 }
 
 class _UndoIntent extends Intent {
-  const _UndoIntent();
+  const _UndoIntent({this.redo = false});
+  final bool redo;
 }
 
 class _UndoAction extends Action<_UndoIntent> {
@@ -116,10 +119,10 @@ class _UndoAction extends Action<_UndoIntent> {
       FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null;
 
   @override
-  bool isEnabled(_UndoIntent intent) => state.canUndo && !_typing;
+  bool isEnabled(_UndoIntent intent) => (intent.redo ? state.canRedo : state.canUndo) && !_typing;
 
   @override
-  void invoke(_UndoIntent intent) => state.undo();
+  void invoke(_UndoIntent intent) => intent.redo ? state.redo() : state.undo();
 }
 
 class _Card extends StatelessWidget {

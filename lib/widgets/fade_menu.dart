@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -83,14 +85,24 @@ class _FadeMenuRoute extends PopupRoute<void> {
   @override
   Widget buildPage(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
     final p = context.palette;
+    final screen = MediaQuery.sizeOf(context);
+    const margin = 12.0;
+    final effectiveWidth = math.min(width, math.max(0.0, screen.width - 2 * margin));
+    final clampedLeft = left?.clamp(margin, math.max(margin, screen.width - margin - effectiveWidth)).toDouble();
+    final clampedRight = right?.clamp(margin, math.max(margin, screen.width - margin - effectiveWidth)).toDouble();
+    final safeTop = top?.clamp(margin, math.max(margin, screen.height - margin - 80.0)).toDouble();
+    final safeBottom = bottom?.clamp(margin, math.max(margin, screen.height - margin - 80.0)).toDouble();
+    final maxHeight = safeTop != null
+        ? math.max(80.0, screen.height - safeTop - margin)
+        : math.max(80.0, screen.height - (safeBottom ?? margin) - margin);
     return Stack(
       children: [
         Positioned(
-          top: top,
-          bottom: bottom,
-          left: left,
-          right: right,
-          width: width,
+          top: safeTop,
+          bottom: safeBottom,
+          left: clampedLeft,
+          right: clampedRight,
+          width: effectiveWidth,
           child: Material(
             color: p.tile,
             elevation: 0,
@@ -101,7 +113,13 @@ class _FadeMenuRoute extends PopupRoute<void> {
               side: BorderSide(color: p.tileBorder),
             ),
             clipBehavior: Clip.antiAlias,
-            child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: builder(context)),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: builder(context),
+              ),
+            ),
           ),
         ),
       ],
@@ -138,6 +156,7 @@ class FadeMenuRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Hoverable(
+      focusable: true,
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       builder: (hover) => AnimatedContainer(

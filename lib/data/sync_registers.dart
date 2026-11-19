@@ -126,7 +126,7 @@ class _Reg {
       'habit_month' => _monthKey.hasMatch(rowkey),
       'month_habit' || 'sleep_note' => head != null && _monthKey.hasMatch(head),
       'entry' || 'todo_history' => head != null && _day(head),
-      'journal' => _day(rowkey),
+      'journal' || 'weigh_in' => _day(rowkey),
       'holiday' => head != null && _day(head) && _day(rowkey.substring(slash + 1)),
       _ => true,
     };
@@ -165,6 +165,14 @@ class _Reg {
       ('todo', 'location') || ('todo_repeat', 'location') || ('todo', 'note') => v == null || v is String,
       // Read as they are by Training: a set's day is parsed, and its place
       // and reps read as whole numbers.
+      ('weigh_in', 'kg') => v is num && v.isFinite && v > 0,
+      ('routine', 'name') => v is String && v.trim().isNotEmpty,
+      ('routine', 'sets') => v is String && validRoutine(v),
+      ('month_habit', 'weekly') => v == null || v is int && v >= 1 && v <= 7,
+      ('month_habit', 'target') => v == null || v is int && v > 0,
+      ('month_habit', 'unit') || ('training_set', 'note') => v == null || v is String,
+      ('entry', 'amount') => v == null || v is int && v >= 0,
+      ('training_set', 'rpe') => v == null || v is num && v >= 1 && v <= 10,
       ('training_set', 'day') => _day(v),
       ('training_set', 'position') || ('training_set', 'reps') => v is int && v >= 0,
       ('training_set', 'weight') => v == null || v is num && v.isFinite && v >= 0,

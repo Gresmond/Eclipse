@@ -9,6 +9,41 @@ void goTo(String url) => web.window.location.assign(url);
 void reloadPage() => web.window.location.reload();
 void openTab(String url) => web.window.open(url, '_blank', 'noopener');
 
+/// Calls [callback] when the page hides or starts unloading so browser writes
+/// can flush promptly. Returns a function to remove the listeners.
+void Function() onPageLeave(void Function() callback) {
+  final onHide = ((web.Event _) => callback()).toJS;
+  final onVis = ((web.Event _) {
+    if (web.document.visibilityState == 'hidden') callback();
+  }).toJS;
+  web.window.addEventListener('pagehide', onHide);
+  web.document.addEventListener('visibilitychange', onVis);
+  return () {
+    web.window.removeEventListener('pagehide', onHide);
+    web.document.removeEventListener('visibilitychange', onVis);
+  };
+}
+
+void Function() browserPreferences(AppState state) {
+  final scheme = web.window.matchMedia('(prefers-color-scheme: dark)');
+  state.nightLightAvailable = true;
+  state.nightLightIs(scheme.matches);
+  final onScheme = ((web.Event _) => state.nightLightIs(scheme.matches)).toJS;
+  final onLeave = ((web.BeforeUnloadEvent event) {
+    final sync = state.sync;
+    if (!state.closing && sync != null && sync.isOn && (state.hasJournalDraft(state.shownDay) || sync.hasPendingChanges)) {
+      event.preventDefault();
+      event.returnValue = ' ';
+    }
+  }).toJS;
+  scheme.addEventListener('change', onScheme);
+  web.window.addEventListener('beforeunload', onLeave);
+  return () {
+    scheme.removeEventListener('change', onScheme);
+    web.window.removeEventListener('beforeunload', onLeave);
+  };
+}
+
 /// A small note kept in this browser; storage that's blocked keeps nothing.
 String? remembered(String key) {
   try {

@@ -29,11 +29,13 @@ class ReminderAlert {
   String get key => '$uid|${reminder.name}|${dateKey(day)}|${time ?? ''}';
 
   /// 'In 15 min, at 3:00 pm', 'Tomorrow at 9:30 am', 'Birthday today'.
-  String body(DateTime now) {
-    if (birthday) return daysBetween(dateOnly(now), day) > 0 ? 'Birthday tomorrow' : 'Birthday today';
+  String body(DateTime now, {int startHour = 0}) {
+    final today = dayOf(now, startHour);
+    if (birthday) return daysBetween(today, day) > 0 ? 'Birthday tomorrow' : 'Birthday today';
     final at = clockLabel(time!);
     final left = moment.difference(now);
-    if (daysBetween(dateOnly(now), day) > 0 && left > const Duration(hours: 2)) return 'Tomorrow at $at';
+    final taskDay = dayOf(moment, startHour);
+    if (daysBetween(today, taskDay) > 0 && left > const Duration(hours: 2)) return 'Tomorrow at $at';
     final minutes = (left.inSeconds / 60).ceil();
     if (minutes <= 1) return 'Now, at $at';
     if (minutes < 60) return 'In $minutes min, at $at';
@@ -50,8 +52,9 @@ class ReminderAlert {
 List<(ReminderAlert, List<String>)> dueReminders(
   Iterable<(TodoItem, DateTime)> tasks,
   DateTime now,
-  Set<String> shown,
-) {
+  Set<String> shown, {
+  int startHour = 0,
+}) {
   final due = <(ReminderAlert, List<String>)>[];
   for (final (item, day) in tasks) {
     final uid = item.uid;
@@ -63,15 +66,15 @@ List<(ReminderAlert, List<String>)> dueReminders(
         ReminderAlert(uid: uid, text: item.text, day: day, time: time, birthday: item.birthday, reminder: reminder),
     ];
     if (alerts.isEmpty) continue;
-    final moment = alerts.first.moment;
+    final dayStart = item.birthday ? DateTime(day.year, day.month, day.day, startHour) : alerts.first.moment;
     // Over: a timed task once its time comes, a birthday once its day ends.
-    final over = item.birthday ? DateTime(day.year, day.month, day.day + 1) : moment;
+    final over = item.birthday ? DateTime(day.year, day.month, day.day + 1, startHour) : dayStart;
     if (!now.isBefore(over)) continue;
     final missed = [
       for (final alert in alerts)
         if (!alert.reminder.at(day, time).isAfter(now) &&
             !shown.contains(alert.key) &&
-            !(item.birthday && alert.reminder == Reminder.dayBefore && !now.isBefore(moment)))
+            !(item.birthday && alert.reminder == Reminder.dayBefore && !now.isBefore(dayStart)))
           alert,
     ];
     if (missed.isEmpty) continue;
@@ -86,6 +89,10 @@ List<(ReminderAlert, List<String>)> dueReminders(
 abstract interface class ReminderNotifier {
   void show(ReminderAlert alert, String body);
   set onOpen(void Function(String uid)? open);
+}
+
+abstract interface class ReminderActions {
+  set onAction(void Function(String key, String action)? callback);
 }
 
 /// Whether a reminder may show outside the app, where that's the person's
@@ -105,7 +112,10 @@ mixin _Reminders on ChangeNotifier {
   DateTime Function() get _clock;
   ReminderNotifier? get notifier;
   bool get closing;
+  bool get _disposed;
   int get dayStartHour;
+  List<Repeat> get repeats;
+  List<DateTime> unmadeOccurrences(Repeat repeat, DateTime from, DateTime to);
   void showFound(DateTime day, String target);
 
   /// The tasks that remind, each on the calendar day it happens: with a
@@ -132,8 +142,10 @@ mixin _Reminders on ChangeNotifier {
 
   Set<String> _shownKeys() {
     try {
-      return {...(jsonDecode(store.setting(_shownSetting) ?? '[]') as List).cast<String>()};
-    } on FormatException {
+      final decoded = jsonDecode(store.setting(_shownSetting) ?? '[]');
+      if (decoded is! List) return {};
+      return {...decoded.whereType<String>()};
+    } on Object {
       return {};
     }
   }
@@ -141,7 +153,10 @@ mixin _Reminders on ChangeNotifier {
   /// Keeps [keys], less those for days long gone.
   void _keepShown(Set<String> keys) {
     final old = dateKey(DateTime(today.year, today.month, today.day - 2));
-    keys.removeWhere((key) => key.split('|')[2].compareTo(old) < 0);
+    keys.removeWhere((key) {
+      final parts = key.split('|');
+      return parts.length < 3 || parts[2].compareTo(old) < 0;
+    });
     store.setSetting(_shownSetting, jsonEncode(keys.toList()..sort()));
   }
 
@@ -154,24 +169,109 @@ mixin _Reminders on ChangeNotifier {
     held = _held = sync.timeout(limit).catchError((Object _) {}).whenComplete(() {
       if (!identical(_held, held)) return;
       _held = null;
-      if (!closing) checkReminders();
+      if (!closing && !_disposed) checkReminders();
     });
+  }
+
+  Map<String, int> _snoozed() {
+    try {
+      return (jsonDecode(store.setting('snoozed') ?? '{}') as Map).cast<String,int>();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Iterable<ReminderAlert> get _activeAlerts sync* {
+    for (final (task, day) in _remindingTodos()) {
+      for (final reminder in Reminder.of(task.reminders)) {
+        yield ReminderAlert(uid: task.uid!, text: task.text, day: day, time: task.birthday ? null : task.dueTime, birthday: task.birthday, reminder: reminder);
+      }
+    }
+  }
+
+  void snoozeReminder(String key) {
+    final snoozes = _snoozed()..[key] = _clock().add(const Duration(minutes: 10)).millisecondsSinceEpoch;
+    store.setSetting('snoozed', jsonEncode(snoozes));
+    reminderCards.removeWhere((a) => a.key == key);
+    notifyListeners();
   }
 
   /// Sends the reminders due now.
   void checkReminders() {
-    if (_held != null) return;
+    if (_held != null || _disposed) return;
     final now = _clock();
     final shown = _shownKeys();
-    final due = dueReminders(_remindingTodos(), now, shown);
+    final due = dueReminders(_remindingTodos(), now, shown, startHour: dayStartHour);
+    final snoozed = _snoozed();
+    if (snoozed.isNotEmpty) {
+      final live = {for (final a in _activeAlerts) a.key: a};
+      final before = snoozed.length;
+      snoozed.removeWhere((key, ms) {
+        final alert = live[key];
+        if (alert == null) return true;
+        if (ms > now.millisecondsSinceEpoch) return false;
+        if (now.millisecondsSinceEpoch - ms < const Duration(hours: 1).inMilliseconds) due.add((alert, [key]));
+        return true;
+      });
+      if (snoozed.length != before) store.setSetting('snoozed', jsonEncode(snoozed));
+    }
     if (due.isEmpty) return;
     for (final (alert, keys) in due) {
       shown.addAll(keys);
-      notifier?.show(alert, alert.body(now));
-      if (windowOpen) reminderCards.add(alert);
+      notifier?.show(alert, alert.body(now, startHour: dayStartHour));
+      if (windowOpen) {
+        reminderCards.removeWhere((a) => a.uid == alert.uid);
+        reminderCards.add(alert);
+      }
     }
     _keepShown(shown);
     notifyListeners();
+  }
+
+  /// Drops cards for completed, deleted, or modified reminders, and updates
+  /// titles if a task was renamed.
+  void _pruneReminderCards({bool notify = true}) {
+    if (reminderCards.isEmpty) return;
+    final active = <String, (TodoItem, DateTime)>{};
+    for (final (item, day) in _remindingTodos()) {
+      if (item.uid case final uid?) active[uid] = (item, day);
+    }
+    final now = _clock();
+    var changed = false;
+    for (var i = reminderCards.length - 1; i >= 0; i--) {
+      final card = reminderCards[i];
+      final match = active[card.uid];
+      if (match == null) {
+        reminderCards.removeAt(i);
+        changed = true;
+        continue;
+      }
+      final (item, day) = match;
+      final time = item.birthday ? null : item.dueTime;
+      final bits = Reminder.allowed(item.reminders, birthday: item.birthday, time: time);
+      final over = item.birthday
+          ? DateTime(day.year, day.month, day.day + 1, dayStartHour)
+          : DateTime(day.year, day.month, day.day, 0, time ?? 0);
+      if (card.day != day ||
+          card.time != time ||
+          card.birthday != item.birthday ||
+          (bits & card.reminder.bit) == 0 ||
+          !now.isBefore(over)) {
+        reminderCards.removeAt(i);
+        changed = true;
+      } else if (card.text != item.text) {
+        reminderCards[i] = ReminderAlert(
+          uid: card.uid,
+          text: item.text,
+          day: card.day,
+          time: card.time,
+          birthday: card.birthday,
+          reminder: card.reminder,
+        );
+        changed = true;
+      }
+    }
+    if (changed && notify) notifyListeners();
   }
 
   /// The tasks [which] says were just set: what they'd remind of already
@@ -185,6 +285,7 @@ mixin _Reminders on ChangeNotifier {
       ],
       _clock(),
       shown,
+      startHour: dayStartHour,
     );
     if (due.isEmpty) return;
     for (final (_, keys) in due) {
@@ -194,30 +295,85 @@ mixin _Reminders on ChangeNotifier {
   }
 
   /// Every reminder still to go off, soonest first and at most [limit], for
-  /// a phone to set as alarms.
-  List<({String key, DateTime at, String title, String body})> upcomingReminders({int limit = 100}) {
+  /// a phone to set as alarms. Includes unmaterialized repeating tasks and
+  /// birthdays up to [lookaheadDays] ahead.
+  List<({String key, String uid, DateTime at, String title, String body})> upcomingReminders({
+    int limit = 100,
+    int lookaheadDays = 60,
+  }) {
     final now = _clock();
-    final all = <({String key, DateTime at, String title, String body})>[];
-    for (final (item, day) in _remindingTodos()) {
-      final uid = item.uid;
-      if (uid == null) continue;
-      final time = item.birthday ? null : item.dueTime;
-      final bits = Reminder.allowed(item.reminders, birthday: item.birthday, time: time);
+    final all = <({String key, String uid, DateTime at, String title, String body})>[];
+    final seenKeys = <String>{};
+
+    void addAlert({
+      required String uid,
+      required String text,
+      required DateTime day,
+      required int? time,
+      required bool birthday,
+      required int reminders,
+    }) {
+      final bits = Reminder.allowed(reminders, birthday: birthday, time: time);
       for (final reminder in Reminder.of(bits)) {
         final at = reminder.at(day, time);
         if (!at.isAfter(now)) continue;
         final alert = ReminderAlert(
           uid: uid,
-          text: item.text,
+          text: text,
           day: day,
           time: time,
-          birthday: item.birthday,
+          birthday: birthday,
           reminder: reminder,
         );
-        all.add((key: alert.key, at: at, title: item.text, body: alert.body(at)));
+        if (!seenKeys.add(alert.key)) continue;
+        all.add((key: alert.key, uid: uid, at: at, title: text, body: alert.body(at, startHour: dayStartHour)));
       }
     }
-    all.sort((a, b) => a.at.compareTo(b.at));
+
+    for (final (item, day) in _remindingTodos()) {
+      final uid = item.uid;
+      if (uid == null) continue;
+      addAlert(
+        uid: uid,
+        text: item.text,
+        day: day,
+        time: item.birthday ? null : item.dueTime,
+        birthday: item.birthday,
+        reminders: item.reminders,
+      );
+    }
+
+    final horizon = DateTime(today.year, today.month, today.day + lookaheadDays);
+    for (final repeat in repeats) {
+      if (repeat.reminders == 0 || (!repeat.birthday && repeat.time == null)) continue;
+      final time = repeat.birthday ? null : repeat.time;
+      final afterMid = afterMidnight(time, dayStartHour);
+      for (final occDay in unmadeOccurrences(repeat, today, horizon)) {
+        final calendarDay = afterMid ? DateTime(occDay.year, occDay.month, occDay.day + 1) : occDay;
+        addAlert(
+          uid: '${repeat.uid}@${dateKey(occDay)}',
+          text: repeat.text,
+          day: calendarDay,
+          time: time,
+          birthday: repeat.birthday,
+          reminders: repeat.reminders,
+        );
+      }
+    }
+
+    final snoozed = _snoozed();
+    if (snoozed.isNotEmpty) {
+      for (final alert in _activeAlerts) {
+        final ms = snoozed[alert.key];
+        if (ms == null || ms <= now.millisecondsSinceEpoch) continue;
+        final at = DateTime.fromMillisecondsSinceEpoch(ms);
+        all.add((key: alert.key, uid: alert.uid, at: at, title: alert.text, body: 'Snoozed reminder'));
+      }
+    }
+    all.sort((a, b) {
+      final cmp = a.at.compareTo(b.at);
+      return cmp != 0 ? cmp : a.key.compareTo(b.key);
+    });
     return all.take(limit).toList();
   }
 
@@ -225,13 +381,16 @@ mixin _Reminders on ChangeNotifier {
   DateTime get reminderNow => _clock();
 
   void hideReminderCard(ReminderAlert alert) {
-    if (reminderCards.remove(alert)) notifyListeners();
+    final before = reminderCards.length;
+    reminderCards.removeWhere((a) => a.key == alert.key);
+    if (reminderCards.length != before) notifyListeners();
   }
 
   /// Opens the task [uid] where it's listed and lights it.
   void openReminder(String uid) {
-    final alert = reminderCards.where((a) => a.uid == uid).lastOrNull;
-    if (alert != null) hideReminderCard(alert);
+    final before = reminderCards.length;
+    reminderCards.removeWhere((a) => a.uid == uid);
+    if (reminderCards.length != before) notifyListeners();
     showFound(today, uid);
   }
 }

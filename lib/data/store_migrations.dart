@@ -602,6 +602,44 @@ extension on Store {
         _db.execute('PRAGMA user_version = 36');
       });
     }
+    if (version < 37) {
+      transaction(() {
+        _db.execute('''
+          CREATE INDEX IF NOT EXISTS todos_done_reminders ON todos (done, reminders);
+          CREATE INDEX IF NOT EXISTS todos_since ON todos (since);
+          CREATE INDEX IF NOT EXISTS todos_done_due_date ON todos (done, due_date);
+          CREATE INDEX IF NOT EXISTS month_habits_habit_id ON month_habits (habit_id);
+          PRAGMA user_version = 37;
+        ''');
+      });
+    }
+
+    if (version < 38) {
+      transaction(() {
+        for (final (table, columns) in [
+          ('month_habits', ['weekly INTEGER','target INTEGER','unit TEXT']),
+          ('entries',['amount INTEGER']),
+          ('training_sets',['note TEXT','rpe REAL']),
+        ]) {
+          final present={for(final row in _db.select('PRAGMA table_info($table)')) row['name']};
+          for(final column in columns) {
+            if (!present.contains(column.split(' ').first)) _db.execute('ALTER TABLE $table ADD COLUMN $column');
+          }
+        }
+        _db.execute("""
+          CREATE TABLE IF NOT EXISTS routines(uid TEXT PRIMARY KEY, name TEXT NOT NULL, sets TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS weigh_ins(uid TEXT PRIMARY KEY, kg REAL NOT NULL CHECK(kg > 0));
+        """);
+        for (final (table,kind) in [('routines','routine'),('weigh_ins','weigh_in')]) {
+          for (final (event,row) in [('INSERT','NEW'),('UPDATE','NEW'),('DELETE','OLD')]) {
+            _db.execute('CREATE TRIGGER IF NOT EXISTS ${table}_$event AFTER $event ON $table BEGIN '
+              "INSERT INTO sync_dirty VALUES ('$kind', $row.uid, ${Store._now}) "
+              'ON CONFLICT(kind,rowkey) DO UPDATE SET at=excluded.at; END');
+          }
+        }
+        _db.execute('PRAGMA user_version=38');
+      });
+    }
 
     if (version >= 1 && version < Store.schemaVersion) upgradedFrom = version;
     // Versions before 25 changed synced rows where the sync triggers

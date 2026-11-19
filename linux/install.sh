@@ -20,28 +20,58 @@ commit="$(git rev-parse HEAD 2>/dev/null || true)"
 # data can't open it, so `flutter run` builds reinstall when it's behind.
 schema="$(sed -n 's/.*static const schemaVersion = \([0-9]*\);.*/\1/p' lib/data/store.dart)"
 
-rm -rf "$dest"
-mkdir -p "$dest"
-cp -R build/linux/x64/release/bundle/. "$dest/"
+mkdir -p "$(dirname "$dest")"
+stage="$(mktemp -d "$(dirname "$dest")/.eclipse-install.XXXXXX")"
+backup=''
+cleanup() {
+  rm -rf "$stage"
+  if [[ -n $backup && -e $backup ]]; then
+    if [[ ! -e $dest ]]; then
+      mv -T "$backup" "$dest"
+    else
+      rm -rf "$backup"
+    fi
+  fi
+}
+trap cleanup EXIT
+
+cp -R build/linux/x64/release/bundle/. "$stage/"
 # The whole icon font, not the build's cut-down one: a repeat build can keep an
 # old cut that lacks a newly used icon, and the desktop then borrows another
 # font's symbol for it.
 cp "$(dirname "$(readlink -f "$flutter")")/cache/artifacts/material_fonts/MaterialIcons-Regular.otf" \
-  "$dest/data/flutter_assets/fonts/MaterialIcons-Regular.otf"
+  "$stage/data/flutter_assets/fonts/MaterialIcons-Regular.otf"
 
 # Lets the app notice when this folder has newer commits than it was
 # built from, and offer to run this script again.
-printf 'repo=%s\ncommit=%s\nschema=%s\n' "$PWD" "$commit" "$schema" > "$dest/build-info"
+printf 'repo=%s\ncommit=%s\nschema=%s\n' "$PWD" "$commit" "$schema" > "$stage/build-info"
+
+if [[ -e $dest ]]; then
+  backup="$(mktemp -u "$(dirname "$dest")/.eclipse-old.XXXXXX")"
+  mv -T "$dest" "$backup"
+fi
+mv -T "$stage" "$dest"
+if [[ -n $backup ]]; then
+  rm -rf "$backup"
+  backup=''
+fi
 
 mkdir -p "$prefix/icons/hicolor"
 cp -R linux/icons/hicolor/. "$prefix/icons/hicolor/"
 
+exec_path="$dest/eclipse"
+exec_path="${exec_path//\\/\\\\}"
+exec_path="${exec_path//\"/\\\"}"
+exec_path="${exec_path//\$/\\\$}"
+exec_path="${exec_path//\`/\\\`}"
+exec_path="${exec_path//%/%%}"
+exec_path="${exec_path//\\/\\\\}"
 install -Dm644 /dev/stdin "$prefix/applications/$app_id.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Eclipse
 Comment=Habits, to-dos and a journal
-Exec=$dest/eclipse
+Exec="$exec_path"
 Icon=$app_id
 StartupWMClass=$app_id
 Categories=Office;

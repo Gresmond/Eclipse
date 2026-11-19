@@ -52,7 +52,9 @@ class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
     if (old.shown && !widget.shown) {
       if (_disabled) {
         _controller.value = 0;
-        widget.onHidden?.call();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !widget.shown) widget.onHidden?.call();
+        });
       } else {
         _controller.reverse().whenCompleteOrCancel(() {
           if (mounted && !widget.shown) widget.onHidden?.call();

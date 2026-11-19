@@ -300,6 +300,7 @@ class _Cell extends StatelessWidget {
         : r < 0.5
         ? Color.lerp(p.missed, p.other, r * 2)!
         : Color.lerp(p.other, p.done, r * 2 - 1)!;
+    const darkInk = Color(0xFF030305);
     return Padding(
       // The year's total ends flush with the rule beneath it.
       padding: EdgeInsets.only(left: 4, right: strong ? 0 : 4),
@@ -317,7 +318,7 @@ class _Cell extends StatelessWidget {
             fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
             color: r == null
                 ? p.inkMuted.withValues(alpha: future ? 0.25 : 0.5)
-                : (contrast(fill, p.onAccent) >= contrast(fill, p.ink) ? p.onAccent : p.ink),
+                : (contrast(fill, Colors.white) >= contrast(fill, darkInk) ? Colors.white : darkInk),
             fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),

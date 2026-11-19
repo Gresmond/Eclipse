@@ -11,7 +11,6 @@ void main() {
   late Store store;
   late AppState state;
   setUp(() {
-    collapseAllTasks();
     store = Store.memory();
     state = AppState(store, clock: () => today);
     for (final scope in TodoScope.values) {

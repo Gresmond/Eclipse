@@ -5,6 +5,8 @@ Never _no() => throw UnsupportedError('Not in a browser');
 void goTo(String url) => _no();
 void reloadPage() => _no();
 void openTab(String url) => _no();
+void Function() onPageLeave(void Function() callback) => _no();
+void Function() browserPreferences(AppState state) => _no();
 String? remembered(String key) => _no();
 void remember(String key, String? value) => _no();
 

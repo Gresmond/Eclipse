@@ -22,6 +22,14 @@ class _BackupCardState extends State<BackupCard> {
   bool _closed = false;
 
   @override
+  void didUpdateWidget(BackupCard old) {
+    super.didUpdateWidget(old);
+    if (widget.problem != old.problem && (widget.problem == BackupProblem.damaged || old.problem == null)) {
+      _closed = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final problem = widget.problem;

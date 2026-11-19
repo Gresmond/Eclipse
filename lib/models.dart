@@ -4,7 +4,10 @@ import 'dart:math';
 enum HabitStatus { none, done, missed, other }
 
 class Habit {
-  Habit(this.id, this.name, {this.description, this.minutes, this.addedOn, this.days = const []});
+  Habit(this.id, this.name, {this.weekly, this.target, this.unit, this.description, this.minutes, this.addedOn, this.days = const []});
+
+  int? weekly, target;
+  String? unit;
 
   /// Which weekdays it's on this month, as changes of weekday bits (see [weekdayBit]), each
   /// from its day on (the first may be from the start of the month, null).
@@ -17,7 +20,7 @@ class Habit {
 
   /// Whether [day] is one of its days; other days are greyed out and can't
   /// be marked, and don't count towards its scores or streaks.
-  bool onDay(DateTime day) => isOnDay(days, day);
+  bool onDay(DateTime day) => weekly != null || isOnDay(days, day);
 
   /// The day it was added, when that was partway through its month.
   final DateTime? addedOn;
@@ -392,7 +395,7 @@ class RepeatRule {
       return days.isEmpty ? null : RepeatRule.weekly(days);
     }
     final n = int.tryParse(rest);
-    if (kind == null || n == null || n < 1 || (kind == RepeatKind.monthly && n > 31)) return null;
+    if (kind == null || n == null || n < 1 || n > 1000 || (kind == RepeatKind.monthly && n > 31)) return null;
     return switch (kind) {
       RepeatKind.monthly => RepeatRule.monthly(n),
       RepeatKind.yearly => RepeatRule.yearly(n),
@@ -489,7 +492,10 @@ class Repeat {
   final DateTime start;
   final DateTime? until;
 
-  bool on(DateTime day) => (until == null || !day.isAfter(until!)) && rule.on(day, start);
+  bool on(DateTime day) {
+    final d = dateOnly(day);
+    return (until == null || !d.isAfter(dateOnly(until!))) && rule.on(d, dateOnly(start));
+  }
 
   /// Its to-do for [day] as it will be made, before it is: what the store
   /// makes, checklist and all, so a change to it starts from the same.
@@ -510,17 +516,20 @@ class Repeat {
   /// days or weeks, years or months by counting them, the others within a
   /// year and a bit (a monthly 31st needs no more).
   DateTime? next(DateTime from) {
+    final start = dateOnly(this.start);
+    final until = this.until == null ? null : dateOnly(this.until!);
+    from = dateOnly(from);
     var day = from.isBefore(start) ? start : from;
     if (rule.kind == RepeatKind.days || rule.kind == RepeatKind.weeks) {
       final gap = rule.kind == RepeatKind.weeks ? 7 * rule.every : rule.every;
       final date = DateTime(start.year, start.month, start.day + (daysBetween(start, day) + gap - 1) ~/ gap * gap);
-      return until != null && date.isAfter(until!) ? null : date;
+      return until != null && date.isAfter(until) ? null : date;
     }
     if (rule.kind == RepeatKind.yearly) {
       // Its years from the one [day] is in, until one has its date.
       for (var year = start.year + ((day.year - start.year) ~/ rule.every) * rule.every; ; year += rule.every) {
         final date = yearlyDate(start, year);
-        if (until != null && date.isAfter(until!)) return null;
+        if (until != null && date.isAfter(until)) return null;
         if (!date.isBefore(day)) return date;
       }
     }
@@ -529,12 +538,12 @@ class Repeat {
       final since = (day.year - start.year) * 12 + day.month - start.month;
       for (var month = start.month + (since ~/ rule.every) * rule.every; ; month += rule.every) {
         final date = DateTime(start.year, month, min(start.day, DateTime(start.year, month + 1, 0).day));
-        if (until != null && date.isAfter(until!)) return null;
+        if (until != null && date.isAfter(until)) return null;
         if (!date.isBefore(day)) return date;
       }
     }
     for (var i = 0; i < 400; i++, day = DateTime(day.year, day.month, day.day + 1)) {
-      if (until != null && day.isAfter(until!)) return null;
+      if (until != null && day.isAfter(until)) return null;
       if (on(day)) return day;
     }
     return null;
@@ -628,6 +637,12 @@ DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 int daysBetween(DateTime from, DateTime to) =>
     DateTime.utc(to.year, to.month, to.day).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
 
+/// Parses a stored day-start hour, falling back to 0 (midnight) if invalid.
+int parseDayStartHour(String? value) {
+  final hour = int.tryParse(value ?? '');
+  return hour != null && hour >= 0 && hour <= 23 ? hour : 0;
+}
+
 /// The day [now] counts towards when each day starts at [startHour] o'clock:
 /// before then, it's still the day before. Works in calendar days, so a
 /// clock change doesn't shift it.
@@ -663,12 +678,16 @@ int? parseClock(String text) {
   // Read for every task and repeat loaded, nearly all of them without one.
   if (text.isEmpty) return null;
   if (_clockKey.firstMatch(text) case final m?) {
-    return int.parse(m[1]!) * 60 + int.parse(m[2]!);
+    final hour = int.parse(m[1]!), minute = int.parse(m[2]!);
+    if (hour > 23 || minute > 59) return null;
+    return hour * 60 + minute;
   }
   final m = _clockInNote.firstMatch(text);
   if (m == null) return null;
-  final hour = int.parse(m[1]!) % 12 + (m[3]!.toLowerCase() == 'p' ? 12 : 0);
-  return hour * 60 + int.parse(m[2] ?? '0');
+  final rawHour = int.parse(m[1]!), minute = int.parse(m[2] ?? '0');
+  if (rawHour < 1 || rawHour > 12 || minute > 59) return null;
+  final hour = rawHour % 12 + (m[3]!.toLowerCase() == 'p' ? 12 : 0);
+  return hour * 60 + minute;
 }
 
 /// How a sleep item's time is saved: "08:30".
@@ -705,6 +724,9 @@ List<TodoItem> sortTodos(Iterable<TodoItem> todos) {
   indexed.sort((a, b) {
     final priority = todoGroup(a.$2).compareTo(todoGroup(b.$2));
     if (priority != 0) return priority;
+    if ((a.$2.dueDate == null) != (b.$2.dueDate == null)) {
+      return a.$2.dueDate == null ? 1 : -1;
+    }
     if (a.$2.dueDate != null && b.$2.dueDate != null) {
       final due = a.$2.dueDate!.compareTo(b.$2.dueDate!);
       if (due != 0) return due;

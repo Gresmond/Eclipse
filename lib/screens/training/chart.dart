@@ -109,21 +109,24 @@ class _ChartTileState extends State<_ChartTile> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _Segments(
+                SegmentedPills(
                   labels: [for (final l in TrainingLayout.values) l.label],
                   selected: layout.index,
+                  compact: true,
                   onSelect: (i) => log.setLayout(TrainingLayout.values[i]),
                 ),
                 const SizedBox(width: 10),
-                _Segments(
+                SegmentedPills(
                   labels: [for (final r in TrainingRange.values) r.label],
                   selected: log.range.index,
+                  compact: true,
                   onSelect: (i) => log.setRange(TrainingRange.values[i]),
                 ),
                 const SizedBox(width: 10),
-                _Segments(
+                SegmentedPills(
                   labels: const ['kg', '% change'],
                   selected: log.axis.index,
+                  compact: true,
                   onSelect: (i) => log.setAxis(TrainingAxis.values[i]),
                 ),
               ],
@@ -177,7 +180,7 @@ int _bySeries(_Series a, _Series b) {
 String _latest(_Series s, {required bool percent}) {
   final first = s.points.first, last = s.points.last;
   if (percent) {
-    final change = (last.value / first.value - 1) * 100;
+    final change = first.value <= 0 ? 0.0 : (last.value / first.value - 1) * 100;
     return '${change >= 0 ? '+' : ''}${change.toStringAsFixed(1)}%';
   }
   if (s.exercise.bodyweight) return '${_kg(last.value)} reps';
@@ -560,6 +563,7 @@ class _ChartState extends State<_Chart> {
             pointer: _pointer,
             touch: _touch,
             palette: p,
+            textScaler: MediaQuery.textScalerOf(context),
           ),
         ),
       ),
@@ -577,6 +581,7 @@ class _ChartPainter extends CustomPainter {
     required this.pointer,
     required this.touch,
     required this.palette,
+    required this.textScaler,
   });
 
   final List<_Series> series;
@@ -588,10 +593,12 @@ class _ChartPainter extends CustomPainter {
   /// [pointer] is a finger's tap, which gets more room to miss by.
   final bool touch;
   final Palette palette;
+  final TextScaler textScaler;
 
   static const _left = 52.0, _bottom = 26.0, _top = 6.0, _right = 20.0;
 
-  double _value(_Series s, TrainingPoint pt) => percent ? (pt.value / s.points.first.value - 1) * 100 : pt.value;
+  double _value(_Series s, TrainingPoint pt) =>
+      percent ? (s.points.first.value <= 0 ? 0.0 : (pt.value / s.points.first.value - 1) * 100) : pt.value;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -775,60 +782,69 @@ class _ChartPainter extends CustomPainter {
         style: title ? _label(p, weight: FontWeight.w600, color: colour) : _label(p, size: 14, color: p.inkMuted),
       ),
       textDirection: TextDirection.ltr,
+      textScaler: textScaler,
     )..layout();
     final blocks = <List<TextPainter>>[];
-    for (final hit in stack) {
-      final pt = hit.point, e = hit.series.exercise;
-      final value = e.bodyweight
-          ? '${_kg(pt.value)} reps'
-          : '${pt.rough ? '≈ ' : ''}${_kg(pt.value)} kg${pt.rough ? '  (±5–10%)' : ''}';
-      final change = percent && hit.series.points.first != pt
-          ? '  ·  ${_value(hit.series, pt) >= 0 ? '+' : ''}${_value(hit.series, pt).toStringAsFixed(1)}%'
-          : '';
-      blocks.add([
-        line(e.name, colour: hit.series.colour, title: true),
-        line('${_shortDate(pt.day)}${year ? ' ${pt.day.year}' : ''}  ·  $value$change'),
-        // What was actually done that day: the line itself goes set by set.
-        line(
-          e.bodyweight
-              ? '${pt.sets.map((s) => s.reps).join(', ')} reps'
-              : pt.sets.map((s) => '${_kg(s.weight ?? 0)} × ${s.reps}').join(',  '),
-        ),
-      ]);
-    }
-    const gap = 2.0, between = 10.0;
-    double blockHeight(List<TextPainter> b) => b.fold(0.0, (h, t) => h + t.height) + gap * (b.length - 1);
-    final widest = blocks.expand((b) => b).map((t) => t.width).reduce(math.max);
-    final w = pixelCeil(widest + 24),
-        h = pixelCeil(blocks.fold(0.0, (h, b) => h + blockHeight(b)) + between * (blocks.length - 1) + 16);
-    final anchor = stack.first.at;
-    var origin = anchor + const Offset(12, -12) - Offset(0, h);
-    if (origin.dx + w > size.width) origin = Offset(anchor.dx - 12 - w, origin.dy);
-    if (origin.dy < 0) origin = Offset(origin.dx, anchor.dy + 12);
-    // A wide or tall one still has to stay on the chart.
-    if (origin.dx < 0) origin = Offset(0, origin.dy);
-    if (origin.dy + h > size.height) origin = Offset(origin.dx, math.max(0, size.height - h));
-    origin = Offset(pixelRound(origin.dx), pixelRound(origin.dy));
-    final box = RRect.fromRectAndRadius(origin & Size(w, h), const Radius.circular(12));
-    canvas.drawShadow(Path()..addRRect(box), p.shadow.withValues(alpha: 0.4), 6, false);
-    canvas.drawRRect(box, Paint()..color = p.tile);
-    canvas.drawRRect(
-      box.deflate(0.5),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = p.tileBorder,
-    );
-    for (final hit in stack) {
-      canvas.drawCircle(hit.at, 5.5, Paint()..color = hit.series.colour.withValues(alpha: 0.3));
-    }
-    var top = origin.dy + 8;
-    for (final block in blocks) {
-      for (final t in block) {
-        t.paint(canvas, Offset(origin.dx + 12, top));
-        top += t.height + gap;
+    try {
+      for (final hit in stack) {
+        final pt = hit.point, e = hit.series.exercise;
+        final value = e.bodyweight
+            ? '${_kg(pt.value)} reps'
+            : '${pt.rough ? '≈ ' : ''}${_kg(pt.value)} kg${pt.rough ? '  (±5–10%)' : ''}';
+        final change = percent && hit.series.points.first != pt
+            ? '  ·  ${_value(hit.series, pt) >= 0 ? '+' : ''}${_value(hit.series, pt).toStringAsFixed(1)}%'
+            : '';
+        blocks.add([
+          line(e.name, colour: hit.series.colour, title: true),
+          line('${_shortDate(pt.day)}${year ? ' ${pt.day.year}' : ''}  ·  $value$change'),
+          // What was actually done that day: the line itself goes set by set.
+          line(
+            e.bodyweight
+                ? '${pt.sets.map((s) => s.reps).join(', ')} reps'
+                : pt.sets.map((s) => '${_kg(s.weight ?? 0)} × ${s.reps}').join(',  '),
+          ),
+        ]);
       }
-      top += between - gap;
+      const gap = 2.0, between = 10.0;
+      double blockHeight(List<TextPainter> b) => b.fold(0.0, (h, t) => h + t.height) + gap * (b.length - 1);
+      final widest = blocks.expand((b) => b).map((t) => t.width).reduce(math.max);
+      final w = pixelCeil(widest + 24),
+          h = pixelCeil(blocks.fold(0.0, (h, b) => h + blockHeight(b)) + between * (blocks.length - 1) + 16);
+      final anchor = stack.first.at;
+      var origin = anchor + const Offset(12, -12) - Offset(0, h);
+      if (origin.dx + w > size.width) origin = Offset(anchor.dx - 12 - w, origin.dy);
+      if (origin.dy < 0) origin = Offset(origin.dx, anchor.dy + 12);
+      // A wide or tall one still has to stay on the chart.
+      if (origin.dx < 0) origin = Offset(0, origin.dy);
+      if (origin.dy + h > size.height) origin = Offset(origin.dx, math.max(0, size.height - h));
+      origin = Offset(pixelRound(origin.dx), pixelRound(origin.dy));
+      final box = RRect.fromRectAndRadius(origin & Size(w, h), const Radius.circular(12));
+      canvas.drawShadow(Path()..addRRect(box), p.shadow.withValues(alpha: 0.4), 6, false);
+      canvas.drawRRect(box, Paint()..color = p.tile);
+      canvas.drawRRect(
+        box.deflate(0.5),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = p.tileBorder,
+      );
+      for (final hit in stack) {
+        canvas.drawCircle(hit.at, 5.5, Paint()..color = hit.series.colour.withValues(alpha: 0.3));
+      }
+      var top = origin.dy + 8;
+      for (final block in blocks) {
+        for (final t in block) {
+          t.paint(canvas, Offset(origin.dx + 12, top));
+          top += t.height + gap;
+        }
+        top += between - gap;
+      }
+    } finally {
+      for (final block in blocks) {
+        for (final t in block) {
+          t.dispose();
+        }
+      }
     }
   }
 
@@ -895,17 +911,64 @@ class _ChartPainter extends CustomPainter {
         style: _label(palette, size: 12, color: colour),
       ),
       textDirection: TextDirection.ltr,
+      textScaler: textScaler,
     )..layout();
-    final dx = switch (align) {
-      Alignment.centerRight => -tp.width,
-      _ => -tp.width / 2,
-    };
-    final dy = align == Alignment.centerRight ? -tp.height / 2 : 0.0;
-    tp.paint(canvas, at + Offset(dx, dy));
+    try {
+      final dx = switch (align) {
+        Alignment.centerRight => -tp.width,
+        _ => -tp.width / 2,
+      };
+      final dy = align == Alignment.centerRight ? -tp.height / 2 : 0.0;
+      tp.paint(canvas, at + Offset(dx, dy));
+    } finally {
+      tp.dispose();
+    }
+  }
+
+  static bool _sameSeries(List<_Series> a, List<_Series> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final sa = a[i], sb = b[i];
+      if (sa.exercise.uid != sb.exercise.uid ||
+          sa.exercise.name != sb.exercise.name ||
+          sa.exercise.bodyweight != sb.exercise.bodyweight ||
+          sa.colour != sb.colour ||
+          sa.square != sb.square ||
+          !listEquals(sa.dash, sb.dash) ||
+          (!identical(sa.points, sb.points) && !_samePoints(sa.points, sb.points))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static bool _samePoints(List<TrainingPoint> a, List<TrainingPoint> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final pa = a[i], pb = b[i];
+      if (pa.day != pb.day || pa.value != pb.value || pa.rough != pb.rough || pa.sets.length != pb.sets.length) {
+        return false;
+      }
+      for (var j = 0; j < pa.sets.length; j++) {
+        final ca = pa.sets[j], cb = pb.sets[j];
+        if (ca.uid != cb.uid || ca.weight != cb.weight || ca.reps != cb.reps) return false;
+      }
+    }
+    return true;
   }
 
   @override
-  bool shouldRepaint(_ChartPainter old) => true;
+  bool shouldRepaint(_ChartPainter old) =>
+      from != old.from ||
+      to != old.to ||
+      percent != old.percent ||
+      focus != old.focus ||
+      pointer != old.pointer ||
+      touch != old.touch ||
+      textScaler != old.textScaler ||
+      (!identical(palette, old.palette) && !palette.sameColours(old.palette)) ||
+      !_sameSeries(series, old.series);
 }
 
 class _Hit {
@@ -1063,68 +1126,4 @@ class _DashSample extends CustomPainter {
 
   @override
   bool shouldRepaint(_DashSample old) => old.colour != colour || old.dash != dash || old.square != square;
-}
-
-/// A row of options in one pill: the chosen one's fill glides to it, as
-/// Settings' ribbons' does.
-class _Segments extends StatefulWidget {
-  const _Segments({required this.labels, required this.selected, required this.onSelect});
-
-  final List<String> labels;
-  final int selected;
-  final ValueChanged<int> onSelect;
-
-  @override
-  State<_Segments> createState() => _SegmentsState();
-}
-
-class _SegmentsState extends State<_Segments> {
-  late final _keys = [for (final _ in widget.labels) GlobalKey()];
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: p.empty.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.borderSoft),
-      ),
-      child: GlidePill(
-        target: _keys[widget.selected],
-        color: p.done,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (i, label) in widget.labels.indexed)
-              MouseRegion(
-                key: _keys[i],
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => widget.onSelect(i),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    child: PixelFit(
-                      child: AnimatedDefaultTextStyle(
-                        duration: context.themed(Motion.morph),
-                        curve: Motion.morphCurve,
-                        style: _label(
-                          p,
-                          size: 14,
-                          weight: FontWeight.w600,
-                          color: i == widget.selected ? p.onAccent : p.inkMuted,
-                        ),
-                        child: Text(label),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }

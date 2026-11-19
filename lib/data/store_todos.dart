@@ -110,7 +110,7 @@ extension StoreTodos on Store {
     return lists;
   }
 
-  DateTime get _today => dayOf(DateTime.now(), int.tryParse(setting('dayStartHour') ?? '') ?? 0);
+  DateTime get _today => dayOf(DateTime.now(), parseDayStartHour(setting('dayStartHour')));
 
   /// Establish the first known daily state for tasks from older versions.
   /// Once a task has history, its last snapshot already covers unchanged days.
@@ -119,7 +119,7 @@ extension StoreTodos on Store {
     day,
   );
 
-  void _recordTodos(List<Row> rows, DateTime day, {bool deleted = false}) {
+  void _recordTodos(List<Row> rows, DateTime day, {bool deleted = false, bool paused = false}) {
     if (rows.isEmpty) return;
     final statement = _db.prepare(
       'INSERT INTO todo_history (uid, day, snapshot) VALUES (?, ?, ?) '
@@ -150,6 +150,7 @@ extension StoreTodos on Store {
           ])
             key: r[key],
           'deleted': deleted,
+          if (paused) 'paused': true,
         });
         statement.execute([r['uid'], dateKey(day), snapshot]);
       }
@@ -195,7 +196,7 @@ extension StoreTodos on Store {
     for (final r in _db.select('SELECT * FROM todos WHERE done = 0 AND reminders > 0'))
       if (DateTime.tryParse(r['due_date'] as String? ?? '') ??
               switch (r['scope']) {
-                'today' => _inTodaySince(r['uid'] as String, today),
+                'today' => _inTodaySince(r, today),
                 'tomorrow' => DateTime(today.year, today.month, today.day + 1),
                 _ => null,
               }
@@ -203,13 +204,17 @@ extension StoreTodos on Store {
         (_todo(r), day),
   ];
 
-  /// The first day of the stay in Today that [uid] is on now: the day after
-  /// the last its record shows it in another list, or its first record.
-  DateTime _inTodaySince(String uid, DateTime today) {
+  /// The first day of the stay in Today that [r] is on now with its current
+  /// time and reminders: the day after the last its record shows it in
+  /// another list or before its time or reminders were changed.
+  DateTime _inTodaySince(Row r, DateTime today) {
     final first = _db.select(
       "SELECT MIN(day) AS day FROM todo_history WHERE uid = ?1 AND json_extract(snapshot, '\$.scope') = 'today' "
-      "AND day > COALESCE((SELECT MAX(day) FROM todo_history WHERE uid = ?1 AND json_extract(snapshot, '\$.scope') != 'today'), '')",
-      [uid],
+      "AND day > COALESCE((SELECT MAX(day) FROM todo_history WHERE uid = ?1 AND ("
+      "json_extract(snapshot, '\$.scope') != 'today' OR "
+      "json_extract(snapshot, '\$.due_time') IS NOT ?2 OR "
+      "json_extract(snapshot, '\$.reminders') IS NOT ?3)), '')",
+      [r['uid'], r['due_time'], r['reminders']],
     ).first['day'];
     final day = DateTime.tryParse(first as String? ?? '');
     return day == null || day.isAfter(today) ? today : day;
@@ -408,9 +413,48 @@ extension StoreTodos on Store {
     });
   }
 
-  void deleteTodo(int id, {DateTime? day}) {
+  /// Adds a task to [day]'s Tomorrow list while also rolling it into
+  /// [today]'s live Today list (used when adding under "Today" while viewing Yesterday).
+  TodoItem addPastTomorrowTodo(
+    DateTime day,
+    DateTime today,
+    String text, {
+    DateTime? dueDate,
+    int? time,
+    bool birthday = false,
+    int reminders = 0,
+    String? location,
+  }) => transaction(() {
+    _db.execute(
+      'INSERT INTO todos (uid, scope, period, text, done, since, due_date, due_time, category, reminders, location) '
+      'VALUES (lower(hex(randomblob(8))), ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)',
+      [
+        TodoScope.tomorrow.name,
+        dateKey(day),
+        text,
+        dateKey(day),
+        dueDate == null ? null : dateKey(dueDate),
+        time == null ? null : clockKey(time),
+        birthdayKind(birthday),
+        _stored(reminders),
+        _place(location),
+      ],
+    );
+    final id = _db.lastInsertRowId;
+    _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [id]), day);
+    _db.execute('UPDATE todos SET scope = ?, period = ? WHERE id = ?', [
+      TodoScope.today.name,
+      dateKey(today),
+      id,
+    ]);
+    final row = _db.select('SELECT * FROM todos WHERE id = ?', [id]).single;
+    _recordTodos([row], today);
+    return _todo(row);
+  });
+
+  void deleteTodo(int id, {DateTime? day, bool paused = false}) {
     transaction(() {
-      _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [id]), day ?? _today, deleted: true);
+      _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [id]), day ?? _today, deleted: true, paused: paused);
       _db.execute('DELETE FROM todos WHERE id = ?', [id]);
     });
   }
@@ -529,6 +573,13 @@ extension StoreTodos on Store {
       ) as Map<String, dynamic>;
       final historicalScope = TodoScope.values.byName(snapshot['scope'] as String);
       final liveScope = !done && historicalScope == TodoScope.tomorrow ? TodoScope.today : historicalScope;
+      final live = subtasks == null ? _db.select('SELECT subtasks FROM todos WHERE uid = ?', [item.uid]) : const <Row>[];
+      final liveSubtasks = live.isEmpty
+          ? (snapshot['subtasks'] ?? '[]')
+          : TodoSubtask.encode([
+              for (final child in TodoSubtask.decode(live.single['subtasks'] as String?))
+                child.copyWith(done: done),
+            ]);
       _db.execute(
         'UPDATE todos SET done = ?, done_at = ?, scope = ?, period = ?, return_to_tomorrow = ?, return_scope = ?, defer_promotion_day = ?, subtasks = ? WHERE uid = ?',
         [
@@ -539,14 +590,16 @@ extension StoreTodos on Store {
           snapshot['return_to_tomorrow'] ?? 0,
           snapshot['return_scope'],
           !done && (historicalScope == TodoScope.week || historicalScope == TodoScope.month) ? dateKey(today) : null,
-          snapshot['subtasks'] ?? '[]',
+          liveSubtasks,
           item.uid,
         ],
       );
       _recordTodos(_db.select('SELECT * FROM todos WHERE uid = ?', [item.uid]), today);
       if (!done) {
-        promoteDueTodos(today, earliest: today);
-        rollTomorrowToToday(dateKey(today));
+        local(day: dateKey(today), () {
+          promoteDueTodos(today, earliest: today);
+          rollTomorrowToToday(dateKey(today));
+        });
       }
     });
   }
@@ -719,7 +772,7 @@ extension StoreTodos on Store {
       text: text,
       rule: rule,
       start: dateOnly(start),
-      until: until,
+      until: until == null ? null : dateOnly(until),
       time: time,
       birthday: birthday,
       reminders: reminders,
@@ -770,8 +823,13 @@ extension StoreTodos on Store {
         // Each step keeps its tick and note on this time.
         final had = {for (final child in TodoSubtask.decode(r['subtasks'] as String?)) child.text: child};
         final next = [
-          for (final child in template)
-            child.copyWith(done: had[child.text]?.done ?? false).withNote(had[child.text]?.note),
+          for (final child in children)
+            TodoSubtask(
+              child.text,
+              done: had[child.text]?.done ?? false,
+              numbered: child.numbered,
+              note: had[child.text]?.note ?? child.note,
+            ),
         ];
         _db.execute('UPDATE todos SET subtasks = ? WHERE id = ?', [TodoSubtask.encode(next), r['id']]);
         _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [r['id']]), today);
@@ -782,6 +840,12 @@ extension StoreTodos on Store {
   /// The open to-dos of repeat [uid] for [from] on.
   List<Row> _openOccurrences(String uid, DateTime from) =>
       _db.select('SELECT * FROM todos WHERE uid >= ? AND uid < ? AND done = 0', occurrenceRange(uid, from: from));
+
+  /// The open to-do of repeat [uid] for [day], if materialized and open.
+  TodoItem? openOccurrence(String uid, DateTime day) {
+    final rows = _db.select('SELECT * FROM todos WHERE uid = ? AND done = 0', ['$uid@${dateKey(day)}']);
+    return rows.isEmpty ? null : _todo(rows.single);
+  }
 
   /// The bounds of the uids of repeat [uid]'s times, from [from] on when
   /// given: `uid@day` sorts after `uid@` and before `uidA`, so a
@@ -907,15 +971,30 @@ extension StoreTodos on Store {
       final List<dynamic> l => l.whereType<String>().toSet(),
       _ => <String>{},
     };
+    // Also discover occurrences paused by a holiday on another synced device.
+    for (final r in _db.select('''
+      WITH latest AS (
+        SELECT uid, MAX(day) AS day FROM todo_history GROUP BY uid
+      )
+      SELECT h.uid FROM latest l
+      JOIN todo_history h ON h.uid = l.uid AND h.day = l.day
+      WHERE json_extract(h.snapshot, '\$.deleted') = 1
+        AND json_extract(h.snapshot, '\$.paused') = 1
+    ''')) {
+      paused.add(r['uid'] as String);
+    }
     for (final uid in paused.toList()) {
       final at = uid.lastIndexOf('@');
       final repeat = at < 0 ? null : byUid[uid.substring(0, at)];
       final day = at < 0 ? null : DateTime.tryParse(uid.substring(at + 1));
-      if (repeat == null || day == null || day.isBefore(today)) {
+      if (repeat == null || day == null || day.isBefore(today) || !repeat.on(day)) {
         paused.remove(uid);
       } else if (holidayOn(holidays, day) == null) {
         paused.remove(uid);
-        if (_db.select('SELECT 1 FROM todos WHERE uid = ?', [uid]).isEmpty) _makeOccurrence(repeat, day);
+        if (_db.select('SELECT 1 FROM todos WHERE uid = ?', [uid]).isEmpty) {
+          _makeOccurrence(repeat, day);
+          _recordTodos(_db.select('SELECT * FROM todos WHERE uid = ?', [uid]), today);
+        }
       }
     }
     paused.addAll(_takeAwayPaused(today, holidays));
@@ -934,7 +1013,7 @@ extension StoreTodos on Store {
     ''')) {
       final day = DateTime.tryParse(r['day'] as String);
       if (day != null && holidayOn(holidays, day) != null) {
-        deleteTodo(r['id'] as int, day: today);
+        deleteTodo(r['id'] as int, day: today, paused: true);
         gone.add(r['uid'] as String);
       }
     }
@@ -1016,7 +1095,14 @@ extension StoreTodos on Store {
     }
     _takeAwayEnded(today);
     // Made on another computer before it heard of the holiday.
-    _takeAwayPaused(today, holidays);
+    final gone = _takeAwayPaused(today, holidays);
+    if (gone.isNotEmpty) {
+      final paused = switch (_decodeJson(setting(pausedTimesSetting))) {
+        final List<dynamic> l => l.whereType<String>().toSet(),
+        _ => <String>{},
+      }..addAll(gone);
+      setSetting(pausedTimesSetting, jsonEncode(paused.toList()));
+    }
     if (holidaysMoved) setSetting(walkedHolidaysSetting, holidaysMark);
     final encoded = jsonEncode(walked);
     if (encoded != setting(walkedSetting)) setSetting(walkedSetting, encoded);

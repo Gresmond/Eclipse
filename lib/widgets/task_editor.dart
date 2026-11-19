@@ -225,12 +225,9 @@ Future<void> _editTask(
   final noted = cleanNote(result.note) != item.note;
   // Made repeating, the task goes and its first time takes its note.
   if (noted && repeat == null && result.repeat != null) item.note = cleanNote(result.note);
-  final changedRepeat = await _editTaskDetails(context, state, scope, item, day, result, repeat, onToday, make);
-  if (changedRepeat == null || !noted || (repeat == null && result.repeat != null)) return;
+  final changedRepeat = await _editTaskDetails(context, state, scope, item, day, result, repeat, onToday, make, noted);
+  if (changedRepeat == null || !noted || changedRepeat || (repeat == null && result.repeat != null)) return;
   if (onToday) day = state.today;
-  // After a repeat's rule changed, a time not made yet may no longer come
-  // round, so only one already made takes the note.
-  if (changedRepeat && make != null) return;
   state.setTodoNote(scope, make?.call() ?? item, result.note, day: day);
 }
 
@@ -246,6 +243,7 @@ Future<bool?> _editTaskDetails(
   Repeat? repeat,
   bool onToday,
   TodoItem Function()? make,
+  bool noted,
 ) async {
   // Today's lists stay today's across midnight: saved after the day
   // changed, it changes the task, not the day before's record of it.
@@ -295,6 +293,7 @@ Future<bool?> _editTaskDetails(
       birthday: birthday,
       reminders: reminders,
       location: location,
+      note: noted ? (value: result.note) : null,
     );
     // Stopped repeating and given another day at once: this time, which
     // stays, still moves there.
@@ -542,52 +541,6 @@ class _RepeatRow extends StatelessWidget {
 _RepeatChoice? _birthdayRepeat(bool birthday, _RepeatChoice? repeat) =>
     !birthday || repeat?.rule == const RepeatRule.yearly(1) ? repeat : (rule: const RepeatRule.yearly(1), until: null);
 
-/// [child] (the time, or the repeat's options) folded away for a
-/// birthday: it fades out in the first half while the rows below slide up
-/// over the whole, and back the other way.
-class _BirthdayFold extends StatefulWidget {
-  const _BirthdayFold({required this.folded, required this.child});
-
-  final bool folded;
-  final Widget child;
-
-  @override
-  State<_BirthdayFold> createState() => _BirthdayFoldState();
-}
-
-class _BirthdayFoldState extends State<_BirthdayFold> with SingleTickerProviderStateMixin {
-  late final _controller = AnimationController(vsync: this, duration: Motion.morph, value: widget.folded ? 0 : 1);
-  late final _height = CurvedAnimation(parent: _controller, curve: Motion.morphCurve);
-  late final _opacity = CurvedAnimation(parent: _controller, curve: Motion.secondHalf);
-
-  @override
-  void didUpdateWidget(_BirthdayFold old) {
-    super.didUpdateWidget(old);
-    if (widget.folded != old.folded) widget.folded ? _controller.reverse() : _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _height.dispose();
-    _opacity.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => SizeTransition(
-    sizeFactor: _height,
-    alignment: Alignment.topCenter,
-    child: FadeTransition(
-      opacity: _opacity,
-      child: IgnorePointer(
-        ignoring: widget.folded,
-        child: ExcludeFocus(excluding: widget.folded, child: widget.child),
-      ),
-    ),
-  );
-}
-
 class _EditTaskDialog extends StatefulWidget {
   const _EditTaskDialog({required this.item, required this.scope, required this.day, this.repeat});
   final TodoItem item;
@@ -641,14 +594,24 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
 
   void _save() {
     if (_text.text.trim().isEmpty) return;
+    final today = AppScope.read(context).today;
+    final reminders = _reminders(birthday: _birthday);
+    final due =
+        !widget.item.done &&
+            widget.day == today &&
+            _due != null &&
+            _due!.isBefore(today) &&
+            (_time != widget.item.dueTime || reminders != widget.item.reminders)
+        ? today
+        : _due;
     Navigator.pop<_TaskEdit>(context, (
       text: _text.text,
-      due: _due,
+      due: due,
       repeat: _birthdayRepeat(_birthday, _repeat),
       start: _repeatStart,
       time: _birthday ? null : _time,
       birthday: _birthday,
-      reminders: _reminders(birthday: _birthday),
+      reminders: reminders,
       location: _place,
       note: _note,
     ));
@@ -658,7 +621,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
   Widget build(BuildContext context) {
     final p = context.palette;
     final today = AppScope.read(context).today;
-    final start = widget.item.repeatDay ?? _due ?? today;
+    final start = widget.item.repeatDay ?? _on(today);
     return PagedDialog(
       onReturn: () => _refocus(_textFocus, _text, _selection),
       page: _page,
@@ -719,7 +682,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
           ),
         ],
         const SizedBox(height: 4),
-        _FoldAway(folded: _birthday, child: _timeRow()),
+        Fold(open: !_birthday, child: _timeRow()),
         _notifyRow(birthday: _birthday),
         _locationRow(onSubmitted: _save),
         _NoteRow(
@@ -727,7 +690,7 @@ class _EditTaskDialogState extends State<_EditTaskDialog> with _DetailPages {
           note: _note,
           onChanged: (note) => setState(() => _note = note),
         ),
-        _FoldAway(folded: _birthday, child: _repeatRow()),
+        Fold(open: !_birthday, child: _repeatRow()),
         const SizedBox(height: 16),
       ],
     );

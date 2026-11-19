@@ -172,11 +172,40 @@ test('missing server secrets fail closed with 500', async () => {
   const noClient = { COOKIE_KEY: 'a test key', GOOGLE_CLIENT_ID: 'id' };
   assert.equal((await start({ request: request('/api/auth/start'), env: noKey })).status, 500);
   assert.equal((await start({ request: request('/api/auth/start'), env: noClient })).status, 500);
+  assert.equal((await callback({ request: request('/api/auth/callback'), env: noKey })).status, 500);
   assert.equal((await callback({ request: request('/api/auth/callback'), env: noClient })).status, 500);
   assert.equal((await session({ request: request('/api/session'), env: noKey })).status, 500);
   assert.equal(
+    (await token({ request: request('/api/token', { method: 'POST', headers: { Origin: origin } }), env: noKey })).status,
+    500,
+  );
+  assert.equal(
     (await token({ request: request('/api/token', { method: 'POST', headers: { Origin: origin } }), env: noClient })).status,
     500,
+  );
+  let calledFetch = false;
+  globalThis.fetch = async () => {
+    calledFetch = true;
+    return new Response(null, { status: 200 });
+  };
+  const signoutNoKey = await signout({
+    request: request('/api/signout', { method: 'POST', headers: { Origin: origin } }),
+    env: noKey,
+  });
+  assert.equal(signoutNoKey.status, 200);
+  assert.match(signoutNoKey.headers.get('Set-Cookie'), /Max-Age=0/);
+  assert.equal(calledFetch, false);
+});
+
+test('missing or mismatched Origin is rejected on POST endpoints', async () => {
+  const Cookie = await signedIn();
+  assert.equal(
+    (await token({ request: request('/api/token', { method: 'POST', headers: { Cookie } }), env })).status,
+    403,
+  );
+  assert.equal(
+    (await signout({ request: request('/api/signout', { method: 'POST', headers: { Cookie } }), env })).status,
+    403,
   );
 });
 
@@ -187,6 +216,14 @@ test('cookies cannot be swapped between sign-in state and session, nor used afte
     env,
   });
   assert.equal(badSession.status, 401);
+  const badToken = await token({
+    request: request('/api/token', {
+      method: 'POST',
+      headers: { Cookie: nameValue(sessionCookie(signInSealed)), Origin: origin },
+    }),
+    env,
+  });
+  assert.equal(badToken.status, 401);
 
   const sessionSealed = await seal(env, { state: 's1', verifier: 'v1', refresh: 'r1' }, SESSION_PURPOSE);
   const badCallback = await callback({
@@ -196,6 +233,19 @@ test('cookies cannot be swapped between sign-in state and session, nor used afte
     env,
   });
   assert.equal(badCallback.headers.get('Location'), '/welcome.html?error=expired');
+
+  const expiredSignIn = await seal(
+    env,
+    { state: 's1', verifier: 'v1', exp: Math.floor(Date.now() / 1000) - 10 },
+    SIGN_IN_PURPOSE,
+  );
+  const expiredStateReply = await callback({
+    request: request('/api/auth/callback?code=c&state=s1', {
+      headers: { Cookie: nameValue(stateCookie(expiredSignIn)) },
+    }),
+    env,
+  });
+  assert.equal(expiredStateReply.headers.get('Location'), '/welcome.html?error=expired');
 
   const expiredSession = await seal(
     env,
@@ -207,14 +257,24 @@ test('cookies cannot be swapped between sign-in state and session, nor used afte
     env,
   });
   assert.equal(expiredReply.status, 401);
+  const expiredToken = await token({
+    request: request('/api/token', {
+      method: 'POST',
+      headers: { Cookie: nameValue(sessionCookie(expiredSession)), Origin: origin },
+    }),
+    env,
+  });
+  assert.equal(expiredToken.status, 401);
 });
 
-test('callback rejects OIDC tokens with wrong audience, wrong issuer, or expired exp', async () => {
+test('callback rejects OIDC tokens with wrong audience, wrong issuer, missing claims, or expired exp', async () => {
   for (const claims of [
     { aud: 'wrong-client', email: 'a@b.c', sub: '1' },
     { iss: 'https://evil.example', email: 'a@b.c', sub: '1' },
     { exp: Math.floor(Date.now() / 1000) - 5, email: 'a@b.c', sub: '1' },
     { email_verified: false, email: 'a@b.c', sub: '1' },
+    { sub: '1' },
+    { email: 'a@b.c' },
   ]) {
     const { state, cookie } = await begin();
     globalThis.fetch = async () =>
@@ -233,6 +293,22 @@ test('callback rejects OIDC tokens with wrong audience, wrong issuer, or expired
       false,
     );
   }
+
+  const { state, cookie } = await begin();
+  globalThis.fetch = async () =>
+    Response.json({
+      id_token: idToken({ email: 'a@b.c', sub: '1' }),
+      scope: 'openid https://www.googleapis.com/auth/drive.appdata',
+    });
+  const noRefresh = await callback({
+    request: request(`/api/auth/callback?code=c&state=${state}`, { headers: { Cookie: cookie } }),
+    env,
+  });
+  assert.equal(noRefresh.headers.get('Location'), '/welcome.html?error=google');
+  assert.equal(
+    noRefresh.headers.getSetCookie().some((c) => c.startsWith('eclipse_session=')),
+    false,
+  );
 });
 
 test('API and auth responses carry hardening headers', async () => {

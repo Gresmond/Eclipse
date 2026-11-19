@@ -22,6 +22,8 @@ extension on _SettingsDialogState {
           'Your data',
           style: TextStyle(fontFamily: Fonts.ui, fontSize: 18, fontWeight: FontWeight.w600, color: p.ink),
         ),
+        const PersonalDataActions(),
+        if(sync!=null && sync.isOn) DriveEncryptionButton(sync:sync),
         const SizedBox(height: 14),
         if (state.sync != null) ...[
           TourTarget(

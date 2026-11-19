@@ -26,7 +26,7 @@ abstract interface class AutomaticWrites {
 /// SQLite persistence. Every method writes straight through; AppState keeps
 /// an in-memory copy for drawing.
 class Store {
-  static const schemaVersion = 36;
+  static const schemaVersion = 38;
   Store._(this._db) {
     _db.execute('PRAGMA busy_timeout = 5000');
     _db.execute('PRAGMA foreign_keys = ON');
@@ -140,6 +140,8 @@ class Store {
         UNION ALL SELECT 'todo', uid FROM todos
         UNION ALL SELECT 'journal', day FROM journal
         UNION ALL SELECT 'sleep_note', year || '-' || month || '/' || item FROM sleep_notes
+        UNION ALL SELECT 'routine', uid FROM routines
+        UNION ALL SELECT 'weigh_in', uid FROM weigh_ins
         UNION ALL SELECT 'exercise', uid FROM exercises
         UNION ALL SELECT 'training_set', uid FROM training_sets
         UNION ALL SELECT 'todo_repeat', uid FROM todo_repeats
@@ -227,7 +229,7 @@ class Store {
     // Rituals reordered on two computers at once can share a place: they
     // sort the same on both.
     for (final r in _db.select(
-      'SELECT habit_id, name, note, added_on, days FROM month_habits JOIN habits h ON h.id = habit_id '
+      'SELECT habit_id, name, note, added_on, days,weekly,target,unit FROM month_habits JOIN habits h ON h.id = habit_id '
       'WHERE year = ? AND month = ? ORDER BY position, h.uid',
       [year, month],
     ))
@@ -236,7 +238,7 @@ class Store {
         curlyQuotes(r['name'] as String),
         description: r['note'] == null ? null : curlyQuotes(r['note'] as String),
         addedOn: DateTime.tryParse(r['added_on'] as String? ?? ''),
-        days: decodeDays(r['days'] as String?),
+        days: decodeDays(r['days'] as String?), weekly: r['weekly'] as int?, target: r['target'] as int?, unit: r['unit'] as String?,
       ),
   ];
 
@@ -276,8 +278,8 @@ class Store {
     // later one stays out: it didn't exist yet.
     final earlier = to.$1 * 12 + to.$2 < from.$1 * 12 + from.$2;
     _db.execute(
-      'INSERT INTO month_habits (year, month, habit_id, name, position, note) '
-      'SELECT ?, ?, habit_id, name, position, note FROM month_habits WHERE year = ? AND month = ?'
+      'INSERT INTO month_habits (year, month, habit_id, name, position, note,weekly,target,unit) '
+      'SELECT ?, ?, habit_id, name, position, note,weekly,target,unit FROM month_habits WHERE year = ? AND month = ?'
       '${earlier ? ' AND added_on IS NULL' : ''}',
       [to.$1, to.$2, from.$1, from.$2],
     );
@@ -345,19 +347,43 @@ class Store {
 
   // Entries
 
-  Map<int, (int, int)> monthScores(int year, int month) {
+  Map<int, (int, int)> monthScores(int year, int month, {DateTime? asOf}) {
     final habits = {for (final h in monthHabits(year, month)) h.id: h};
     final scores = <int, (int, int)>{};
-    for (final r in _db.select('SELECT habit_id, day, status FROM entries WHERE day >= ? AND day < ? AND status != 0', [
-      dateKey(DateTime(year, month)),
-      dateKey(DateTime(year, month + 1)),
-    ])) {
+    for (final r in _db.select(
+      'SELECT habit_id, day, status FROM entries WHERE day >= ? AND day < ? AND status IN (1, 2)',
+      [dateKey(DateTime(year, month)), dateKey(DateTime(year, month + 1))],
+    )) {
       final id = r['habit_id'] as int, day = DateTime.parse(r['day'] as String);
       // Days before a ritual was added that month, or that aren't one of its
       // days, don't count towards it.
       if (habits[id] case final h? when !h.startedBy(day) || !h.onDay(day)) continue;
       final (done, logged) = scores[id] ?? (0, 0);
       scores[id] = (done + (r['status'] == HabitStatus.done.index ? 1 : 0), logged + 1);
+    }
+    // Assign a week to the month containing its Sunday. The current
+    // unfinished week appears provisionally in the month being viewed.
+    final now = dateOnly(asOf ?? DateTime.now());
+    for (final h in habits.values.where((h) => h.weekly != null)) {
+      var done = 0, possible = 0;
+      final first = DateTime(year,month);
+      final last = DateTime(year,month+1,0);
+      for(var sunday=DateTime(year,month,1 + (7-first.weekday)%7);
+          !sunday.isAfter(DateTime(year,month,last.day+6));
+          sunday=DateTime(sunday.year,sunday.month,sunday.day+7)) {
+        final monday=DateTime(sunday.year,sunday.month,sunday.day-6);
+        if(monday.isAfter(now) || (h.addedOn != null && sunday.isBefore(h.addedOn!))) continue;
+        if(sunday.month!=month && !(now.year==year && now.month==month && !now.isBefore(monday))) continue;
+        final end=sunday.isBefore(now)?sunday:now;
+        final start=h.addedOn!=null && monday.isBefore(h.addedOn!)?h.addedOn!:monday;
+        if(start.isAfter(end))continue;
+        final row=_db.select('SELECT sum(status=1) AS done,sum(status=3) AS excused FROM entries WHERE habit_id=? AND day BETWEEN ? AND ?',
+          [h.id,dateKey(start),dateKey(end)]).first;
+        final target=min(h.weekly!, daysBetween(start,sunday)+1-(row['excused'] as int? ?? 0));
+        possible+=target;
+        done+=min(target,row['done'] as int? ?? 0);
+      }
+      scores[h.id]=(done,possible);
     }
     return scores;
   }
@@ -454,6 +480,9 @@ class Store {
   /// month's own days for it, back to where it was added. A month not saved
   /// yet is on the days of the month it would be copied from.
   List<DateTime> pastDays(int habitId, DateTime day, int count) {
+    if (_db.select('SELECT 1 FROM sleep_habits WHERE habit_id = ?', [habitId]).isNotEmpty) {
+      return [for (var i = 1; i <= count; i++) DateTime(day.year, day.month, day.day - i)];
+    }
     final months = {
       for (final r in _db.select('SELECT year, month, days, added_on FROM month_habits WHERE habit_id = ?', [habitId]))
         (r['year'] as int, r['month'] as int): (
@@ -507,7 +536,7 @@ class Store {
     _db.execute(
       'INSERT INTO entries (day, habit_id, status) VALUES (?, ?, ?) '
       'ON CONFLICT (day, habit_id) DO UPDATE SET status = excluded.status, '
-      'note = CASE WHEN ? THEN NULL ELSE entries.note END',
+      'amount=NULL, note = CASE WHEN ? THEN NULL ELSE entries.note END',
       [day, habitId, status.index, clearNote ? 1 : 0],
     );
   }
@@ -622,7 +651,7 @@ class Store {
         exercise: r['exercise'] as String,
         position: r['position'] as int,
         weight: (r['weight'] as num?)?.toDouble(),
-        reps: r['reps'] as int,
+        reps: r['reps'] as int, note:r['note'] as String?, rpe:(r['rpe'] as num?)?.toDouble(),
       ),
   ];
 
@@ -633,10 +662,10 @@ class Store {
   }
 
   void saveTrainingSet(TrainingSet s) => _db.execute(
-    'INSERT INTO training_sets (uid, day, exercise, position, weight, reps) VALUES (?, ?, ?, ?, ?, ?) '
+    'INSERT INTO training_sets (uid, day, exercise, position, weight, reps, note, rpe) VALUES (?, ?, ?, ?, ?, ?, ?, ?) '
     'ON CONFLICT (uid) DO UPDATE SET day = excluded.day, exercise = excluded.exercise, '
-    'position = excluded.position, weight = excluded.weight, reps = excluded.reps',
-    [s.uid, s.day, s.exercise, s.position, s.weight, s.reps],
+    'position = excluded.position, weight = excluded.weight, reps = excluded.reps, note=excluded.note,rpe=excluded.rpe',
+    [s.uid, s.day, s.exercise, s.position, s.weight, s.reps,s.note,s.rpe],
   );
 
   void deleteTrainingSet(String uid) => _db.execute('DELETE FROM training_sets WHERE uid = ?', [uid]);

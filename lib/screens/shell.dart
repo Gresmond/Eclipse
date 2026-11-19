@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/rendering.dart' show OverflowBoxFit;
 
 import '../app_state.dart';
@@ -17,6 +18,7 @@ import '../widgets/backup_card.dart';
 import '../widgets/day_picker.dart';
 import '../widgets/fade_menu.dart';
 import '../widgets/fade_through.dart';
+import '../widgets/fold.dart';
 import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/reminder_cards.dart';
@@ -75,6 +77,18 @@ class Shell extends StatelessWidget {
     final state = AppScope.watch(context, (s) => (s.navigation, s.touring));
     final month = state.viewMonth;
 
+    final narrowGrid =
+        kIsWeb &&
+        MediaQuery.sizeOf(context).width < 850 &&
+        !state.showingTraining &&
+        (state.viewingYear || month != null);
+    final content = state.showingTraining
+        ? const TrainingView(key: ValueKey('training'))
+        : state.viewingYear
+        ? YearView(key: const ValueKey('year'), year: state.viewYear)
+        : month == null
+        ? const TodayView(key: ValueKey('today'))
+        : MonthView(key: const ValueKey('month'), year: state.viewYear, month: month);
     final page = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -86,13 +100,14 @@ class Shell extends StatelessWidget {
           child: FadeThrough(
             deferBuild: true,
             layoutBuilder: FadeThrough.fill,
-            child: state.showingTraining
-                ? const TrainingView(key: ValueKey('training'))
-                : state.viewingYear
-                ? YearView(key: const ValueKey('year'), year: state.viewYear)
-                : month == null
-                ? const TodayView(key: ValueKey('today'))
-                : MonthView(key: const ValueKey('month'), year: state.viewYear, month: month),
+            child: narrowGrid
+                ? LayoutBuilder(
+                    builder: (context, box) => SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(width: 850, height: box.maxHeight, child: content),
+                    ),
+                  )
+                : content,
           ),
         ),
       ],
@@ -150,6 +165,43 @@ class _Header extends StatelessWidget {
             todayTitle,
           )
         : ('${state.viewYear}$holiday', monthNames[month - 1]);
+    if (kIsWeb && MediaQuery.sizeOf(context).width < 850) {
+      return SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: PopupMenuButton<VoidCallback>(
+                tooltip: 'Change view',
+                onSelected: (action) => action(),
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: state.showToday, child: const Text('Today')),
+                  for (final m in months)
+                    PopupMenuItem(value: () => state.showMonth(m), child: Text(monthNames[m - 1])),
+                  PopupMenuItem(value: state.showYear, child: const Text('Year')),
+                  PopupMenuItem(value: state.toggleTraining, child: const Text('Training')),
+                ],
+                child: Material(
+                  color: Colors.transparent,
+                  child: ListTile(
+                    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    trailing: const Icon(Icons.expand_more_rounded),
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Search',
+              icon: const Icon(Icons.search),
+              onPressed: () => showAppDialog<void>(context: context, builder: (_) => const SearchDialog()),
+            ),
+            const _SettingsButton(),
+            const _ThemeButton(),
+            const SizedBox(width: 8),
+          ],
+        ),
+      );
+    }
     final titleStyle = TextStyle(
       fontFamily: Fonts.display,
       fontSize: 38,
@@ -260,8 +312,10 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-          _Fold(
-            shown: !elsewhere,
+          Fold(
+            axis: Axis.horizontal,
+            open: !elsewhere,
+            removeWhenClosed: true,
             child: Padding(
               padding: const EdgeInsets.only(left: 14),
               child: _YearSwitcher(year: state.viewYear),
@@ -308,36 +362,6 @@ class _DateButton extends StatelessWidget {
           : null,
       child: child,
     ),
-  );
-}
-
-/// [child] easing open sideways as it fades in, and closed as it fades out,
-/// so what's beside it slides over.
-class _Fold extends StatelessWidget {
-  const _Fold({required this.shown, required this.child});
-
-  final bool shown;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
-    tween: Tween(end: shown ? 1 : 0),
-    duration: Motion.morph,
-    curve: Motion.morphCurve,
-    child: child,
-    // Closed, it's not there at all.
-    builder: (context, t, child) => !shown && t == 0
-        ? const SizedBox.shrink()
-        : IgnorePointer(
-            ignoring: !shown,
-            child: ClipRect(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                widthFactor: t,
-                child: Opacity(opacity: t, child: child),
-              ),
-            ),
-          ),
   );
 }
 
@@ -407,6 +431,8 @@ class _IconTab extends StatelessWidget {
     return PixelTooltip(
       message: tooltip,
       child: Hoverable(
+        focusable: true,
+        semanticLabel: tooltip,
         onTap: onTap,
         builder: (hover) => AnimatedContainer(
           duration: context.themed(Motion.hover),
@@ -422,7 +448,7 @@ class _IconTab extends StatelessWidget {
               // Nothing to see: holds a tab's text height, at any text size.
               Text('\u200b', style: _Tab._style(FontWeight.w600, p.ink)),
               TweenAnimationBuilder<Color?>(
-                tween: ColorTween(end: selected ? p.onAccent : p.ink),
+                tween: ColorTween(end: selected ? p.onDone : p.ink),
                 duration: context.themed(Motion.morph),
                 curve: Motion.morphCurve,
                 builder: (context, colour, _) => Icon(icon, size: Scale.navIcon, color: colour),
@@ -620,7 +646,7 @@ class _Tab extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final fg = selected
-        ? p.onAccent
+        ? p.onDone
         : isCurrent
         ? p.accent
         : p.ink;
@@ -637,6 +663,8 @@ class _Tab extends StatelessWidget {
     // The selected background is the bar's gliding pill; a tab only draws
     // its hover shade, and its text colour eases as the pill arrives.
     return Hoverable(
+      focusable: onTap != null,
+      semanticLabel: label,
       onTap: onTap,
       builder: (hover) => AnimatedContainer(
         duration: context.themed(Motion.hover),
@@ -783,20 +811,27 @@ class _ThemeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return PixelTooltip(
-      message: 'Appearance',
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: () => showFadeMenu(context, builder: (_) => const _AppearanceMenu()),
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: SmoothGradientDecoration(
-              color: p.tile.withValues(alpha: 0.8),
-              shape: BoxShape.circle,
-              border: Border.all(color: p.border),
+    return Semantics(
+      button: true,
+      label: 'Appearance',
+      child: PixelTooltip(
+        message: 'Appearance',
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            mouseCursor: SystemMouseCursors.click,
+            onTap: () => showFadeMenu(context, builder: (_) => const _AppearanceMenu()),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: SmoothGradientDecoration(
+                color: p.tile.withValues(alpha: 0.8),
+                shape: BoxShape.circle,
+                border: Border.all(color: p.border),
+              ),
+              child: _Swatch(palette: p, size: 36),
             ),
-            child: _Swatch(palette: p, size: 36),
           ),
         ),
       ),
@@ -821,6 +856,7 @@ class _AppearanceMenu extends StatelessWidget {
           FadeMenuRow(
             height: 50,
             onTap: () {
+              if (kIsWeb && state.followNightLight) state.setFollowNightLight(false);
               state.setTheme(option.name);
               Navigator.pop(context);
             },

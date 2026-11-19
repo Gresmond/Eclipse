@@ -8,7 +8,6 @@ import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
-import 'package:eclipse/widgets/todo_panel.dart';
 
 void main() {
   final today = DateTime(2026, 10, 25);
@@ -27,7 +26,6 @@ void main() {
   });
 
   setUp(() {
-    collapseAllTasks();
     store = Store.memory();
     state = AppState(store, clock: () => today);
     for (final scope in TodoScope.values) {

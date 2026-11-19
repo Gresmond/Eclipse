@@ -46,6 +46,10 @@ void show(const gchar* key, const gchar* title, const gchar* body) {
   // The click on the notification itself.
   g_variant_builder_add(&actions, "s", "default");
   g_variant_builder_add(&actions, "s", "Open");
+  g_variant_builder_add(&actions, "s", "snooze");
+  g_variant_builder_add(&actions, "s", "Snooze 10 min");
+  g_variant_builder_add(&actions, "s", "done");
+  g_variant_builder_add(&actions, "s", "Mark done");
   GVariantBuilder hints;
   g_variant_builder_init(&hints, G_VARIANT_TYPE("a{sv}"));
   // Installed by linux/install.sh under the application ID.
@@ -67,9 +71,10 @@ void on_action(GDBusConnection*, const gchar*, const gchar*, const gchar*,
   g_variant_get(parameters, "(u&s)", &id, &action);
   const gchar* key = static_cast<const gchar*>(
       g_hash_table_lookup(notifications.keys, GUINT_TO_POINTER(id)));
-  if (key == nullptr || g_strcmp0(action, "default") != 0) return;
-  tray_show_window(notifications.window);
+  if (key == nullptr) return;
+  if (g_strcmp0(action, "default") == 0) tray_show_window(notifications.window);
   g_autoptr(FlValue) args = fl_value_new_map();
+  fl_value_set_string_take(args, "action", fl_value_new_string(action));
   fl_value_set_string_take(args, "key", fl_value_new_string(key));
   fl_method_channel_invoke_method(notifications.channel, "clicked", args,
                                   nullptr, nullptr, nullptr);

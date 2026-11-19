@@ -425,6 +425,10 @@ class _ShowToggle extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) =>
-      HeaderIconButton(tooltip: shown ? 'Hide $what' : 'Show $what', icon: icon, onPressed: onPressed);
+  Widget build(BuildContext context) => HeaderIconButton(
+    tooltip: shown ? 'Hide $what' : 'Show $what',
+    icon: icon,
+    active: shown,
+    onPressed: onPressed,
+  );
 }

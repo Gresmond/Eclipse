@@ -4,11 +4,15 @@ part of '../app_state.dart';
 /// computer.
 mixin _Journal on ChangeNotifier {
   Store get store;
+  void _removed(String label, List<RowsBefore> before);
   SyncService? get sync;
   JournalFiles? get journalFiles;
   DataFolder? get dataFolder;
   bool get closing;
   bool get _disposed;
+  DateTime get today;
+  bool canEditDay(DateTime day);
+  void _invalidateFirstDay();
   Future<void> flushFiles();
 
   int journalRevision = 0;
@@ -29,13 +33,13 @@ mixin _Journal on ChangeNotifier {
     keepsJournalFiles = keep;
     store.setSetting('journalFiles', keep ? '1' : '0');
     if (!keep) journalFileProblem = null;
+    _checkJournalFiles(notify: false);
     notifyListeners();
-    _checkJournalFiles();
   }
 
   /// Files left behind while they were off are brought up to date once
   /// they're back on.
-  void _checkJournalFiles() {
+  void _checkJournalFiles({bool notify = true}) {
     final saves = savesJournalFiles;
     if (saves == _savesFiles) return;
     _savesFiles = saves;
@@ -44,7 +48,7 @@ mixin _Journal on ChangeNotifier {
     } else {
       store.setSetting('journalFilesStale', '1');
     }
-    notifyListeners();
+    if (notify) notifyListeners();
   }
 
   /// Writes every entry out again, and removes the files of days that were
@@ -106,9 +110,14 @@ mixin _Journal on ChangeNotifier {
   String journalOf(DateTime day) => store.journal(dateKey(day));
 
   Future<void> setJournal(DateTime day, String text) {
+    if (dateOnly(day).isAfter(today)) return Future.value();
     text = normaliseNote(text);
+    if (text.trim().isEmpty && journalOf(day).isNotEmpty) {
+      _removed('Cleared journal for ${dateKey(day)}', [store.rowsBefore('journal', ['day'], 'day = ?', [dateKey(day)])]);
+    }
     store.setJournal(dateKey(day), text);
     _journalShown = (day: day, text: store.journal(dateKey(day)));
+    _invalidateFirstDay();
     journalRevision++;
     notifyListeners();
     return _writeJournalFile(day, text);
@@ -128,6 +137,7 @@ mixin _Journal on ChangeNotifier {
   Timer? _draftTimer;
 
   void draftJournal(DateTime day, String text) {
+    if (!canEditDay(day)) return;
     if (_draft != null && _draft!.day != day) saveJournalDraft();
     _draft = (day: day, text: text);
     _draftTimer?.cancel();

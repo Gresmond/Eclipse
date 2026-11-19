@@ -202,10 +202,11 @@ void main() {
 
     void check() {
       final actions = find.byType(HeaderIconButton);
+      final statePalette = actions.first.evaluate().single.palette;
       expect(actions, findsNWidgets(3));
-      final colours = <Color?>[];
+      final colours = <(bool, Color?)>[];
       final insets = <Offset>[];
-      final hoverFills = <Color?>[];
+      final hoverFills = <(bool, Color?)>[];
       for (final element in actions.evaluate()) {
         final action = find.byWidget(element.widget);
         expect(tester.getSize(action), const Size.square(28));
@@ -215,15 +216,20 @@ void main() {
         final button = tester.widget<IconButton>(find.descendant(of: action, matching: find.byType(IconButton)));
         expect((button.icon as Icon).size, 16);
         expect(button.style!.shape!.resolve({}), isA<CircleBorder>());
-        colours.add(button.style!.foregroundColor!.resolve({}));
-        hoverFills.add(button.style!.backgroundColor!.resolve({WidgetState.hovered}));
+        final active = (element.widget as HeaderIconButton).active;
+        colours.add((active, button.style!.foregroundColor!.resolve({})));
+        hoverFills.add((active, button.style!.backgroundColor!.resolve({WidgetState.hovered})));
       }
       for (final inset in insets.skip(1)) {
         expect(inset.dx, closeTo(insets.first.dx, 0.1));
         expect(inset.dy, closeTo(insets.first.dy, 0.1));
       }
-      expect(colours.toSet().length, 1);
-      expect(hoverFills.toSet().length, 1);
+      for (final (active, colour) in colours) {
+        expect(colour, active ? statePalette.onDone : statePalette.inkMuted.withValues(alpha: 0.8));
+      }
+      for (final (active, fill) in hoverFills) {
+        expect(fill, active ? statePalette.done : statePalette.empty.withValues(alpha: 0.8));
+      }
     }
 
     check();

@@ -1,0 +1,10 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="#26232B" android:padding="12dp">
+    <TextView android:id="@+id/day" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:textColor="#FFFFFFFF" android:textSize="17sp" />
+    <LinearLayout android:id="@+id/rows" android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:orientation="vertical" />
+    <TextView android:id="@+id/more" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="end" android:textColor="#FFE8C5DE" android:text="Next page ›" />
+</LinearLayout>

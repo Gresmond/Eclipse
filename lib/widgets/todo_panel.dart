@@ -16,6 +16,7 @@ import 'confirm_on_enter.dart';
 import 'day_picker.dart';
 import 'day_toggles.dart';
 import 'fade_through.dart';
+import 'fold.dart';
 import 'glide_pill.dart';
 import 'hover_fill.dart';
 import 'mark.dart';
@@ -181,6 +182,108 @@ class TaskRow extends StatelessWidget {
         onRemove: onRemove ?? () => state.removeTodo(scope, item, day: todays ? null : day),
         make: make,
         order: order,
+      ),
+    );
+  }
+}
+
+/// Touch actions for a task in the compact planner.
+class TaskDetailsMenu extends StatelessWidget {
+  const TaskDetailsMenu({super.key, required this.scope, required this.item, this.make});
+
+  final TodoScope scope;
+  final TodoItem item;
+  final TodoItem Function()? make;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.read(context);
+    return PopupMenuButton<int>(
+      tooltip: 'Actions for ${item.text}',
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: -2, child: Text('Edit task')),
+        const PopupMenuItem(value: -1, child: Text('Add subtask')),
+        for (final (i, sub) in item.subtasks.indexed) PopupMenuItem(value: i, child: Text('Edit ${sub.text}')),
+      ],
+      onSelected: (index) async {
+        if (index == -2) {
+          await _editTask(context, scope, item, state.today, make: make);
+          return;
+        }
+        final sub = index < 0 ? null : item.subtasks[index];
+        final result = await showAppDialog<({String text, bool numbered, String? note})>(
+          context: context,
+          builder: (_) => _SubtaskDialog(text: sub?.text ?? '', numbered: item.numbered, note: sub?.note),
+        );
+        if (result == null || !context.mounted || result.text.trim().isEmpty) return;
+        final current = make?.call() ?? item;
+        final children = [for (final child in current.subtasks) child.copyWith(numbered: result.numbered)];
+        final edited = TodoSubtask(
+          result.text.trim(),
+          done: sub?.done ?? false,
+          numbered: result.numbered,
+          note: result.note,
+        );
+        if (index < 0) {
+          children.add(edited);
+        } else if (index < children.length && current.subtasks[index].text == sub?.text) {
+          children[index] = edited;
+        } else {
+          return;
+        }
+        state.setTodoSubtasks(scope, current, children);
+      },
+    );
+  }
+}
+
+class PhonePlan extends StatelessWidget {
+  const PhonePlan({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision));
+    final plan = state.fromTodos((PhonePlan, state.today), () => _Planned(state, state.today, past: false));
+    Widget row(TodoScope scope, TodoItem item, [TodoItem Function()? make]) => ListTile(
+      leading: Checkbox(
+        value: item.done,
+        onChanged: (_) => state.toggleTodo(make?.call() ?? item, scope: scope),
+      ),
+      title: Text(item.text),
+      subtitle: item.dueTime == null ? null : Text(clockLabel(item.dueTime!)),
+      onTap: () => _editTask(context, scope, item, state.today, make: make),
+      trailing: TaskDetailsMenu(scope: scope, item: item, make: make),
+    );
+    return Scaffold(
+      appBar: AppBar(title: const Text('Plan')),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Add task',
+        onPressed: () => addTaskAnywhere(context),
+        child: const Icon(Icons.add),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+        children: [
+          for (final (i, tasks) in plan.days.indexed.skip(1)) ...[
+            if (i == 1 || i == 2)
+              ListTile(title: Text(i == 1 ? 'Tomorrow' : 'Week ahead', style: Theme.of(context).textTheme.titleLarge)),
+            if (i > 1 && tasks.isNotEmpty)
+              Text(dateKey(DateTime(state.today.year, state.today.month, state.today.day + i))),
+            for (final (scope, item) in tasks) row(scope, item),
+            if (i == 1 && tasks.isEmpty || i == 2 && plan.days.skip(2).every((day) => day.isEmpty))
+              const ListTile(title: Text('Nothing planned')),
+          ],
+          ListTile(title: Text('Further ahead', style: Theme.of(context).textTheme.titleLarge)),
+          if (plan.later.isEmpty) const ListTile(title: Text('Nothing planned')),
+          for (final (day, entries) in plan.later) ...[
+            Text(dateKey(day)),
+            for (final entry in entries)
+              if (entry.item case final item?)
+                row(entry.scope!, item)
+              else
+                row(TodoScope.month, entry.repeat!.unmade(day), () => state.occurrence(entry.repeat!, day)),
+          ],
+        ],
       ),
     );
   }

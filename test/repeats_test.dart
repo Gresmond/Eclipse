@@ -247,7 +247,8 @@ void main() {
       final last = all().singleWhere((t) => t.repeatDay == DateTime(2026, 11, 2));
       state.changeRepeat(state.repeatOf(last)!, DateTime(2026, 11, 2), 'Read a chapter', null);
       expect(days('Read a chapter').last, DateTime(2026, 11, 2));
-      expect(state.comingOccurrence(state.repeatOf(last)!, DateTime(2026, 11, 3)), isNull);
+      expect(state.repeatOf(last), isNull);
+      expect(state.comingOccurrence(state.repeats.last, DateTime(2026, 11, 3)), isNull);
     });
 
     test('a task made to repeat starts from its day', () {

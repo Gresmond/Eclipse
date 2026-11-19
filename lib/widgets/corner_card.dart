@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/palette_recipe.dart' show readable;
 import '../theme/tokens.dart';
 import 'hover_fill.dart';
 import '../theme/pixels.dart';
@@ -29,6 +30,8 @@ class _CornerCardState extends State<CornerCard> with SingleTickerProviderStateM
   late final _slide = _curve.drive(Tween(begin: const Offset(0, 0.35), end: Offset.zero));
   late Widget _shown = widget.child;
 
+  bool get _disabled => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
   @override
   void initState() {
     super.initState();
@@ -36,9 +39,24 @@ class _CornerCardState extends State<CornerCard> with SingleTickerProviderStateM
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_disabled) {
+      _controller.value = widget.visible ? 1 : 0;
+    }
+  }
+
+  @override
   void didUpdateWidget(CornerCard old) {
     super.didUpdateWidget(old);
-    if (widget.visible != old.visible) widget.visible ? _controller.forward() : _controller.reverse();
+    if (widget.visible != old.visible) {
+      if (_disabled) {
+        _controller.value = widget.visible ? 1 : 0;
+        setState(() {});
+      } else {
+        widget.visible ? _controller.forward() : _controller.reverse();
+      }
+    }
   }
 
   @override
@@ -82,6 +100,8 @@ class CornerButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Hoverable(
+      focusable: true,
+      semanticLabel: label,
       onTap: onTap,
       builder: (hover) => AnimatedContainer(
         duration: context.themed(Motion.hover),
@@ -105,6 +125,12 @@ class CornerButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// High-contrast icon ink on a soft `p.done` circular badge over [Palette.tile].
+Color briefBadgeInk(Palette p) {
+  final badge = Color.alphaBlend(p.done.withValues(alpha: 0.16), p.tile);
+  return readable(p.done, [badge], dark: p.brightness == Brightness.dark);
 }
 
 /// A card that says something has happened and goes by itself: a mark in a
@@ -133,7 +159,7 @@ class BriefCard extends StatelessWidget {
             width: 30,
             height: 30,
             decoration: BoxDecoration(shape: BoxShape.circle, color: p.done.withValues(alpha: 0.16)),
-            child: Icon(icon, size: 16, color: p.done),
+            child: Icon(icon, size: 16, color: briefBadgeInk(p)),
           ),
           const SizedBox(width: 14),
           Expanded(

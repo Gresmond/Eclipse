@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -9,13 +12,17 @@ import '../widgets/tile.dart';
 
 /// The year day by day, each month its own block, tinted by the share of
 /// its rituals done, beside the rituals that slip most on one weekday.
-class YearHeatmap extends StatelessWidget {
+class YearHeatmap extends StatefulWidget {
   const YearHeatmap({super.key, required this.year, required this.rituals});
 
   final int year;
 
   /// The rituals on each month's list, by month.
   final Map<int, Set<int>> rituals;
+
+  /// How many times the heatmap aggregated a year from SQLite; for tests.
+  @visibleForTesting
+  static int debugComputes = 0;
 
   static const _gap = 3.0;
   static const _monthGap = 10.0;
@@ -61,10 +68,57 @@ class YearHeatmap extends StatelessWidget {
       2 * _tileInset + titleHeight + 18 + _bodyHeight(year, width);
 
   @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.entriesRevision, s.today));
+  State<YearHeatmap> createState() => _YearHeatmapState();
+}
 
+class _HeatmapData {
+  const _HeatmapData({
+    required this.done,
+    required this.logged,
+    required this.allDone,
+    required this.allLogged,
+    required this.slips,
+  });
+
+  final Map<String, int> done, logged;
+  final int allDone, allLogged;
+  final List<({String name, int weekday, int rate, int usual})> slips;
+}
+
+class _YearHeatmapState extends State<YearHeatmap> {
+  AppState? _state;
+  int? _year, _habitsRevision, _entriesRevision;
+  Map<int, Set<int>>? _rituals;
+  _HeatmapData? _cached;
+
+  static bool _sameRituals(Map<int, Set<int>>? a, Map<int, Set<int>> b) {
+    if (a == null || a.length != b.length) return false;
+    for (final entry in b.entries) {
+      if (!setEquals(a[entry.key], entry.value)) return false;
+    }
+    return true;
+  }
+
+  _HeatmapData _dataFor(AppState state) {
+    if (_cached != null &&
+        identical(_state, state) &&
+        _year == widget.year &&
+        _habitsRevision == state.habitsRevision &&
+        _entriesRevision == state.entriesRevision &&
+        _sameRituals(_rituals, widget.rituals)) {
+      return _cached!;
+    }
+    YearHeatmap.debugComputes++;
+    final data = _compute(state, widget.year, widget.rituals);
+    _state = state;
+    _year = widget.year;
+    _habitsRevision = state.habitsRevision;
+    _entriesRevision = state.entriesRevision;
+    _rituals = {for (final e in widget.rituals.entries) e.key: Set<int>.of(e.value)};
+    return _cached = data;
+  }
+
+  static _HeatmapData _compute(AppState state, int year, Map<int, Set<int>> rituals) {
     final done = <String, int>{}, logged = <String, int>{};
     final doneOn = <int, List<int>>{}, loggedOn = <int, List<int>>{};
     final names = <int, String>{};
@@ -105,23 +159,31 @@ class YearHeatmap extends StatelessWidget {
       int? worst;
       double? lowest;
       for (var i = 0; i < 7; i++) {
-        if (days[i] < _minDays) continue;
+        if (days[i] < YearHeatmap._minDays) continue;
         final rate = ticks[i] * 100 / days[i];
         if (lowest == null || rate < lowest) (worst, lowest) = (i, rate);
       }
-      if (worst != null && usual - lowest! >= _minDrop) {
+      if (worst != null && usual - lowest! >= YearHeatmap._minDrop) {
         slips.add((name: names[id] ?? '', weekday: worst, rate: lowest.round(), usual: usual.round()));
       }
     }
     slips.sort((a, b) => (a.rate - a.usual).compareTo(b.rate - b.usual));
+    return _HeatmapData(done: done, logged: logged, allDone: allDone, allLogged: allLogged, slips: slips);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.entriesRevision, s.today));
+    final data = _dataFor(state);
 
     final label = capsLabel(p.inkMuted);
-    final title = allLogged == 0
+    final title = data.allLogged == 0
         ? 'THE YEAR'
-        : 'THE YEAR  ·  ${(allDone * 100 / allLogged).round()}% OF RITUALS DONE';
+        : 'THE YEAR  ·  ${(data.allDone * 100 / data.allLogged).round()}% OF RITUALS DONE';
     return LayoutBuilder(
       builder: (context, c) {
-        final grid = _gridWidth(c.maxWidth);
+        final grid = YearHeatmap._gridWidth(c.maxWidth);
         return Tile(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,22 +191,28 @@ class YearHeatmap extends StatelessWidget {
               PixelRow(
                 children: [
                   SizedBox(width: grid, child: Text(title, style: label)),
-                  const SizedBox(width: _between),
+                  const SizedBox(width: YearHeatmap._between),
                   Text('WHERE THINGS SLIP', style: label),
                 ],
               ),
               const SizedBox(height: 18),
               SizedBox(
-                height: _bodyHeight(year, c.maxWidth),
+                height: YearHeatmap._bodyHeight(widget.year, c.maxWidth),
                 child: PixelRow(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
                       width: grid,
-                      child: _Grid(year: year, today: state.today, width: grid, done: done, logged: logged),
+                      child: _Grid(
+                        year: widget.year,
+                        today: state.today,
+                        width: grid,
+                        done: data.done,
+                        logged: data.logged,
+                      ),
                     ),
-                    const SizedBox(width: _between),
-                    Expanded(child: _Slips(slips: slips.take(_findings).toList())),
+                    const SizedBox(width: YearHeatmap._between),
+                    Expanded(child: _Slips(slips: data.slips.take(YearHeatmap._findings).toList())),
                   ],
                 ),
               ),
@@ -173,7 +241,7 @@ class _Grid extends StatelessWidget {
     final columns = [for (var m = 1; m <= 12; m++) YearHeatmap._columns(year, m)];
     final used = columns.fold(0.0, (a, c) => a + c * cell + (c - 1) * gap);
     // Spare width goes between the months, so they run the card's width.
-    final monthGap = pixelFloor((width - left - used) / 11);
+    final monthGap = math.max(0.0, pixelFloor((width - left - used) / 11));
     const dayLine = 16.0;
     final dayStyle = TextStyle(fontFamily: Fonts.ui, fontSize: 12, height: dayLine / 12, color: p.inkMuted);
     // Rows shorter than a line of text name every other day, so no two
