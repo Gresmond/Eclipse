@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # <two-digit year>.<month>.<release that month>.
 # tool/release.sh bumps this and tags the commit; the tag publishes the Linux, Android and web releases.
-version: 26.11.10
+version: 26.11.11
 
 environment:
   sdk: ^3.13.5
