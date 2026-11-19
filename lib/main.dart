@@ -342,8 +342,6 @@ class EclipseApp extends StatelessWidget {
                 bindings: {
                   const SingleActivator(LogicalKeyboardKey.keyK, control: true): _search,
                   const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _search,
-                  const SingleActivator(LogicalKeyboardKey.keyF, control: true): _search,
-                  const SingleActivator(LogicalKeyboardKey.keyF, meta: true): _search,
                   const SingleActivator(LogicalKeyboardKey.keyN, control: true): _newTask,
                   const SingleActivator(LogicalKeyboardKey.keyN, meta: true): _newTask,
                 },

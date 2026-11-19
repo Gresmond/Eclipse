@@ -11,7 +11,7 @@ mixin _Settings on ChangeNotifier {
   void _removed(String label, List<RowsBefore> before);
   void _todosChanged();
 
-  bool get smartAdd => store.setting('smartAdd') == '1';
+  bool get smartAdd => store.setting('smartAdd') != '0';
   bool get focusEnabled => store.setting('dailyFocus') == '1';
   String? get focusUid => store.setting('focusDay') == dateKey(today) ? store.setting('focusUid') : null;
   void setFocus(String? uid) {

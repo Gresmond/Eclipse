@@ -63,7 +63,17 @@ class _DatedAddState extends State<_DatedAdd> {
 
   Future<void> _submit() async {
     if (_controller.text.trim().isEmpty) return;
-    // Every task has a day: without one yet, it's asked for.
+    final state = AppScope.read(context);
+    if (_choice == null && state.smartAdd) {
+      final parsed = parseQuickTask(_controller.text, state.today);
+      if (parsed.day case final day?) {
+        final (scope, due) = scopeForDay(state.today, day);
+        state.addTodo(scope, parsed.name, dueDate: due, time: parsed.minutes, location: parsed.location);
+        _controller.clear();
+        _focus.requestFocus();
+        return;
+      }
+    }
     final choice = _choice ?? await _pick();
     if (choice == null || !mounted) return;
     widget.onAdd(_controller.text, choice);
@@ -140,7 +150,15 @@ class _AddTaskState extends State<_AddTask> {
     final text = _controller.text;
     if (text.trim().isEmpty) return _focus.requestFocus();
     if (widget.past case final past?) {
-      state.addTodo(widget.day == past ? TodoScope.today : TodoScope.tomorrow, text, day: past);
+      final parsed = state.smartAdd ? parseQuickTask(text, past) : null;
+      final day = parsed?.day ?? widget.day;
+      if (parsed?.day != null && day.isAfter(state.today)) {
+        final (scope, due) = scopeForDay(state.today, day);
+        state.addTodo(scope, parsed!.name, dueDate: due, time: parsed.minutes, location: parsed.location);
+      } else {
+        state.addTodo(day == past ? TodoScope.today : TodoScope.tomorrow, parsed?.name ?? text,
+            day: past, time: parsed?.minutes, location: parsed?.location);
+      }
     } else {
       switch (_choice) {
         case final choice?:

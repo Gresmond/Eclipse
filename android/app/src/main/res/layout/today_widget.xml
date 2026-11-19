@@ -3,6 +3,8 @@
     android:orientation="vertical" android:background="#26232B" android:padding="12dp">
     <TextView android:id="@+id/day" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:textColor="#FFFFFFFF" android:textSize="17sp" />
+    <TextView android:id="@+id/add_task" android:layout_width="match_parent" android:layout_height="48dp"
+        android:gravity="center_vertical" android:textColor="#FFE8C5DE" android:textSize="16sp" android:text="+ Add task" />
     <LinearLayout android:id="@+id/rows" android:layout_width="match_parent" android:layout_height="0dp"
         android:layout_weight="1" android:orientation="vertical" />
     <TextView android:id="@+id/more" android:layout_width="match_parent" android:layout_height="wrap_content"

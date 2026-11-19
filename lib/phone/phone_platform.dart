@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../data/app_log.dart';
 import '../data/http_request.dart' show downloadFile;
 import '../data/updates.dart' show ReleaseFetch, ReleaseUpdater, fetchReleaseBytes, isNewer;
 
@@ -22,6 +23,22 @@ class PhonePlatform {
       final sync = state.sync;
       state.checkDate();
       final activeSync = sync != null && sync.isOn;
+      if (call.method == 'captureTask') {
+        if (sync != null && !activeSync) throw StateError('Open Eclipse and sign in to add a task.');
+        final text = (call.arguments as String).trim();
+        if (text.isEmpty) throw ArgumentError('Enter a task name.');
+        state.store.transaction(() => state.quickAddTodo(TodoScope.today, text, smart: true));
+        state.store.flushToDisk();
+        // The task is already committed. Keep a launcher or alarm refresh
+        // failure from turning Save into a duplicate on the next tap.
+        try {
+          await publishWidget(state);
+          return _alarms(state);
+        } catch (error, stack) {
+          AppLog.failure('Refreshing the widget after adding a task', error, stack);
+          return null;
+        }
+      }
       if (call.method == 'action') {
         final args = call.arguments as Map;
         final key = args['key'] as String, action = args['action'] as String;

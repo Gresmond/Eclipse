@@ -12,6 +12,8 @@ import 'package:eclipse/widgets/rolling_number.dart';
 import 'package:eclipse/widgets/tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
+import 'package:eclipse/phone/phone_platform.dart';
 
 void main() {
   (Store, AppState) make() {
@@ -31,6 +33,26 @@ void main() {
     await tester.pumpWidget(PhoneApp(state: state, schedule: (_) async {}));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('widget capture writes a normal Eclipse task even with in-app parsing switched off', (tester) async {
+    final (store, state) = make();
+    state.setSmartAdd(false);
+    const channel = MethodChannel('eclipse/background');
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(channel, null);
+      channel.setMethodCallHandler(null);
+    });
+    await PhonePlatform.enableBackgroundSync(state);
+    await messenger.handlePlatformMessage(
+      channel.name,
+      channel.codec.encodeMethodCall(const MethodCall('captureTask', 'Call Marge Simpson due on Friday 13th at 7:35 pm')),
+      (reply) => channel.codec.decodeEnvelope(reply!),
+    );
+    final task = store.todos(TodoScope.week, TodoScope.week.period(state.today)).singleWhere((t) => t.text == 'Call Marge Simpson');
+    expect((task.dueDate, task.dueTime), (DateTime(2026, 11, 13), 1175));
+  });
 
   testWidgets('phone draws while opening storage and offers retry if storage is unavailable', (tester) async {
     final directory = Completer<Directory>();

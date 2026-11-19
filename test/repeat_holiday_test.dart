@@ -66,11 +66,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('New task'), findsOneWidget);
 
-    await tester.enterText(find.widgetWithText(TextField, 'Task name'), 'Call the bank');
+    await tester.enterText(find.widgetWithText(TextField, 'Task name'), 'Call the bank due on Friday 13th at 7:35 pm');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(find.text('New task'), findsNothing);
     expect(state.viewingYear, isTrue);
-    expect(state.todos.values.expand((list) => list).map((t) => t.text), contains('Call the bank'));
+    final task = state.todos[TodoScope.month]!.singleWhere((t) => t.text == 'Call the bank');
+    expect(task.dueDate, DateTime(2026, 11, 13));
+    expect(task.dueTime, 1175);
   });
 }

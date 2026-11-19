@@ -131,7 +131,7 @@ void main() {
     expect(inactiveButton.style?.backgroundColor?.resolve({}), Colors.transparent);
   });
 
-  testWidgets('Ctrl+F opens SearchDialog shortcut', (tester) async {
+  testWidgets('Ctrl+K opens SearchDialog shortcut', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -146,7 +146,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
 

@@ -65,8 +65,10 @@ mixin _Todos on ChangeNotifier {
     }
   }
 
-  void quickAddTodo(TodoScope scope, String text, {DateTime? dueDate, int? time, bool birthday = false, int reminders = 0, String? location}) {
-    if (store.setting('smartAdd') == '1' && !birthday) {
+  bool get smartAdd;
+
+  void quickAddTodo(TodoScope scope, String text, {DateTime? dueDate, int? time, bool birthday = false, int reminders = 0, String? location, bool? smart}) {
+    if ((smart ?? smartAdd) && !birthday) {
       final parsed = parseQuickTask(text, today);
       text = parsed.name;
       if (parsed.day case final day?) { (scope, dueDate) = scopeForDay(today, day); }
