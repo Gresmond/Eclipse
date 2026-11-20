@@ -75,7 +75,11 @@ class _SessionTile extends StatelessWidget {
                         _ExerciseBlock(key: ValueKey(e.uid), day: day, exercise: e, sets: sets),
                     ],
                   ),
-                  AddSessionExercise(key: ValueKey(dateKey(day)), day: day, logged: {for (final (e, _) in session) e.uid}),
+                  AddSessionExercise(
+                    key: ValueKey(dateKey(day)),
+                    day: day,
+                    logged: {for (final (e, _) in session) e.uid},
+                  ),
                 ],
               ),
             ),
@@ -236,10 +240,7 @@ class _DeleteExerciseState extends State<_DeleteExercise> {
                   key: const ValueKey(true),
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _TextButton(
-                      label: 'Cancel',
-                      onTap: () => setState(() => _asking = false),
-                    ),
+                    _TextButton(label: 'Cancel', onTap: () => setState(() => _asking = false)),
                     const SizedBox(width: 10),
                     _TextButton(
                       label: 'Delete with all ${widget.count} ${widget.count == 1 ? 'set' : 'sets'}',
@@ -327,126 +328,143 @@ class _SetRowState extends State<_SetRow> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: SizedBox(
-        height: 36,
-        child: PixelRow(
-          children: [
-            SizedBox(
-              width: 22,
-              child: Text('${widget.index + 1}', style: _label(p, size: 14, color: p.inkMuted)),
-            ),
-            if (widget.bodyweight)
-              ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 108),
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Text(
-                    s.weight != null && s.weight! > 0 ? 'Bodyweight +${_kg(s.weight!)} kg' : 'Bodyweight',
-                    style: _label(p, size: 14, color: p.inkMuted),
-                  ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 36,
+            child: PixelRow(
+              children: [
+                SizedBox(
+                  width: 22,
+                  child: Text('${widget.index + 1}', style: _label(p, size: 14, color: p.inkMuted)),
                 ),
-              )
-            else ...[
-              _NumberBox(
-                controller: _weight,
-                focusNode: _weightFocus,
-                decimal: true,
-                autofocus: widget.last && s.reps == 0 && s.weight == null,
-                onChanged: (v) {
-                  final w = double.tryParse(v);
-                  w == null ? log.updateSet(s, clearWeight: true) : log.updateSet(s, weight: w);
-                },
-                onSubmitted: () => _repsFocus.requestFocus(),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Text('kg', style: _label(p, size: 14, color: p.inkMuted)),
-              ),
-              Text('×', style: _label(p, size: 14, color: p.inkMuted)),
-              const SizedBox(width: 8),
-            ],
-            _NumberBox(
-              controller: _reps,
-              focusNode: _repsFocus,
-              autofocus: widget.last && s.reps == 0 && (widget.bodyweight || s.weight != null),
-              onChanged: (v) => log.updateSet(s, reps: int.tryParse(v) ?? 0),
-              // Enter on the last set's reps starts the next set.
-              onSubmitted: () {
-                if (widget.last && s.reps > 0) log.addSet(widget.day, widget.exercise);
-              },
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 6),
-              child: Text('reps', style: _label(p, size: 14, color: p.inkMuted)),
-            ),
-            if (s.rpe != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 10),
-                child: Text('RPE ${_kg(s.rpe!)}', style: _label(p, size: 12, color: p.inkMuted)),
-              ),
-            if (!widget.bodyweight && s.reps > maxEstimateReps)
-              Flexible(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 12),
-                  child: Text(
-                    'Over $maxEstimateReps reps, so not charted',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _label(p, size: 12, color: p.inkMuted),
-                  ),
-                ),
-              ),
-            if (widget.best)
-              Flexible(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 12),
-                  child: Text(
-                    'Personal best',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _label(p, size: 12, weight: FontWeight.w700, color: p.accent),
-                  ),
-                ),
-              ),
-            const Spacer(),
-            _IconAction(
-              icon: Icons.notes_rounded,
-              color: (s.note?.trim().isNotEmpty == true || s.rpe != null || (widget.bodyweight && (s.weight ?? 0) > 0))
-                  ? p.accent
-                  : null,
-              tooltip: s.note?.trim().isNotEmpty == true ? '${s.note!.trim()}\nEdit set details' : 'Set note and effort',
-              onTap: () => editSetDetails(context, s, widget.exercise),
-            ),
-            Focus(
-              onFocusChange: (_) {
-                if (mounted) setState(() {});
-              },
-              child: Builder(
-                builder: (context) {
-                  final alwaysShowRemove =
-                      defaultTargetPlatform == TargetPlatform.android ||
-                      defaultTargetPlatform == TargetPlatform.iOS ||
-                      (kIsWeb && MediaQuery.sizeOf(context).width < 900);
-                  final showRemove =
-                      alwaysShowRemove ||
-                      _hover ||
-                      _weightFocus.hasFocus ||
-                      _repsFocus.hasFocus ||
-                      Focus.of(context).hasFocus;
-                  return IgnorePointer(
-                    ignoring: !showRemove,
-                    child: AnimatedOpacity(
-                      opacity: showRemove ? 1 : 0,
-                      duration: context.themed(Motion.hover),
-                      curve: Motion.hoverCurve,
-                      child: _IconAction(icon: Icons.remove_rounded, tooltip: 'Remove set', onTap: () => log.deleteSet(s)),
+                if (widget.bodyweight)
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 108),
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Text(
+                        s.weight != null && s.weight! > 0 ? 'Bodyweight +${_kg(s.weight!)} kg' : 'Bodyweight',
+                        style: _label(p, size: 14, color: p.inkMuted),
+                      ),
                     ),
-                  );
-                },
-              ),
+                  )
+                else ...[
+                  _NumberBox(
+                    controller: _weight,
+                    focusNode: _weightFocus,
+                    decimal: true,
+                    autofocus: widget.last && s.reps == 0 && s.weight == null,
+                    onChanged: (v) {
+                      final w = double.tryParse(v);
+                      w == null ? log.updateSet(s, clearWeight: true) : log.updateSet(s, weight: w);
+                    },
+                    onSubmitted: () => _repsFocus.requestFocus(),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text('kg', style: _label(p, size: 14, color: p.inkMuted)),
+                  ),
+                  Text('×', style: _label(p, size: 14, color: p.inkMuted)),
+                  const SizedBox(width: 8),
+                ],
+                _NumberBox(
+                  controller: _reps,
+                  focusNode: _repsFocus,
+                  autofocus: widget.last && s.reps == 0 && (widget.bodyweight || s.weight != null),
+                  onChanged: (v) => log.updateSet(s, reps: int.tryParse(v) ?? 0),
+                  // Enter on the last set's reps starts the next set.
+                  onSubmitted: () {
+                    if (widget.last && s.reps > 0) log.addSet(widget.day, widget.exercise);
+                  },
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Text('reps', style: _label(p, size: 14, color: p.inkMuted)),
+                ),
+                if (s.rpe != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 10),
+                    child: Text('RPE ${_kg(s.rpe!)}', style: _label(p, size: 12, color: p.inkMuted)),
+                  ),
+                if (!widget.bodyweight && s.reps > maxEstimateReps)
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: Text(
+                        'Over $maxEstimateReps reps, so not charted',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _label(p, size: 12, color: p.inkMuted),
+                      ),
+                    ),
+                  ),
+                if (widget.best)
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: Text(
+                        'Personal best',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _label(p, size: 12, weight: FontWeight.w700, color: p.accent),
+                      ),
+                    ),
+                  ),
+                const Spacer(),
+                _IconAction(
+                  icon: Icons.notes_rounded,
+                  color:
+                      (s.note?.trim().isNotEmpty == true || s.rpe != null || (widget.bodyweight && (s.weight ?? 0) > 0))
+                      ? p.accent
+                      : null,
+                  tooltip: s.note?.trim().isNotEmpty == true
+                      ? '${s.note!.trim()}\nEdit set details'
+                      : 'Set note and effort',
+                  onTap: () => editSetDetails(context, s, widget.exercise),
+                ),
+                Focus(
+                  onFocusChange: (_) {
+                    if (mounted) setState(() {});
+                  },
+                  child: Builder(
+                    builder: (context) {
+                      final alwaysShowRemove =
+                          defaultTargetPlatform == TargetPlatform.android ||
+                          defaultTargetPlatform == TargetPlatform.iOS ||
+                          (kIsWeb && MediaQuery.sizeOf(context).width < 900);
+                      final showRemove =
+                          alwaysShowRemove ||
+                          _hover ||
+                          _weightFocus.hasFocus ||
+                          _repsFocus.hasFocus ||
+                          Focus.of(context).hasFocus;
+                      return IgnorePointer(
+                        ignoring: !showRemove,
+                        child: AnimatedOpacity(
+                          opacity: showRemove ? 1 : 0,
+                          duration: context.themed(Motion.hover),
+                          curve: Motion.hoverCurve,
+                          child: _IconAction(
+                            icon: Icons.remove_rounded,
+                            tooltip: 'Remove set',
+                            onTap: () => log.deleteSet(s),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          if (s.note?.trim() case final note? when note.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 22, bottom: 6),
+              child: Text(note, style: _label(p, size: 13, color: p.inkMuted)),
+            ),
+        ],
       ),
     );
   }
@@ -625,12 +643,7 @@ class _GroupPill extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: colour.withValues(alpha: selected ? 0.8 : 0.35)),
           ),
-          child: PixelFit(
-            child: Text(
-              group.label.toUpperCase(),
-              style: capsLabel(colour),
-            ),
-          ),
+          child: PixelFit(child: Text(group.label.toUpperCase(), style: capsLabel(colour))),
         ),
       ),
     );

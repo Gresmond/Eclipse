@@ -5,19 +5,16 @@ part of 'todo_panel.dart';
 Future<void> addTaskAnywhere(BuildContext context) async {
   final state = AppScope.read(context);
   var name = '';
+  var allowSmart = true;
   final choice = await showAppDialog<_DayChoice>(
     context: context,
-    builder: (_) => _DueDateDialog(first: state.today, birthdays: true, onName: (text) => name = text),
+    builder: (_) => _DueDateDialog(first: state.today, birthdays: true, onName: (text, parseName) {
+      name = text;
+      allowSmart = parseName;
+    }),
   );
   if (choice == null || !context.mounted) return;
-  final untouched =
-      choice.day == state.today &&
-      choice.repeat == null &&
-      choice.time == null &&
-      !choice.birthday &&
-      choice.reminders == 0 &&
-      choice.location == null;
-  _addChosen(state, name, choice.day, choice, allowSmart: untouched);
+  _addChosen(state, name, choice.day, choice, allowSmart: allowSmart);
 }
 
 /// The field at a card's foot for a new task on a day between [first] and

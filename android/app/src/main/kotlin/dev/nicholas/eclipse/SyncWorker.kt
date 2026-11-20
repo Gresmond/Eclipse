@@ -7,8 +7,6 @@ import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
@@ -18,7 +16,6 @@ object PhoneRuntime {
     private var engine: FlutterEngine? = null
     private var users = 0
     private var ready = CompletableDeferred<Boolean>()
-    private val mutex = Mutex()
     private lateinit var channel: MethodChannel
 
     val current: FlutterEngine? get() = engine
@@ -44,6 +41,14 @@ object PhoneRuntime {
                         }
                         result.success(null)
                     } catch (e: IllegalStateException) {
+                        result.error("schedule", e.message, null)
+                    }
+                }
+                "schedule" -> {
+                    try {
+                        Reminders.schedule(context, call.arguments as String)
+                        result.success(null)
+                    } catch (e: Exception) {
                         result.error("schedule", e.message, null)
                     }
                 }
@@ -80,8 +85,8 @@ object PhoneRuntime {
         }
     }
 
-    suspend fun sync(context: Context, input: Data): Boolean = mutex.withLock {
-        if (!ready.await()) return@withLock false
+    suspend fun sync(context: Context, input: Data): Boolean {
+        if (!ready.await()) return false
         val completed = CompletableDeferred<Boolean>()
         channel.invokeMethod(if (input.getString("action") == null) "sync" else "action", input.keyValueMap, object : MethodChannel.Result {
             override fun success(result: Any?) {
@@ -93,7 +98,7 @@ object PhoneRuntime {
             override fun error(code: String, message: String?, details: Any?) { completed.complete(false) }
             override fun notImplemented() { completed.complete(false) }
         })
-        completed.await()
+        return completed.await()
     }
 }
 

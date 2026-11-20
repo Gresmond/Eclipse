@@ -110,7 +110,7 @@ class _DueDateDialog extends StatefulWidget {
 
   /// Told a new task's name, typed at the top, on saving; null when it has
   /// one already.
-  final ValueChanged<String>? onName;
+  final void Function(String text, bool allowSmart)? onName;
   final DateTime first;
   final DateTime? last;
   final DateTime? due;
@@ -127,6 +127,9 @@ class _DueDateDialog extends StatefulWidget {
 
 class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
   late DateTime _selected;
+  bool _pickedSchedule = false;
+  bool get _allowSmart =>
+      !_pickedSchedule && _repeat == null && !_birthday && _time == null && _notify == 0 && _place == null;
   late bool _birthday = widget.birthday;
 
   @override
@@ -143,7 +146,7 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
     if (widget.onName case final onName?) {
       // Nothing to add yet: stays open, for the name.
       if (_name.text.trim().isEmpty) return;
-      onName(_name.text);
+      onName(_name.text, _allowSmart);
     }
     Navigator.pop<_DayChoice>(context, (
       day: _selected,
@@ -176,9 +179,15 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
       first: widget.first,
       last: widget.last,
       start: _selected,
-      onStart: (day) => setState(() => _selected = day),
+      onStart: (day) => setState(() {
+        _pickedSchedule = true;
+        _selected = day;
+      }),
       repeat: _repeat,
-      onRepeat: (repeat) => setState(() => _repeat = repeat),
+      onRepeat: (repeat) => setState(() {
+        _pickedSchedule = true;
+        _repeat = repeat;
+      }),
       time: _timeRow(),
       notify: _notifyRow(birthday: _birthday),
       location: _locationRow(onSubmitted: _done),
@@ -216,6 +225,18 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
                     hintStyle: TextStyle(fontFamily: Fonts.body, color: p.inkMuted),
                   ),
                   onSubmitted: (_) => _done(),
+                ),
+                ListenableBuilder(
+                  listenable: Listenable.merge([_name, _location]),
+                  builder: (context, _) {
+                    final state = AppScope.read(context);
+                    if (!_allowSmart || !state.smartAdd) return const SizedBox.shrink();
+                    final preview = _SmartAddPreview(
+                      parsed: parseQuickTask(_name.text, state.today),
+                      today: state.today,
+                    );
+                    return preview.hasTags ? preview : const SizedBox.shrink();
+                  },
                 ),
                 const SizedBox(height: 16),
                 panel,

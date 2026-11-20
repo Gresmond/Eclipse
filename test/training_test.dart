@@ -266,6 +266,10 @@ void main() {
       await tester.pumpAndSettle();
       final set = state.training.session(today).single.$2.single;
       expect((set.weight, set.reps), (106.0, 7));
+      state.training.setDetails(set, 'Pause at the top', 8);
+      await tester.pumpAndSettle();
+      expect(find.text('Pause at the top'), findsOneWidget);
+      expect(find.text('RPE 8'), findsOneWidget);
       await tester.tap(find.text('Add set'));
       await tester.pumpAndSettle();
       expect(state.training.session(today).single.$2.last.weight, 106.0);

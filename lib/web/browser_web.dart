@@ -25,14 +25,16 @@ void Function() onPageLeave(void Function() callback) {
   };
 }
 
-void Function() browserPreferences(AppState state) {
+void Function() browserPreferences(AppState state, bool Function() hasPendingWrite) {
   final scheme = web.window.matchMedia('(prefers-color-scheme: dark)');
   state.nightLightAvailable = true;
   state.nightLightIs(scheme.matches);
   final onScheme = ((web.Event _) => state.nightLightIs(scheme.matches)).toJS;
   final onLeave = ((web.BeforeUnloadEvent event) {
     final sync = state.sync;
-    if (!state.closing && sync != null && sync.isOn && (state.hasJournalDraft(state.shownDay) || sync.hasPendingChanges)) {
+    if (hasPendingWrite() ||
+        state.hasJournalDraft(state.shownDay) ||
+        (!state.closing && sync != null && sync.isOn && sync.hasPendingChanges)) {
       event.preventDefault();
       event.returnValue = ' ';
     }

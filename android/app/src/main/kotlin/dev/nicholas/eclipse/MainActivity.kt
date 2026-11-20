@@ -104,10 +104,6 @@ class MainActivity : FlutterActivity() {
                     Reminders.cancelRest(this)
                     result.success(null)
                 }
-                "schedule" -> {
-                    Reminders.schedule(this, call.arguments as String)
-                    result.success(null)
-                }
                 "initialReminder" -> {
                     val uid = pendingReminderUid
                     pendingReminderUid = null

@@ -87,10 +87,11 @@ Future<void> webMain({
   // What it takes to let go of the data, as far as it's got.
   Future<void> Function() close = () async {};
   late final DataLock lock;
+  var acceptingHandover = false;
   var handingOver = false;
   var signingOut = false;
   Future<void> handOver() async {
-    if (handingOver || signingOut) return;
+    if (!acceptingHandover || handingOver || signingOut) return;
     handingOver = true;
     try {
       await close();
@@ -101,8 +102,10 @@ Future<void> webMain({
           actions: [WebNoticeAction('Use it here', reloadPage)],
         ),
       );
-    } finally {
       lock.release();
+    } catch (error, stack) {
+      handingOver = false;
+      AppLog.failure('Saving before tab handover', error, stack);
     }
   }
 
@@ -133,13 +136,13 @@ Future<void> webMain({
 
   VoidCallback? stopTimers;
   void show(AppState state) {
-    final stopPreferences = browserPreferences(state);
+    final stopPreferences = browserPreferences(state, () => data.hasPendingWrite);
     final stopWatching = watch(state);
     final stopPageLeave = onPageLeave(() {
       if (state.closing) return;
       state.saveDrafts();
       state.store.flushToDisk();
-      unawaited(data.persist());
+      unawaited(data.persist().catchError((Object error) => AppLog.failure('Saving before leaving', error)));
       state.sync?.sendChanges();
     });
     if (state.firstRun) state.startTour();
@@ -153,15 +156,16 @@ Future<void> webMain({
       stopWatching();
     };
     close = () async {
+      await state.shutdown();
       stopTimers?.call();
       stopTimers = null;
-      await state.shutdown();
       await data.close();
     };
     runApp(app(state, updater));
   }
 
   if (_localOnly) {
+    acceptingHandover = true;
     return show(AppState(data.store, persist: data.persist, notifier: BrowserNotifications()));
   }
 
@@ -212,7 +216,12 @@ Future<void> webMain({
       journalAccess: session['journalAccess'] == true,
     );
     if (sync.needsAccountChoice(account)) {
-      _chooseAccount(sync.accountEmail, account, close, lock.release);
+      acceptingHandover = true;
+      _chooseAccount(sync.accountEmail, account, close, lock.release, () {
+        if (handingOver || signingOut) return false;
+        signingOut = true;
+        return true;
+      });
       return;
     }
     if (sync.isOn) {
@@ -268,8 +277,17 @@ Future<void> webMain({
       wasOn = true;
       return;
     }
-    if (!wasOn || handlingExpiry || state.closing || signingOut || signOutPending || turnOnCopy != null) return;
+    if (!wasOn ||
+        handingOver ||
+        handlingExpiry ||
+        state.closing ||
+        signingOut ||
+        signOutPending ||
+        turnOnCopy != null) {
+      return;
+    }
     handlingExpiry = true;
+    acceptingHandover = false;
     state.saveDrafts();
     await data.persist();
     await close();
@@ -278,24 +296,29 @@ Future<void> webMain({
     goTo('$_welcome?expired=1');
   };
   sync.addListener(syncListener);
-  state.signOut = ({bool force = false}) => _signOut(
-    state,
-    data,
-    lock,
-    force: force,
-    onStart: () {
-      signingOut = true;
-      signOutPending = false;
-      sync.removeListener(syncListener);
-      stopTimers?.call();
-      stopTimers = null;
-    },
-    onPending: () {
-      signingOut = false;
-      signOutPending = true;
-      sync.addListener(syncListener);
-    },
-  );
+  state.signOut = ({bool force = false}) async {
+    if (handingOver || signingOut || handlingExpiry) return "Please wait for the current operation to finish.";
+    return _signOut(
+      state,
+      data,
+      lock,
+      force: force,
+      onStart: () {
+        signingOut = true;
+        signOutPending = false;
+        sync.removeListener(syncListener);
+      },
+      onClosing: () {
+        stopTimers?.call();
+        stopTimers = null;
+      },
+      onPending: () {
+        signingOut = false;
+        signOutPending = true;
+        sync.addListener(syncListener);
+      },
+    );
+  };
   show(state);
 
   if (turnOn case final first?) {
@@ -323,6 +346,7 @@ Future<void> webMain({
       turnOnCopy = null;
     }
   }
+  acceptingHandover = true;
   sync.start();
   if (sync.isOn) unawaited(sync.run());
 }
@@ -333,15 +357,21 @@ void _chooseAccount(
   GoogleAccount now,
   Future<void> Function() closeData,
   VoidCallback releaseLock,
+  bool Function() begin,
 ) {
   Future<void> signOutFirst() async {
+    if (!begin()) return;
     await closeData();
-    releaseLock();
-    await sendHttpRequest('POST', Uri.base.resolve('/api/signout'), body: const [], type: 'text/plain');
-    goTo(_welcome);
+    try {
+      await sendHttpRequest('POST', Uri.base.resolve('/api/signout'), body: const [], type: 'text/plain');
+    } finally {
+      releaseLock();
+      goTo(_welcome);
+    }
   }
 
   Future<void> erase() async {
+    if (!begin()) return;
     await closeData();
     try {
       await BrowserData.erase();
@@ -375,6 +405,7 @@ Future<String?> _signOut(
   required bool force,
   required void Function() onStart,
   required void Function() onPending,
+  required void Function() onClosing,
 }) async {
   onStart();
   final sync = state.sync!;
@@ -384,7 +415,14 @@ Future<String?> _signOut(
     onPending();
     return sync.error;
   }
-  await state.shutdown(sync: !force);
+  try {
+    await state.shutdown(sync: !force);
+  } catch (error, stack) {
+    AppLog.failure('Couldn’t finish saving before sign-out', error, stack);
+    onPending();
+    return 'Couldn’t finish saving your changes. Please try again.';
+  }
+  onClosing();
   var serverCleared = false;
   try {
     final (status, _) = await sendHttpRequest(
@@ -400,9 +438,9 @@ Future<String?> _signOut(
   }
   var erased = false;
   try {
-    await data.close().timeout(const Duration(seconds: 10));
+    await data.close();
     remember(_hereKey, null);
-    await BrowserData.erase().timeout(const Duration(seconds: 10));
+    await BrowserData.erase();
     erased = true;
   } catch (e, stack) {
     AppLog.failure('Couldn’t erase browser data', e, stack);

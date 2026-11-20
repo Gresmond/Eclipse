@@ -70,7 +70,24 @@ void main() {
       holidays: [(start: DateTime(2026, 11, 5), end: DateTime(2026, 11, 5))],
     );
     expect(scores[daily.id], (1, 2));
-    expect(scores[weekly.id], (1, 1));
+    expect(scores[weekly.id], (1, 2));
+  });
+
+  test('weekly goals count each eligible day once across month boundaries', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final ritual = store.addHabit(2026, 11, 'Walk', addedOn: DateTime(2026, 10, 26));
+    store.raw.execute('UPDATE month_habits SET weekly=7 WHERE habit_id=?', [ritual.id]);
+    store.setEntry('2026-10-26', ritual.id, HabitStatus.done);
+    store.setEntry('2026-10-27', ritual.id, HabitStatus.other);
+    store.setEntry('2026-10-28', ritual.id, HabitStatus.done);
+    final scores = store.monthScores(
+      2026,
+      11,
+      asOf: DateTime(2026, 11, 1),
+      holidays: [(start: DateTime(2026, 10, 27), end: DateTime(2026, 10, 28))],
+    );
+    expect(scores[ritual.id], (1, 5));
   });
 
   test('weighted bodyweight uses total load for 1RM, clears added weight, and manages routines', () {

@@ -370,10 +370,18 @@ class Store {
     // Assign a week to the month containing its Sunday. The current
     // unfinished week appears provisionally in the month being viewed.
     final now = dateOnly(asOf ?? DateTime.now());
-    for (final h in habits.values.where((h) => h.weekly != null)) {
+    final weekly = habits.values.where((h) => h.weekly != null);
+    if (weekly.isEmpty) return scores;
+    final first = DateTime(year, month), last = DateTime(year, month + 1, 0);
+    final marks = {
+      for (final row in _db.select(
+        'SELECT habit_id, day, status FROM entries WHERE day BETWEEN ? AND ? AND status IN (1, 3)',
+        [dateKey(DateTime(year, month, 2 - first.weekday)), dateKey(last)],
+      ))
+        (row['habit_id'] as int, row['day'] as String): HabitStatus.values[row['status'] as int],
+    };
+    for (final h in weekly) {
       var done = 0, possible = 0;
-      final first = DateTime(year, month);
-      final last = DateTime(year, month + 1, 0);
       for (
         var sunday = DateTime(year, month, 1 + (7 - first.weekday) % 7);
         !sunday.isAfter(DateTime(year, month, last.day + 6));
@@ -385,23 +393,18 @@ class Store {
         final end = sunday.isBefore(now) ? sunday : now;
         final start = h.addedOn != null && monday.isBefore(h.addedOn!) ? h.addedOn! : monday;
         if (start.isAfter(end)) continue;
-        var holidayCount = 0;
-        if (holidays.isNotEmpty) {
-          for (var d = start; !d.isAfter(sunday); d = DateTime(d.year, d.month, d.day + 1)) {
-            if (holidayOn(holidays, d) != null) holidayCount++;
-          }
+        var available = 0, completed = 0, remaining = 0;
+        for (var d = start; !d.isAfter(sunday); d = DateTime(d.year, d.month, d.day + 1)) {
+          if (holidayOn(holidays, d) != null) continue;
+          final mark = d.isAfter(now) ? null : marks[(h.id, dateKey(d))];
+          if (mark == HabitStatus.other) continue;
+          available++;
+          if (d.isAfter(now) || (dateKey(d) == dateKey(now) && mark == null)) remaining++;
+          if (mark == HabitStatus.done) completed++;
         }
-        final row = _db.select(
-          'SELECT sum(status=1) AS done, sum(status=3) AS excused FROM entries WHERE habit_id=? AND day BETWEEN ? AND ?',
-          [h.id, dateKey(start), dateKey(end)],
-        ).first;
-        final available = max(0, daysBetween(start, sunday) + 1 - holidayCount - (row['excused'] as int? ?? 0));
         final target = min(h.weekly!, available);
-        final weekDone = min(target, row['done'] as int? ?? 0);
-        // An unfinished week only holds you to what can still fall short: on
-        // Monday with 0 done and 6 days left, you aren't behind yet.
-        final remaining = sunday.isAfter(now) ? daysBetween(now, sunday) : 0;
-        final weekPossible = sunday.isAfter(now) ? max(weekDone, max(0, target - remaining)) : target;
+        final weekDone = min(target, completed);
+        final weekPossible = weekDone == 0 && sunday.isAfter(now) ? max(0, target - remaining) : target;
         possible += weekPossible;
         done += weekDone;
       }

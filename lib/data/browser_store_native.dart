@@ -6,6 +6,7 @@ class BrowserData {
   static Future<BrowserData> open() => throw UnsupportedError('Not in a browser');
   static Future<void> erase() => throw UnsupportedError('Not in a browser');
 
+  bool get hasPendingWrite => false;
   Store get store => throw UnsupportedError('Not in a browser');
   SyncDisk get disk => throw UnsupportedError('Not in a browser');
   SyncSettings get settings => throw UnsupportedError('Not in a browser');

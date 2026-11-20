@@ -21,13 +21,13 @@ class BrowserData {
   BrowserData._(this._files, this.store, this._syncDb, this._snapshot)
     : disk = DatabaseDisk(_syncDb),
       settings = DatabaseSettings(_syncDb) {
-    if (_snapshot != null) {
-      for (final db in [store.raw, _syncDb]) {
-        _listeners.add(db.commits.listen((_) {
-          if (identical(db, store.raw) && store.inTempWork) return;
-          _changed();
-        }));
-      }
+    for (final db in [store.raw, _syncDb]) {
+      db.commitFilter = () {
+        // Capture temp-only search work synchronously. SQLite delivers its
+        // commits stream after the caller has already reset inTempWork.
+        if (!identical(db, store.raw) || !store.inTempWork) _changed();
+        return true;
+      };
     }
   }
 
@@ -37,7 +37,8 @@ class BrowserData {
   final CommonDatabase _syncDb;
   final SyncDisk disk;
   final SyncSettings settings;
-  final _listeners = <StreamSubscription<void>>[];
+  bool get hasPendingWrite => _dirty || _writing != null;
+  bool _scheduled = false;
   Future<void>? _writing;
   bool _dirty = false;
 
@@ -183,7 +184,12 @@ class BrowserData {
 
   void _changed() {
     _dirty = true;
-    unawaited(_drain().catchError((Object error) => AppLog.failure('Saving browser data', error)));
+    if (_scheduled) return;
+    _scheduled = true;
+    scheduleMicrotask(() {
+      _scheduled = false;
+      if (_dirty) unawaited(_drain().catchError((Object error) => AppLog.failure('Saving browser data', error)));
+    });
   }
 
   Future<void> _drain() => _writing ??= _save().whenComplete(() => _writing = null);
@@ -192,7 +198,11 @@ class BrowserData {
     while (_dirty) {
       _dirty = false;
       try {
-        await _write(_snapshot!, _files);
+        if (_files case final IndexedDbFileSystem legacy) {
+          await legacy.flush();
+        } else {
+          await _write(_snapshot!, _files);
+        }
       } catch (_) {
         _dirty = true;
         rethrow;
@@ -202,22 +212,12 @@ class BrowserData {
 
   Future<void> persist({bool force = false}) async {
     store.flushToDisk();
-    if (_files case final IndexedDbFileSystem legacy) {
-      await legacy.flush();
-    } else {
-      if (force) _dirty = true;
-      if (!_dirty && _writing == null) return;
-      await _drain();
-    }
+    if (force) _dirty = true;
+    if (hasPendingWrite) await _drain();
   }
 
   Future<void> close() async {
-    for (final sub in _listeners) {
-      await sub.cancel();
-    }
-    if (_files is! IndexedDbFileSystem && (_dirty || _writing != null)) {
-      await _drain();
-    }
+    if (hasPendingWrite) await _drain();
     _syncDb.close();
     if (_files case final IndexedDbFileSystem legacy) {
       await legacy.flush();

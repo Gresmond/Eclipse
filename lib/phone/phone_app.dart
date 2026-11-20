@@ -211,7 +211,8 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   void _openReminder(String uid) {
     _state.openReminder(uid);
     final inToday = _state.todos[TodoScope.today]!.any((t) => t.uid == uid);
-    final inPlan = !inToday && _state.store.remindingTodoByUid(uid) != null;
+    final occurrenceDay = uid.contains('@') ? DateTime.tryParse(uid.split('@').last) : null;
+    final inPlan = !inToday && (_state.store.remindingTodoByUid(uid) != null || occurrenceDay?.isAfter(_state.today) == true);
     _home.currentState?.select(inPlan ? 1 : 0);
     _navigator.currentState?.popUntil((route) => route.isFirst);
   }
@@ -222,7 +223,8 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
       _lastSyncOn = syncOn;
       unawaited(PhonePlatform.setBackgroundSync(syncOn));
     }
-    if (!syncOn && _wasSignedIn) {
+    final signedOut = !syncOn && _wasSignedIn;
+    if (signedOut) {
       _navigator.currentState?.popUntil((route) => route.isFirst);
     }
     _wasSignedIn = syncOn;
@@ -230,7 +232,11 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
     if (key == _reminderKey) return;
     _reminderKey = key;
     _scheduleDirty = true;
-    _changed();
+    if (syncOn) {
+      _changed();
+    } else if (signedOut) {
+      _flushSchedule();
+    }
   }
 
   /// Puts the alarms right once a burst of changes has settled.
@@ -243,7 +249,7 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   void _runSchedule() {
     _scheduling = null;
     _scheduleDirty = false;
-    if (!_askedNotifications && _state.upcomingReminders().isNotEmpty) {
+    if (!_askedNotifications && _state.sync?.isOn != false && _state.upcomingReminders().isNotEmpty) {
       _askedNotifications = true;
       unawaited(PhonePlatform.askNotifications());
     }

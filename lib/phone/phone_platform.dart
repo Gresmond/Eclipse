@@ -25,24 +25,26 @@ class PhonePlatform {
         final args = call.arguments as Map;
         final key = args['key'] as String, action = args['action'] as String;
         final account = args['account'] as String?;
-        final matchesAccount = activeSync ? account == sync.email : (account == null || account.isEmpty);
+        final matchesAccount = activeSync
+            ? account == sync.email
+            : sync == null && (account == null || account.isEmpty);
         if (action == 'snooze' || action == 'done') {
           if (matchesAccount) {
             state.notificationAction(key, action);
             // Persist updated alarms immediately before awaiting network sync.
-            await schedule(state).catchError((Object _) {});
+            await schedule(state);
           }
         }
       } else if (call.method != 'sync') {
         throw MissingPluginException();
       }
       state.saveDrafts();
+      await state.backedUp;
       if (activeSync) {
         await sync.run();
         if (sync.hasPendingChanges) await sync.run();
         if (sync.error != null && call.method == 'sync') throw StateError(sync.error!);
       }
-      await state.backedUp;
       state.store.flushToDisk();
       return _alarms(state);
     });
@@ -125,26 +127,28 @@ class PhonePlatform {
 
   /// Sets [state]'s reminders still to come as the phone's alarms, in place
   /// of those set before.
-  static Future<void> schedule(AppState state) => _channel.invokeMethod<void>('schedule', _alarms(state));
+  static Future<void> schedule(AppState state) => _background.invokeMethod<void>('schedule', _alarms(state));
 
-  static String _alarms(AppState state) => jsonEncode([
-    for (final r in state.upcomingReminders())
-      {
-        'key': r.key,
-        'account': state.sync?.email,
-        'uid': r.uid,
-        'at': r.at.millisecondsSinceEpoch,
-        'year': r.at.year,
-        'month': r.at.month,
-        'day': r.at.day,
-        'hour': r.at.hour,
-        'minute': r.at.minute,
-        'second': r.at.second,
-        'exact': r.snoozed,
-        'title': r.title,
-        'body': r.body,
-      },
-  ]);
+  static String _alarms(AppState state) => state.sync?.isOn == false
+      ? '[]'
+      : jsonEncode([
+          for (final r in state.upcomingReminders())
+            {
+              'key': r.key,
+              'account': state.sync?.email,
+              'uid': r.uid,
+              'at': r.at.millisecondsSinceEpoch,
+              'year': r.at.year,
+              'month': r.at.month,
+              'day': r.at.day,
+              'hour': r.at.hour,
+              'minute': r.at.minute,
+              'second': r.at.second,
+              'exact': r.snoozed,
+              'title': r.title,
+              'body': r.body,
+            },
+        ]);
 
   /// Opens Android's installer on [apk]; false if it first had to ask to be
   /// allowed to, and so wants trying again.

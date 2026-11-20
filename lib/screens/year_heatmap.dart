@@ -174,7 +174,7 @@ class _YearHeatmapState extends State<YearHeatmap> {
           continue;
         }
         final day = DateTime.parse(e.day);
-        if (!h.startedBy(day) || !h.onDay(day)) continue;
+        if (!h.startedBy(day) || !h.onDay(day) || holidayOn(state.holidays, day) != null) continue;
         final isDone = e.status == HabitStatus.done;
         logged[e.day] = (logged[e.day] ?? 0) + 1;
         if (isDone) done[e.day] = (done[e.day] ?? 0) + 1;

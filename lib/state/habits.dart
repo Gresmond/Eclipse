@@ -265,7 +265,7 @@ mixin _Habits on ChangeNotifier {
     final monday = DateTime(day.year, day.month, day.day - day.weekday + 1);
     var count = 0;
     for (var d = monday; !d.isAfter(day); d = DateTime(d.year, d.month, d.day + 1)) {
-      if (statusOf(d, habit) == HabitStatus.done) count++;
+      if (habit.startedBy(d) && holidayOn(holidays, d) == null && statusOf(d, habit) == HabitStatus.done) count++;
     }
     return count;
   }
