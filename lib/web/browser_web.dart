@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:js_interop';
+import 'dart:math' as math;
 
 import 'package:web/web.dart' as web;
 
@@ -70,21 +71,29 @@ class DataLock {
   static const _name = 'eclipse-data';
 
   static Future<DataLock> take({required void Function() onAsked}) async {
+    final id = '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(1 << 30)}';
     final channel = web.BroadcastChannel(_name);
-    channel.postMessage('wanted'.toJS);
+    channel.postMessage(id.toJS);
     final held = Completer<void>();
     final release = Completer<void>();
+    final repeat = Timer.periodic(const Duration(milliseconds: 300), (_) {
+      if (!held.isCompleted) channel.postMessage(id.toJS);
+    });
     web.window.navigator.locks.request(
       _name,
       ((web.Lock? _) {
+        repeat.cancel();
         held.complete();
         return release.future.toJS;
       }).toJS,
     );
     await held.future;
-    // Listens only once it's the holder: a request of its own never reaches it,
-    // and one sent while it waited was for the tab before it.
-    channel.onmessage = ((web.MessageEvent _) => onAsked()).toJS;
+    // Listens only once it's the holder, ignoring repeats from our own request.
+    channel.onmessage = ((web.MessageEvent event) {
+      final sender = event.data;
+      if (sender != null && sender.isA<JSString>() && (sender as JSString).toDart == id) return;
+      onAsked();
+    }).toJS;
     return DataLock._(release, channel);
   }
 
@@ -108,12 +117,16 @@ class BrowserNotifications implements ReminderNotifier, ReminderPermission {
   @override
   void show(ReminderAlert alert, String body) {
     if (access != ReminderAccess.allowed) return;
-    final shown = web.Notification(alert.text, web.NotificationOptions(body: body, tag: alert.uid));
-    shown.onclick = ((web.Event _) {
-      web.window.focus();
-      shown.close();
-      _open?.call(alert.uid);
-    }).toJS;
+    try {
+      final shown = web.Notification(alert.text, web.NotificationOptions(body: body, tag: alert.uid));
+      shown.onclick = ((web.Event _) {
+        web.window.focus();
+        shown.close();
+        _open?.call(alert.uid);
+      }).toJS;
+    } catch (_) {
+      // Mobile browsers disallow direct Notification construction outside SWs.
+    }
   }
 
   @override
@@ -131,6 +144,10 @@ class BrowserNotifications implements ReminderNotifier, ReminderPermission {
 
   @override
   Future<void> ask() async {
-    await web.Notification.requestPermission().toDart;
+    try {
+      await web.Notification.requestPermission().toDart;
+    } catch (_) {
+      // Permission API unavailable or blocked by the browser.
+    }
   }
 }

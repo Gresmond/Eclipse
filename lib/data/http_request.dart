@@ -64,7 +64,10 @@ Future<(int, Uint8List)> sendHttpRequest(
         req.add(body);
       }
       final response = await req.close();
-      if (timedOut) return;
+      if (timedOut) {
+        unawaited(response.drain<void>().catchError((Object _) {}));
+        return;
+      }
       final bytes = BytesBuilder(copy: false);
       final done = bodyDone = Completer<void>();
       subscription = response.listen(
@@ -118,7 +121,7 @@ Future<int> downloadFile(
     activeRequest?.abort();
     unawaited(subscription?.cancel() ?? Future<void>.value());
     if (activeBody != null && !activeBody!.isCompleted) activeBody!.complete();
-    if (!completer.isCompleted) {
+    if (sink == null && !completer.isCompleted) {
       completer.completeError(TimeoutException('Download timed out', timeout));
     }
   });
@@ -134,7 +137,10 @@ Future<int> downloadFile(
         }
         req.followRedirects = false;
         response = await req.close();
-        if (timedOut) return;
+        if (timedOut) {
+          unawaited(response.drain<void>().catchError((Object _) {}));
+          return;
+        }
         if (response.isRedirect && redirects < maxRedirects) {
           final location = response.headers.value(HttpHeaders.locationHeader);
           await response.drain<void>();
@@ -169,6 +175,7 @@ Future<int> downloadFile(
       if (timedOut) {
         await fileSink.close();
         sink = null;
+        if (!completer.isCompleted) completer.completeError(TimeoutException('Download timed out', timeout));
         return;
       }
       await fileSink.flush();
@@ -186,6 +193,15 @@ Future<int> downloadFile(
           timedOut ? TimeoutException('Download timed out', timeout) : error,
           stack,
         );
+      }
+    } finally {
+      if (sink != null) {
+        try {
+          await sink!.close();
+        } catch (_) {}
+      }
+      if (timedOut && !completer.isCompleted) {
+        completer.completeError(TimeoutException('Download timed out', timeout));
       }
     }
   }());

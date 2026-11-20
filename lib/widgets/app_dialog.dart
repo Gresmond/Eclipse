@@ -95,14 +95,17 @@ Future<T?> showAppDialog<T>({required BuildContext context, required WidgetBuild
       context: context,
       builder: (context) => TextFieldTapRegion(child: builder(context)),
       themes: InheritedTheme.capture(from: context, to: navigator.context),
+      disableAnimations: MediaQuery.maybeDisableAnimationsOf(context) ?? false,
     ),
   );
 }
 
 class _AppDialogRoute<T> extends DialogRoute<T> {
-  _AppDialogRoute({required super.context, required super.builder, required super.themes})
+  _AppDialogRoute({required super.context, required super.builder, required super.themes, required bool disableAnimations})
     : super(
-        animationStyle: const AnimationStyle(duration: Motion.morph, reverseDuration: Motion.morph),
+        animationStyle: disableAnimations
+            ? const AnimationStyle(duration: Duration.zero, reverseDuration: Duration.zero)
+            : const AnimationStyle(duration: Motion.morph, reverseDuration: Motion.morph),
       );
 
   /// The shade fades with the panel, rather than ahead of it.

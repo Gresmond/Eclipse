@@ -77,11 +77,8 @@ class Shell extends StatelessWidget {
     final state = AppScope.watch(context, (s) => (s.navigation, s.touring));
     final month = state.viewMonth;
 
-    final narrowGrid =
-        kIsWeb &&
-        MediaQuery.sizeOf(context).width < 850 &&
-        !state.showingTraining &&
-        (state.viewingYear || month != null);
+    final hasWideGrid = kIsWeb && !state.showingTraining && (state.viewingYear || month != null);
+    final narrowGrid = hasWideGrid && MediaQuery.sizeOf(context).width < 850;
     final content = state.showingTraining
         ? const TrainingView(key: ValueKey('training'))
         : state.viewingYear
@@ -100,11 +97,13 @@ class Shell extends StatelessWidget {
           child: FadeThrough(
             deferBuild: true,
             layoutBuilder: FadeThrough.fill,
-            child: narrowGrid
+            child: hasWideGrid
                 ? LayoutBuilder(
+                    key: ValueKey(state.viewingYear ? 'year-grid' : 'month-grid'),
                     builder: (context, box) => SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: SizedBox(width: 850, height: box.maxHeight, child: content),
+                      physics: narrowGrid ? null : const NeverScrollableScrollPhysics(),
+                      child: SizedBox(width: narrowGrid ? 850 : box.maxWidth, height: box.maxHeight, child: content),
                     ),
                   )
                 : content,
@@ -168,37 +167,86 @@ class _Header extends StatelessWidget {
     if (kIsWeb && MediaQuery.sizeOf(context).width < 850) {
       return SafeArea(
         bottom: false,
-        child: Row(
-          children: [
-            Expanded(
-              child: PopupMenuButton<VoidCallback>(
-                tooltip: 'Change view',
-                onSelected: (action) => action(),
-                itemBuilder: (_) => [
-                  PopupMenuItem(value: state.showToday, child: const Text('Today')),
-                  for (final m in months)
-                    PopupMenuItem(value: () => state.showMonth(m), child: Text(monthNames[m - 1])),
-                  PopupMenuItem(value: state.showYear, child: const Text('Year')),
-                  PopupMenuItem(value: state.toggleTraining, child: const Text('Training')),
-                ],
-                child: Material(
-                  color: Colors.transparent,
-                  child: ListTile(
-                    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: const Icon(Icons.expand_more_rounded),
+        child: Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: PopupMenuButton<VoidCallback>(
+                  tooltip: 'Change view',
+                  onSelected: (action) => action(),
+                  itemBuilder: (_) => [
+                    PopupMenuItem(value: state.showToday, child: const Text('Today')),
+                    for (final m in months)
+                      PopupMenuItem(value: () => state.showMonth(m), child: Text(monthNames[m - 1])),
+                    PopupMenuItem(value: state.showYear, child: const Text('Year')),
+                    PopupMenuItem(
+                      value: () {
+                        if (!state.showingTraining) state.toggleTraining();
+                      },
+                      child: const Text('Training'),
+                    ),
+                    if (!elsewhere && (state.viewYear > state.firstMonth.$1 || state.viewYear < today.year)) ...[
+                      const PopupMenuDivider(),
+                      if (state.viewYear > state.firstMonth.$1)
+                        PopupMenuItem(
+                          value: () => state.shiftYear(-1),
+                          child: Text('Previous year (${state.viewYear - 1})'),
+                        ),
+                      if (state.viewYear < today.year)
+                        PopupMenuItem(
+                          value: () => state.shiftYear(1),
+                          child: Text('Next year (${state.viewYear + 1})'),
+                        ),
+                    ],
+                  ],
+                  child: Material(
+                    color: Colors.transparent,
+                    child: ListTile(
+                      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        kicker.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: capsLabel(p.inkMuted),
+                      ),
+                      trailing: const Icon(Icons.expand_more_rounded),
+                    ),
                   ),
                 ),
               ),
-            ),
-            IconButton(
-              tooltip: 'Search',
-              icon: const Icon(Icons.search),
-              onPressed: () => showAppDialog<void>(context: context, builder: (_) => const SearchDialog()),
-            ),
-            const _SettingsButton(),
-            const _ThemeButton(),
-            const SizedBox(width: 8),
-          ],
+              if (onDay) ...[
+                IconButton(
+                  tooltip: 'Look back at another day',
+                  icon: const Icon(Icons.calendar_today_rounded),
+                  onPressed: () => showFadeMenu(
+                    context,
+                    alignLeft: true,
+                    width: 312,
+                    builder: (_) {
+                      final (y, m) = state.firstMonth;
+                      return DayPicker(
+                        today: state.today,
+                        first: DateTime(y, m),
+                        selected: state.shownDay,
+                        onPick: state.showDay,
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              IconButton(
+                tooltip: 'Search',
+                icon: const Icon(Icons.search_rounded),
+                onPressed: () => showAppDialog<void>(context: context, builder: (_) => const SearchDialog()),
+              ),
+              const SizedBox(width: 10),
+              const _SettingsButton(),
+              const SizedBox(width: 10),
+              const _ThemeButton(),
+            ],
+          ),
         ),
       );
     }
@@ -513,19 +561,29 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
       : _Tab.boldWidth(context, _pastLabel ?? '');
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final duration = context.themed(Motion.morph);
+    _pastOpen.duration = duration;
+    _relabel.duration = duration;
+  }
+
+  @override
   void didUpdateWidget(_TabBar old) {
     super.didUpdateWidget(old);
     if (widget.past != null) {
       _fold?.cancel();
-      if (old.past != null && old.past != widget.past) {
+      if (_pastOpen.value > 0 && _pastLabel != null && _pastLabel != widget.past) {
         _fromWidth = _labelWidth;
         _toWidth = _Tab.boldWidth(context, widget.past!);
         _relabel.forward(from: 0);
+      } else if (_pastOpen.value == 0) {
+        _relabel.value = 1;
       }
       _pastLabel = widget.past;
       _pastOpen.forward();
     } else if (old.past != null) {
-      _fold = Timer(Motion.morph, () {
+      _fold = Timer(context.themed(Motion.morph), () {
         if (mounted) _pastOpen.reverse();
       });
     }
@@ -568,7 +626,16 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
                 child: Align(
                   alignment: Alignment.centerRight,
                   widthFactor: t,
-                  child: Opacity(opacity: t, child: child),
+                  child: IgnorePointer(
+                    ignoring: t == 0,
+                    child: ExcludeFocus(
+                      excluding: t == 0,
+                      child: ExcludeSemantics(
+                        excluding: t == 0,
+                        child: Opacity(opacity: t, child: child),
+                      ),
+                    ),
+                  ),
                 ),
               );
             },
@@ -856,7 +923,9 @@ class _AppearanceMenu extends StatelessWidget {
           FadeMenuRow(
             height: 50,
             onTap: () {
-              if (kIsWeb && state.followNightLight) state.setFollowNightLight(false);
+              if (kIsWeb && state.followNightLight && option.brightness != p.brightness) {
+                state.setFollowNightLight(false);
+              }
               state.setTheme(option.name);
               Navigator.pop(context);
             },
@@ -892,8 +961,10 @@ class _AppearanceMenu extends StatelessWidget {
         if (state.nightLightAvailable) ...[
           const FadeMenuDivider(),
           SettingSwitchRow(
-            title: 'Follow the sun',
-            subtitle: 'Switch to your theme’s dark partner when Night Light is on.',
+            title: kIsWeb ? 'Follow system dark mode' : 'Follow the sun',
+            subtitle: kIsWeb
+                ? 'Switch to your theme’s dark partner when your browser prefers dark mode.'
+                : 'Switch to your theme’s dark partner when Night Light is on.',
             on: state.followNightLight,
             onTap: () => state.setFollowNightLight(!state.followNightLight),
           ),

@@ -38,7 +38,7 @@ class _MonthViewState extends State<MonthView> {
 
   /// The page's height not taken by the two grids' rows: the page's and
   /// cards' padding, their headers, day headers and percentages.
-  static const _chrome = 507.0;
+  static const _chrome = 515.0;
 
   bool _editing = false;
   bool _editingSleep = false;
@@ -110,26 +110,18 @@ class _MonthViewState extends State<MonthView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // The button hangs over the header line rather than making it
-                // taller, so the two grids still fit the window.
-                Stack(
-                  clipBehavior: Clip.none,
+                Row(
                   children: [
-                    const SizedBox(width: double.infinity),
-                    Text('SLEEP SCHEDULE  ·  ${sleep.length}', style: header),
-                    Positioned(
-                      right: 0,
-                      top: -12,
-                      child: _editButton(
-                        future,
-                        _editingSleep,
-                        'Edit times',
-                        () => setState(() => _editingSleep = !_editingSleep),
-                      ),
+                    Expanded(child: Text('SLEEP SCHEDULE  ·  ${sleep.length}', style: header)),
+                    _editButton(
+                      future,
+                      _editingSleep,
+                      'Edit times',
+                      () => setState(() => _editingSleep = !_editingSleep),
                     ),
                   ],
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 10),
                 AnimatedSize(
                   duration: Motion.morph,
                   curve: Motion.morphCurve,
@@ -227,7 +219,8 @@ class _MonthHabitRow extends StatefulWidget {
     required this.habit,
     required this.cells,
     required this.layout,
-    required this.clickableDays,
+    required this.firstClickableDay,
+    required this.lastClickableDay,
     required this.nameWidth,
     required this.cellSize,
     required this.laidOut,
@@ -243,8 +236,9 @@ class _MonthHabitRow extends StatefulWidget {
   final List<Widget> cells;
   final _ColumnLayout layout;
 
-  /// How many squares, from the first, can be clicked (days after today can't).
-  final int clickableDays;
+  /// Range of column numbers (1-based) that can be edited; 0 when none.
+  final int firstClickableDay;
+  final int lastClickableDay;
   final double nameWidth;
 
   /// The squares' size as drawn, which eases between months, and the size
@@ -260,10 +254,12 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
   bool _hover = false;
 
   /// Lit only while the pointer is over the squares that can be clicked,
-  /// not the empty part of the row past them.
+  /// not locked past days or future days.
   void _setHover(double? x) {
     final layout = widget.layout;
-    final hover = x != null && x < widget.clickableDays.clamp(0, layout.shown.value) * layout.col;
+    final first = widget.firstClickableDay;
+    final last = widget.lastClickableDay.clamp(0, layout.shown.value);
+    final hover = x != null && first > 0 && x >= (first - 1) * layout.col && x < last * layout.col;
     if (hover != _hover) setState(() => _hover = hover);
   }
 
@@ -338,7 +334,8 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                         child: CustomPaint(
                           painter: _HighlightPainter(
                             layout: widget.layout,
-                            clickableDays: widget.clickableDays,
+                            firstClickableDay: widget.firstClickableDay,
+                            lastClickableDay: widget.lastClickableDay,
                             cellSize: cellSize,
                             color: p.empty.withValues(alpha: 0.6),
                           ),
@@ -444,8 +441,8 @@ class _DayHeader extends StatelessWidget {
             builder: (context, t, _) {
               final letterFg = holiday
                   ? p.accent
-                  : Color.lerp(weekend ? p.otherInk : p.inkMuted, p.inkMuted.withValues(alpha: 0.6), r)!;
-              final numberFg = holiday ? p.accent : Color.lerp(p.ink, p.inkMuted.withValues(alpha: 0.75), r)!;
+                  : Color.lerp(weekend ? p.otherInk : p.inkMuted, p.inkMuted, r)!;
+              final numberFg = holiday ? p.accent : Color.lerp(p.ink, p.inkMuted, r)!;
               // Inset as it sits inside a rest band, 4px from the band on
               // every side with corners following the band's, on every day.
               return Container(

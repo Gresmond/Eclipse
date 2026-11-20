@@ -135,12 +135,25 @@ class _FadeThroughState extends State<FadeThrough> with TickerProviderStateMixin
     final entry = _Entry(child, controller, _serial++);
     controller.addStatusListener((status) {
       if (status == AnimationStatus.dismissed && _outgoing.remove(entry)) {
-        setState(() {});
+        if (mounted) setState(() {});
         controller.dispose();
       }
     });
     entry.transition = _transition(entry);
     return entry;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!(MediaQuery.maybeDisableAnimationsOf(context) ?? false)) return;
+    for (final entry in _outgoing) {
+      entry.controller.dispose();
+    }
+    _outgoing.clear();
+    if (_current.controller.isAnimating) {
+      _current.controller.value = 1;
+    }
   }
 
   Widget _transition(_Entry entry) {

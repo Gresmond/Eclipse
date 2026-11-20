@@ -22,8 +22,7 @@ apply_standard_settings(${BINARY_NAME})
 add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
 
 # Add dependency libraries. Add any application-specific dependencies here.
-find_package(OpenSSL REQUIRED)
-target_link_libraries(${BINARY_NAME} PRIVATE flutter OpenSSL::Crypto)
+target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 # The tray icon's right-click menu.
 pkg_check_modules(DBUSMENU REQUIRED IMPORTED_TARGET dbusmenu-glib-0.4)

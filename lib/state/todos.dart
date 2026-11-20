@@ -26,13 +26,13 @@ mixin _Todos on ChangeNotifier {
   final _orderedTodos = LruCache<(TodoScope, String?), List<TodoItem>>(16);
 
   /// The repeats stay: everything that changes one forgets them itself.
-  void _todosChanged() {
+  void _todosChanged({bool notify = true}) {
     _todoDays.clear();
     _orderedTodos.clear();
     _invalidateFirstDay();
     todosRevision++;
     _pruneReminderCards(notify: false);
-    notifyListeners();
+    if (notify) notifyListeners();
   }
 
   final Map<TodoScope, List<TodoItem>> todos = {};
@@ -67,17 +67,37 @@ mixin _Todos on ChangeNotifier {
 
   bool get smartAdd;
 
-  void quickAddTodo(TodoScope scope, String text, {DateTime? dueDate, int? time, bool birthday = false, int reminders = 0, String? location}) {
-    if (smartAdd && !birthday) {
-      final defaultDay = dueDate ?? (scope == TodoScope.tomorrow ? DateTime(today.year, today.month, today.day + 1) : today);
+  void quickAddTodo(
+    TodoScope scope,
+    String text, {
+    DateTime? dueDate,
+    int? time,
+    bool birthday = false,
+    int reminders = 0,
+    String? location,
+    bool allowSmart = true,
+  }) {
+    if (smartAdd && allowSmart && !birthday) {
+      final defaultDay =
+          dueDate ?? (scope == TodoScope.tomorrow ? DateTime(today.year, today.month, today.day + 1) : today);
       final parsed = parseQuickTask(text, today, defaultDay: defaultDay, defaultTime: time);
       text = parsed.name;
-      if (parsed.day case final day?) { (scope, dueDate) = scopeForDay(today, day); }
+      if (parsed.day case final day?) {
+        if (dueDate == null) (scope, dueDate) = scopeForDay(today, day);
+      }
       time ??= parsed.minutes;
       location ??= parsed.location;
       reminders |= parsed.reminders;
       if (parsed.repeat case final rule?) {
-        addRepeat(text, rule, parsed.day!, until: parsed.until, time: time, location: location, reminders: reminders);
+        addRepeat(
+          text,
+          rule,
+          dueDate ?? parsed.day!,
+          until: parsed.until,
+          time: time,
+          location: location,
+          reminders: reminders,
+        );
         return;
       }
     }
@@ -139,6 +159,7 @@ mixin _Todos on ChangeNotifier {
         dueDate: dueDate,
         time: time,
         birthday: birthday,
+        reminders: reminders,
         location: location,
       );
     }
@@ -165,10 +186,20 @@ mixin _Todos on ChangeNotifier {
     _todosChanged();
   }
 
+  static bool _onlySubtaskTicksChanged(List<TodoSubtask> a, List<TodoSubtask> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].text != b[i].text || a[i].numbered != b[i].numbered || a[i].note != b[i].note) return false;
+    }
+    return true;
+  }
+
   void setTodoSubtasks(TodoScope scope, TodoItem item, List<TodoSubtask> children, {DateTime? day}) {
     final target = day ?? today;
     if (!canEditDay(target)) return;
-    _removed('Changed subtasks of “${item.text}”', _taskSnapshots(item));
+    if (!_onlySubtaskTicksChanged(item.subtasks, children)) {
+      _removed('Changed subtasks of “${item.text}”', _taskSnapshots(item));
+    }
     store.setTodoSubtasks(scope, item, children, target, today: today);
     _reloadTodos();
     _todosChanged();
@@ -217,10 +248,14 @@ mixin _Todos on ChangeNotifier {
         reminders: reminders,
         location: location,
       );
-      // Given another day, it goes where that day's tasks are kept.
-      if (anchoredDue != null && anchoredDue != item.dueDate) {
-        final (destination, due) = scopeForDay(today, anchoredDue);
-        store.moveTodo(item.id, destination, today, due: due);
+      // Given another day, or cleared on a week/month task, it goes where it belongs.
+      if (anchoredDue != item.dueDate) {
+        if (anchoredDue != null) {
+          final (destination, due) = scopeForDay(today, anchoredDue);
+          store.moveTodo(item.id, destination, today, due: due);
+        } else if (scope == TodoScope.week || scope == TodoScope.month) {
+          store.moveTodo(item.id, TodoScope.today, today);
+        }
       }
       _quietReminders((uid) => uid == item.uid);
       store.promoteDueTodos(today, earliest: today);
@@ -235,6 +270,7 @@ mixin _Todos on ChangeNotifier {
         dueDate: dueDate,
         time: time,
         birthday: birthday,
+        reminders: reminders,
         location: location,
       );
     }
@@ -250,11 +286,12 @@ mixin _Todos on ChangeNotifier {
       return false;
     }
     final repeat = future ? repeatOf(into) : null;
+    final snapshots = [
+      ..._taskSnapshots(from),
+      ..._taskSnapshots(into),
+      if (repeat != null) ..._repeatBefore(repeat),
+    ];
     store.transaction(() {
-      _removed('Nested “${from.text}”', [
-        ..._taskSnapshots(from), ..._taskSnapshots(into),
-        if (repeat != null) ..._repeatBefore(repeat),
-      ]);
       store.nestTodo(targetScope, from, into, today);
       if (repeat != null) {
         store.setRepeatSubtasks(
@@ -268,6 +305,7 @@ mixin _Todos on ChangeNotifier {
         );
       }
     });
+    _removed('Nested “${from.text}”', snapshots);
     if (repeat != null) _repeats = null;
     _reloadTodos();
     _todosChanged();
@@ -399,7 +437,8 @@ mixin _Todos on ChangeNotifier {
   TodoItem occurrence(Repeat repeat, DateTime day) {
     final item = store.makeOccurrence(repeat, day);
     _startDay();
-    _todosChanged();
+    _invalidateFirstDay();
+    notifyListeners();
     return item;
   }
 
@@ -426,7 +465,8 @@ mixin _Todos on ChangeNotifier {
     );
     _startDay();
     _quietReminders(_timesOf(repeat.uid));
-    _todosChanged();
+    _invalidateFirstDay();
+    notifyListeners();
   }
 
   DateTime? _firstActiveOccurrence(Repeat repeat, DateTime from) {
@@ -450,12 +490,15 @@ mixin _Todos on ChangeNotifier {
     bool birthday = false,
     int reminders = 0,
     String? location,
+    ({String? value})? note,
   }) {
+    if (text.trim().isEmpty) return;
     final day =
         start ??
         item.dueDate ??
         (scope == TodoScope.tomorrow ? DateTime(today.year, today.month, today.day + 1) : today);
     final first = day.isBefore(today) ? today : dateOnly(day);
+    final keptNote = note != null ? cleanNote(note.value) : item.note;
     final repeat = store.transaction(() {
       final repeat = store.addRepeat(
         normaliseNote(text.trim()),
@@ -476,9 +519,9 @@ mixin _Todos on ChangeNotifier {
           if (item.subtasks.isNotEmpty) {
             store.setTodoSubtasks(TodoScope.month, occurrence, item.subtasks, today, today: today);
           }
-          if (item.note != null) store.setTodoNote(TodoScope.month, occurrence, item.note, today, today: today);
+          if (keptNote != null) store.setTodoNote(TodoScope.month, occurrence, keptNote, today, today: today);
           store.setTodoDone(occurrence.id, true, day: today, cascade: false);
-        } else if (occDay != null && (item.note != null || item.subtasks.any((child) => child.note != null))) {
+        } else if (occDay != null && (keptNote != null || item.subtasks.any((child) => child.note != null))) {
           final occurrence = store.makeOccurrence(repeat, occDay);
           if (item.subtasks.any((child) => child.note != null)) {
             store.setTodoSubtasks(
@@ -489,24 +532,24 @@ mixin _Todos on ChangeNotifier {
               today: today,
             );
           }
-          if (item.note != null) store.setTodoNote(TodoScope.month, occurrence, item.note, today, today: today);
+          if (keptNote != null) store.setTodoNote(TodoScope.month, occurrence, keptNote, today, today: today);
         }
       } else {
         store.deleteTodo(item.id, day: today);
         // The first time keeps its ticks and notes, which the repeat doesn't.
-        final kept = item.note != null || item.subtasks.any((child) => child.done || child.note != null);
+        final kept = keptNote != null || item.subtasks.any((child) => child.done || child.note != null);
         if (kept && occDay != null) {
           final occurrence = store.makeOccurrence(repeat, occDay);
           store.setTodoSubtasks(TodoScope.month, occurrence, item.subtasks, today, today: today);
-          if (item.note != null) store.setTodoNote(TodoScope.month, occurrence, item.note, today, today: today);
+          if (keptNote != null) store.setTodoNote(TodoScope.month, occurrence, keptNote, today, today: today);
         }
       }
       return repeat;
     });
-    _reloadTodos();
     _startDay();
     _quietReminders(_timesOf(repeat.uid));
-    _todosChanged();
+    _invalidateFirstDay();
+    notifyListeners();
   }
 
   /// Renames [repeat] from [from] on, and sets its time, whether it's a
@@ -542,11 +585,12 @@ mixin _Todos on ChangeNotifier {
   void setRepeatSubtasks(TodoScope scope, TodoItem item, Repeat repeat, List<TodoSubtask> children, {DateTime? day}) {
     final target = day ?? today;
     if (!canEditDay(target)) return;
+    final snapshots = _repeatBefore(repeat);
     store.transaction(() {
-      _removed('Changed repeating subtasks', _repeatBefore(repeat));
       store.setRepeatSubtasks(repeat.uid, children, item.repeatDay ?? target, today);
       store.setTodoSubtasks(scope, item, children, target, today: today);
     });
+    _removed('Changed repeating subtasks', snapshots);
     _repeats = null;
     _reloadTodos();
     _todosChanged();
@@ -571,9 +615,9 @@ mixin _Todos on ChangeNotifier {
       store.rowsBefore('todo_history', ['uid', 'day'], times, range),
     ]);
     store.endRepeat(repeat.uid, from, today);
-    _reloadTodos();
     _startDay();
-    _todosChanged();
+    _invalidateFirstDay();
+    notifyListeners();
   }
 
   /// [repeat] from [from] on, as a new repeat by [rule] (from [start], when
@@ -656,9 +700,9 @@ mixin _Todos on ChangeNotifier {
         return added.uid;
       }
     });
-    _reloadTodos();
     _startDay();
     _quietReminders(_timesOf(changed));
-    _todosChanged();
+    _invalidateFirstDay();
+    notifyListeners();
   }
 }

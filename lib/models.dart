@@ -570,11 +570,12 @@ String shortDay(DateTime day, {DateTime? today}) => '${shortWeekday(day)} ${dayA
 /// for a day gone by), Tomorrow, This week to Sunday, This month after;
 /// with the due date those two keep.
 (TodoScope, DateTime?) scopeForDay(DateTime today, DateTime day) {
+  day = dateOnly(day);
   final days = daysBetween(today, day);
   if (days <= 0) return (TodoScope.today, null);
   if (days == 1) return (TodoScope.tomorrow, null);
   final sunday = DateTime(today.year, today.month, today.day + 7 - today.weekday);
-  return (day.isAfter(sunday) ? TodoScope.month : TodoScope.week, dateOnly(day));
+  return (day.isAfter(sunday) ? TodoScope.month : TodoScope.week, day);
 }
 
 final _nonSpace = RegExp(r'\S');
@@ -754,8 +755,10 @@ List<TodoItem> sortTodos(Iterable<TodoItem> todos) {
 typedef Holiday = ({DateTime start, DateTime end});
 
 /// The holiday [day] falls in, if any.
-Holiday? holidayOn(List<Holiday> holidays, DateTime day) =>
-    holidays.where((h) => !day.isBefore(h.start) && !day.isAfter(h.end)).firstOrNull;
+Holiday? holidayOn(List<Holiday> holidays, DateTime day) {
+  final d = dateOnly(day);
+  return holidays.where((h) => !d.isBefore(h.start) && !d.isAfter(h.end)).firstOrNull;
+}
 
 /// Whether rituals and sleep rest on [day]: a weekend, with [restWeekends],
 /// or a holiday.

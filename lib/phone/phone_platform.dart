@@ -27,18 +27,42 @@ class PhonePlatform {
         final account = args['account'] as String?;
         final matchesAccount = activeSync ? account == sync.email : (account == null || account.isEmpty);
         if (action == 'snooze' || action == 'done') {
-          if (matchesAccount) state.notificationAction(key, action);
+          if (matchesAccount) {
+            state.notificationAction(key, action);
+            // Persist updated alarms immediately before awaiting network sync.
+            await schedule(state).catchError((Object _) {});
+          }
         }
       } else if (call.method != 'sync') {
         throw MissingPluginException();
       }
       state.saveDrafts();
-      if (!activeSync) return _alarms(state);
-      await sync.run();
-      if (sync.error != null && call.method == 'sync') throw StateError(sync.error!);
+      if (activeSync) {
+        await sync.run();
+        if (sync.hasPendingChanges) await sync.run();
+        if (sync.error != null && call.method == 'sync') throw StateError(sync.error!);
+      }
+      await state.backedUp;
+      state.store.flushToDisk();
       return _alarms(state);
     });
-    await _background.invokeMethod<void>('ready');
+    await _background.invokeMethod<void>('ready', state.sync?.isOn ?? false);
+  }
+
+  static Future<void> setBackgroundSync(bool enabled) async {
+    try {
+      await _background.invokeMethod<void>('scheduleSync', enabled);
+    } on MissingPluginException {
+      // Tests don't register the Android platform channel.
+    }
+  }
+
+  static Future<void> reportStartupError(String message) async {
+    try {
+      await _background.invokeMethod<void>('startupError', message);
+    } on MissingPluginException {
+      // Tests don't register the Android platform channel.
+    }
   }
 
   static const _channel = MethodChannel('eclipse/phone');
@@ -54,6 +78,14 @@ class PhonePlatform {
   static Future<void> startRest(int seconds) async {
     await askNotifications();
     await _channel.invokeMethod<void>('startRest', seconds);
+  }
+
+  static Future<void> cancelRest() async {
+    try {
+      await _channel.invokeMethod<void>('cancelRest');
+    } on MissingPluginException {
+      // Tests don't register the Android platform channel.
+    }
   }
 
   static Future<String?> version() => _channel.invokeMethod<String>('version');
@@ -89,6 +121,8 @@ class PhonePlatform {
     }
   }
 
+  static void stopListeningReminders() => _channel.setMethodCallHandler(null);
+
   /// Sets [state]'s reminders still to come as the phone's alarms, in place
   /// of those set before.
   static Future<void> schedule(AppState state) => _channel.invokeMethod<void>('schedule', _alarms(state));
@@ -105,6 +139,8 @@ class PhonePlatform {
         'day': r.at.day,
         'hour': r.at.hour,
         'minute': r.at.minute,
+        'second': r.at.second,
+        'exact': r.snoozed,
         'title': r.title,
         'body': r.body,
       },

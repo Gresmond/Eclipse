@@ -1,6 +1,9 @@
+import 'dart:async';
+
+import 'fade_menu.dart';
 import 'ritual_goal.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
-import 'package:flutter/gestures.dart' show kPrimaryButton, kSecondaryButton, kTertiaryButton;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton, kSecondaryButton, kTertiaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -64,6 +67,8 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
 
   /// The buttons of the press in progress; null when not pressed.
   int? _buttons;
+  Offset? _pressStart;
+  Timer? _longPressTimer;
   bool get _pressed => _buttons != null;
 
   /// A click changes a square quickly; a new month eases it in step with
@@ -114,6 +119,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _longPressTimer?.cancel();
     _curved?.dispose();
     _progress?.dispose();
     _hoverAnim?.dispose();
@@ -154,13 +160,90 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
     return c;
   }
 
-  void _down(PointerDownEvent event) {
+  void _cancelLongPress() {
+    _longPressTimer?.cancel();
+    _longPressTimer = null;
+  }
+
+  Future<void> _showStatusMenu(BuildContext context, AppState state, HabitStatus current) async {
+    if (!state.canEditDay(widget.day)) return;
+    final p = context.palette;
+    HabitStatus? picked;
+    var clear = false;
+    await showFadeMenu(
+      context,
+      width: 210,
+      builder: (menu) {
+        Widget option(IconData icon, Color color, String label, VoidCallback onTap) => FadeMenuRow(
+          height: 44,
+          onTap: () {
+            Navigator.pop(menu);
+            onTap();
+          },
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, color: p.ink),
+              ),
+            ],
+          ),
+        );
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            option(
+              Icons.check_rounded,
+              p.done,
+              widget.habit.target != null ? 'Log progress' : 'Done',
+              () => picked = HabitStatus.done,
+            ),
+            option(Icons.close_rounded, p.missedInk, 'Not done', () => picked = HabitStatus.missed),
+            option(Icons.remove_rounded, p.otherInk, 'Other', () => picked = HabitStatus.other),
+            if (current != HabitStatus.none) ...[
+              const FadeMenuDivider(),
+              option(Icons.restart_alt_rounded, p.inkMuted, 'Clear mark', () => clear = true),
+            ],
+          ],
+        );
+      },
+    );
+    if (!context.mounted) return;
+    if (clear) {
+      await _selectStatus(context, state, widget.day, widget.habit, current);
+    } else if (picked case final status?) {
+      await _selectStatus(context, state, widget.day, widget.habit, status);
+    }
+  }
+
+  void _down(PointerDownEvent event, AppState state, HabitStatus status) {
     if (!widget.enabled || _pressed) return;
     if (event.buttons & (kPrimaryButton | kSecondaryButton | kTertiaryButton) == 0) return;
+    _cancelLongPress();
+    _pressStart = event.localPosition;
     setState(() => _buttons = event.buttons);
+    if (event.kind != PointerDeviceKind.mouse && (event.buttons & kPrimaryButton) != 0) {
+      _longPressTimer = Timer(const Duration(milliseconds: 500), () {
+        if (!mounted || _buttons == null || !widget.enabled) return;
+        setState(() => _buttons = null);
+        _showStatusMenu(context, state, status);
+      });
+    }
+  }
+
+  void _move(PointerMoveEvent event) {
+    final start = _pressStart;
+    if (_longPressTimer != null && start != null && (event.localPosition - start).distance > 12) {
+      _cancelLongPress();
+    }
   }
 
   void _up(PointerUpEvent event, AppState state) {
+    _cancelLongPress();
     final buttons = _buttons;
     if (buttons == null) return;
     setState(() => _buttons = null);
@@ -178,12 +261,22 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final p = widget.paletteAnimation?.value ?? context.palette;
+    final hasTarget = widget.habit.target != null;
     final state = AppScope.watch(
       context,
-      (s) => (s.statusOf(widget.day, widget.habit), s.noteOf(widget.day, widget.habit)),
+      (s) => (
+        s.statusOf(widget.day, widget.habit),
+        s.noteOf(widget.day, widget.habit),
+        hasTarget ? s.amountOn(widget.day, widget.habit) : 0,
+      ),
     );
     final status = state.statusOf(widget.day, widget.habit);
     final note = state.noteOf(widget.day, widget.habit);
+    final amount = hasTarget ? state.amountOn(widget.day, widget.habit) : 0;
+    final target = widget.habit.target;
+    final partial = target != null && target > 0 && status == HabitStatus.none && amount > 0
+        ? (amount / target).clamp(0.0, 1.0)
+        : 0.0;
     final enabled = widget.enabled && !widget.off;
 
     final look = switch (status) {
@@ -244,6 +337,7 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
           to: _to!,
           progress: _curved ?? kAlwaysCompleteAnimation,
           through: _through,
+          partial: partial,
           hover: enabled ? (_hoverAnim ?? kAlwaysDismissedAnimation) : kAlwaysDismissedAnimation,
           scale: scale,
           opacity: opacity,
@@ -253,14 +347,21 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
       ),
     );
 
-    if (note != null && !widget.off) {
-      cell = PixelTooltip(message: note, child: cell);
+    final unitText = widget.habit.unit;
+    final progressTip = target != null && amount > 0
+        ? '$amount / $target${unitText == null || unitText.isEmpty ? '' : ' $unitText'}'
+        : null;
+    final tip = [?progressTip, ?note].join('\n');
+    if (tip.isNotEmpty && !widget.off) {
+      cell = PixelTooltip(message: tip, child: cell);
     }
 
     if (!widget.off) {
-      final label = status == HabitStatus.none
-          ? widget.habit.name
-          : '${widget.habit.name}, ${status.name}';
+      final label = [
+        widget.habit.name,
+        if (status != HabitStatus.none) status.name,
+        ?progressTip,
+      ].join(', ');
       cell = Semantics(
         button: enabled,
         enabled: enabled,
@@ -274,27 +375,38 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
                 status == HabitStatus.done ? HabitStatus.none : HabitStatus.done,
               )
             : null,
+        onLongPress: enabled ? () => _showStatusMenu(context, state, status) : null,
         child: cell,
       );
     }
 
     // The same widgets whether enabled or not, so a square that becomes a
     // future day (when the month changes) fades instead of jumping.
-    return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() {
-        _setHover(true);
-        _change = _click;
-      }),
-      onExit: (_) => setState(() {
-        _setHover(false);
-        _buttons = null;
-      }),
-      child: Listener(
-        onPointerDown: _down,
-        onPointerUp: (event) => _up(event, state),
-        onPointerCancel: (_) => setState(() => _buttons = null),
-        child: cell,
+    return ExcludeSemantics(
+      excluding: widget.off,
+      child: MouseRegion(
+        cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+        onEnter: (_) => setState(() {
+          _setHover(true);
+          _change = _click;
+        }),
+        onExit: (_) {
+          _cancelLongPress();
+          setState(() {
+            _setHover(false);
+            _buttons = null;
+          });
+        },
+        child: Listener(
+          onPointerDown: (event) => _down(event, state, status),
+          onPointerMove: _move,
+          onPointerUp: (event) => _up(event, state),
+          onPointerCancel: (_) {
+            _cancelLongPress();
+            setState(() => _buttons = null);
+          },
+          child: cell,
+        ),
       ),
     );
   }
@@ -323,6 +435,7 @@ class _SquarePainter extends CustomPainter {
     required this.to,
     required this.progress,
     required this.through,
+    required this.partial,
     required this.hover,
     required this.scale,
     required this.opacity,
@@ -337,6 +450,7 @@ class _SquarePainter extends CustomPainter {
   /// Whether [from]'s colour eases out to a blank square as its mark does,
   /// and [to]'s in from one, rather than one turning into the other.
   final bool through;
+  final double partial;
   final Animation<double> hover;
 
   /// Lifted on hover, dipped while pressed, about the centre.
@@ -430,6 +544,23 @@ class _SquarePainter extends CustomPainter {
       canvas.drawRRect(rrect, Paint()..color = Color.lerp(top, bottom, 0.5)!);
       canvas.drawRRect(rrect.deflate(edge), fill);
     }
+    if (partial > 0 && from.base == null && to.base == null) {
+      final y = _s * (1 - partial);
+      canvas.save();
+      canvas.clipRRect(rrect);
+      canvas.drawRect(
+        Rect.fromLTWH(0, y, _s, _s - y),
+        Paint()..color = palette.done.withValues(alpha: 0.28),
+      );
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(_s, y),
+        Paint()
+          ..color = palette.done
+          ..strokeWidth = edge,
+      );
+      canvas.restore();
+    }
     canvas.drawRRect(
       rrect.deflate(edge / 2),
       Paint()
@@ -463,6 +594,7 @@ class _SquarePainter extends CustomPainter {
   bool shouldRepaint(_SquarePainter old) =>
       old.from != from ||
       old.to != to ||
+      old.partial != partial ||
       old.basePalette != basePalette ||
       old.paletteAnimation != paletteAnimation ||
       old.progress != progress ||

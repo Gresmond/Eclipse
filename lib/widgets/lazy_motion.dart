@@ -30,6 +30,16 @@ class _LazyMotionState extends State<LazyMotion> with TickerProviderStateMixin {
   void didUpdateWidget(LazyMotion oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.value == widget.value) return;
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (reduced || widget.duration <= Duration.zero) {
+      _generation++;
+      _curve?.dispose();
+      _curve = null;
+      _controller?.dispose();
+      _controller = null;
+      _value = AlwaysStoppedAnimation(widget.value);
+      return;
+    }
     final from = _value.value;
     final controller = _controller ??= AnimationController(vsync: this);
     _curve?.dispose();

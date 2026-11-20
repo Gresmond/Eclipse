@@ -55,6 +55,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   /// The copies in Drive, listed after those here once they've been asked for.
   List<DriveBackup> _driveCopies = [];
   bool _askedDrive = false;
+  String? _driveError;
 
   /// Why signing out would lose something, waiting for a yes.
   String? _signOutProblem;
@@ -64,12 +65,27 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   Future<void> _listDriveCopies(SyncService sync) async {
     _askedDrive = true;
+    if (_driveError != null && mounted) setState(() => _driveError = null);
     try {
       final copies = await sync.driveCopies();
-      if (mounted) setState(() => _driveCopies = copies);
+      if (mounted) {
+        setState(() {
+          _driveCopies = copies;
+          _driveError = null;
+        });
+      }
     } catch (_) {
-      // Offline: only those here show.
+      if (mounted) setState(() => _driveError = 'Couldn’t load backups from Google Drive.');
     }
+  }
+
+  void _turnOffSync(SyncService sync) {
+    sync.turnOff();
+    setState(() {
+      _driveCopies = [];
+      _askedDrive = false;
+      _driveError = null;
+    });
   }
 
   Future<void> _signOut({bool force = false}) async {
@@ -88,6 +104,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
       setState(() {
         _signingOut = false;
         _signOutProblem = problem;
+        if (problem == null) {
+          _driveCopies = [];
+          _askedDrive = false;
+          _driveError = null;
+        }
       });
     }
   }
@@ -281,23 +302,35 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  PixelRow(
-                    children: [
-                      Expanded(child: Text('Settings', style: dialogTitleStyle(p))),
-                      SizedBox(
-                        width: 270,
-                        child: SegmentedPills(
-                          labels: const ['General', 'Data'],
-                          selected: _ribbon,
-                          expand: true,
-                          onSelect: (i) => setState(() {
-                            _ribbon = i;
-                            _error = null;
-                            _journalError = null;
-                          }),
-                        ),
-                      ),
-                    ],
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final pills = SegmentedPills(
+                        labels: const ['General', 'Data'],
+                        selected: _ribbon,
+                        expand: true,
+                        onSelect: (i) => setState(() {
+                          _ribbon = i;
+                          _error = null;
+                          _journalError = null;
+                        }),
+                      );
+                      if (box.maxWidth < 400) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text('Settings', style: dialogTitleStyle(p)),
+                            const SizedBox(height: 12),
+                            pills,
+                          ],
+                        );
+                      }
+                      return PixelRow(
+                        children: [
+                          Expanded(child: Text('Settings', style: dialogTitleStyle(p))),
+                          SizedBox(width: 270, child: pills),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 20),
                   // Clipped, so the old page never lies over Close as it fades.
@@ -358,7 +391,13 @@ extension on _SettingsDialogState {
                   onTap: () => state.setRestWeekends(!state.restWeekends),
                 ),
                 const FadeMenuDivider(),
-                SettingSwitchRow(title: 'Smart quick-add', subtitle: 'Read schedules and places from phrases like “tomorrow at 3pm at the library”.', on: state.smartAdd, onTap: () => state.setSmartAdd(!state.smartAdd)),
+                SettingSwitchRow(
+                  title: 'Smart quick-add',
+                  subtitle: 'Read schedules and places from phrases like “tomorrow at 3pm at the library”.',
+                  on: state.smartAdd,
+                  onTap: () => state.setSmartAdd(!state.smartAdd),
+                ),
+                const FadeMenuDivider(),
                 const HolidaysRow(),
                 const FadeMenuDivider(),
                 const DayStartPicker(),
@@ -366,9 +405,13 @@ extension on _SettingsDialogState {
                   const FadeMenuDivider(),
                   SettingSwitchRow(
                     title: 'Browser notifications',
-                    subtitle: permission.access == ReminderAccess.blocked
-                        ? 'Blocked in this browser’s site settings. Reminders still show inside Eclipse.'
-                        : 'Reminders only go off while Eclipse is open in a tab.',
+                    subtitle: switch (permission.access) {
+                      ReminderAccess.blocked =>
+                        'Blocked in this browser’s site settings. Reminders still show inside Eclipse.',
+                      ReminderAccess.allowed =>
+                        'Allowed in this browser. Reminders only go off while Eclipse is open in a tab.',
+                      ReminderAccess.notAsked => 'Reminders only go off while Eclipse is open in a tab.',
+                    },
                     on: permission.access == ReminderAccess.allowed,
                     onTap: () async {
                       if (permission.access != ReminderAccess.notAsked) return;

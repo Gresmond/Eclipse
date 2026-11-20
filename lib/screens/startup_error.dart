@@ -310,8 +310,10 @@ class _UpdateRow extends StatelessWidget {
         const SizedBox(height: 12),
         PixelRow(
           children: [
-            if (canUpdate) DialogConfirm(label: updater.actionLabel, onPressed: busy ? null : updater.update),
-            const SizedBox(width: 12),
+            if (canUpdate) ...[
+              DialogConfirm(label: updater.actionLabel, onPressed: busy ? null : updater.update),
+              const SizedBox(width: 12),
+            ],
             DialogDismiss(label: 'Quit', onPressed: busy ? null : _quitApp),
           ],
         ),

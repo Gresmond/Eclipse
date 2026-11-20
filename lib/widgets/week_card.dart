@@ -401,11 +401,12 @@ class _DayHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final p = context.palette;
     final complete = open == 0 && any;
     // Easing when a day comes in above it, or the one above goes.
     return AnimatedPadding(
-      duration: Motion.morph,
+      duration: reduced ? Duration.zero : Motion.morph,
       curve: Motion.morphCurve,
       padding: EdgeInsets.only(top: first ? 0 : 28, bottom: 12),
       child: Column(

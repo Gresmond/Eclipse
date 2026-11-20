@@ -10,6 +10,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'app_dialog.dart';
+import 'corner_card.dart' show briefBadgeInk;
 import 'fade_menu.dart';
 import '../theme/pixels.dart';
 
@@ -66,8 +67,10 @@ class _SearchDialogState extends State<SearchDialog> {
   }
 
   void _search(String query) {
+    if (_scroll.hasClients) _scroll.jumpTo(0);
     setState(() {
       _selected = 0;
+      _rowKeys.clear();
       _words = SearchIndex.words(query);
       _hits = _index.search(query);
     });
@@ -82,6 +85,8 @@ class _SearchDialogState extends State<SearchDialog> {
 
   int _selected = 0;
   final _scroll = ScrollController();
+  final _rowKeys = <int, GlobalKey>{};
+  GlobalKey _keyFor(int i) => _rowKeys.putIfAbsent(i, () => GlobalKey());
 
   List<(String, VoidCallback)> get _commands {
     final query = _controller.text.trim().toLowerCase();
@@ -90,9 +95,20 @@ class _SearchDialogState extends State<SearchDialog> {
       if (day != null && dateKey(day) == query && !day.isAfter(_state.today))
         ('Go to ${dateKey(day)}', () => _state.showDay(day)),
       ...<(String, VoidCallback)>[
-        ('Add task', () => addTaskAnywhere(appNavigator.currentContext!)),
+        (
+          'Add task',
+          () {
+            if (appNavigator.currentContext case final ctx?) addTaskAnywhere(ctx);
+          },
+        ),
         ('Show Today', _state.showToday),
-        ('Show month', () => _state.showMonth(_state.today.month)),
+        (
+          'Show month',
+          () {
+            if (_state.viewYear != _state.today.year) _state.shiftYear(_state.today.year - _state.viewYear);
+            _state.showMonth(_state.today.month);
+          },
+        ),
         ('Show year', _state.showYear),
         (
           'Show Training',
@@ -109,8 +125,8 @@ class _SearchDialogState extends State<SearchDialog> {
             );
           },
         ),
-        ('Undo', _state.undo),
-        ('Redo', _state.redo),
+        if (_state.canUndo) ('Undo', _state.undo),
+        if (_state.canRedo) ('Redo', _state.redo),
       ].where((command) => command.$1.toLowerCase().contains(query)),
     ];
   }
@@ -131,20 +147,22 @@ class _SearchDialogState extends State<SearchDialog> {
     final count = _commands.length + _hits.length.clamp(0, SearchDialog.shown);
     if (count == 0) return;
     setState(() => _selected = (_selected + offset).clamp(0, count - 1));
-    if (_scroll.hasClients) {
-      final top = _selected * _rowHeight;
-      final bottom = top + _rowHeight - _scroll.position.viewportDimension;
-      if (top < _scroll.offset || bottom > _scroll.offset) {
-        _scroll.jumpTo((top < _scroll.offset ? top : bottom).clamp(0.0, _scroll.position.maxScrollExtent));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      if (_rowKeys[_selected]?.currentContext case final rowContext?) {
+        Scrollable.ensureVisible(rowContext, alignment: offset > 0 ? 1.0 : 0.0);
+      } else {
+        final target = _selected * _rowHeight;
+        _scroll.jumpTo(target.clamp(0.0, _scroll.position.maxScrollExtent));
       }
-    }
+    });
   }
 
   void _open(SearchHit hit) {
     Navigator.pop(context);
     if (hit.kind == 'training') {
       if (!_state.showingTraining) _state.toggleTraining();
-      _state.training.showDay(hit.day);
+      _state.training.showDay(hit.day == _state.today ? null : hit.day);
     } else if (hit.kind == 'ritual') {
       _state.showToday();
       _state.shiftYear(hit.day.year - _state.today.year);
@@ -222,18 +240,35 @@ class _SearchDialogState extends State<SearchDialog> {
                   ? _message(p, curlyQuotes('Nothing matches "${_controller.text.trim()}".'))
                   : ListView.builder(
                       controller: _scroll,
-                      itemExtent: _rowHeight,
                       itemCount: commands.length + hits.length.clamp(0, SearchDialog.shown),
-                      itemBuilder: (context, i) => Material(
-                        color: i == _selected ? p.empty : Colors.transparent,
-                        child: i < commands.length
-                            ? ListTile(title: Text(commands[i].$1), onTap: () => _activate(i))
-                            : _HitRow(
-                                hit: hits[i - commands.length],
-                                words: words,
-                                today: _state.today,
-                                onTap: () => _activate(i),
-                              ),
+                      itemBuilder: (context, i) => KeyedSubtree(
+                        key: _keyFor(i),
+                        child: Material(
+                          color: i == _selected ? p.empty : Colors.transparent,
+                          child: i < commands.length
+                              ? FadeMenuRow(
+                                  height: 46,
+                                  onTap: () => _activate(i),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      commands[i].$1,
+                                      style: TextStyle(
+                                        fontFamily: Fonts.ui,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500,
+                                        color: p.ink,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : _HitRow(
+                                  hit: hits[i - commands.length],
+                                  words: words,
+                                  today: _state.today,
+                                  onTap: () => _activate(i),
+                                ),
+                        ),
                       ),
                     ),
             ),
@@ -300,6 +335,9 @@ class _HitRow extends StatelessWidget {
 
   String get _when {
     final d = hit.day;
+    if (hit.kind == 'ritual') {
+      return '${monthNames[d.month - 1]}${d.year != today.year ? ' ${d.year}' : ''}';
+    }
     final name = switch (daysBetween(today, d)) {
       0 => 'Today',
       1 => 'Tomorrow',
@@ -326,7 +364,7 @@ class _HitRow extends StatelessWidget {
               Text(hit.kind == 'entry' ? 'RITUAL NOTE' : hit.kind.toUpperCase(), style: caption),
               Text('  ·  ', style: caption),
               Text(_when.toUpperCase(), style: caption),
-              if (hit.done) ...[const SizedBox(width: 8), Icon(Icons.check_rounded, size: 14, color: p.done)],
+              if (hit.done) ...[const SizedBox(width: 8), Icon(Icons.check_rounded, size: 14, color: briefBadgeInk(p))],
             ],
           ),
           const SizedBox(height: 4),

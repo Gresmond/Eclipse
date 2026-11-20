@@ -45,7 +45,9 @@ class _ReminderCardsState extends State<ReminderCards> {
 
   void _time(AppState state, ReminderAlert alert) {
     _timers.remove(alert.key)?.cancel();
-    _timers[alert.key] = Timer(Motion.notice, () => _hide(state, alert));
+    _timers[alert.key] = Timer(Motion.notice, () {
+      if (mounted) _hide(state, alert);
+    });
   }
 
   /// Slides [alert] away, then lets it go.
@@ -139,9 +141,11 @@ class _Card extends StatelessWidget {
       onEnter: (_) => onHover(true),
       onExit: (_) => onHover(false),
       child: Hoverable(
+        focusable: true,
+        semanticLabel: '${curlyQuotes(alert.text)}, ${alert.body(now, startHour: startHour)}',
         onTap: onOpen,
         builder: (hover) => Container(
-          width: cornerCardWidth,
+          width: cornerCardMaxWidth(context),
           padding: const EdgeInsets.fromLTRB(18, 16, 10, 16),
           decoration: BoxDecoration(
             color: p.tile,

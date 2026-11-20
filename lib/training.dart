@@ -101,9 +101,15 @@ double? estimateOneRepMax(double weight, int reps) {
 }
 
 /// What a set counts for: its estimated 1RM in kg, or for a bodyweight
-/// exercise its reps. Null when it doesn't count.
-double? setWorth(TrainingSet s, {required bool bodyweight}) {
-  if (bodyweight) return s.reps > 0 ? s.reps.toDouble() : null;
+/// exercise its reps (or total load 1RM when [bodyMass] is supplied and added
+/// weight is tracked). Null when it doesn't count.
+double? setWorth(TrainingSet s, {required bool bodyweight, double? bodyMass}) {
+  if (bodyweight) {
+    if (bodyMass != null) {
+      return estimateOneRepMax(bodyMass + (s.weight ?? 0), s.reps);
+    }
+    return s.reps > 0 ? s.reps.toDouble() : null;
+  }
   return estimateOneRepMax(s.weight ?? 0, s.reps);
 }
 
@@ -136,21 +142,29 @@ class TrainingPoint {
 /// of those changes. A set with nothing to compare against moves nothing; it
 /// is what the next one is compared with. With the same number of sets every
 /// day this is the plain average.
-List<TrainingPoint> trainingPoints(Iterable<(DateTime, List<TrainingSet>)> days, {required bool bodyweight}) {
+List<TrainingPoint> trainingPoints(
+  Iterable<(DateTime, List<TrainingSet>)> days, {
+  required bool bodyweight,
+  double? Function(DateTime day)? bodyMassFor,
+}) {
   double mean(Iterable<double> values) => values.reduce((a, b) => a + b) / values.length;
   final last = <int, double>{};
+  final lastSeen = <int, int>{};
   final points = <TrainingPoint>[];
   double? value;
+  var sessionIndex = 0;
   for (final (day, sets) in days) {
+    final mass = bodyMassFor?.call(day);
     final worth = <int, double>{};
     final counted = <TrainingSet>[];
     for (final s in sets) {
-      final w = setWorth(s, bodyweight: bodyweight);
+      final w = setWorth(s, bodyweight: bodyweight, bodyMass: mass);
       if (w == null) continue;
       worth[counted.length] = w;
       counted.add(s);
     }
     if (worth.isEmpty) continue;
+    last.removeWhere((i, _) => sessionIndex - (lastSeen[i] ?? sessionIndex) > 5);
     final changes = [
       for (final MapEntry(key: i, value: w) in worth.entries)
         if (last[i] case final was?) w - was,
@@ -163,9 +177,18 @@ List<TrainingPoint> trainingPoints(Iterable<(DateTime, List<TrainingSet>)> days,
         ? value
         : value + mean(changes);
     value = next.clamp(dayMin * 0.5, dayMax * 1.5);
-    last.addAll(worth);
+    for (final i in worth.keys) {
+      last[i] = worth[i]!;
+      lastSeen[i] = sessionIndex;
+    }
+    sessionIndex++;
     points.add(
-      TrainingPoint(day, value, rough: !bodyweight && counted.any((s) => s.reps >= roughEstimateReps), sets: counted),
+      TrainingPoint(
+        day,
+        value,
+        rough: (!bodyweight || mass != null) && counted.any((s) => s.reps >= roughEstimateReps),
+        sets: counted,
+      ),
     );
   }
   return points;

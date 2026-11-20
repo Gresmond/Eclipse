@@ -7,13 +7,17 @@
     here = localStorage.getItem('eclipse-here') === '1';
   } catch {}
   if (!here) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
     try {
-      const reply = await fetch('/api/session', { cache: 'no-store' });
+      const reply = await fetch('/api/session', { cache: 'no-store', signal: controller.signal });
       if (reply.status === 401) {
         location.replace('/welcome.html');
         return;
       }
-    } catch {}
+    } catch {} finally {
+      clearTimeout(timer);
+    }
   }
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

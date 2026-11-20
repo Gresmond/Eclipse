@@ -9,5 +9,6 @@
 // "eclipse/notifications" channel. Clicking one brings [window] up and tells
 // the app which task it was for.
 void notifications_start(GtkWindow* window, FlView* view);
+void notifications_stop();
 
 #endif  // RUNNER_NOTIFICATIONS_H_

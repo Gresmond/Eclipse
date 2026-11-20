@@ -18,11 +18,22 @@ class GlidingColumn extends StatefulWidget {
 
 class GlidingColumnState extends State<GlidingColumn> with SingleTickerProviderStateMixin {
   late final _motion = ReorderMotion(this);
+  bool _disableAnimations = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _disableAnimations = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+  }
 
   @override
   void didUpdateWidget(GlidingColumn oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _motion.update(oldWidget.children.map((child) => child.key), widget.children.map((child) => child.key));
+    _motion.update(
+      oldWidget.children.map((child) => child.key),
+      widget.children.map((child) => child.key),
+      disableAnimations: _disableAnimations,
+    );
   }
 
   @override
@@ -210,12 +221,16 @@ class ReorderMotion {
   final AnimationController controller;
   late final CurvedAnimation progress;
   int generation = 0;
-  void update(Iterable<Object?> previous, Iterable<Object?> next) {
+  void update(Iterable<Object?> previous, Iterable<Object?> next, {bool disableAnimations = false}) {
     final before = previous.toList(), after = next.toList();
     final oldKeys = before.toSet(), newKeys = after.toSet();
     if (!listEquals(before.where(newKeys.contains).toList(), after.where(oldKeys.contains).toList())) {
       generation++;
-      controller.forward(from: 0);
+      if (disableAnimations) {
+        controller.value = 1;
+      } else {
+        controller.forward(from: 0);
+      }
     }
   }
 
@@ -241,11 +256,18 @@ class LazyTaskSliver extends StatefulWidget {
 class _LazyTaskSliverState extends State<LazyTaskSliver> with SingleTickerProviderStateMixin {
   late final _motion = ReorderMotion(this);
   final _group = _GlideGroup();
+  bool _disableAnimations = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _disableAnimations = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+  }
 
   @override
   void didUpdateWidget(LazyTaskSliver oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _motion.update(oldWidget.ids, widget.ids);
+    _motion.update(oldWidget.ids, widget.ids, disableAnimations: _disableAnimations);
   }
 
   @override

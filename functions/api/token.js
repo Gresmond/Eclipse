@@ -1,4 +1,4 @@
-import { answer, fromOurPage, missingEnv, noSessionCookie, sessionOf } from '../_session.js';
+import { answer, fetchWithTimeout, fromOurPage, missingEnv, noSessionCookie, sessionOf } from '../_session.js';
 
 /// An hour's access to the signed-in person's Drive, for their own page.
 export async function onRequestPost({ request, env }) {
@@ -10,7 +10,7 @@ export async function onRequestPost({ request, env }) {
   if (!session) return answer(401, { error: 'signed_out' });
   let reply;
   try {
-    reply = await fetch('https://oauth2.googleapis.com/token', {
+    reply = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({

@@ -24,12 +24,13 @@ class WebNotice extends StatelessWidget {
           final p = context.palette;
           return Scaffold(
             backgroundColor: p.background,
-            body: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Padding(
+            body: SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
-                  child: Column(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -74,6 +75,7 @@ class WebNotice extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
             ),
           );
         },

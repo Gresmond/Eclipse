@@ -23,7 +23,10 @@ class BrowserData {
       settings = DatabaseSettings(_syncDb) {
     if (_snapshot != null) {
       for (final db in [store.raw, _syncDb]) {
-        _listeners.add(db.commits.listen((_) => _changed()));
+        _listeners.add(db.commits.listen((_) {
+          if (identical(db, store.raw) && store.inTempWork) return;
+          _changed();
+        }));
       }
     }
   }
@@ -98,12 +101,16 @@ class BrowserData {
       if (migrated) {
         final file = await handle.getFile().toDart;
         final buffer = (await file.arrayBuffer().toDart).toDart;
-        final header = ByteData.view(buffer);
-        final split = 8 + header.getUint32(0);
-        if (split + header.getUint32(4) != buffer.lengthInBytes) {
+        if (buffer.lengthInBytes < 8) {
           throw const FormatException('Incomplete Eclipse database');
         }
-        _put(memory, _paths.first, buffer.asUint8List(8, split - 8));
+        final header = ByteData.view(buffer);
+        final mainLen = header.getUint32(0), syncLen = header.getUint32(4);
+        final split = 8 + mainLen;
+        if (split + syncLen != buffer.lengthInBytes) {
+          throw const FormatException('Incomplete Eclipse database');
+        }
+        _put(memory, _paths.first, buffer.asUint8List(8, mainLen));
         _put(memory, _paths.last, buffer.asUint8List(split));
       } else {
         // Open legacy SQLite first so SQLite itself recovers interrupted
@@ -121,6 +128,11 @@ class BrowserData {
         }
         await _write(handle, memory);
         _put(legacy, _marker, Uint8List.fromList([1]));
+        for (final path in _paths) {
+          try {
+            if (legacy.xAccess(path, 0) != 0) legacy.xDelete(path, 0);
+          } catch (_) {}
+        }
         await legacy.flush();
       }
       files = memory;
@@ -147,7 +159,7 @@ class BrowserData {
         db.execute('PRAGMA journal_mode=DELETE');
       }
     }
-    await data.persist();
+    await data.persist(force: !migrated);
     return data;
   }
 
@@ -159,10 +171,12 @@ class BrowserData {
       final dir = await web.window.navigator.storage.getDirectory().toDart;
       await dir.removeEntry('eclipse-v1.db').toDart;
     } catch (error) {
-      final js = error as JSAny?;
-      if (migrated && !(js != null && js.isA<web.DOMException>() && (js as web.DOMException).name == 'NotFoundError')) {
-        rethrow;
-      }
+      var isNotFound = false;
+      try {
+        final js = error as JSAny?;
+        isNotFound = js != null && js.isA<web.DOMException>() && (js as web.DOMException).name == 'NotFoundError';
+      } catch (_) {}
+      if (migrated && !isNotFound) rethrow;
     }
     await IndexedDbFileSystem.deleteDatabase(_name);
   }
@@ -186,12 +200,13 @@ class BrowserData {
     }
   }
 
-  Future<void> persist() async {
+  Future<void> persist({bool force = false}) async {
     store.flushToDisk();
     if (_files case final IndexedDbFileSystem legacy) {
       await legacy.flush();
     } else {
-      _dirty = true;
+      if (force) _dirty = true;
+      if (!_dirty && _writing == null) return;
       await _drain();
     }
   }
@@ -200,12 +215,13 @@ class BrowserData {
     for (final sub in _listeners) {
       await sub.cancel();
     }
+    if (_files is! IndexedDbFileSystem && (_dirty || _writing != null)) {
+      await _drain();
+    }
     _syncDb.close();
     if (_files case final IndexedDbFileSystem legacy) {
       await legacy.flush();
       await legacy.close();
-    } else {
-      await _writing;
     }
   }
 }

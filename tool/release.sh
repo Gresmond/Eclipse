@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 [[ $(git branch --show-current) == main ]] || { echo 'release: switch to main first.' >&2; exit 1; }
-git diff --quiet -- pubspec.yaml && git diff --cached --quiet || {
+git diff --quiet && git diff --cached --quiet || {
   echo 'release: commit or unstage your changes (and any edit to pubspec.yaml) first.' >&2
   exit 1
 }
@@ -16,9 +16,12 @@ git diff --quiet -- pubspec.yaml && git diff --cached --quiet || {
 current="$(sed -n 's/^version: *//p' pubspec.yaml)"
 IFS=. read -r major month release <<<"${current%%+*}"
 
+major=$((10#$major))
+month=$((10#$month))
+release=$((10#$release))
 year_major=$((10#$(date +%y)))
-this_month=$(date +%-m)
-if [[ $major == "$year_major" && $month == "$this_month" ]]; then
+this_month=$((10#$(date +%m)))
+if (( major == year_major && month == this_month )); then
   release=$((release + 1))
 else
   release=1
@@ -28,5 +31,5 @@ version="$year_major.$this_month.$release"
 sed -i "s/^version: .*/version: $version/" pubspec.yaml
 git commit -q -m "Release Eclipse $version" -- pubspec.yaml
 git tag "v$version"
-git push -q origin main "v$version"
+git push --atomic -q origin main "v$version"
 echo "Released v$version; GitHub is building the downloads."

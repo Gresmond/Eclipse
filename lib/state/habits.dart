@@ -12,12 +12,14 @@ mixin _Habits on ChangeNotifier {
   void _invalidateFirstDay();
 
   int habitsRevision = 0, entriesRevision = 0;
+  int get entryNotesRevision;
+  set entryNotesRevision(int value);
   final _monthHabits = LruCache<(int, int), List<Habit>>(24);
 
   /// Unsaved copies shown for months without their own list, until any
   /// list or the day changes.
   final _previewHabits = LruCache<(int, int), ({List<Habit> habits, bool preview})>(24);
-  final _entryMonths = LruCache<(int, int), Map<String, (HabitStatus, String?)>>(12);
+  final _entryMonths = LruCache<(int, int), Map<String, ({HabitStatus status, String? note, int? amount})>>(12);
   final _monthScores = LruCache<(int, int), Map<int, (int, int)>>(24);
 
   void _habitsChanged() {
@@ -27,12 +29,13 @@ mixin _Habits on ChangeNotifier {
     notifyListeners();
   }
 
-  void _entriesChanged(DateTime day) {
+  void _entriesChanged(DateTime day, {bool noteChanged = false}) {
     _monthScores.remove((day.year, day.month));
     final sunday = DateTime(day.year, day.month, day.day + 7 - day.weekday);
     _monthScores.remove((sunday.year, sunday.month));
     _invalidateFirstDay();
     entriesRevision++;
+    if (noteChanged) entryNotesRevision++;
     notifyListeners();
   }
 
@@ -205,6 +208,7 @@ mixin _Habits on ChangeNotifier {
     if (saved == null) return;
     saved.description = note.trim().isEmpty ? null : normaliseNote(note.trim());
     store.setHabitNote(year, month, h.id, saved.description);
+    entryNotesRevision++;
     _habitsChanged();
   }
 
@@ -212,52 +216,85 @@ mixin _Habits on ChangeNotifier {
     if (weekly != null && (weekly < 1 || weekly > 7) || target != null && target <= 0) return;
     final saved = _savedList(year, month).where((h) => h.id == habit.id).firstOrNull;
     if (saved == null) return;
-    store.raw.execute('UPDATE month_habits SET weekly=?,target=?,unit=? WHERE year=? AND month=? AND habit_id=?', [
-      weekly,
-      target,
-      unit,
-      year,
-      month,
-      habit.id,
-    ]);
+    final normalizedUnit = target == null || unit == null || unit.trim().isEmpty
+        ? null
+        : curlyQuotes(unit.trim());
+    store.transaction(() {
+      store.raw.execute('UPDATE month_habits SET weekly=?,target=?,unit=? WHERE year=? AND month=? AND habit_id=?', [
+        weekly,
+        target,
+        normalizedUnit,
+        year,
+        month,
+        habit.id,
+      ]);
+      if (target != null) {
+        final from = dateKey(DateTime(year, month));
+        final to = dateKey(DateTime(year, month + 1));
+        for (final row in store.raw.select(
+          'SELECT day, status, amount FROM entries WHERE habit_id=? AND day >= ? AND day < ? AND amount IS NOT NULL AND status IN (0, 1)',
+          [habit.id, from, to],
+        )) {
+          final amount = row['amount'] as int;
+          final next = amount >= target ? HabitStatus.done.index : HabitStatus.none.index;
+          if (next != row['status'] as int) {
+            store.raw.execute('UPDATE entries SET status=? WHERE day=? AND habit_id=?', [
+              next,
+              row['day'],
+              habit.id,
+            ]);
+          }
+        }
+      }
+    });
     saved.weekly = weekly;
     saved.target = target;
-    saved.unit = unit;
+    saved.unit = normalizedUnit;
+    _entryMonths.remove((year, month));
     _monthScores.clear();
     _streaks.clear();
+    entriesRevision++;
     _habitsChanged();
   }
 
   int amountOn(DateTime day, Habit habit) =>
-      (store.raw.select('SELECT amount FROM entries WHERE day=? AND habit_id=?', [
-            dateKey(day),
-            habit.id,
-          ]).firstOrNull?['amount']
-          as int?) ??
+      _entriesFor(day)[_cell(day, habit)]?.amount ??
       (statusOf(day, habit) == HabitStatus.done ? habit.target ?? 0 : 0);
 
   int weeklyDone(DateTime day, Habit habit) {
-    final start = DateTime(day.year, day.month, day.day - day.weekday + 1);
-    return store.raw.select('SELECT count(*) AS n FROM entries WHERE habit_id=? AND day BETWEEN ? AND ? AND status=1', [
-          habit.id,
-          dateKey(start),
-          dateKey(day),
-        ]).first['n']
-        as int;
+    final monday = DateTime(day.year, day.month, day.day - day.weekday + 1);
+    var count = 0;
+    for (var d = monday; !d.isAfter(day); d = DateTime(d.year, d.month, d.day + 1)) {
+      if (statusOf(d, habit) == HabitStatus.done) count++;
+    }
+    return count;
   }
 
   void recordAmount(DateTime day, Habit habit, int amount) {
     if (!canEditDay(day) || amount < 0 || habit.target == null || !habit.onDay(day) || !habit.startedBy(day)) return;
     _savedList(day.year, day.month);
-    final status = amount >= habit.target! ? HabitStatus.done : HabitStatus.none;
-    store.raw.execute(
-      'INSERT INTO entries(day,habit_id,status,amount) VALUES(?,?,?,?) '
-      'ON CONFLICT(day,habit_id) DO UPDATE SET status=excluded.status,amount=excluded.amount',
-      [dateKey(day), habit.id, status.index, amount],
-    );
-    _entryMonths.remove((day.year, day.month));
+    final previousNote = noteOf(day, habit);
+    final previousStatus = statusOf(day, habit);
+    if (amount == 0) {
+      store.setEntry(dateKey(day), habit.id, HabitStatus.none);
+      _entriesFor(day).remove(_cell(day, habit));
+    } else {
+      final status = amount >= habit.target! ? HabitStatus.done : HabitStatus.none;
+      final clearNote = previousStatus == HabitStatus.other;
+      store.raw.execute(
+        'INSERT INTO entries(day,habit_id,status,amount,note) VALUES(?,?,?,?,NULL) '
+        'ON CONFLICT(day,habit_id) DO UPDATE SET status=excluded.status,amount=excluded.amount,'
+        'note=CASE WHEN ? THEN NULL ELSE entries.note END',
+        [dateKey(day), habit.id, status.index, amount, clearNote ? 1 : 0],
+      );
+      _entriesFor(day)[_cell(day, habit)] = (
+        status: status,
+        note: clearNote ? null : previousNote,
+        amount: amount,
+      );
+    }
     _streaks.remove(habit.id);
-    _entriesChanged(day);
+    _entriesChanged(day, noteChanged: previousStatus == HabitStatus.other && previousNote != null);
   }
 
   /// The weekdays the ritual is on, as bits (see [weekdayBit]). In the current month
@@ -302,14 +339,17 @@ mixin _Habits on ChangeNotifier {
 
   // Entries
 
-  Map<String, (HabitStatus, String?)> _entriesFor(DateTime day) => _entryMonths.putIfAbsent((
-    day.year,
-    day.month,
-  ), () => {for (final e in store.entriesInMonth(day.year, day.month)) '${e.day}|${e.habitId}': (e.status, e.note)});
+  Map<String, ({HabitStatus status, String? note, int? amount})> _entriesFor(DateTime day) => _entryMonths.putIfAbsent(
+    (day.year, day.month),
+    () => {
+      for (final e in store.entriesInMonth(day.year, day.month))
+        '${e.day}|${e.habitId}': (status: e.status, note: e.note, amount: e.amount),
+    },
+  );
 
-  HabitStatus statusOf(DateTime day, Habit h) => _entriesFor(day)[_cell(day, h)]?.$1 ?? HabitStatus.none;
+  HabitStatus statusOf(DateTime day, Habit h) => _entriesFor(day)[_cell(day, h)]?.status ?? HabitStatus.none;
 
-  String? noteOf(DateTime day, Habit h) => _entriesFor(day)[_cell(day, h)]?.$2;
+  String? noteOf(DateTime day, Habit h) => _entriesFor(day)[_cell(day, h)]?.note;
 
   /// Select a mark directly; repeating that mark clears the square.
   HabitStatus selectStatus(DateTime day, Habit h, HabitStatus status) {
@@ -320,10 +360,11 @@ mixin _Habits on ChangeNotifier {
     }
     _savedList(day.year, day.month);
     final key = _cell(day, h);
-    _entriesFor(day)[key] = (status, null);
+    final hadNote = _entriesFor(day)[key]?.note != null;
+    _entriesFor(day)[key] = (status: status, note: null, amount: null);
     _streaks.remove(h.id);
     store.setEntry(dateKey(day), h.id, status, clearNote: true);
-    _entriesChanged(day);
+    _entriesChanged(day, noteChanged: hadNote);
     return status;
   }
 
@@ -331,19 +372,24 @@ mixin _Habits on ChangeNotifier {
   void clear(DateTime day, Habit h) {
     if (dateOnly(day).isAfter(today)) return;
     final key = _cell(day, h);
-    if (_entriesFor(day).remove(key) == null) return;
+    final removed = _entriesFor(day).remove(key);
+    if (removed == null) return;
     _streaks.remove(h.id);
     store.setEntry(dateKey(day), h.id, HabitStatus.none);
-    _entriesChanged(day);
+    _entriesChanged(day, noteChanged: removed.note != null);
   }
 
   void setNote(DateTime day, Habit h, String note) {
     if (dateOnly(day).isAfter(today)) return;
     final key = _cell(day, h);
     final trimmed = normaliseNote(note.trim());
-    _entriesFor(day)[key] = (statusOf(day, h), trimmed.isEmpty ? null : trimmed);
-    store.setNote(dateKey(day), h.id, trimmed.isEmpty ? null : trimmed);
-    _entriesChanged(day);
+    final dayKey = dateKey(day);
+    final existing = _entriesFor(day)[key];
+    if (existing == null && !store.hasEntry(dayKey, h.id)) return;
+    final nextNote = trimmed.isEmpty ? null : trimmed;
+    _entriesFor(day)[key] = (status: existing?.status ?? statusOf(day, h), note: nextNote, amount: existing?.amount);
+    store.setNote(dayKey, h.id, nextNote);
+    _entriesChanged(day, noteChanged: true);
   }
 
   /// Done among the rituals that are on [day].
@@ -351,7 +397,11 @@ mixin _Habits on ChangeNotifier {
       habits.where((h) => h.onDay(day) && statusOf(day, h) == HabitStatus.done).length;
 
   (int, int) scoreOf(int year, int month, Habit habit) =>
-      _monthScores.putIfAbsent((year, month), () => store.monthScores(year, month, asOf: today))[habit.id] ?? (0, 0);
+      _monthScores.putIfAbsent(
+        (year, month),
+        () => store.monthScores(year, month, asOf: today, holidays: holidays),
+      )[habit.id] ??
+      (0, 0);
 
   /// Consecutive done days ending today (or yesterday, if today is still
   /// open). An "other" day, or a blank or missed rest day, is excused: it neither

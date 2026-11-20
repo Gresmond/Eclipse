@@ -88,4 +88,64 @@ class RemindersTest {
         assertEquals(expectedTokyo, inTokyo.single().triggerAt)
         assertTrue(expectedTokyo > originalAt)
     }
+
+    @Test
+    fun planHonorsExactSnoozeAndSecondsAndCapsAtMaxAlarms() {
+        val adelaide = ZoneId.of("Australia/Adelaide")
+        val tokyo = ZoneId.of("Asia/Tokyo")
+        val snoozedAt = LocalDateTime.of(2026, 11, 20, 9, 10, 42)
+            .atZone(adelaide)
+            .toInstant()
+            .toEpochMilli()
+        val now = snoozedAt - 60_000L
+        val exactJson = """
+            [
+              {
+                "key":"k-exact",
+                "uid":"u1",
+                "at":$snoozedAt,
+                "year":2026,
+                "month":11,
+                "day":20,
+                "hour":9,
+                "minute":10,
+                "second":42,
+                "exact":true,
+                "title":"Standup",
+                "body":"Snoozed"
+              },
+              {
+                "key":"k-wall",
+                "uid":"u2",
+                "at":$snoozedAt,
+                "year":2026,
+                "month":11,
+                "day":20,
+                "hour":9,
+                "minute":10,
+                "second":42,
+                "exact":false,
+                "title":"Wall",
+                "body":"Wall clock"
+              }
+            ]
+        """.trimIndent()
+        val planned = ReminderPlanner.plan(exactJson, now, tokyo)
+        assertEquals(2, planned.size)
+        assertEquals("Standup", planned[0].title)
+        assertEquals(snoozedAt, planned[0].triggerAt)
+        assertEquals("Wall", planned[1].title)
+        assertEquals(
+            LocalDateTime.of(2026, 11, 20, 9, 10, 42).atZone(tokyo).toInstant().toEpochMilli(),
+            planned[1].triggerAt,
+        )
+
+        val entries = (1..500).joinToString(",") { i ->
+            """{"key":"k-$i","uid":"u-$i","at":${10_000L + (501 - i)},"title":"T$i","body":"B"}"""
+        }
+        val capped = ReminderPlanner.plan("[$entries]", 0)
+        assertEquals(ReminderPlanner.MAX_ALARMS, capped.size)
+        assertEquals(10_001L, capped.first().triggerAt)
+        assertEquals(10_000L + ReminderPlanner.MAX_ALARMS, capped.last().triggerAt)
+    }
 }

@@ -114,7 +114,9 @@ mixin _RevealsFound<T extends StatefulWidget> on State<T> {
     if (!mounted || scroll == null || !scroll.hasClients || SearchGlow.isBuilt(uid)) return;
     final position = scroll.position;
     // From the top, a screenful at a time, building each in turn.
-    if (tries > 0 && position.pixels >= position.maxScrollExtent) return;
+    if (tries > 40 || position.viewportDimension <= 0 || (tries > 0 && position.pixels >= position.maxScrollExtent)) {
+      return;
+    }
     final next = tries == 0 ? 0.0 : position.pixels + position.viewportDimension * 0.8;
     position.jumpTo(next.clamp(position.minScrollExtent, position.maxScrollExtent));
     WidgetsBinding.instance.addPostFrameCallback((_) => _step(uid, tries + 1));
@@ -228,6 +230,7 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
   TaskOrder _order(String group) {
     final list = (this, group);
     void clear() {
+      if (!mounted) return;
       if (_ordering?.group == group) setState(() => _ordering = null);
     }
 
@@ -238,6 +241,7 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
         return drag.list == list && drag.item.id != next.$2.id && key != null && key == _orderKey(next);
       },
       place: (drag, next, {required after}) {
+        if (!mounted) return;
         final key = _orderKey((drag.scope, drag.item));
         final shown = [
           for (final t in _given[group] ?? const <_Task>[])
@@ -250,6 +254,7 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
         if (!listEquals(ids, shown)) setState(() => _ordering = (group: group, ids: ids));
       },
       keep: () {
+        if (!mounted) return;
         final ordering = _ordering;
         if (ordering == null || ordering.group != group) return;
         final byId = {for (final t in _given[group] ?? const <_Task>[]) t.$2.id: t.$2};
@@ -261,7 +266,11 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
   }
 
   /// After a build: every group is now drawn, so later ones are new.
-  void _settle() => _started = true;
+  void _settle() {
+    _started = true;
+    _rows.removeWhere((k, _) => !_seenRows.contains(k));
+    _seenRows.clear();
+  }
 
   /// Removes [task] from [group], closing it up.
   void _remove(String group, _Task task, VoidCallback remove) {
@@ -277,11 +286,13 @@ mixin _DayMotion<T extends StatefulWidget> on State<T> {
 
   /// Each row as last built, with what it was built from.
   final _rows = <Object, ({TodoItem? item, Object? from, Widget row})>{};
+  final _seenRows = <Object>{};
 
   /// The row for [key], the last one's very widget while [item] has the same
   /// content and [from] (what else it's built from) is the same, so a
   /// change to one task rebuilds that task's row, not the whole list's.
   Widget _row(Object key, TodoItem? item, Object? from, Widget Function() build) {
+    _seenRows.add(key);
     final last = _rows[key];
     if (last != null &&
         last.from == from &&
@@ -303,18 +314,30 @@ void _addDue(
   bool birthday = false,
   int reminders = 0,
   String? location,
+  bool allowSmart = true,
 }) {
   // Due later this week files under This week, anything after under This
   // month; both move into Tomorrow and Today as the day nears.
   final (scope, due) = scopeForDay(state.today, day);
-  state.quickAddTodo(scope, text, dueDate: due, time: time, birthday: birthday, reminders: reminders, location: location);
+  state.quickAddTodo(
+    scope,
+    text,
+    dueDate: due,
+    time: time,
+    birthday: birthday,
+    reminders: reminders,
+    location: location,
+    allowSmart: allowSmart,
+  );
 }
 
 /// Adds [text] on [day] as [choice] says: a task, or a repeating one.
-void _addChosen(AppState state, String text, DateTime day, _DayChoice choice) {
+void _addChosen(AppState state, String text, DateTime day, _DayChoice choice, {bool allowSmart = false}) {
   final (time, birthday, reminders, location) = (choice.time, choice.birthday, choice.reminders, choice.location);
   if (choice.repeat case final repeat?) {
-    final parsed = state.smartAdd && !birthday ? parseQuickTask(text, state.today, defaultDay: day, defaultTime: time) : null;
+    final parsed = allowSmart && state.smartAdd && !birthday
+        ? parseQuickTask(text, state.today, defaultDay: day, defaultTime: time)
+        : null;
     state.addRepeat(
       parsed?.name ?? text,
       repeat.rule,
@@ -326,6 +349,15 @@ void _addChosen(AppState state, String text, DateTime day, _DayChoice choice) {
       location: location ?? parsed?.location,
     );
   } else {
-    _addDue(state, text, day, time: time, birthday: birthday, reminders: reminders, location: location);
+    _addDue(
+      state,
+      text,
+      day,
+      time: time,
+      birthday: birthday,
+      reminders: reminders,
+      location: location,
+      allowSmart: allowSmart,
+    );
   }
 }

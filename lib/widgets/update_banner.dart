@@ -84,7 +84,7 @@ class _Card extends StatelessWidget {
     );
 
     return Container(
-      width: cornerCardWidth,
+      width: cornerCardMaxWidth(context),
       padding: const EdgeInsets.fromLTRB(18, 16, 20, 16),
       decoration: BoxDecoration(
         color: p.tile,
@@ -98,10 +98,14 @@ class _Card extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(
             child: AnimatedSize(
-              duration: Motion.morph,
+              duration: context.themed(Motion.morph),
               curve: Motion.morphCurve,
               alignment: Alignment.topLeft,
-              child: FadeThrough(duration: Motion.morph, layoutBuilder: FadeThrough.sizeToCurrent, child: body),
+              child: FadeThrough(
+                duration: context.themed(Motion.morph),
+                layoutBuilder: FadeThrough.sizeToCurrent,
+                child: body,
+              ),
             ),
           ),
         ],

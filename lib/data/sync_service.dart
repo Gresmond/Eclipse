@@ -58,6 +58,8 @@ class SyncService extends ChangeNotifier {
         final json = jsonDecode(contents);
         if (json is Map<String, dynamic>) {
           config = json;
+          config.remove('vaultKeys');
+          config.remove('encryptedAccounts');
           final bad = [
             for (final MapEntry(:key, :value) in config.entries)
               if (!_fits(key, value)) key,
@@ -118,6 +120,11 @@ class SyncService extends ChangeNotifier {
   final SyncSettings _settings;
   final Store store;
   final Map<String, dynamic> _config;
+  (String, String)? _encryptedFile;
+  static const _legacyEncryptionError = DriveError(
+    'This Drive contains encrypted Eclipse history. Use the Eclipse version that created it to recover the data.',
+  );
+  static final _legacyHeader = ascii.encode('ECLIPSE-AES-GCM-1\n');
   final SyncDrive Function(String refreshToken) _connect;
   final Future<GoogleAccount> Function({Future<void>? cancel}) _signIn;
 
@@ -356,6 +363,7 @@ class SyncService extends ChangeNotifier {
   Future<bool> look(GoogleAccount account) async {
     final drive = _connect(account.refreshToken);
     final files = await drive.list();
+    if (files.any((file) => file.name == 'eclipse-encryption-v1')) throw _legacyEncryptionError;
     final disk = folder.disk;
     final there = <String>{};
     var hasOthers = false;
@@ -387,6 +395,7 @@ class SyncService extends ChangeNotifier {
     folder.disk.clear();
     _config
       ..remove('driveInventory')
+      ..remove('compacted')
       ..remove('down')
       ..remove('up')
       ..remove('ids');
@@ -416,6 +425,7 @@ class SyncService extends ChangeNotifier {
         });
       } catch (_) {
         engine.forgetCounts();
+        if (!isOn) _drive = null;
         rethrow;
       }
       onClear?.call(days);
@@ -530,9 +540,12 @@ class SyncService extends ChangeNotifier {
     final down = _seen('down'), ids = _seen('ids'), mine = <String, String>{};
     final files = await _inventory(drive), seen = <String, dynamic>{}, copies = <String, int>{};
     if (_stopped) return mine;
+    final remoteFiles = <(String, String)>{};
     for (final f in files) {
+      if (f.name == 'eclipse-encryption-v1' || _encryptedFile == (f.id, f.modified)) throw _legacyEncryptionError;
       copies[f.name] = (copies[f.name] ?? 0) + 1;
     }
+    final writes = <(String, String, List<int>)>[];
     for (final f in files) {
       if (_stopped) return mine;
       final (who, day) = _split(f.name) ?? (null, null);
@@ -542,6 +555,7 @@ class SyncService extends ChangeNotifier {
       final name = copies[f.name]! > 1 ? '${p.basenameWithoutExtension(day)}~${f.id}.json' : day;
       final disk = folder.disk;
       if (!disk.holds(who, name)) continue;
+      remoteFiles.add((who, name));
       if (who == machine) {
         if (mine[f.name] == null || f.id == ids[f.name]) mine[f.name] = f.id;
         if (disk.exists(who, name)) continue;
@@ -551,15 +565,38 @@ class SyncService extends ChangeNotifier {
       }
       final bytes = await drive.download(f.id);
       if (_stopped) return mine;
+      if (bytes.length >= _legacyHeader.length && listEquals(bytes.sublist(0, _legacyHeader.length), _legacyHeader)) {
+        _encryptedFile = (f.id, f.modified);
+        throw _legacyEncryptionError;
+      }
       try {
         jsonDecode(utf8.decode(bytes));
       } on FormatException {
         continue; // cut short: fetched again next round
       }
-      await disk.writeBytes(who, name, bytes);
-      if (_stopped) return mine;
+      writes.add((who, name, bytes));
       if (who != machine) seen[f.id] = f.modified;
     }
+    final disk = folder.disk;
+    final stale = [
+      for (final existing in disk.files())
+        if (existing.who != machine && !remoteFiles.contains((existing.who, existing.name))) existing,
+    ];
+    Future<void> applyDisk() async {
+      for (final (who, name, bytes) in writes) {
+        await disk.writeBytes(who, name, bytes);
+        if (_stopped) return;
+      }
+      for (final item in stale) {
+        disk.remove(item.who, item.name);
+      }
+    }
+    if (disk is DatabaseDisk) {
+      await disk.batch(applyDisk);
+    } else {
+      await applyDisk();
+    }
+    if (_stopped) return mine;
     // By id, as names can repeat; files gone from Drive are forgotten.
     _config['down'] = seen;
     return mine;
@@ -609,32 +646,59 @@ class SyncService extends ChangeNotifier {
       if (month.compareTo(cutoff) >= 0 || f.name.endsWith('-00.json')) continue;
       (months[month] ??= []).add(f.name);
     }
-    final month = months.keys.where((m) => months[m]!.length >= 2).firstOrNull;
-    if (month != null) {
+    final eligible = months.entries.where((e) {
+      final archived = '${e.key}-00.json', remote = '${machine}_$archived';
+      return e.value.length >= 2 ||
+          (e.value.isNotEmpty && (mine.containsKey(remote) || disk.exists(machine, archived)));
+    });
+    for (final MapEntry(key: month, value: days) in eligible) {
       final archived = '$month-00.json', remote = '${machine}_$archived';
-      final days = months[month]!;
       final regs = <String, List>{};
       final sources = <String, List<int>>{};
-      final id = mine[remote] ?? _seen('ids')[remote] as String?;
+      var id = mine[remote] ?? _seen('ids')[remote] as String?;
       bool include(List<int> data) {
-        final value = jsonDecode(utf8.decode(data));
-        if (value is! Map || value['version'] != 1 || value['registers'] is! List) return false;
-        for (final item in value['registers'] as List) {
-          if (item is! List || !SyncEngine.validRegister(item)) return false;
-          regs[jsonEncode(item)] = item;
+        try {
+          final value = jsonDecode(utf8.decode(data));
+          if (value is! Map || value['version'] != 1 || value['registers'] is! List) return false;
+          for (final item in value['registers'] as List) {
+            if (item is! List || !SyncEngine.validRegister(item)) return false;
+            regs[jsonEncode(item)] = item;
+          }
+          return true;
+        } on FormatException {
+          return false;
         }
-        return true;
       }
 
-      if (id != null && !include(await drive.download(id))) return;
-      if (disk.exists(machine, archived) && !include(disk.readBytes('$machine/$archived'))) return;
+      if (id != null) {
+        try {
+          if (!include(await drive.download(id))) continue;
+        } on DriveError catch (e) {
+          if (!e.notFound) rethrow;
+          _seen('ids').remove(remote);
+          _seen('up').remove(remote);
+          id = null;
+        }
+      }
+      if (disk.exists(machine, archived) && !include(disk.readBytes('$machine/$archived'))) continue;
+      var badDay = false;
       for (final name in days) {
         final data = disk.readBytes('$machine/$name');
-        if (!include(data)) return;
+        if (!include(data)) {
+          badDay = true;
+          break;
+        }
         sources[name] = data;
       }
+      if (badDay) continue;
       final bytes = utf8.encode(jsonEncode({'version': 1, 'name': computerName, 'registers': regs.values.toList()}));
-      final made = await drive.upload(remote, bytes, id: id);
+      DriveFile made;
+      try {
+        made = await drive.upload(remote, bytes, id: id);
+      } on DriveError catch (e) {
+        if (!e.notFound || id == null) rethrow;
+        made = await drive.upload(remote, bytes);
+      }
       if (_stopped) return;
       final verified = await drive.download(made.id);
       if (!listEquals(bytes, verified)) throw const DriveError('Could not verify the compacted history.');
@@ -644,21 +708,27 @@ class SyncService extends ChangeNotifier {
       await _save();
       for (final name in days) {
         if (_stopped) return;
-        final original = '${machine}_$name', old = mine[original];
+        final original = '${machine}_$name', old = mine[original] ?? _seen('ids')[original] as String?;
         if (old == null) continue;
         // A second copy of this installation may have changed a file.
         // Keep it if the retrieved bytes differ from those just archived.
-        if (!listEquals(await drive.download(old), sources[name]) ||
-            !listEquals(disk.readBytes('$machine/$name'), sources[name])) {
-          continue;
+        try {
+          if (!listEquals(await drive.download(old), sources[name]) ||
+              !listEquals(disk.readBytes('$machine/$name'), sources[name])) {
+            continue;
+          }
+          await (drive as CopiesDrive).delete(old);
+        } on DriveError catch (e) {
+          if (!e.notFound) rethrow;
         }
-        await (drive as CopiesDrive).delete(old);
         disk.remove(machine, name);
         _seen('ids').remove(original);
         _seen('up').remove(original);
       }
+      break;
     }
     _config['compacted'] = today;
+    await _save();
   }
 
   /// Puts this computer's clock right by Google's, from a file just written:
@@ -930,7 +1000,7 @@ class _FileSettings implements SyncSettings {
       final raw = _file.readAsStringSync();
       // A damaged JSON string can end mid-key or mid-token. Preserve a
       // diagnostic without trying to redact secrets from truncated JSON.
-      final redacted = raw.contains('"refresh"')
+      final redacted = raw.contains('"refresh"') || raw.contains('"vaultKeys"')
           ? 'Damaged sync credentials: <redacted>'
           : raw;
       replaceSafelySync('${_file.path}.damaged', (part) {

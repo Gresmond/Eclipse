@@ -9,7 +9,15 @@ Future<void> addTaskAnywhere(BuildContext context) async {
     context: context,
     builder: (_) => _DueDateDialog(first: state.today, birthdays: true, onName: (text) => name = text),
   );
-  if (choice != null) _addChosen(state, name, choice.day, choice);
+  if (choice == null || !context.mounted) return;
+  final untouched =
+      choice.day == state.today &&
+      choice.repeat == null &&
+      choice.time == null &&
+      !choice.birthday &&
+      choice.reminders == 0 &&
+      choice.location == null;
+  _addChosen(state, name, choice.day, choice, allowSmart: untouched);
 }
 
 /// The field at a card's foot for a new task on a day between [first] and
@@ -32,9 +40,22 @@ class _DatedAddState extends State<_DatedAdd> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
   _DayChoice? _choice;
+  String _text = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onText);
+  }
+
+  void _onText() {
+    if (_controller.text == _text || !mounted) return;
+    setState(() => _text = _controller.text);
+  }
 
   @override
   void dispose() {
+    _controller.removeListener(_onText);
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -65,10 +86,31 @@ class _DatedAddState extends State<_DatedAdd> {
     if (_controller.text.trim().isEmpty) return;
     final state = AppScope.read(context);
     if (_choice == null && state.smartAdd) {
-      final parsed = parseQuickTask(_controller.text, state.today);
+      final parsed = parseQuickTask(_controller.text, state.today, defaultDay: widget.first);
+      if (parsed.repeat case final rule?) {
+        state.addRepeat(
+          parsed.name,
+          rule,
+          parsed.day ?? widget.first,
+          until: parsed.until,
+          time: parsed.minutes,
+          location: parsed.location,
+          reminders: parsed.reminders,
+        );
+        _controller.clear();
+        _focus.requestFocus();
+        return;
+      }
       if (parsed.day case final day?) {
         final (scope, due) = scopeForDay(state.today, day);
-        state.quickAddTodo(scope, _controller.text, dueDate: due);
+        state.addTodo(
+          scope,
+          parsed.name,
+          dueDate: due,
+          time: parsed.minutes,
+          location: parsed.location,
+          reminders: parsed.reminders,
+        );
         _controller.clear();
         _focus.requestFocus();
         return;
@@ -84,20 +126,31 @@ class _DatedAddState extends State<_DatedAdd> {
 
   @override
   Widget build(BuildContext context) {
-    final today = AppScope.read(context).today;
+    final state = AppScope.watch(context, (s) => (s.today, s.smartAdd));
+    final today = state.today;
     final choice = _choice, due = choice?.day;
+    final preview = choice == null && state.smartAdd && _text.trim().isNotEmpty
+        ? _SmartAddPreview(parsed: parseQuickTask(_text, today, defaultDay: widget.first), today: today)
+        : null;
     return Padding(
       padding: const EdgeInsets.only(top: 6, right: 6),
-      child: _Field(
-        controller: _controller,
-        focus: _focus,
-        leading: _TaskAction(
-          tooltip: due == null ? 'Pick a day' : 'Due ${dayAndMonth(due)}, click to change',
-          icon: due == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
-          onPressed: _pick,
-        ),
-        details: choice == null ? null : _ChosenDetails(choice: choice, today: today),
-        onSubmitted: _submit,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Field(
+            controller: _controller,
+            focus: _focus,
+            leading: _TaskAction(
+              tooltip: due == null ? 'Pick a day' : 'Due ${dayAndMonth(due)}, click to change',
+              icon: due == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
+              onPressed: _pick,
+            ),
+            details: choice == null ? null : _ChosenDetails(choice: choice, today: today),
+            onSubmitted: _submit,
+          ),
+          if (preview != null && preview.hasTags) preview,
+        ],
       ),
     );
   }
@@ -124,6 +177,7 @@ class _AddTaskState extends State<_AddTask> {
   final _focus = FocusNode();
   bool _hover = false;
   _DayChoice? _choice;
+  String _text = '';
 
   /// While the calendar is open, what it picked stays though the field is
   /// empty.
@@ -132,6 +186,7 @@ class _AddTaskState extends State<_AddTask> {
   @override
   void initState() {
     super.initState();
+    _controller.addListener(_onText);
     _focus.addListener(() {
       setState(() {
         if (!_focus.hasFocus && !_picking && _controller.text.trim().isEmpty) _choice = null;
@@ -139,8 +194,14 @@ class _AddTaskState extends State<_AddTask> {
     });
   }
 
+  void _onText() {
+    if (_controller.text == _text || !mounted) return;
+    setState(() => _text = _controller.text);
+  }
+
   @override
   void dispose() {
+    _controller.removeListener(_onText);
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -153,7 +214,16 @@ class _AddTaskState extends State<_AddTask> {
       final parsed = state.smartAdd ? parseQuickTask(text, past, defaultDay: widget.day) : null;
       final day = parsed?.day ?? widget.day;
       if (parsed?.repeat case final rule?) {
-        state.addRepeat(parsed!.name, rule, day, until: parsed.until, time: parsed.minutes, location: parsed.location, reminders: parsed.reminders);
+        final repeatStart = day.isBefore(state.today) ? state.today : day;
+        state.addRepeat(
+          parsed!.name,
+          rule,
+          repeatStart,
+          until: parsed.until,
+          time: parsed.minutes,
+          location: parsed.location,
+          reminders: parsed.reminders,
+        );
       } else if (parsed?.day != null && day.isAfter(state.today)) {
         final (scope, due) = scopeForDay(state.today, day);
         state.addTodo(scope, parsed!.name, dueDate: due, time: parsed.minutes, location: parsed.location, reminders: parsed.reminders);
@@ -198,105 +268,120 @@ class _AddTaskState extends State<_AddTask> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.read(context);
+    final state = AppScope.watch(context, (s) => (s.today, s.smartAdd));
     final choice = _choice;
     final moved = choice != null && choice.day != widget.day;
     // Its calendar only once it's been clicked, or while a day is picked.
     final timed = widget.past == null && (_focus.hasFocus || _picking || choice != null);
+    final preview = choice == null && state.smartAdd && _text.trim().isNotEmpty
+        ? _SmartAddPreview(
+            parsed: parseQuickTask(_text, widget.past ?? state.today, defaultDay: widget.day),
+            today: widget.today,
+          )
+        : null;
     return Padding(
       padding: const EdgeInsets.only(left: 18, top: 2, bottom: 2),
-      child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.escape): () {
-            _controller.clear();
-            _focus.unfocus();
-          },
-        },
-        // Tinted as a task is under the pointer, and while it's typed in.
-        child: MouseRegion(
-          cursor: SystemMouseCursors.text,
-          onEnter: (_) => setState(() => _hover = true),
-          onExit: (_) => setState(() => _hover = false),
-          // Anywhere on the line puts the cursor in, as a text box, not a
-          // button.
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: (_) => _focus.requestFocus(),
-            child: HoverFill(
-              hover: _hover || _focus.hasFocus || _picking,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final width = constraints.maxWidth;
-                    // A task's height, so the line sits a task's distance below the last.
-                    return ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 43),
-                      child: PixelRow(
-                        children: [
-                          // Its buttons leave the cursor in the field; the + lines
-                          // up with the tick boxes above.
-                          TextFieldTapRegion(
-                            child: SizedBox(
-                              width: 20,
-                              height: _TaskAction.size,
-                              child: OverflowBox(
-                                maxWidth: _TaskAction.size,
-                                child: _TaskAction(icon: Icons.add_rounded, onPressed: () => _submit(state)),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: _controller,
-                              focusNode: _focus,
-                              textCapitalization: TextCapitalization.sentences,
-                              inputFormatters: const [NoteInputFormatter()],
-                              // As a task's name, so the line is a task's height.
-                              style: _taskInputStyle(p),
-                              cursorColor: p.accent,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                border: InputBorder.none,
-                                hintText: 'Add task',
-                                hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                              onSubmitted: (_) => _submit(state),
-                            ),
-                          ),
-                          if (timed)
-                            TextFieldTapRegion(
-                              child: PixelRow(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (choice != null)
-                                    ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                        maxWidth: _detailsRoom(width - 32 - _TaskAction.size),
-                                      ),
-                                      child: _ChosenDetails(choice: choice, today: widget.today, showDay: moved),
-                                    ),
-                                  _TaskAction(
-                                    tooltip: choice == null
-                                        ? 'Pick a day'
-                                        : 'Due ${dayAndMonth(choice.day)}, click to change',
-                                    icon: choice == null ? Icons.calendar_today_rounded : Icons.event_available_rounded,
-                                    onPressed: _pick,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.escape): () {
+                _controller.clear();
+                _focus.unfocus();
+              },
+            },
+            // Tinted as a task is under the pointer, and while it's typed in.
+            child: MouseRegion(
+              cursor: SystemMouseCursors.text,
+              onEnter: (_) => setState(() => _hover = true),
+              onExit: (_) => setState(() => _hover = false),
+              // Anywhere on the line puts the cursor in, as a text box, not a
+              // button.
+              child: Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (_) => _focus.requestFocus(),
+                child: HoverFill(
+                  hover: _hover || _focus.hasFocus || _picking,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = constraints.maxWidth;
+                        // A task's height, so the line sits a task's distance below the last.
+                        return ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 43),
+                          child: PixelRow(
+                            children: [
+                              // Its buttons leave the cursor in the field; the + lines
+                              // up with the tick boxes above.
+                              TextFieldTapRegion(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: _TaskAction.size,
+                                  child: OverflowBox(
+                                    maxWidth: _TaskAction.size,
+                                    child: _TaskAction(icon: Icons.add_rounded, onPressed: () => _submit(state)),
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: _controller,
+                                  focusNode: _focus,
+                                  textCapitalization: TextCapitalization.sentences,
+                                  inputFormatters: const [NoteInputFormatter()],
+                                  // As a task's name, so the line is a task's height.
+                                  style: _taskInputStyle(p),
+                                  cursorColor: p.accent,
+                                  decoration: InputDecoration(
+                                    isDense: true,
+                                    border: InputBorder.none,
+                                    hintText: 'Add task',
+                                    hintStyle: _taskInputStyle(p).copyWith(color: p.inkMuted),
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                  onSubmitted: (_) => _submit(state),
+                                ),
+                              ),
+                              if (timed)
+                                TextFieldTapRegion(
+                                  child: PixelRow(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (choice != null)
+                                        ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            maxWidth: _detailsRoom(width - 32 - _TaskAction.size),
+                                          ),
+                                          child: _ChosenDetails(choice: choice, today: widget.today, showDay: moved),
+                                        ),
+                                      _TaskAction(
+                                        tooltip: choice == null
+                                            ? 'Pick a day'
+                                            : 'Due ${dayAndMonth(choice.day)}, click to change',
+                                        icon: choice == null
+                                            ? Icons.calendar_today_rounded
+                                            : Icons.event_available_rounded,
+                                        onPressed: _pick,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+          if (preview != null && preview.hasTags) preview,
+        ],
       ),
     );
   }
@@ -359,6 +444,63 @@ TextStyle _taskTimeStyle(Palette p) =>
 
 /// Both task-entry fields use the same typography as the tasks they create.
 TextStyle _taskInputStyle(Palette p) => TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink);
+
+/// Compact live Quick Add preview pill shown under an active task entry field
+/// when natural language scheduling tags were recognized.
+class _SmartAddPreview extends StatelessWidget {
+  const _SmartAddPreview({required this.parsed, required this.today});
+
+  final QuickTask parsed;
+  final DateTime today;
+
+  bool get hasTags =>
+      parsed.day != null ||
+      parsed.minutes != null ||
+      parsed.repeat != null ||
+      parsed.location != null ||
+      parsed.reminders != 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final style = TextStyle(fontFamily: Fonts.body, fontSize: 12, color: p.inkMuted);
+    Widget tag(IconData icon, String text, {Color? color}) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: p.empty.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color ?? p.inkMuted),
+          const SizedBox(width: 4),
+          Text(text, style: color == null ? style : style.copyWith(color: color)),
+        ],
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, left: 4),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: [
+          if (parsed.day case final d?) tag(Icons.event_rounded, dayAndMonth(d, today: today)),
+          if (parsed.minutes case final m?) tag(Icons.schedule_rounded, clockLabel(m)),
+          if (parsed.location case final loc?) tag(Icons.place_rounded, loc),
+          if (parsed.repeat case final rule?)
+            tag(
+              Icons.repeat_rounded,
+              _repeatLabel((rule: rule, until: parsed.until)),
+              color: p.accent,
+            ),
+          if (parsed.reminders != 0) tag(Icons.notifications_rounded, 'Reminder'),
+        ],
+      ),
+    );
+  }
+}
 
 /// A rounded field for a new task's name, as at the foot of a to-do card.
 class _Field extends StatelessWidget {

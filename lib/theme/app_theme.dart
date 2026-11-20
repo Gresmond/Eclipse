@@ -462,10 +462,10 @@ ThemeData buildTheme(Palette p) {
       style: _clickable.copyWith(
         padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 23)),
         backgroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.disabled) ? p.done.withValues(alpha: 0.45) : p.done,
+          (states) => states.contains(WidgetState.disabled) ? p.empty : p.done,
         ),
         foregroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.disabled) ? p.onDone.withValues(alpha: 0.8) : p.onDone,
+          (states) => states.contains(WidgetState.disabled) ? p.inkMuted : p.onDone,
         ),
       ),
     ),

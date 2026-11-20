@@ -18,9 +18,8 @@ class SearchHit {
     this.subtask,
     this.subtaskIndex,
   }) : kind = 'task';
-  const SearchHit.record(this.kind, this.day, this.text)
-    : uid = null,
-      done = false,
+  const SearchHit.record(this.kind, this.day, this.text, {this.uid})
+    : done = false,
       subtask = null,
       subtaskIndex = null;
   final String kind;
@@ -88,17 +87,34 @@ class SearchIndex {
     ];
   }();
 
-  late final _records = [
+  late final List<({SearchHit hit, String key})> _records = [
     for (final r in _store.raw.select("""
-      SELECT 'ritual' AS kind, printf('%04d-%02d-01', year, month) AS day, name || ' · ' || note AS text
+      SELECT 'ritual' AS kind, printf('%04d-%02d-01', year, month) AS day, name || ' · ' || note AS text, NULL AS uid
       FROM month_habits WHERE trim(note) <> ''
-      UNION ALL SELECT 'entry', e.day, coalesce(m.name || ' · ', '') || e.note
-      FROM entries e LEFT JOIN month_habits m ON e.habit_id=m.habit_id AND substr(e.day,1,7)=printf('%04d-%02d',m.year,m.month)
+      UNION ALL SELECT 'entry', e.day,
+        coalesce(m.name || ' · ',
+          CASE sh.item WHEN 'sleepBy' THEN 'Sleep · ' WHEN 'wakeUp' THEN 'Wake · ' WHEN 'windDown' THEN 'Wind down · ' WHEN 'inBed' THEN 'In bed · ' END,
+          '') || e.note,
+        'habit:' || e.habit_id
+      FROM entries e
+      LEFT JOIN month_habits m ON e.habit_id=m.habit_id AND substr(e.day,1,7)=printf('%04d-%02d',m.year,m.month)
+      LEFT JOIN sleep_habits sh ON e.habit_id=sh.habit_id
       WHERE trim(e.note) <> ''
-      UNION ALL SELECT 'training', s.day, group_concat(DISTINCT x.name)
-      FROM training_sets s JOIN exercises x ON x.uid=s.exercise GROUP BY s.day
+      UNION ALL SELECT 'training', day,
+        coalesce((SELECT group_concat(name, ', ') FROM (SELECT DISTINCT x.name AS name FROM training_sets s2 JOIN exercises x ON x.uid=s2.exercise WHERE s2.day=s.day)), '') ||
+        coalesce(' · ' || (SELECT group_concat(note, ' · ') FROM (SELECT DISTINCT nullif(trim(s3.note), '') AS note FROM training_sets s3 WHERE s3.day=s.day AND trim(s3.note) <> '')), ''),
+        NULL
+      FROM (SELECT DISTINCT day FROM training_sets) s
       """))
-      SearchHit.record(r['kind'] as String, DateTime.parse(r['day'] as String), r['text'] as String),
+      (
+        hit: SearchHit.record(
+          r['kind'] as String,
+          DateTime.parse(r['day'] as String),
+          r['text'] as String,
+          uid: r['uid'] as String?,
+        ),
+        key: _fold(r['text'] as String),
+      ),
   ];
 
   // Trigrams preserve substring matching. Short queries and SQLite builds
@@ -110,34 +126,42 @@ class SearchIndex {
     if (!_ftsAvailable || long.isEmpty) return null;
     final db = _store.raw;
     if (_owners[_store] != this) {
+      _store.inTempWork = true;
       try {
         db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS temp.eclipse_search USING fts5(body, tokenize='trigram')");
+        final bodies = [
+          for (final e in _journal) e.key,
+          for (final e in _todos) [e.key, ...e.subtasks.map((s) => s.key)].join('\n'),
+          for (final e in _records) e.key,
+        ];
+        _store.transaction(() {
+          db.execute('DELETE FROM temp.eclipse_search');
+          final insert = db.prepare('INSERT INTO temp.eclipse_search(rowid, body) VALUES (?, ?)');
+          try {
+            for (final (i, body) in bodies.indexed) {
+              insert.execute([i + 1, body]);
+            }
+          } finally {
+            insert.close();
+          }
+        });
+        _owners[_store] = this;
       } on SqliteException {
         _ftsAvailable = false;
         return null;
+      } finally {
+        _store.inTempWork = false;
       }
-      final bodies = [
-        for (final e in _journal) e.key,
-        for (final e in _todos) [e.key, ...e.subtasks.map((s) => s.key)].join('\n'),
-        for (final e in _records) _fold(e.text),
-      ];
-      _store.transaction(() {
-        db.execute('DELETE FROM temp.eclipse_search');
-        final insert = db.prepare('INSERT INTO temp.eclipse_search(rowid, body) VALUES (?, ?)');
-        try {
-          for (final (i, body) in bodies.indexed) {
-            insert.execute([i + 1, body]);
-          }
-        } finally {
-          insert.close();
-        }
-      });
-      _owners[_store] = this;
     }
     final query = long.map((term) => '"${term.replaceAll('"', '""')}"').join(' AND ');
-    return {
-      for (final r in db.select('SELECT rowid FROM temp.eclipse_search WHERE body MATCH ?', [query])) r['rowid'] as int,
-    };
+    try {
+      return {
+        for (final r in db.select('SELECT rowid FROM temp.eclipse_search WHERE body MATCH ?', [query]))
+          r['rowid'] as int,
+      };
+    } on SqliteException {
+      return null;
+    }
   }
 
   /// The words of [query], folded the way the text is.
@@ -182,8 +206,8 @@ class SearchIndex {
         ),
       ));
     }
-    for (final record in _records) {
-      if (include() && all(_fold(record.text))) hits.add((dateKey(record.day), 2, record));
+    for (final (:hit, :key) in _records) {
+      if (include() && all(key)) hits.add((dateKey(hit.day), 2, hit));
     }
     hits.sort((a, b) {
       final byDay = b.$1.compareTo(a.$1);

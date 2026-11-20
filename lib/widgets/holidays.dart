@@ -100,7 +100,7 @@ class HolidaysRow extends StatelessWidget {
           ),
           // Each one fades and folds in or out as it's added or taken away.
           AnimatedSize(
-            duration: Motion.morph,
+            duration: (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ? Duration.zero : Motion.morph,
             curve: Motion.morphCurve,
             alignment: Alignment.topCenter,
             child: Column(

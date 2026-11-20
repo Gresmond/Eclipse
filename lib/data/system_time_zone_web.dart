@@ -3,6 +3,7 @@ class SystemTimeZone {
   static const SystemTimeZone? instance = null;
 
   static DateTime now() => DateTime.now();
+  static Duration currentOffset() => DateTime.now().timeZoneOffset;
 
   void sync() {}
 }

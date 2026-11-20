@@ -93,6 +93,7 @@ class _SyncBannerState extends State<SyncBanner> {
   }
 
   void _changed() {
+    if (!mounted) return;
     if (widget.sync.incomingCount == _seen) {
       setState(() {}); // the sign-in card may come or go
       return;
@@ -207,7 +208,7 @@ class _AskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Container(
-      width: cornerCardWidth,
+      width: cornerCardMaxWidth(context),
       padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
       decoration: BoxDecoration(
         color: p.tile,

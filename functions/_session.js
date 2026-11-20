@@ -30,15 +30,27 @@ const base64url = (bytes) =>
 const unbase64url = (text) =>
   Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 
+let cachedKeyRaw;
+let cachedKeyPromise;
+
 const key = async (env) => {
   if (missingEnv(env, ['COOKIE_KEY'])) throw new Error('COOKIE_KEY is not configured');
-  return crypto.subtle.importKey(
-    'raw',
-    await crypto.subtle.digest('SHA-256', encoder.encode(env.COOKIE_KEY)),
-    'AES-GCM',
-    false,
-    ['encrypt', 'decrypt'],
-  );
+  if (!cachedKeyPromise || cachedKeyRaw !== env.COOKIE_KEY) {
+    cachedKeyRaw = env.COOKIE_KEY;
+    cachedKeyPromise = crypto.subtle
+      .importKey(
+        'raw',
+        await crypto.subtle.digest('SHA-256', encoder.encode(env.COOKIE_KEY)),
+        'AES-GCM',
+        false,
+        ['encrypt', 'decrypt'],
+      )
+      .catch((err) => {
+        cachedKeyPromise = null;
+        throw err;
+      });
+  }
+  return cachedKeyPromise;
 };
 
 export async function seal(
@@ -79,12 +91,22 @@ export async function unseal(env, text, purpose = SESSION_PURPOSE) {
 }
 
 export function cookies(request) {
-  const found = {};
+  const found = Object.create(null);
   for (const part of (request.headers.get('Cookie') ?? '').split(';')) {
     const at = part.indexOf('=');
     if (at > 0) found[part.slice(0, at).trim()] = part.slice(at + 1).trim();
   }
   return found;
+}
+
+export async function fetchWithTimeout(url, init = {}, ms = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const cookie = (name, value, seconds) =>

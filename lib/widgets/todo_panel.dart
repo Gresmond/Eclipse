@@ -188,6 +188,33 @@ class TaskRow extends StatelessWidget {
   }
 }
 
+/// Confirms removal of [item], asking once for repeating tasks; returns true
+/// when removed.
+Future<bool> confirmRemoveTask(
+  BuildContext context,
+  TodoScope scope,
+  TodoItem item, {
+  TodoItem Function()? make,
+  DateTime? day,
+}) async {
+  final state = AppScope.read(context);
+  final effectiveDay = day ?? state.today;
+  final repeat = state.repeatOf(item);
+  if (repeat == null) {
+    final target = make?.call() ?? item;
+    state.removeTodo(scope, target, day: day);
+    return true;
+  }
+  final future = await _askWhich(context, removing: true);
+  if (future == null || !context.mounted) return false;
+  final target = make?.call() ?? item;
+  state.removeTogether(() {
+    state.removeTodo(scope, target, day: day);
+    if (future) state.endRepeat(repeat, target.repeatDay ?? effectiveDay);
+  });
+  return true;
+}
+
 /// Touch actions for a task in the compact planner.
 class TaskDetailsMenu extends StatelessWidget {
   const TaskDetailsMenu({super.key, required this.scope, required this.item, this.make});
@@ -201,12 +228,18 @@ class TaskDetailsMenu extends StatelessWidget {
     final state = AppScope.read(context);
     return PopupMenuButton<int>(
       tooltip: 'Actions for ${item.text}',
+      icon: const Icon(Icons.more_vert_rounded, size: 18),
       itemBuilder: (_) => [
         const PopupMenuItem(value: -2, child: Text('Edit task')),
         const PopupMenuItem(value: -1, child: Text('Add subtask')),
         for (final (i, sub) in item.subtasks.indexed) PopupMenuItem(value: i, child: Text('Edit ${sub.text}')),
+        const PopupMenuItem(value: -3, child: Text('Delete task')),
       ],
       onSelected: (index) async {
+        if (index == -3) {
+          await confirmRemoveTask(context, scope, item, make: make);
+          return;
+        }
         if (index == -2) {
           await _editTask(context, scope, item, state.today, make: make);
           return;
@@ -232,6 +265,15 @@ class TaskDetailsMenu extends StatelessWidget {
         } else {
           return;
         }
+        final repeat = state.repeatOf(current);
+        if (repeat != null) {
+          final future = await _askWhich(context, removing: false);
+          if (future == null || !context.mounted) return;
+          if (future) {
+            state.setRepeatSubtasks(scope, current, repeat, children, day: state.today);
+            return;
+          }
+        }
         state.setTodoSubtasks(scope, current, children);
       },
     );
@@ -243,47 +285,290 @@ class PhonePlan extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision));
+    final p = context.palette;
+    final state = AppScope.watch(context, (s) => (s.today, s.todosRevision, s.laterBirthdays));
     final plan = state.fromTodos((PhonePlan, state.today), () => _Planned(state, state.today, past: false));
-    Widget row(TodoScope scope, TodoItem item, [TodoItem Function()? make]) => ListTile(
-      leading: Checkbox(
-        value: item.done,
-        onChanged: (_) => state.toggleTodo(make?.call() ?? item, scope: scope),
-      ),
-      title: Text(item.text),
-      subtitle: item.dueTime == null ? null : Text(clockLabel(item.dueTime!)),
-      onTap: () => _editTask(context, scope, item, state.today, make: make),
-      trailing: TaskDetailsMenu(scope: scope, item: item, make: make),
-    );
-    return Scaffold(
-      appBar: AppBar(title: const Text('Plan')),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Add task',
-        onPressed: () => addTaskAnywhere(context),
-        child: const Icon(Icons.add),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+    final bodyStyle = TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink);
+    final mutedStyle = TextStyle(fontFamily: Fonts.body, fontSize: 12, height: 1.35, color: p.inkMuted);
+
+    Future<void> toggleSubtask(TodoScope scope, TodoItem item, int index, TodoItem Function()? make) async {
+      final current = make?.call() ?? item;
+      final children = [
+        for (final (j, s) in current.subtasks.indexed)
+          if (j == index) TodoSubtask(s.text, done: !s.done, note: s.note, numbered: s.numbered) else s,
+      ];
+      state.setTodoSubtasks(scope, current, children);
+    }
+
+    Widget row(TodoScope scope, TodoItem item, [TodoItem Function()? make]) {
+      final hasMeta = item.dueTime != null || item.location != null || item.repeatUid != null || item.birthday;
+      return Dismissible(
+        key: ValueKey('plan-${item.uid ?? item.id}-${item.repeatDay?.millisecondsSinceEpoch ?? 0}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) => confirmRemoveTask(context, scope, item, make: make),
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 16),
+          decoration: BoxDecoration(color: p.missed, borderRadius: BorderRadius.circular(12)),
+          child: Icon(Icons.delete_rounded, size: 18, color: p.onAccent),
+        ),
+        child: SearchGlow(
+          target: item.uid,
+          radius: 12,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => _editTask(context, scope, item, state.today, make: make),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 52),
+                  child: Row(
+                    children: [
+                      if (item.birthday)
+                        SizedBox(
+                          width: 26,
+                          height: 26,
+                          child: Icon(Icons.cake_rounded, size: 18, color: p.accent),
+                        )
+                      else
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            state.toggleTodo(make?.call() ?? item, scope: scope);
+                          },
+                          child: SizedBox(
+                            width: 34,
+                            height: 34,
+                            child: Center(
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: item.done ? p.done : Colors.transparent,
+                                  border: item.done ? null : Border.all(color: p.inkMuted, width: 1.5),
+                                ),
+                                child: item.done ? Icon(Icons.check_rounded, size: 16, color: p.onDone) : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (hasMeta)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 2),
+                                  child: Row(
+                                    children: [
+                                      if (item.dueTime case final time?)
+                                        Text(
+                                          clockLabel(time),
+                                          style: TextStyle(fontFamily: Fonts.taskTime, fontSize: 12, color: p.inkMuted),
+                                        ),
+                                      if (item.location case final loc?) ...[
+                                        if (item.dueTime != null) const SizedBox(width: 8),
+                                        Icon(Icons.place_rounded, size: 12, color: p.inkMuted),
+                                        const SizedBox(width: 2),
+                                        Flexible(
+                                          child: Text(loc, maxLines: 1, overflow: TextOverflow.ellipsis, style: mutedStyle),
+                                        ),
+                                      ],
+                                      if (item.birthday || item.repeatUid != null) ...[
+                                        if (item.dueTime != null || item.location != null) const SizedBox(width: 8),
+                                        Icon(
+                                          item.birthday ? Icons.cake_rounded : Icons.repeat_rounded,
+                                          size: 12,
+                                          color: p.inkMuted,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              Text(
+                                item.text,
+                                style: bodyStyle.copyWith(
+                                  color: item.done ? p.inkMuted : p.ink,
+                                  decoration: item.done ? TextDecoration.lineThrough : null,
+                                  decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                                ),
+                              ),
+                              if (item.note case final note?)
+                                Text(note, maxLines: 3, overflow: TextOverflow.ellipsis, style: mutedStyle),
+                            ],
+                          ),
+                        ),
+                      ),
+                      TaskDetailsMenu(scope: scope, item: item, make: make),
+                    ],
+                  ),
+                ),
+              ),
+              for (final (j, sub) in item.subtasks.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(left: 38),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      unawaited(toggleSubtask(scope, item, j, make));
+                    },
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 40),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: sub.done ? p.done : Colors.transparent,
+                              border: sub.done ? null : Border.all(color: p.inkMuted, width: 1.5),
+                            ),
+                            child: sub.done ? Icon(Icons.check_rounded, size: 12, color: p.onDone) : null,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Text(
+                                sub.text,
+                                style: bodyStyle.copyWith(
+                                  fontSize: 14,
+                                  color: sub.done ? p.inkMuted : p.ink,
+                                  decoration: sub.done ? TextDecoration.lineThrough : null,
+                                  decorationColor: p.inkMuted.withValues(alpha: 0.45),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final laterGroups = [
+      for (final (day, entries) in plan.later)
+        if (entries.where((e) => state.laterBirthdays || !((e.item?.birthday ?? e.repeat?.birthday) ?? false)).toList()
+            case final visible when visible.isNotEmpty)
+          (day, visible),
+    ];
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
         children: [
-          for (final (i, tasks) in plan.days.indexed.skip(1)) ...[
-            if (i == 1 || i == 2)
-              ListTile(title: Text(i == 1 ? 'Tomorrow' : 'Week ahead', style: Theme.of(context).textTheme.titleLarge)),
-            if (i > 1 && tasks.isNotEmpty)
-              Text(dateKey(DateTime(state.today.year, state.today.month, state.today.day + i))),
-            for (final (scope, item) in tasks) row(scope, item),
-            if (i == 1 && tasks.isEmpty || i == 2 && plan.days.skip(2).every((day) => day.isEmpty))
-              const ListTile(title: Text('Nothing planned')),
-          ],
-          ListTile(title: Text('Further ahead', style: Theme.of(context).textTheme.titleLarge)),
-          if (plan.later.isEmpty) const ListTile(title: Text('Nothing planned')),
-          for (final (day, entries) in plan.later) ...[
-            Text(dateKey(day)),
-            for (final entry in entries)
-              if (entry.item case final item?)
-                row(entry.scope!, item)
-              else
-                row(TodoScope.month, entry.repeat!.unmade(day), () => state.occurrence(entry.repeat!, day)),
-          ],
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Plan',
+                  style: TextStyle(
+                    fontFamily: Fonts.display,
+                    fontSize: 38,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.6,
+                    height: 1.05,
+                    color: p.ink,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: state.laterBirthdays ? 'Hide birthdays' : 'Show birthdays',
+                icon: Icon(Icons.cake_rounded, size: 22, color: state.laterBirthdays ? p.accent : p.inkMuted),
+                onPressed: state.toggleLaterBirthdays,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Tile(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TileHeader(title: 'TOMORROW', titleStyle: capsLabel(p.inkMuted)),
+                const SizedBox(height: 8),
+                if (plan.days[1].isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text('Nothing planned', style: bodyStyle.copyWith(color: p.inkMuted)),
+                  )
+                else
+                  for (final (scope, item) in plan.days[1]) row(scope, item),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Tile(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TileHeader(title: 'WEEK AHEAD', titleStyle: capsLabel(p.inkMuted)),
+                const SizedBox(height: 8),
+                if (plan.days.skip(2).every((day) => day.isEmpty))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text('Nothing planned', style: bodyStyle.copyWith(color: p.inkMuted)),
+                  )
+                else
+                  for (final (i, tasks) in plan.days.indexed.skip(2))
+                    if (tasks.isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8, bottom: 4),
+                        child: Text(
+                          shortDay(DateTime(state.today.year, state.today.month, state.today.day + i), today: state.today),
+                          style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.inkMuted),
+                        ),
+                      ),
+                      for (final (scope, item) in tasks) row(scope, item),
+                    ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Tile(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TileHeader(title: 'FURTHER AHEAD', titleStyle: capsLabel(p.inkMuted)),
+                const SizedBox(height: 8),
+                if (laterGroups.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text('Nothing planned', style: bodyStyle.copyWith(color: p.inkMuted)),
+                  )
+                else
+                  for (final (day, entries) in laterGroups) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Text(
+                        shortDay(day, today: state.today),
+                        style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, fontWeight: FontWeight.w600, color: p.inkMuted),
+                      ),
+                    ),
+                    for (final entry in entries)
+                      if (entry.item case final item?)
+                        row(entry.scope!, item)
+                      else
+                        row(TodoScope.month, entry.repeat!.unmade(day), () => state.occurrence(entry.repeat!, day)),
+                  ],
+              ],
+            ),
+          ),
         ],
       ),
     );

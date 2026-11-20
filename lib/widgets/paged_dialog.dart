@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'app_dialog.dart';
@@ -81,6 +83,12 @@ class _PagedDialogState extends State<PagedDialog> {
   @override
   Widget build(BuildContext context) {
     final back = widget.onBack;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final narrow = screenWidth < widget.width + widget.padding.horizontal + 80;
+    final innerWidth = math.min(
+      widget.width,
+      math.max(0.0, screenWidth - (narrow ? 32 : 80) - widget.padding.horizontal),
+    );
     return Actions(
       actions: {if (back != null) DismissIntent: CallbackAction<DismissIntent>(onInvoke: (_) => back())},
       child: ConfirmOnEnter(
@@ -92,8 +100,9 @@ class _PagedDialogState extends State<PagedDialog> {
             child: Dialog(
               clipBehavior: Clip.antiAlias,
               backgroundColor: widget.backgroundColor,
+              insetPadding: narrow ? const EdgeInsets.symmetric(horizontal: 16, vertical: 24) : null,
               child: SizedBox(
-                width: widget.width + widget.padding.horizontal,
+                width: innerWidth + widget.padding.horizontal,
                 // Scrolls when the window is too short for all of it.
                 child: SingleChildScrollView(
                   padding: widget.padding,
@@ -107,7 +116,7 @@ class _PagedDialogState extends State<PagedDialog> {
                           layoutBuilder: FadeThrough.pinTop,
                           child: KeyedSubtree(
                             key: ValueKey(widget.page),
-                            child: SizedBox(width: widget.width, child: widget.child),
+                            child: SizedBox(width: innerWidth, child: widget.child),
                           ),
                         ),
                       ),

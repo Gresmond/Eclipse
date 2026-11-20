@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
 import '../theme/tokens.dart';
+import 'hover_fill.dart';
 
 /// Shared pill-style segmented control with an animated sliding highlight for
 /// single selection or independent pill toggles when [chosen] is supplied.
@@ -79,13 +80,15 @@ class _SegmentedPillsState extends State<SegmentedPills> {
           children: [
             for (final i in List.generate(widget.labels.length, (idx) => idx))
               (() {
-                final segment = MouseRegion(
+                final segment = Semantics(
                   key: _keys[i],
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
+                  selected: _on(i),
+                  child: Hoverable(
+                    focusable: true,
+                    semanticLabel: widget.labels[i],
                     behavior: HitTestBehavior.opaque,
                     onTap: () => widget.onSelect(i),
-                    child: Padding(padding: padding, child: _labelWidget(p, i)),
+                    builder: (_) => Padding(padding: padding, child: _labelWidget(p, i)),
                   ),
                 );
                 return widget.expand ? Expanded(child: segment) : segment;
@@ -99,14 +102,16 @@ class _SegmentedPillsState extends State<SegmentedPills> {
         children: [
           for (final (i, label) in widget.labels.indexed)
             (() {
-              final segment = MouseRegion(
+              final segment = Semantics(
                 // Keep per-pill state stable as choices are toggled on or off.
                 key: ValueKey(label),
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
+                selected: _on(i),
+                child: Hoverable(
+                  focusable: true,
+                  semanticLabel: label,
                   behavior: HitTestBehavior.opaque,
                   onTap: () => widget.onSelect(i),
-                  child: AnimatedContainer(
+                  builder: (_) => AnimatedContainer(
                     duration: context.themed(Motion.click),
                     curve: Motion.clickCurve,
                     padding: padding,

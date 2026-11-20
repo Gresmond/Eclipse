@@ -65,7 +65,6 @@ exec_path="${exec_path//\"/\\\"}"
 exec_path="${exec_path//\$/\\\$}"
 exec_path="${exec_path//\`/\\\`}"
 exec_path="${exec_path//%/%%}"
-exec_path="${exec_path//\\/\\\\}"
 install -Dm644 /dev/stdin "$prefix/applications/$app_id.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
@@ -76,6 +75,7 @@ Icon=$app_id
 StartupWMClass=$app_id
 Categories=Office;
 Keywords=habits;todo;planner;journal;
+Terminal=false
 DESKTOP
 
 update-desktop-database -q "$prefix/applications" 2>/dev/null || true

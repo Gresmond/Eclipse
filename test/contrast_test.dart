@@ -28,8 +28,10 @@ void main() {
       test('secondary text reads on every surface it sits on', () {
         for (final MapEntry(key: name, value: surface) in {
           ...surfaces,
+          'empty': p.empty,
           'today panel': panel,
           'pill': over(p.empty.withValues(alpha: 0.6), p.tile),
+          'rest band': over(p.empty.withValues(alpha: 0.6), p.background),
         }.entries) {
           passes('ink on $name', p.ink, surface, text);
           passes('inkMuted on $name', p.inkMuted, surface, text);
@@ -70,6 +72,9 @@ void main() {
         final style = buildTheme(p).filledButtonTheme.style!;
         expect(style.backgroundColor!.resolve({}), p.done);
         expect(style.foregroundColor!.resolve({}), p.onDone);
+        final disabledBg = style.backgroundColor!.resolve({WidgetState.disabled})!;
+        final disabledFg = style.foregroundColor!.resolve({WidgetState.disabled})!;
+        passes('disabled filled button', disabledFg, disabledBg, text);
       });
 
       test('the theme’s tooltips read', () => passes('tooltip', p.tile, p.ink, text));
@@ -92,6 +97,7 @@ void main() {
       test('brief and reminder card badge icons read', () {
         final badge = over(p.done.withValues(alpha: 0.16), p.tile);
         passes('briefBadgeInk on badge', briefBadgeInk(p), badge, mark);
+        passes('briefBadgeInk on tile', briefBadgeInk(p), p.tile, mark);
       });
 
       test('year view interpolated percentage cells read', () {

@@ -59,6 +59,10 @@ class TrainingLog {
   List<Exercise> exercises = [];
   Map<String, Exercise> _byUid = {};
   List<TrainingSet> _sets = [];
+  List<(String, String)> _routines = [];
+  List<(String, double)> _weighIns = [];
+  final Map<DateTime?, Map<Exercise, List<TrainingPoint>>> _pointsCache = {};
+  int? _pointsRevision;
 
   /// The day being logged or edited; null for today.
   DateTime? day;
@@ -78,10 +82,20 @@ class TrainingLog {
     exercises = store.exercises();
     _byUid = {for (final e in exercises) e.uid: e};
     _sets = store.trainingSets();
+    _routines = [
+      for (final row in store.raw.select('SELECT uid, name FROM routines ORDER BY name COLLATE NOCASE'))
+        (row['uid'] as String, row['name'] as String),
+    ];
+    _weighIns = [
+      for (final row in store.raw.select('SELECT uid, kg FROM weigh_ins ORDER BY uid'))
+        (row['uid'] as String, (row['kg'] as num).toDouble()),
+    ];
+    _pointsCache.clear();
     revision++;
   }
 
   void _done() {
+    _pointsCache.clear();
     revision++;
     _changed();
   }
@@ -126,10 +140,34 @@ class TrainingLog {
       if (_byUid.containsKey(s.exercise)) s.exercise,
   }.toList();
 
+  /// Whether [e] tracks total load (bodyweight + added weight) in kg instead
+  /// of reps alone: true for bodyweight exercises with added weight and at
+  /// least one weigh-in logged.
+  bool usesTotalLoad(Exercise e) =>
+      e.bodyweight &&
+      _weighIns.isNotEmpty &&
+      _sets.any((s) => s.exercise == e.uid && (s.weight ?? 0) > 0);
+
+  double? _bodyMassForKey(String dayKey) {
+    if (_weighIns.isEmpty) return null;
+    double? found;
+    for (final (uid, kg) in _weighIns) {
+      if (uid.compareTo(dayKey) > 0) break;
+      found = kg;
+    }
+    return found;
+  }
+
   /// Each exercise's points, oldest first, from [from] on (all with null).
   /// A point follows from the days before it, those before [from] too, so
   /// it reads the same in every range.
   Map<Exercise, List<TrainingPoint>> points({DateTime? from}) {
+    final normalizedFrom = from == null ? null : dateOnly(from);
+    if (_pointsRevision != revision) {
+      _pointsCache.clear();
+      _pointsRevision = revision;
+    }
+    if (_pointsCache[normalizedFrom] case final cached?) return cached;
     final byExercise = <String, Map<String, List<TrainingSet>>>{};
     for (final s in _sets) {
       ((byExercise[s.exercise] ??= {})[s.day] ??= []).add(s);
@@ -138,12 +176,15 @@ class TrainingLog {
     for (final MapEntry(key: uid, value: days) in byExercise.entries) {
       final e = _byUid[uid];
       if (e == null) continue;
-      final points = trainingPoints([
-        for (final MapEntry(key: day, value: sets) in days.entries) (DateTime.parse(day), sets),
-      ], bodyweight: e.bodyweight).where((p) => from == null || !p.day.isBefore(from)).toList();
+      final totalLoad = usesTotalLoad(e);
+      final points = trainingPoints(
+        [for (final MapEntry(key: day, value: sets) in days.entries) (DateTime.parse(day), sets)],
+        bodyweight: e.bodyweight,
+        bodyMassFor: totalLoad ? (d) => _bodyMassForKey(dateKey(d)) : null,
+      ).where((p) => normalizedFrom == null || !p.day.isBefore(normalizedFrom)).toList();
       if (points.isNotEmpty) result[e] = points;
     }
-    return result;
+    return _pointsCache[normalizedFrom] = result;
   }
 
   /// The exercises logged on the most days, of those the latest first,
@@ -167,12 +208,17 @@ class TrainingLog {
   /// How many sets of [e] are logged, on any day.
   int setsOf(Exercise e) => _sets.where((s) => s.exercise == e.uid).length;
 
-  double? _worth(TrainingSet s, Exercise e) => setWorth(s, bodyweight: e.bodyweight);
+  double? _worth(TrainingSet s, Exercise e, {bool totalLoad = false}) => setWorth(
+    s,
+    bodyweight: e.bodyweight,
+    bodyMass: totalLoad ? _bodyMassForKey(s.day) : null,
+  );
 
   /// The sets of [e] on [day] that beat every set before them, on earlier
   /// days and earlier that day. None on the first day [e] is logged.
   Set<String> personalBests(DateTime day, Exercise e) {
     final key = dateKey(day);
+    final totalLoad = usesTotalLoad(e);
     var hadPriorDay = false;
     double? best;
     for (final s in _sets) {
@@ -180,16 +226,19 @@ class TrainingLog {
       final performed = s.reps > 0 && (e.bodyweight || (s.weight ?? 0) > 0);
       if (!performed) continue;
       hadPriorDay = true;
+      final mass = totalLoad ? _bodyMassForKey(s.day) : null;
       final worth =
-          _worth(s, e) ??
-          (!e.bodyweight && s.reps > maxEstimateReps ? estimateOneRepMax(s.weight!, maxEstimateReps) : null);
+          _worth(s, e, totalLoad: totalLoad) ??
+          (s.reps > maxEstimateReps && (!e.bodyweight || mass != null)
+              ? estimateOneRepMax((mass ?? 0) + (s.weight ?? 0), maxEstimateReps)
+              : null);
       if (worth != null && (best == null || worth > best)) best = worth;
     }
     if (!hadPriorDay) return const {};
     final result = <String>{};
     for (final s in _sets) {
       if (s.exercise != e.uid || s.day != key) continue;
-      final worth = _worth(s, e);
+      final worth = _worth(s, e, totalLoad: totalLoad);
       if (worth != null && (best == null || worth > best)) {
         best = worth;
         result.add(s.uid);
@@ -200,27 +249,38 @@ class TrainingLog {
 
   // Editing
 
+  void _sortExercises() => exercises.sort((a, b) {
+    final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    return byName != 0 ? byName : a.uid.compareTo(b.uid);
+  });
+
   Exercise createExercise(String name, MuscleGroup group, {required bool bodyweight}) {
     final cleaned = normaliseNote(name.trim());
     if (cleaned.isEmpty) throw ArgumentError.value(name, 'name', 'Exercise name cannot be empty');
     final e = store.addExercise(cleaned, group, bodyweight: bodyweight);
-    reload();
-    _changed();
+    exercises.add(e);
+    _sortExercises();
+    _byUid[e.uid] = e;
+    _done();
     return e;
   }
 
   void updateExercise(Exercise e, {String? name, MuscleGroup? group, bool? bodyweight}) {
     final trimmed = name == null ? null : normaliseNote(name.trim());
-    store.saveExercise(
-      Exercise(
-        uid: e.uid,
-        name: trimmed == null || trimmed.isEmpty ? e.name : trimmed,
-        group: group ?? e.group,
-        bodyweight: bodyweight ?? e.bodyweight,
-      ),
+    final updated = Exercise(
+      uid: e.uid,
+      name: trimmed == null || trimmed.isEmpty ? e.name : trimmed,
+      group: group ?? e.group,
+      bodyweight: bodyweight ?? e.bodyweight,
     );
-    reload();
-    _changed();
+    store.saveExercise(updated);
+    final i = exercises.indexWhere((x) => x.uid == e.uid);
+    if (i >= 0) {
+      exercises[i] = updated;
+      _sortExercises();
+    }
+    _byUid[updated.uid] = updated;
+    _done();
   }
 
   /// Removes [e] for good, with every set of it on every day.
@@ -245,10 +305,15 @@ class TrainingLog {
     // Nothing left of it to hide.
     if (hidden.remove(e.uid)) store.setSetting('trainingHidden', hidden.join(','));
     if (uids.isNotEmpty) onActivityChanged?.call();
-    reload();
+    exercises.removeWhere((x) => x.uid == e.uid);
+    _byUid.remove(e.uid);
+    _sets.removeWhere((s) => s.exercise == e.uid);
     onRemoved?.call('Deleted “${e.name}” and all its sets', before);
-    _changed();
+    _done();
   }
+
+  double? _keptWeight(Exercise e, double? weight) =>
+      e.bodyweight ? (weight != null && weight > 0 ? weight : null) : weight;
 
   /// Puts the exercises of [from] on [to] with the same sets at the same
   /// weights, reps left to fill in. Ones already on [to] stay as they are.
@@ -261,7 +326,7 @@ class TrainingLog {
         for (final (e, sets) in session(from))
           if (!there.contains(e.uid))
             for (final s in sets)
-              store.addTrainingSet(key, e.uid, position: at++, weight: e.bodyweight ? null : s.weight),
+              store.addTrainingSet(key, e.uid, position: at++, weight: _keptWeight(e, s.weight)),
       ],
     );
     if (added.isEmpty) return;
@@ -276,7 +341,7 @@ class TrainingLog {
     final key = dateKey(day);
     final last = _sets.where((s) => s.day == key).fold(-1, (m, s) => s.position > m ? s.position : m);
     final previous = _lastSet(e.uid, beforeOrOn: key);
-    _sets.add(store.addTrainingSet(key, e.uid, position: last + 1, weight: e.bodyweight ? null : previous?.weight));
+    _sets.add(store.addTrainingSet(key, e.uid, position: last + 1, weight: _keptWeight(e, previous?.weight)));
     _sort();
     onActivityChanged?.call();
     _done();
@@ -319,7 +384,7 @@ class TrainingLog {
         key,
         e.uid,
         position: at,
-        weight: e.bodyweight ? null : (loggedWeight ?? weight),
+        weight: _keptWeight(e, loggedWeight ?? weight),
         reps: reps,
       );
       return (shifted, added);
@@ -384,21 +449,41 @@ class TrainingLog {
     return fallback;
   }
 
-  List<(String, String)> get routines => [
-    for (final row in store.raw.select('SELECT uid,name FROM routines ORDER BY name COLLATE NOCASE'))
-      (row['uid'] as String, row['name'] as String),
-  ];
+  List<(String, String)> get routines => List.unmodifiable(_routines);
+
+  void _reloadRoutines() {
+    _routines = [
+      for (final row in store.raw.select('SELECT uid, name FROM routines ORDER BY name COLLATE NOCASE'))
+        (row['uid'] as String, row['name'] as String),
+    ];
+  }
 
   void saveRoutine(String name, DateTime day) {
     final sets = [
       for (final (e, sets) in session(day))
         for (final s in sets) [e.uid, s.weight],
     ];
-    if (name.trim().isEmpty || sets.isEmpty) return;
-    store.raw.execute('INSERT INTO routines(uid,name,sets) VALUES(lower(hex(randomblob(16))),?,?)', [
-      name.trim(),
+    final cleaned = normaliseNote(name.trim());
+    if (cleaned.isEmpty || sets.isEmpty) return;
+    store.raw.execute('INSERT INTO routines(uid,name,sets) VALUES(lower(hex(randomblob(8))),?,?)', [
+      cleaned,
       jsonEncode(sets),
     ]);
+    _reloadRoutines();
+    _done();
+  }
+
+  void renameRoutine(String uid, String name) {
+    final cleaned = normaliseNote(name.trim());
+    if (cleaned.isEmpty) return;
+    store.raw.execute('UPDATE routines SET name=? WHERE uid=?', [cleaned, uid]);
+    _reloadRoutines();
+    _done();
+  }
+
+  void deleteRoutine(String uid) {
+    store.raw.execute('DELETE FROM routines WHERE uid=?', [uid]);
+    _reloadRoutines();
     _done();
   }
 
@@ -410,25 +495,32 @@ class TrainingLog {
     final key = dateKey(day);
     final existing = {for (final (e, _) in session(day)) e.uid};
     var pos = _sets.where((s) => s.day == key).fold(-1, (m, s) => m > s.position ? m : s.position) + 1;
-    store.transaction(() {
+    final added = store.transaction(() {
+      final made = <TrainingSet>[];
       for (final row in jsonDecode(encoded) as List) {
         final id = row[0] as String;
-        if (!existing.contains(id) && exercise(id) != null) {
-          store.addTrainingSet(key, id, position: pos++, weight: (row[1] as num?)?.toDouble());
+        final ex = exercise(id);
+        if (!existing.contains(id) && ex != null) {
+          made.add(
+            store.addTrainingSet(
+              key,
+              id,
+              position: pos++,
+              weight: _keptWeight(ex, (row[1] as num?)?.toDouble()),
+            ),
+          );
         }
       }
+      return made;
     });
-    reload();
+    if (added.isEmpty) return;
+    _sets.addAll(added);
+    _sort();
     onActivityChanged?.call();
-    _changed();
+    _done();
   }
 
-  double? bodyMass(DateTime day) =>
-      (store.raw.select('SELECT kg FROM weigh_ins WHERE uid<=? ORDER BY uid DESC LIMIT 1', [
-                dateKey(day),
-              ]).firstOrNull?['kg']
-              as num?)
-          ?.toDouble();
+  double? bodyMass(DateTime day) => _bodyMassForKey(dateKey(day));
 
   void weighIn(DateTime day, double kg) {
     if (!kg.isFinite || kg <= 0) return;
@@ -436,15 +528,26 @@ class TrainingLog {
       dateKey(day),
       kg,
     ]);
+    _weighIns = [
+      for (final row in store.raw.select('SELECT uid, kg FROM weigh_ins ORDER BY uid'))
+        (row['uid'] as String, (row['kg'] as num).toDouble()),
+    ];
+    onActivityChanged?.call();
     _done();
   }
 
-  void setDetails(TrainingSet set, String note, double? rpe, {double? addedWeight}) {
+  void setDetails(TrainingSet set, String note, double? rpe, {double? addedWeight, bool clearWeight = false}) {
     if (rpe != null && (!rpe.isFinite || rpe < 1 || rpe > 10)) return;
     if (addedWeight != null && (!addedWeight.isFinite || addedWeight < 0)) return;
     final i = _sets.indexWhere((s) => s.uid == set.uid);
     if (i < 0) return;
-    final changed = _sets[i].copyWith(note: cleanNote(note), rpe: rpe, weight: addedWeight, replaceDetails: true);
+    final changed = _sets[i].copyWith(
+      note: cleanNote(note),
+      rpe: rpe,
+      weight: clearWeight ? null : addedWeight,
+      clearWeight: clearWeight,
+      replaceDetails: true,
+    );
     store.saveTrainingSet(changed);
     _sets[i] = changed;
     _done();
@@ -457,8 +560,9 @@ class TrainingLog {
     for (final set in _sets) {
       final ex = exercise(set.exercise);
       if (ex == null || set.reps <= 0 || set.day.compareTo(start) < 0 || set.day.compareTo(end) >= 0) continue;
+      if (!ex.bodyweight && (set.weight ?? 0) <= 0) continue;
       final prior = totals[ex.group] ?? (0, 0.0);
-      final load = (set.weight ?? 0) + (ex.bodyweight ? bodyMass(DateTime.parse(set.day)) ?? 0 : 0);
+      final load = (set.weight ?? 0) + (ex.bodyweight ? _bodyMassForKey(set.day) ?? 0 : 0);
       totals[ex.group] = (prior.$1 + 1, prior.$2 + load * set.reps);
     }
     return totals;

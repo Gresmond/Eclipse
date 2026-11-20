@@ -68,14 +68,26 @@ class TrainingView extends StatelessWidget {
   }
 }
 
+final _groupColourCache = Expando<List<Color>>();
+
 /// Each muscle group's colour: evenly round the OKLCH hue circle at one
 /// lightness and chroma, so no group shouts louder than another.
 Color groupColour(MuscleGroup g, Palette p) {
-  final dark = p.brightness == Brightness.dark;
-  final h = (20 + g.index * 360 / MuscleGroup.values.length) % 360;
-  final l = dark ? 0.78 : 0.62;
-  final raw = Oklch(l, math.min(0.13, Oklch.maxChroma(l, h)), h).toColor();
-  return readable(raw, [p.tile, p.background, p.empty], dark: dark);
+  var list = _groupColourCache[p];
+  if (list == null) {
+    final dark = p.brightness == Brightness.dark;
+    list = [
+      for (final group in MuscleGroup.values)
+        () {
+          final h = (20 + group.index * 360 / MuscleGroup.values.length) % 360;
+          final l = dark ? 0.78 : 0.62;
+          final raw = Oklch(l, math.min(0.13, Oklch.maxChroma(l, h)), h).toColor();
+          return readable(raw, [p.tile, p.background, p.empty], dark: dark);
+        }(),
+    ];
+    _groupColourCache[p] = list;
+  }
+  return list[g.index];
 }
 
 /// Line styles that tell apart exercises of one group: solid, then dashes.
@@ -96,7 +108,10 @@ String _kg(double v) {
   return v.toStringAsFixed(1);
 }
 
-String _shortDate(DateTime d) => '${d.day} ${monthNames[d.month - 1].substring(0, 3)}';
+String _shortDate(DateTime d, {int? todayYear}) {
+  final base = '${d.day} ${monthNames[d.month - 1].substring(0, 3)}';
+  return todayYear != null && d.year != todayYear ? '$base ${d.year}' : base;
+}
 
 TextStyle _label(Palette p, {double size = 14, FontWeight weight = FontWeight.w500, Color? color}) =>
     TextStyle(fontFamily: Fonts.ui, fontSize: size, fontWeight: weight, color: color ?? p.ink, height: 1.25);
@@ -178,22 +193,23 @@ class _HistoryTile extends StatelessWidget {
                       _FoldingColumn(
                         children: [
                           for (final key in days)
-                            _HistoryRow(
-                              key: ValueKey(key),
-                              day: DateTime.parse(key),
-                              selected: key == open,
-                              session: sessions[key] ?? const [],
-                              onTap: () {
-                                final d = DateTime.parse(key);
-                                log.showDay(d == state.today ? null : d);
-                              },
-                              onRepeat: DateTime.parse(key) == state.today
-                                  ? null
-                                  : () {
-                                      log.repeatSession(DateTime.parse(key), state.today);
-                                      log.showDay(null);
-                                    },
-                            ),
+                            () {
+                              final d = DateTime.parse(key);
+                              return _HistoryRow(
+                                key: ValueKey(key),
+                                day: d,
+                                todayYear: state.today.year,
+                                selected: key == open,
+                                session: sessions[key] ?? const [],
+                                onTap: () => log.showDay(d == state.today ? null : d),
+                                onRepeat: d == state.today
+                                    ? null
+                                    : () {
+                                        log.repeatSession(d, state.today);
+                                        log.showDay(null);
+                                      },
+                              );
+                            }(),
                         ],
                       ),
                     ],
@@ -209,6 +225,7 @@ class _HistoryRow extends StatelessWidget {
   const _HistoryRow({
     super.key,
     required this.day,
+    required this.todayYear,
     required this.selected,
     required this.session,
     required this.onTap,
@@ -216,6 +233,7 @@ class _HistoryRow extends StatelessWidget {
   });
 
   final DateTime day;
+  final int todayYear;
   final bool selected;
   final List<(Exercise, List<TrainingSet>)> session;
   final VoidCallback onTap;
@@ -236,16 +254,17 @@ class _HistoryRow extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? p.today.withValues(alpha: 0.35) : p.empty.withValues(alpha: hover ? 0.5 : 0),
+          color: selected ? p.empty : p.empty.withValues(alpha: hover ? 0.5 : 0),
+          border: Border.all(color: selected ? p.today : Colors.transparent),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 88,
+              width: 96,
               child: Text(
-                '${weekdayNames[d.weekday - 1].substring(0, 3)} ${_shortDate(d)}',
+                '${weekdayNames[d.weekday - 1].substring(0, 3)} ${_shortDate(d, todayYear: todayYear)}',
                 style: _label(p, size: 14, weight: FontWeight.w600),
               ),
             ),

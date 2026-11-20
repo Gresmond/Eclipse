@@ -1,14 +1,16 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_state.dart';
 import '../theme/app_theme.dart';
+import '../theme/pixels.dart';
 import '../theme/tokens.dart';
+import 'app_dialog.dart' show appNavigator;
 import 'corner_card.dart';
 import 'fade_through.dart';
-import '../theme/pixels.dart';
 
 /// Over everything, dialogs too: the card naming what was just removed,
 /// with Undo, in the bottom-right corner, with the other corner [cards]
@@ -58,12 +60,17 @@ class _UndoLayerState extends State<UndoLayer> {
       _timed = state.shownRemoval;
       _time(state);
     }
+    final media = MediaQuery.of(context);
+    final narrow = media.size.width < 600;
+    final pad = media.padding;
     return Shortcuts(
       shortcuts: const {
         SingleActivator(LogicalKeyboardKey.keyZ, control: true): _UndoIntent(),
         SingleActivator(LogicalKeyboardKey.keyZ, meta: true): _UndoIntent(),
         SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true): _UndoIntent(redo: true),
+        SingleActivator(LogicalKeyboardKey.keyZ, meta: true, shift: true): _UndoIntent(redo: true),
         SingleActivator(LogicalKeyboardKey.keyY, control: true): _UndoIntent(redo: true),
+        SingleActivator(LogicalKeyboardKey.keyY, meta: true): _UndoIntent(redo: true),
       },
       child: Actions(
         actions: {_UndoIntent: _UndoAction(state)},
@@ -71,8 +78,9 @@ class _UndoLayerState extends State<UndoLayer> {
           children: [
             widget.child,
             Positioned(
-              right: 32,
-              bottom: 28,
+              right: (narrow ? 16 : 32) + pad.right,
+              left: narrow ? 16 + pad.left : null,
+              bottom: (narrow ? 20 : 28) + pad.bottom,
               // Its own overlay, for the cards' tooltips: this sits above
               // the navigator's.
               child: Overlay.wrap(
@@ -119,7 +127,11 @@ class _UndoAction extends Action<_UndoIntent> {
       FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null;
 
   @override
-  bool isEnabled(_UndoIntent intent) => (intent.redo ? state.canRedo : state.canUndo) && !_typing;
+  bool isEnabled(_UndoIntent intent) {
+    if (!(intent.redo ? state.canRedo : state.canUndo)) return false;
+    if (_typing || state.touring || state.closing) return false;
+    return !(appNavigator.currentState?.canPop() ?? false);
+  }
 
   @override
   void invoke(_UndoIntent intent) => intent.redo ? state.redo() : state.undo();
@@ -137,13 +149,13 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final availableWidth = math.max(0.0, MediaQuery.sizeOf(context).width - 32);
     return MouseRegion(
       onEnter: (_) => onHover(true),
       onExit: (_) => onHover(false),
       child: Container(
-        height: _Card.height,
-        constraints: const BoxConstraints(maxWidth: 600),
-        padding: const EdgeInsets.fromLTRB(18, 0, 10, 0),
+        constraints: BoxConstraints(minHeight: _Card.height, maxWidth: math.min(600, availableWidth)),
+        padding: const EdgeInsets.fromLTRB(18, 8, 10, 8),
         decoration: BoxDecoration(
           color: p.tile,
           borderRadius: BorderRadius.circular(20),

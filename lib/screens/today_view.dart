@@ -139,10 +139,15 @@ class _HabitColumn extends StatelessWidget {
   static double sleepHeight(AppState state, DateTime day, double height) {
     final rituals = state.habitsFor(day.year, day.month).where((h) => h.onDay(day)).length;
     final sleep = state.sleepHabitsFor(day.year, day.month).length;
-    final rows = height - 2 * _HabitsCard.chrome - TodayView._gap;
+    final rows = max(0.0, height - 2 * _HabitsCard.chrome - TodayView._gap);
     final count = rituals + sleep;
     final share = count == 0 ? _HabitsCard._maxRow : rows / count;
-    return pixelRound(_HabitsCard.chrome + sleep * share.clamp(_HabitsCard._minRow, _HabitsCard._maxRow));
+    final raw = pixelRound(_HabitsCard.chrome + sleep * share.clamp(_HabitsCard._minRow, _HabitsCard._maxRow));
+    final maxSleep = max(
+      0.0,
+      height - TodayView._gap - (rituals > 0 ? _HabitsCard.chrome + _HabitsCard._minRow : 0.0),
+    );
+    return raw.clamp(0.0, maxSleep);
   }
 
   @override
@@ -215,6 +220,8 @@ class _HabitsCard extends StatelessWidget {
   /// the week trails make way to give the names more room.
   static ({List<double> heights, double cell, bool trail}) _layOutRows(
     BuildContext context,
+    AppState state,
+    DateTime day,
     List<Habit> habits,
     BoxConstraints constraints,
     double badge,
@@ -240,7 +247,7 @@ class _HabitsCard extends StatelessWidget {
         return textHeight + 14;
       }
 
-      final needed = [for (final h in habits) rowFor(h.name)];
+      final needed = [for (final h in habits) rowFor(ritualProgress(state, day, h))];
       // Tall rows take what they need; the rest share what's left. Each
       // round can only shrink the share, so a few rounds settle it.
       var extent = (height / habits.length).clamp(_minRow, _maxRow);
@@ -321,9 +328,13 @@ class _HabitsCard extends StatelessWidget {
                 // Every row's badge is as wide as the longest streak ever, so the
                 // badges, squares and times stay lined up down the card and in
                 // the same place from day to day.
-                final streaks = [for (final h in habits) state.bestStreak(h)];
+                final streaks = [
+                  for (final h in habits)
+                    if (h.weekly == null) state.bestStreak(h),
+                ];
                 final badge = _HabitRow.badgeFor(context, streaks.fold(0, max));
-                final rows = _layOutRows(context, habits, constraints, badge);
+                final rows = _layOutRows(context, state, day, habits, constraints, badge);
+                final sleepNames = times ? [for (final h in habits) h.name] : null;
                 final alignment = firstCheckboxInset;
                 if (alignment != null && rows.heights.isNotEmpty) {
                   // Both cards share their padding, title and gap. Their
@@ -356,7 +367,7 @@ class _HabitsCard extends StatelessWidget {
                       badgeWidth: badge,
                       weekTrail: rows.trail,
                       divider: i > 0,
-                      names: times ? [for (final h in habits) h.name] : null,
+                      names: sleepNames,
                     ),
                   ),
                 );
@@ -475,46 +486,57 @@ class _HabitRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.entriesRevision, s.restWeekends, s.holidays));
-    final (streak, best) = state.streaksOn(habit, day);
+    final (streak, best) = habit.weekly == null ? state.streaksOn(habit, day) : (0, 0);
 
-    return _HoverHighlight(
-      divider: divider,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: PixelRow(
-          children: [
-            Expanded(
-              child: PixelTooltip(
-                message: names != null
-                    ? (habit.minutes == null ? '' : clockLabel(habit.minutes!))
-                    : habit.description ?? habit.name,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    ritualProgress(state,day,habit),
-                    maxLines: nameLines,
-                    overflow: TextOverflow.ellipsis,
-                    style: nameStyle.copyWith(color: p.ink),
+    return SearchGlow(
+      target: 'habit:${habit.id}',
+      radius: 12,
+      child: _HoverHighlight(
+        divider: divider,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: PixelRow(
+            children: [
+              Expanded(
+                child: PixelTooltip(
+                  message: names != null
+                      ? (habit.minutes == null ? '' : clockLabel(habit.minutes!))
+                      : habit.description ?? habit.name,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      ritualProgress(state, day, habit),
+                      maxLines: nameLines,
+                      overflow: TextOverflow.ellipsis,
+                      style: nameStyle.copyWith(color: p.ink),
+                    ),
                   ),
                 ),
               ),
-            ),
-            if (weekTrail) ...[const SizedBox(width: 10), _WeekTrail(habit: habit, day: day)],
-            const SizedBox(width: 8),
-            SizedBox(
-              width: badgeWidth,
-              child: habit.weekly == null ? _StreakBadge(day: day, streak: streak, best: best) : const Icon(Icons.date_range_rounded, size: 18),
-            ),
-            const SizedBox(width: 8),
-            StatusCell(
-              day: day,
-              habit: habit,
-              size: cellSize,
-              enabled: state.canEditDay(day) && habit.startedBy(day),
-              rest: state.isRestDay(day),
-              staysThroughDays: true,
-            ),
-          ],
+              if (weekTrail) ...[const SizedBox(width: 10), _WeekTrail(habit: habit, day: day)],
+              const SizedBox(width: 8),
+              SizedBox(
+                width: badgeWidth,
+                child: habit.weekly == null
+                    ? _StreakBadge(day: day, streak: streak, best: best)
+                    : Center(
+                        child: PixelTooltip(
+                          message: '${habit.weekly}x a week',
+                          child: Icon(Icons.date_range_rounded, size: 18, color: p.inkMuted),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              StatusCell(
+                day: day,
+                habit: habit,
+                size: cellSize,
+                enabled: state.canEditDay(day) && habit.startedBy(day),
+                rest: state.isRestDay(day),
+                staysThroughDays: true,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -745,6 +767,7 @@ class _JournalTextState extends State<_JournalText> {
   Widget build(BuildContext context) {
     final p = context.palette;
     return TextField(
+      textCapitalization: TextCapitalization.sentences,
       inputFormatters: const [NoteInputFormatter()],
       controller: _controller,
       readOnly: _past,

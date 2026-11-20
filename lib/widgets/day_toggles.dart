@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
+import 'hover_fill.dart';
 
 /// The weekdays a ritual or repeating task is on, Monday first: filled
 /// when on. The last one on can't be turned off.
@@ -37,11 +38,16 @@ class DayToggles extends StatelessWidget {
                 final last = on && bits == bit;
                 return PixelTooltip(
                   message: last ? lastReason : weekdayNames[weekday - 1],
-                  child: MouseRegion(
-                    cursor: last ? MouseCursor.defer : SystemMouseCursors.click,
-                    child: GestureDetector(
+                  child: Semantics(
+                    selected: on,
+                    enabled: !last,
+                    child: Hoverable(
+                      focusable: !last,
+                      semanticLabel: '${weekdayNames[weekday - 1]}${last ? ', $lastReason' : ''}',
+                      behavior: HitTestBehavior.opaque,
+                      cursor: last ? MouseCursor.defer : SystemMouseCursors.click,
                       onTap: last ? null : () => onChanged(bits ^ bit),
-                      child: _DayCircle(weekday: weekday, on: on, size: size),
+                      builder: (hover) => _DayCircle(weekday: weekday, on: on, hover: hover, size: size),
                     ),
                   ),
                 );
@@ -56,10 +62,11 @@ class DayToggles extends StatelessWidget {
 /// A weekday's letter in a circle, filled in the done colour when the
 /// ritual is on that day.
 class _DayCircle extends StatelessWidget {
-  const _DayCircle({required this.weekday, required this.on, required this.size});
+  const _DayCircle({required this.weekday, required this.on, required this.hover, required this.size});
 
   final int weekday;
   final bool on;
+  final bool hover;
   final double size;
 
   @override
@@ -73,8 +80,8 @@ class _DayCircle extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size / 2),
-        color: p.done.withValues(alpha: on ? 1 : 0),
-        border: Border.all(color: on ? p.done : p.inkMuted.withValues(alpha: 0.35)),
+        color: on ? p.done : (hover ? p.empty : p.done.withValues(alpha: 0)),
+        border: Border.all(color: on ? p.done : p.inkMuted.withValues(alpha: hover ? 0.6 : 0.35)),
       ),
       child: Text(
         weekdayNames[weekday - 1][0],

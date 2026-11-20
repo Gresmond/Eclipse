@@ -520,6 +520,11 @@ void main() {
       final original = savedSets();
       final undo = find.text('Undo');
 
+      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(location: Offset.zero);
+      addTearDown(pointer.removePointer);
+      await pointer.moveTo(tester.getCenter(find.byTooltip('Remove set').first));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Remove set').first);
       await tester.pumpAndSettle();
       expect(savedSets(), [original.last]);

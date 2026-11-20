@@ -11,6 +11,7 @@ import 'package:eclipse/phone/phone_app.dart';
 import 'package:eclipse/widgets/rolling_number.dart';
 import 'package:eclipse/widgets/tile.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -255,6 +256,95 @@ void main() {
 
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('repeating task swipe confirms scope, weekly ritual omits streak, and long-press opens action sheet', (
+    tester,
+  ) async {
+    final (store, state) = make();
+    final weekly = store.addHabit(2026, 11, 'Long run');
+    state.setRitualGoal(2026, 11, weekly, weekly: 3);
+    final savedWeekly = state.habits.firstWhere((h) => h.id == weekly.id);
+    state.selectStatus(DateTime(2026, 11, 5), savedWeekly, HabitStatus.done);
+    state.selectStatus(state.today, savedWeekly, HabitStatus.done);
+    state.addRepeat('Daily pills', const RepeatRule.every(1), state.today);
+    await show(tester, state);
+
+    expect(find.text('Long run · 2/3 this week'), findsOneWidget);
+    expect(find.text('2'), findsNothing);
+
+    await tester.longPress(find.text('Long run · 2/3 this week'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mark not done'), findsOneWidget);
+    await tester.tap(find.text('Mark not done'));
+    await tester.pumpAndSettle();
+    expect(state.statusOf(state.today, weekly), HabitStatus.missed);
+
+    await tester.ensureVisible(find.text('Daily pills'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.text('Daily pills'), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Remove repeating task'), findsOneWidget);
+    await tester.tap(find.text('Only this one'));
+    await tester.pumpAndSettle();
+    expect(state.todos[TodoScope.today]!.any((t) => t.text == 'Daily pills'), isFalse);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('Plan uses formatted headings and Workout edits sets, weighted bodyweight, and rest timer', (
+    tester,
+  ) async {
+    final (store, state) = make();
+    final laterDay = DateTime(2026, 11, 20);
+    state.addTodo(TodoScope.month, 'Haircut', dueDate: laterDay);
+    state.addTodo(TodoScope.month, 'Alex birthday', dueDate: laterDay, birthday: true);
+    final pullup = state.training.createExercise('Pull-ups', MuscleGroup.back, bodyweight: true);
+    state.training.addToDay(state.today, pullup);
+    store.setSetting('restSeconds', '60');
+    const channel = MethodChannel('eclipse/phone');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    await show(tester, state);
+
+    await tester.tap(find.text('Plan'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fri 20 Nov'), findsOneWidget);
+    expect(find.text('2026-11-20'), findsNothing);
+    expect(find.text('Alex birthday'), findsOneWidget);
+    await tester.tap(find.byTooltip('Hide birthdays'));
+    await tester.pumpAndSettle();
+    expect(find.text('Alex birthday'), findsNothing);
+    await tester.tap(find.byTooltip('Show birthdays'));
+    await tester.pumpAndSettle();
+    expect(find.text('Alex birthday'), findsOneWidget);
+
+    await tester.tap(find.text('Training'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Log set'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, '10');
+    await tester.enterText(find.byType(TextFormField).last, '8');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Log set'));
+    await tester.pumpAndSettle();
+    expect(find.text('+10 kg × 8 reps'), findsOneWidget);
+    expect(find.textContaining('Rest '), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Rest '), findsNothing);
+
+    await tester.tap(find.text('+10 kg × 8 reps'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(find.text('+10 kg × 8 reps'), findsNothing);
+
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 2));
   });

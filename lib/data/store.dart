@@ -60,6 +60,10 @@ class Store {
   /// level of rituals and to-dos.
   Database get raw => _db;
 
+  /// True while running temp-table work (e.g. search FTS5 indexing) so
+  /// browser snapshot listeners do not rewrite OPFS on read-only operations.
+  bool inTempWork = false;
+
   /// Set by sync; null while nothing syncs.
   AutomaticWrites? automatic;
 
@@ -162,6 +166,7 @@ class Store {
         UNION ALL SELECT MIN(since) FROM todos
         UNION ALL SELECT MIN(day) FROM todo_history
         UNION ALL SELECT MIN(day) FROM training_sets
+        UNION ALL SELECT MIN(uid) FROM weigh_ins
       )
     ''')
                 .first
@@ -347,7 +352,7 @@ class Store {
 
   // Entries
 
-  Map<int, (int, int)> monthScores(int year, int month, {DateTime? asOf}) {
+  Map<int, (int, int)> monthScores(int year, int month, {DateTime? asOf, List<Holiday> holidays = const []}) {
     final habits = {for (final h in monthHabits(year, month)) h.id: h};
     final scores = <int, (int, int)>{};
     for (final r in _db.select(
@@ -357,7 +362,8 @@ class Store {
       final id = r['habit_id'] as int, day = DateTime.parse(r['day'] as String);
       // Days before a ritual was added that month, or that aren't one of its
       // days, don't count towards it.
-      if (habits[id] case final h? when !h.startedBy(day) || !h.onDay(day)) continue;
+      if (holidayOn(holidays, day) != null) continue;
+      if (habits[id] case final h? when h.weekly != null || !h.startedBy(day) || !h.onDay(day)) continue;
       final (done, logged) = scores[id] ?? (0, 0);
       scores[id] = (done + (r['status'] == HabitStatus.done.index ? 1 : 0), logged + 1);
     }
@@ -366,30 +372,49 @@ class Store {
     final now = dateOnly(asOf ?? DateTime.now());
     for (final h in habits.values.where((h) => h.weekly != null)) {
       var done = 0, possible = 0;
-      final first = DateTime(year,month);
-      final last = DateTime(year,month+1,0);
-      for(var sunday=DateTime(year,month,1 + (7-first.weekday)%7);
-          !sunday.isAfter(DateTime(year,month,last.day+6));
-          sunday=DateTime(sunday.year,sunday.month,sunday.day+7)) {
-        final monday=DateTime(sunday.year,sunday.month,sunday.day-6);
-        if(monday.isAfter(now) || (h.addedOn != null && sunday.isBefore(h.addedOn!))) continue;
-        if(sunday.month!=month && !(now.year==year && now.month==month && !now.isBefore(monday))) continue;
-        final end=sunday.isBefore(now)?sunday:now;
-        final start=h.addedOn!=null && monday.isBefore(h.addedOn!)?h.addedOn!:monday;
-        if(start.isAfter(end))continue;
-        final row=_db.select('SELECT sum(status=1) AS done,sum(status=3) AS excused FROM entries WHERE habit_id=? AND day BETWEEN ? AND ?',
-          [h.id,dateKey(start),dateKey(end)]).first;
-        final target=min(h.weekly!, daysBetween(start,sunday)+1-(row['excused'] as int? ?? 0));
-        possible+=target;
-        done+=min(target,row['done'] as int? ?? 0);
+      final first = DateTime(year, month);
+      final last = DateTime(year, month + 1, 0);
+      for (
+        var sunday = DateTime(year, month, 1 + (7 - first.weekday) % 7);
+        !sunday.isAfter(DateTime(year, month, last.day + 6));
+        sunday = DateTime(sunday.year, sunday.month, sunday.day + 7)
+      ) {
+        final monday = DateTime(sunday.year, sunday.month, sunday.day - 6);
+        if (monday.isAfter(now) || (h.addedOn != null && sunday.isBefore(h.addedOn!))) continue;
+        if (sunday.month != month && !(now.year == year && now.month == month && !now.isBefore(monday))) continue;
+        final end = sunday.isBefore(now) ? sunday : now;
+        final start = h.addedOn != null && monday.isBefore(h.addedOn!) ? h.addedOn! : monday;
+        if (start.isAfter(end)) continue;
+        var holidayCount = 0;
+        if (holidays.isNotEmpty) {
+          for (var d = start; !d.isAfter(sunday); d = DateTime(d.year, d.month, d.day + 1)) {
+            if (holidayOn(holidays, d) != null) holidayCount++;
+          }
+        }
+        final row = _db.select(
+          'SELECT sum(status=1) AS done, sum(status=3) AS excused FROM entries WHERE habit_id=? AND day BETWEEN ? AND ?',
+          [h.id, dateKey(start), dateKey(end)],
+        ).first;
+        final available = max(0, daysBetween(start, sunday) + 1 - holidayCount - (row['excused'] as int? ?? 0));
+        final target = min(h.weekly!, available);
+        final weekDone = min(target, row['done'] as int? ?? 0);
+        // An unfinished week only holds you to what can still fall short: on
+        // Monday with 0 done and 6 days left, you aren't behind yet.
+        final remaining = sunday.isAfter(now) ? daysBetween(now, sunday) : 0;
+        final weekPossible = sunday.isAfter(now) ? max(weekDone, max(0, target - remaining)) : target;
+        possible += weekPossible;
+        done += weekDone;
       }
-      scores[h.id]=(done,possible);
+      scores[h.id] = (done, possible);
     }
     return scores;
   }
 
-  Iterable<({String day, int habitId, HabitStatus status, String? note})> entriesInMonth(int year, int month) => _db
-      .select('SELECT day, habit_id, status, note FROM entries WHERE day >= ? AND day < ?', [
+  Iterable<({String day, int habitId, HabitStatus status, String? note, int? amount})> entriesInMonth(
+    int year,
+    int month,
+  ) => _db
+      .select('SELECT day, habit_id, status, note, amount FROM entries WHERE day >= ? AND day < ?', [
         dateKey(DateTime(year, month)),
         dateKey(DateTime(year, month + 1)),
       ])
@@ -399,6 +424,7 @@ class Store {
           habitId: r['habit_id'] as int,
           status: HabitStatus.values[r['status'] as int],
           note: r['note'] == null ? null : curlyQuotes(r['note'] as String),
+          amount: r['amount'] as int?,
         ),
       );
 
@@ -415,12 +441,13 @@ class Store {
     bool dayOver = false,
   }) {
     // Each month's days for the ritual; a day that isn't one of them is
-    // passed over, whatever was logged on it.
+    // passed over, whatever was logged on it. Weekly rituals are active daily.
     final months = {
-      for (final r in _db.select('SELECT year, month, days FROM month_habits WHERE habit_id = ? AND days IS NOT NULL', [
-        habitId,
-      ]))
-        (r['year'] as int, r['month'] as int): decodeDays(r['days'] as String),
+      for (final r in _db.select(
+        'SELECT year, month, days, weekly FROM month_habits WHERE habit_id = ? AND (days IS NOT NULL OR weekly IS NOT NULL)',
+        [habitId],
+      ))
+        (r['year'] as int, r['month'] as int): r['weekly'] != null ? const <(DateTime?, int)>[] : decodeDays(r['days'] as String?),
     };
     bool off(DateTime day) => !isOnDay(months[(day.year, day.month)] ?? const [], day);
     bool rest(DateTime day) => restsOn(day, restWeekends: restWeekends, holidays: holidays);
@@ -484,22 +511,25 @@ class Store {
       return [for (var i = 1; i <= count; i++) DateTime(day.year, day.month, day.day - i)];
     }
     final months = {
-      for (final r in _db.select('SELECT year, month, days, added_on FROM month_habits WHERE habit_id = ?', [habitId]))
+      for (final r in _db.select('SELECT year, month, days, weekly, added_on FROM month_habits WHERE habit_id = ?', [
+        habitId,
+      ]))
         (r['year'] as int, r['month'] as int): (
-          decodeDays(r['days'] as String?),
+          r['weekly'] != null ? const <(DateTime?, int)>[] : decodeDays(r['days'] as String?),
           DateTime.tryParse(r['added_on'] as String? ?? ''),
+          r['weekly'] != null,
         ),
-    };
-    final saved = {
-      for (final r in _db.select('SELECT year, month FROM habit_months')) (r['year'] as int, r['month'] as int),
     };
     if (months.isEmpty) return [];
     final first = months.keys.map((m) => m.$1 * 12 + m.$2).reduce(min);
+    final saved = {
+      for (final r in _db.select('SELECT year, month FROM habit_months')) (r['year'] as int, r['month'] as int),
+    };
 
     // A month's days for the ritual, or null when it wasn't in that month.
     final resolved = <(int, int), (List<(DateTime?, int)>, DateTime?)?>{};
     (List<(DateTime?, int)>, DateTime?)? daysIn(int year, int month) => resolved.putIfAbsent((year, month), () {
-      if (months[(year, month)] case final own?) return own;
+      if (months[(year, month)] case final own?) return (own.$1, own.$2);
       if (saved.contains((year, month))) return null;
       // Copied from the nearest saved month before it, as it stood at the end.
       for (var i = year * 12 + month - 1; i >= first; i--) {
@@ -507,6 +537,7 @@ class Store {
         if (!saved.contains(m)) continue;
         final source = months[m];
         if (source == null) return null;
+        if (source.$3) return (const [], null);
         final bits = source.$1.isEmpty ? everyDay : source.$1.last.$2;
         return ([if (bits != everyDay) (null, bits)], null);
       }
@@ -544,6 +575,10 @@ class Store {
   void setNote(String day, int habitId, String? note) {
     _db.execute('UPDATE entries SET note = ? WHERE day = ? AND habit_id = ?', [note, day, habitId]);
   }
+
+  /// Whether an entry row currently exists in SQLite for [day] and [habitId].
+  bool hasEntry(String day, int habitId) =>
+      _db.select('SELECT 1 FROM entries WHERE day = ? AND habit_id = ? LIMIT 1', [day, habitId]).isNotEmpty;
 
   // Settings
 

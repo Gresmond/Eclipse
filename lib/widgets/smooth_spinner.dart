@@ -19,7 +19,19 @@ class _SmoothSpinnerState extends State<SmoothSpinner> with SingleTickerProvider
   late final _controller = AnimationController(
     vsync: this,
     duration: CircularProgressIndicator.defaultAnimationDuration,
-  )..repeat();
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _controller
+        ..stop()
+        ..value = 0.25;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+  }
 
   @override
   void dispose() {

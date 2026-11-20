@@ -32,11 +32,23 @@ final _relative = _suffix(
   '$_prefix(today|tomorrow|next week|the day after tomorrow|day after tomorrow|in ($_quantity) (days?|weeks?|fortnights?))',
 );
 final _weekdayDate = _suffix('$_prefix(next )?($_weekday)(?: (?:the )?$_ordinal)?');
+final _bareThreeLetterWeekday = RegExp(r'^(mon|tue|wed|thu|fri|sat|sun)$', caseSensitive: false);
+final _weekdayDatePreposition = RegExp(r'(?:^|\b(?:on|by|due|next|this|before|after|until|through))\s*$', caseSensitive: false);
+final _datePreposition = RegExp(r'\b(?:on|by|due|before|after|until|through|starting)\s*$', caseSensitive: false);
 final _ordinalDate = _suffix(r',?\s+(?:(?:due\s+)?(?:on\s+)?the\s+|(?:due|on)\s+)(\d{1,2})(?:st|nd|rd|th)');
 final _namedDate = _suffix('$_prefix(?:$_ordinal (?:of )?($_month)|($_month) $_ordinal)(?:,? (\\d{4}))?');
 final _numericDate = _suffix('$_prefix(\\d{1,2})/(\\d{1,2})(?:/(\\d{4}))?');
-final _clock = _suffix(
-  r',?\s+(?:(?:due\s+)?(?:at|by)\s+)?(?:(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*([ap])\.?m\.?|([01]?\d|2[0-3]):([0-5]\d)|(noon|midnight))',
+const _clockPattern = r'(?:(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*([ap])\.?m\.?|([01]?\d|2[0-3]):([0-5]\d)|(noon|midnight))';
+final _clock = _suffix(r',?\s+(?:(?:due\s+)?(?:at|by)\s+)?' + _clockPattern);
+final _rangeStart = _suffix(r'\s+(from|between)\s+(' + _clockPattern + r')\s+(to|and)');
+final _clockConnector = RegExp(r'^(?:due\s+)?(?:at|by)\b', caseSensitive: false);
+final _rangePreposition = RegExp(
+  r'(?:\b(?:from|between|before|after|past|to|until|through)|\bbetween\b[^,;.!?]*\band)\s*$',
+  caseSensitive: false,
+);
+final _nonClockColonPrefix = RegExp(
+  r'\b(?:romans|genesis|exodus|leviticus|numbers|deuteronomy|joshua|judges|ruth|samuel|kings|chronicles|ezra|nehemiah|esther|job|psalms?|proverbs|ecclesiastes|isaiah|jeremiah|lamentations|ezekiel|daniel|hosea|joel|amos|obadiah|jonah|micah|nahum|habakkuk|zephaniah|haggai|zechariah|malachi|matthew|mark|luke|john|acts|corinthians|galatians|ephesians|philippians|colossians|thessalonians|timothy|titus|philemon|hebrews|james|peter|jude|revelation|chapter|verse|ratio|ch\.|v\.)\s*$',
+  caseSensitive: false,
 );
 final _reminder = _suffix(
   r',?\s+(?:and\s+)?remind me (a day|1 day|24 hours|an hour|1 hour|60 minutes|(?:15|20) (?:minutes|mins)) (?:before|beforehand|early)',
@@ -65,20 +77,28 @@ final _nonPlace = RegExp(
 final _objectOfAt = RegExp(r'\b(?:look|looking|glance|stare|aim|laugh|smile|point|hint|good|bad|excel)\s*$', caseSensitive: false);
 
 final _namedPlace = RegExp(r"^(?:[\p{Lu}][\p{L}\p{M}’'-]*|\d+)(?:\s+(?:[\p{Lu}][\p{L}\p{M}’'-]*|of|the|and|\d+))*$", unicode: true);
+final _singleAcronym = RegExp(r'^[\p{Lu}]{2,}$', unicode: true);
 final _addressLetter = RegExp(r'\p{L}', unicode: true);
 final _placeContext = RegExp(r'\b(?:meet|dinner|lunch|breakfast|appointment|arrive|shop|pickup|training|workout)\b', caseSensitive: false);
 final _singlePlaceWord = RegExp(r"^[\p{L}][\p{L}’'-]*$", unicode: true);
 
 ({int start, String location})? _spokenPlace(String text) {
-  for (final intro in _placeIntro.allMatches(text)) {
+  final matches = _placeIntro.allMatches(text).toList();
+  for (var i = matches.length - 1; i >= 0; i--) {
+    final intro = matches[i];
     final prefix = text.substring(0, intro.start);
-    if (intro[1]!.toLowerCase() == 'at' && _objectOfAt.hasMatch(prefix)) continue;
+    final prep = intro[1]!.toLowerCase();
+    if (prep == 'at' && _objectOfAt.hasMatch(prefix)) continue;
     final place = text.substring(intro.end).trimRight().replaceFirst(RegExp(r'[.,!?]$'), '');
     if (!_placeWords.hasMatch(place) || _nonPlace.hasMatch(place)) continue;
     // Ordinary venue words work in lowercase. Proper names also cover
     // addresses such as "in North Adelaide" and businesses such as "at IKEA".
     if (RegExp(r'^(?:at|in)\s+', caseSensitive: false).hasMatch(place)) continue;
-    final properName = _namedPlace.hasMatch(place) && _addressLetter.hasMatch(place);
+    final isSingleWord = !place.contains(' ');
+    final properName =
+        _namedPlace.hasMatch(place) &&
+        _addressLetter.hasMatch(place) &&
+        !(isSingleWord && prep == 'in' && (!_placeContext.hasMatch(prefix) || _singleAcronym.hasMatch(place)));
     final simpleName = _singlePlaceWord.hasMatch(place) && _placeContext.hasMatch(prefix);
     if (!_venue.hasMatch(place) && !properName && !simpleName) continue;
     return (start: intro.start, location: place);
@@ -125,12 +145,21 @@ DateTime? _nextDate(DateTime today, int number, {int? month, int? year, int? wee
     day = DateTime(today.year, today.month, today.day + offset);
   } else if ((match = _weekdayDate.firstMatch(text)) != null) {
     final m = match!;
-    final weekday = _weekdays.indexOf(m[2]!.substring(0, 3).toLowerCase()) + 1;
+    final token = m[2]!;
+    final before = text.substring(0, m.start) + m[0]!.substring(0, m[0]!.indexOf(token));
+    if (_bareThreeLetterWeekday.hasMatch(token) &&
+        m[3] == null &&
+        m[1] == null &&
+        (RegExp(r'\b(?:the|a|an|for|in)\s*$', caseSensitive: false).hasMatch(before) ||
+            (token == token.toUpperCase() && !_weekdayDatePreposition.hasMatch(before)))) {
+      return null;
+    }
+    final weekday = _weekdays.indexOf(token.substring(0, 3).toLowerCase()) + 1;
     if (m[3] != null) {
       day = _nextDate(today, int.parse(m[3]!), weekday: weekday);
     } else {
       var offset = (weekday - today.weekday) % 7;
-      if (offset == 0 && m[1] != null) offset = 7;
+      if (m[1] != null) offset = 7 - today.weekday + weekday;
       day = DateTime(today.year, today.month, today.day + offset);
     }
   } else if ((match = _namedDate.firstMatch(text)) != null) {
@@ -139,7 +168,9 @@ DateTime? _nextDate(DateTime today, int number, {int? month, int? year, int? wee
     day = _nextDate(today, int.parse((m[1] ?? m[4])!), month: month, year: int.tryParse(m[5] ?? ''));
   } else if ((match = _numericDate.firstMatch(text)) != null) {
     final m = match!;
-    day = _nextDate(today, int.parse(m[1]!), month: int.parse(m[2]!), year: int.tryParse(m[3] ?? ''));
+    final a = int.parse(m[1]!), b = int.parse(m[2]!);
+    if (m[3] == null && a <= 4 && b <= 4 && !_datePreposition.hasMatch(text.substring(0, m.start) + m[0]!.split(RegExp(r'\d')).first)) return null;
+    day = _nextDate(today, a, month: b, year: int.tryParse(m[3] ?? ''));
   } else if ((match = _ordinalDate.firstMatch(text)) != null) {
     day = _nextDate(today, int.parse(match![1]!));
   } else {
@@ -207,6 +238,27 @@ QuickTask parseQuickTask(String raw, DateTime today, {DateTime? defaultDay, int?
       if (repeat.every > 1000 || (repeat.weekdays != null && n != 1)) return literal;
     } else if (minutes == null && (match = _clock.firstMatch(text)) != null) {
       final m = match!;
+      final before = text.substring(0, m.start);
+      final range = _rangeStart.firstMatch(before);
+      if (range != null &&
+          (range[1]!.toLowerCase() == 'between') == (range[9]!.toLowerCase() == 'and')) {
+        // Tasks have a single scheduled time. Parse the first endpoint normally.
+        text = '${before.substring(0, range.start)} at ${range[2]}';
+        continue;
+      }
+      final trimmed = m[0]!.trimLeft();
+      if (!_clockConnector.hasMatch(trimmed) &&
+          (_rangePreposition.hasMatch(before) ||
+              (m[4] != null && _nonClockColonPrefix.hasMatch(before)) ||
+              m[6] != null)) {
+        final place = location == null ? _spokenPlace(text) : null;
+        if (place != null) {
+          location = place.location;
+          text = text.substring(0, place.start).trimRight();
+          continue;
+        }
+        break;
+      }
       if (m[1] != null) {
         minutes = (int.parse(m[1]!) % 12 + (m[3]!.toLowerCase() == 'p' ? 12 : 0)) * 60 + int.parse(m[2] ?? '0');
       } else if (m[4] != null) {
@@ -239,7 +291,7 @@ QuickTask parseQuickTask(String raw, DateTime today, {DateTime? defaultDay, int?
     }
     final prefix = text.substring(0, match.start).trimRight();
     if (!hadDay && day != null && _start.hasMatch(prefix)) {
-      if (match[0]!.trim().toLowerCase() == 'next week') {
+      if (match[0]!.trim().replaceFirst(RegExp(r'[.,!?]$'), '').toLowerCase() == 'next week') {
         day = DateTime(today.year, today.month, today.day + 8 - today.weekday);
       }
       text = prefix.replaceFirst(_start, '');

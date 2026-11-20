@@ -10,6 +10,8 @@ class _PhoneHome extends StatefulWidget {
 
 class _PhoneHomeState extends State<_PhoneHome> {
   int _tab = 0;
+  bool _redoHidden = false;
+  bool _wasCanRedo = false;
 
   void select(int value) {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -18,33 +20,142 @@ class _PhoneHomeState extends State<_PhoneHome> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    resizeToAvoidBottomInset: false,
-    body: switch (_tab) {
-      0 => _TodayPage(updater: widget.updater),
-      1 => const PhonePlan(),
-      2 => const _WorkoutPage(),
-      _ => const Scaffold(
-        body: SafeArea(
-          child: Padding(padding: EdgeInsets.all(16), child: JournalCard()),
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final state = AppScope.watch(context, (s) => (s.shownRemoval, s.canRedo));
+    if (!state.canRedo) {
+      _wasCanRedo = false;
+      _redoHidden = false;
+    } else if (!_wasCanRedo && state.canRedo) {
+      _wasCanRedo = true;
+      _redoHidden = false;
+    }
+    final removal = state.shownRemoval;
+    final showBanner = removal != null || (state.canRedo && !_redoHidden);
+    return Scaffold(
+      backgroundColor: p.background,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: _tab == 0 || _tab == 1
+          ? FloatingActionButton(
+              tooltip: 'Add task',
+              backgroundColor: p.done,
+              foregroundColor: p.onDone,
+              elevation: 0,
+              focusElevation: 0,
+              hoverElevation: 0,
+              highlightElevation: 0,
+              onPressed: () => _tab == 0 ? _addTask(context) : addTaskAnywhere(context),
+              child: const Icon(Icons.add_rounded, size: 22),
+            )
+          : null,
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _tab,
+            children: [
+              _TodayPage(updater: widget.updater),
+              const PhonePlan(),
+              const _WorkoutPage(),
+              const SafeArea(
+                child: Padding(padding: EdgeInsets.all(16), child: JournalCard()),
+              ),
+            ],
+          ),
+          if (showBanner)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: _tab == 0 || _tab == 1 ? 84 : 16,
+              child: _PhoneUndoBanner(
+                removal: removal,
+                canRedo: state.canRedo,
+                onUndo: state.undo,
+                onRedo: state.redo,
+                onHide: () {
+                  if (removal != null) {
+                    state.hideUndoCard(removal);
+                  } else {
+                    setState(() => _redoHidden = true);
+                  }
+                },
+              ),
+            ),
+        ],
+      ),
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: p.borderSoft)),
+        ),
+        child: NavigationBar(
+          selectedIndex: _tab,
+          backgroundColor: p.tile,
+          surfaceTintColor: Colors.transparent,
+          indicatorColor: p.done.withValues(alpha: 0.2),
+          onDestinationSelected: select,
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.today_rounded, size: 22), label: 'Today'),
+            NavigationDestination(icon: Icon(Icons.event_note_rounded, size: 22), label: 'Plan'),
+            NavigationDestination(icon: Icon(Icons.fitness_center_rounded, size: 22), label: 'Training'),
+            NavigationDestination(icon: Icon(Icons.book_rounded, size: 22), label: 'Journal'),
+          ],
         ),
       ),
-    },
-    bottomNavigationBar: NavigationBar(
-      selectedIndex: _tab,
-      onDestinationSelected: select,
-      destinations: const [
-        NavigationDestination(icon: Icon(Icons.today), label: 'Today'),
-        NavigationDestination(icon: Icon(Icons.event_note), label: 'Plan'),
-        NavigationDestination(icon: Icon(Icons.fitness_center), label: 'Training'),
-        NavigationDestination(icon: Icon(Icons.book_rounded), label: 'Journal'),
-      ],
-    ),
-  );
+    );
+  }
 }
 
-class _WorkoutPage extends StatelessWidget {
+class _WorkoutPage extends StatefulWidget {
   const _WorkoutPage();
+
+  @override
+  State<_WorkoutPage> createState() => _WorkoutPageState();
+}
+
+class _WorkoutPageState extends State<_WorkoutPage> {
+  DateTime? _restEndsAt;
+  Timer? _restTicker;
+
+  @override
+  void dispose() {
+    _restTicker?.cancel();
+    super.dispose();
+  }
+
+  static String _fmtNum(double v) => v == v.roundToDouble() ? '${v.toInt()}' : '$v';
+
+  static double? _parseDecimal(String raw) {
+    final cleaned = raw.trim().replaceAll(',', '.');
+    if (cleaned.isEmpty) return null;
+    final value = double.tryParse(cleaned);
+    return value != null && value.isFinite ? value : null;
+  }
+
+  void _startRestTimer(int seconds) {
+    _restTicker?.cancel();
+    if (seconds <= 0) {
+      setState(() => _restEndsAt = null);
+      return;
+    }
+    setState(() => _restEndsAt = DateTime.now().add(Duration(seconds: seconds)));
+    _restTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final ends = _restEndsAt;
+      if (ends == null || !DateTime.now().isBefore(ends)) {
+        _restTicker?.cancel();
+        _restTicker = null;
+        setState(() => _restEndsAt = null);
+      } else {
+        setState(() {});
+      }
+    });
+  }
+
+  void _cancelRest() {
+    _restTicker?.cancel();
+    _restTicker = null;
+    setState(() => _restEndsAt = null);
+    unawaited(PhonePlatform.cancelRest());
+  }
 
   Future<void> _log(BuildContext context, Exercise exercise, {TrainingSet? empty}) async {
     final state = AppScope.read(context);
@@ -57,22 +168,27 @@ class _WorkoutPage extends StatelessWidget {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, refresh) {
-          final count = int.tryParse(reps);
-          final kg = double.tryParse(weight);
-          final valid = count != null && count > 0 && (exercise.bodyweight || kg != null && kg.isFinite && kg > 0);
+          final count = int.tryParse(reps.trim());
+          final weightEmpty = weight.trim().isEmpty;
+          final kg = _parseDecimal(weight);
+          final valid =
+              count != null &&
+              count > 0 &&
+              (exercise.bodyweight ? (weightEmpty || (kg != null && kg >= 0)) : (kg != null && kg > 0));
           return AppAlertDialog(
             title: exercise.name,
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!exercise.bodyweight)
-                    TextFormField(
-                      initialValue: weight,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Weight (kg)'),
-                      onChanged: (v) => refresh(() => weight = v),
+                  TextFormField(
+                    initialValue: weight,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: exercise.bodyweight ? 'Added weight (+kg, optional)' : 'Weight (kg)',
                     ),
+                    onChanged: (v) => refresh(() => weight = v),
+                  ),
                   TextFormField(
                     initialValue: reps,
                     keyboardType: TextInputType.number,
@@ -88,9 +204,13 @@ class _WorkoutPage extends StatelessWidget {
                 label: 'Log set',
                 onPressed: valid
                     ? () {
-                        final n = int.tryParse(reps), w = double.tryParse(weight);
-                        if (n != null && n > 0 && (exercise.bodyweight || w != null && w.isFinite && w > 0)) {
-                          Navigator.pop(context, (n, exercise.bodyweight ? null : w));
+                        final n = int.tryParse(reps.trim());
+                        final w = _parseDecimal(weight);
+                        final wEmpty = weight.trim().isEmpty;
+                        if (n != null &&
+                            n > 0 &&
+                            (exercise.bodyweight ? (wEmpty || (w != null && w >= 0)) : (w != null && w > 0))) {
+                          Navigator.pop(context, (n, exercise.bodyweight && (wEmpty || w == 0) ? null : w));
                         }
                       }
                     : null,
@@ -102,12 +222,13 @@ class _WorkoutPage extends StatelessWidget {
     );
     if (result == null || !context.mounted || log.exercise(exercise.uid) == null) return;
     if (empty != null) {
-      log.updateSet(empty, weight: result.$2, reps: result.$1);
+      log.updateSet(empty, weight: result.$2, clearWeight: result.$2 == null, reps: result.$1);
     } else {
       log.addSet(day, exercise, reps: result.$1, loggedWeight: result.$2);
     }
     final seconds = int.tryParse(state.store.setting('restSeconds') ?? '') ?? 120;
     if (seconds == 0) return;
+    _startRestTimer(seconds);
     try {
       await PhonePlatform.startRest(seconds);
     } on PlatformException {
@@ -118,53 +239,291 @@ class _WorkoutPage extends StatelessWidget {
     }
   }
 
+  Future<void> _editSet(BuildContext context, TrainingLog log, TrainingSet set, Exercise exercise) async {
+    var weight = set.weight == null ? '' : _fmtNum(set.weight!);
+    var reps = '${set.reps}';
+    var effort = set.rpe == null ? '' : _fmtNum(set.rpe!);
+    var note = set.note ?? '';
+    await showAppDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, refresh) {
+          final count = int.tryParse(reps.trim());
+          final weightEmpty = weight.trim().isEmpty;
+          final kg = _parseDecimal(weight);
+          final effortEmpty = effort.trim().isEmpty;
+          final rpe = _parseDecimal(effort);
+          final valid =
+              count != null &&
+              count > 0 &&
+              (exercise.bodyweight ? (weightEmpty || (kg != null && kg >= 0)) : (kg != null && kg > 0)) &&
+              (effortEmpty || (rpe != null && rpe >= 1 && rpe <= 10));
+          return AppAlertDialog(
+            title: exercise.name,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    initialValue: weight,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: exercise.bodyweight ? 'Added weight (+kg, optional)' : 'Weight (kg)',
+                    ),
+                    onChanged: (v) => refresh(() => weight = v),
+                  ),
+                  TextFormField(
+                    initialValue: reps,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Reps'),
+                    onChanged: (v) => refresh(() => reps = v),
+                  ),
+                  TextFormField(
+                    initialValue: effort,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Effort (RPE 1–10)'),
+                    onChanged: (v) => refresh(() => effort = v),
+                  ),
+                  TextFormField(
+                    initialValue: note,
+                    maxLines: 2,
+                    decoration: const InputDecoration(labelText: 'Set note'),
+                    onChanged: (v) => note = v,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  log.deleteSet(set);
+                  Navigator.pop(ctx);
+                },
+                child: Text('Delete', style: TextStyle(color: ctx.palette.missedInk)),
+              ),
+              DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(ctx)),
+              DialogConfirm(
+                label: 'Save',
+                onPressed: valid
+                    ? () {
+                        final n = int.tryParse(reps.trim());
+                        final w = _parseDecimal(weight);
+                        final wEmpty = weight.trim().isEmpty;
+                        final r = _parseDecimal(effort);
+                        final clearW = exercise.bodyweight && (wEmpty || w == 0);
+                        log.updateSet(set, weight: clearW ? null : w, clearWeight: clearW, reps: n);
+                        log.setDetails(
+                          set,
+                          note,
+                          effortEmpty ? null : r,
+                          addedWeight: clearW ? null : w,
+                          clearWeight: clearW,
+                        );
+                        Navigator.pop(ctx);
+                      }
+                    : null,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _editExercise(BuildContext context, TrainingLog log, Exercise exercise) async {
+    var name = exercise.name;
+    var bodyweight = exercise.bodyweight;
+    await showAppDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, refresh) {
+          final valid = name.trim().isNotEmpty;
+          return AppAlertDialog(
+            title: 'Edit exercise',
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    initialValue: name,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(labelText: 'Exercise name'),
+                    onChanged: (v) => refresh(() => name = v),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Bodyweight'),
+                    value: bodyweight,
+                    onChanged: (v) => refresh(() => bodyweight = v),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(ctx)),
+              DialogConfirm(
+                label: 'Save',
+                onPressed: valid
+                    ? () {
+                        log.updateExercise(exercise, name: name.trim(), bodyweight: bodyweight);
+                        Navigator.pop(ctx);
+                      }
+                    : null,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
     final state = AppScope.watch(context, (s) => (s.today, s.training.revision));
     final log = state.training;
     final session = log.session(state.today);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Training'),
-        actions: [
-          WorkoutToolsButton(day: state.today),
-          PopupMenuButton<int>(
-            tooltip: 'Rest timer',
-            icon: const Icon(Icons.timer_rounded),
-            initialValue: int.tryParse(state.store.setting('restSeconds') ?? '') ?? 120,
-            onSelected: (v) => state.store.setSetting('restSeconds', v.toString()),
-            itemBuilder: (_) => [
-              for (final seconds in [0, 60, 90, 120, 180, 300])
-                PopupMenuItem(
-                  value: seconds,
-                  child: Text(seconds == 0 ? 'Rest timer off' : 'Rest ${seconds ~/ 60}m ${seconds % 60}s'),
-                ),
-            ],
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+    final restLeft = switch (_restEndsAt) {
+      final ends? => ends.difference(DateTime.now()).inSeconds.clamp(0, 3600),
+      null => 0,
+    };
+    return SafeArea(
+      child: Column(
         children: [
-          for (final (exercise, sets) in session) ...[
-            ListTile(
-              title: Text(exercise.name),
-              trailing: TextButton(
-                onPressed: () => _log(context, exercise, empty: sets.where((s) => s.reps == 0).firstOrNull),
-                child: const Text('Log set'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+            child: Row(
+              children: [
+                Expanded(child: Text('Training', style: _title(p))),
+                WorkoutToolsButton(day: state.today),
+                PopupMenuButton<int>(
+                  tooltip: 'Rest timer',
+                  icon: const Icon(Icons.timer_rounded, size: 22),
+                  initialValue: int.tryParse(state.store.setting('restSeconds') ?? '') ?? 120,
+                  onSelected: (v) {
+                    state.store.setSetting('restSeconds', v.toString());
+                    setState(() {});
+                  },
+                  itemBuilder: (_) => [
+                    for (final seconds in [0, 60, 90, 120, 180, 300])
+                      PopupMenuItem(
+                        value: seconds,
+                        child: Text(seconds == 0 ? 'Rest timer off' : 'Rest ${seconds ~/ 60}m ${seconds % 60}s'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (restLeft > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Tile(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.timer_rounded, size: 18, color: p.accent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Rest ${restLeft ~/ 60}:${(restLeft % 60).toString().padLeft(2, '0')}',
+                        style: _body(p, size: 14),
+                      ),
+                    ),
+                    TextButton(onPressed: _cancelRest, child: const Text('Cancel')),
+                  ],
+                ),
               ),
             ),
-            for (final set in sets.where((s) => s.reps > 0))
-              ListTile(
-                onTap: () => editSetDetails(context, set, exercise),
-                dense: true,
-                title: Text('${exercise.bodyweight ? '' : '${set.weight} kg × '}${set.reps} reps'),
-                trailing: log.personalBests(state.today, exercise).contains(set.uid)
-                    ? const Chip(label: Text('PB'))
-                    : null,
-              ),
-          ],
-          AddSessionExercise(day: state.today, logged: {for (final (e, _) in session) e.uid}),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+              children: [
+                for (final (exercise, sets) in session) ...[
+                  () {
+                    final bests = log.personalBests(state.today, exercise);
+                    return Tile(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  exercise.name,
+                                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 16, fontWeight: FontWeight.w600, color: p.ink),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    _log(context, exercise, empty: sets.where((s) => s.reps == 0).firstOrNull),
+                                child: const Text('Log set'),
+                              ),
+                              PopupMenuButton<String>(
+                                tooltip: 'Exercise options',
+                                icon: Icon(Icons.more_vert_rounded, size: 18, color: p.inkMuted),
+                                onSelected: (action) {
+                                  if (action == 'edit') {
+                                    unawaited(_editExercise(context, log, exercise));
+                                  } else if (action == 'remove') {
+                                    log.removeFromDay(state.today, exercise);
+                                  }
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(value: 'edit', child: Text('Edit exercise')),
+                                  PopupMenuItem(value: 'remove', child: Text('Remove from today')),
+                                ],
+                              ),
+                            ],
+                          ),
+                          for (final set in sets.where((s) => s.reps > 0))
+                            Dismissible(
+                              key: ValueKey('set-${set.uid}'),
+                              direction: DismissDirection.endToStart,
+                              onDismissed: (_) => log.deleteSet(set),
+                              background: Container(
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.only(right: 16),
+                                decoration: BoxDecoration(color: p.missed, borderRadius: BorderRadius.circular(12)),
+                                child: Icon(Icons.delete_rounded, size: 18, color: p.onAccent),
+                              ),
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                                onTap: () => _editSet(context, log, set, exercise),
+                                title: Text(
+                                  exercise.bodyweight
+                                      ? '${set.weight != null && set.weight! > 0 ? '+${_fmtNum(set.weight!)} kg × ' : ''}${set.reps} reps'
+                                      : '${set.weight == null ? '' : '${_fmtNum(set.weight!)} kg × '}${set.reps} reps',
+                                  style: _body(p, size: 15),
+                                ),
+                                subtitle:
+                                    set.rpe != null || (set.note?.trim().isNotEmpty ?? false)
+                                        ? Text(
+                                            [
+                                              if (set.rpe != null) 'RPE ${_fmtNum(set.rpe!)}',
+                                              if (set.note?.trim().isNotEmpty ?? false) set.note!.trim(),
+                                            ].join(' · '),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: _body(p, size: 12, colour: p.inkMuted),
+                                          )
+                                        : null,
+                                trailing: bests.contains(set.uid) ? const Chip(label: Text('PB')) : null,
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }(),
+                  const SizedBox(height: 12),
+                ],
+                AddSessionExercise(day: state.today, logged: {for (final (e, _) in session) e.uid}),
+              ],
+            ),
+          ),
         ],
       ),
     );

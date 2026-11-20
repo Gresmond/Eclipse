@@ -401,11 +401,16 @@ class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
   Future<(String, List<DriveFile>)> inventory(String? token, List<DriveFile> previous) async {
     Future<(String, List<DriveFile>)> baseline() async {
       final data = _decode(await _call('GET', Uri.https('www.googleapis.com', '/drive/v3/changes/startPageToken')));
-      return (data['startPageToken'] as String, await list());
+      final startToken = data['startPageToken'];
+      if (startToken is! String || startToken.isEmpty) {
+        throw const DriveError('Google Drive returned an incomplete change token.');
+      }
+      return (startToken, await list());
     }
 
-    if (token == null) return baseline();
+    if (token == null || token.isEmpty) return baseline();
     final files = {for (final f in previous) f.id: f};
+    final visited = <String>{token};
     var page = token;
     try {
       while (true) {
@@ -421,20 +426,33 @@ class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
             }),
           ),
         );
-        for (final change in data['changes'] as List) {
+        final rawChanges = data['changes'];
+        if (rawChanges is! List) return await baseline();
+        for (final change in rawChanges) {
+          if (change is! Map) return await baseline();
+          final fileId = change['fileId'];
           final file = change['file'];
-          if (change['removed'] == true || file == null || file['trashed'] == true) {
-            files.remove(change['fileId']);
+          if (fileId is! String) return await baseline();
+          if (change['removed'] == true || (file is Map && file['trashed'] == true)) {
+            files.remove(fileId);
           } else {
-            final id = file['id'] as String;
-            files[id] = DriveFile(id: id, name: file['name'] as String, modified: file['modifiedTime'] as String);
+            if (file is! Map) return await baseline();
+            final id = file['id'], name = file['name'], modified = file['modifiedTime'];
+            if (id is! String || id != fileId || name is! String || modified is! String) return await baseline();
+            files[id] = DriveFile(id: id, name: name, modified: modified);
           }
         }
-        if (data['nextPageToken'] == null) return (data['newStartPageToken'] as String, files.values.toList());
-        page = data['nextPageToken'] as String;
+        final next = data['nextPageToken'];
+        if (next == null) {
+          final startToken = data['newStartPageToken'];
+          if (startToken is! String || startToken.isEmpty) return await baseline();
+          return (startToken, files.values.toList());
+        }
+        if (next is! String || next.isEmpty || !visited.add(next)) return await baseline();
+        page = next;
       }
     } on DriveError catch (error) {
-      if (error.status == 410 || error.status == 404) return baseline();
+      if (error.status == 400 || error.status == 404 || error.status == 410) return baseline();
       rethrow;
     }
   }
@@ -455,7 +473,9 @@ class AppDataFolder implements SyncDrive, JournalDrive, CopiesDrive {
           }),
         ),
       );
-      for (final f in (json['files'] as List? ?? []).cast<Map<String, dynamic>>()) {
+      final rows = json['files'];
+      if (rows is! List) throw const DriveError('Google Drive returned an incomplete file list.');
+      for (final f in rows.cast<Map<String, dynamic>>()) {
         files.add(DriveFile(id: f['id'] as String, name: f['name'] as String, modified: f['modifiedTime'] as String));
       }
       page = json['nextPageToken'] as String?;

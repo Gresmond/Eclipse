@@ -4,8 +4,13 @@ import 'dart:io';
 /// renamed into place once written, so a crash never leaves half a file.
 Future<void> replaceSafely(String path, Future<void> Function(File part) write) async {
   final part = File('$path.part');
-  await write(part);
-  await part.rename(path);
+  try {
+    await write(part);
+    await part.rename(path);
+  } catch (_) {
+    if (await part.exists()) await part.delete();
+    rethrow;
+  }
 }
 
 /// As [replaceSafely], without waiting. A part left by a crash is removed
@@ -13,6 +18,11 @@ Future<void> replaceSafely(String path, Future<void> Function(File part) write) 
 void replaceSafelySync(String path, void Function(File part) write) {
   final part = File('$path.part');
   if (part.existsSync()) part.deleteSync();
-  write(part);
-  part.renameSync(path);
+  try {
+    write(part);
+    part.renameSync(path);
+  } catch (_) {
+    if (part.existsSync()) part.deleteSync();
+    rethrow;
+  }
 }

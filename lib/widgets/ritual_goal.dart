@@ -1,9 +1,9 @@
-import 'app_dialog.dart';
-
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import 'app_dialog.dart';
+import 'confirm_on_enter.dart';
 
 Future<void> editRitualGoal(BuildContext context, Habit h, int year, int month) async {
   final state = AppScope.read(context);
@@ -11,87 +11,111 @@ Future<void> editRitualGoal(BuildContext context, Habit h, int year, int month) 
   await showAppDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, refresh) => AppAlertDialog(
-        title: h.name,
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<int>(
-                initialValue: weekly ?? 0,
-                decoration: const InputDecoration(labelText: 'Frequency'),
-                items: [
-                  const DropdownMenuItem(value: 0, child: Text('Selected weekdays')),
-                  for (var n = 1; n <= 7; n++) DropdownMenuItem(value: n, child: Text('$n times a week')),
+      builder: (ctx, refresh) {
+        final trimmedTarget = target.trim();
+        final parsedTarget = int.tryParse(trimmedTarget);
+        final valid = trimmedTarget.isEmpty || (parsedTarget != null && parsedTarget > 0);
+        void save() {
+          if (!valid) return;
+          state.setRitualGoal(
+            year,
+            month,
+            h,
+            weekly: weekly,
+            target: parsedTarget,
+            unit: parsedTarget == null ? '' : unit.trim(),
+          );
+          Navigator.pop(ctx);
+        }
+
+        return ConfirmOnEnter(
+          preserveTextInput: true,
+          onConfirm: valid ? save : () {},
+          child: AppAlertDialog(
+            title: h.name,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<int>(
+                    initialValue: weekly ?? 0,
+                    decoration: const InputDecoration(labelText: 'Frequency'),
+                    items: [
+                      const DropdownMenuItem(value: 0, child: Text('Selected weekdays')),
+                      for (var n = 1; n <= 7; n++) DropdownMenuItem(value: n, child: Text('$n times a week')),
+                    ],
+                    onChanged: (n) => refresh(() => weekly = n == 0 ? null : n),
+                  ),
+                  TextFormField(
+                    initialValue: target,
+                    decoration: const InputDecoration(labelText: 'Daily number target (optional)'),
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.done,
+                    onChanged: (v) => refresh(() => target = v),
+                    onFieldSubmitted: (_) => save(),
+                  ),
+                  TextFormField(
+                    initialValue: unit,
+                    decoration: const InputDecoration(labelText: 'Unit, e.g. pages'),
+                    textInputAction: TextInputAction.done,
+                    onChanged: (v) => unit = v,
+                    onFieldSubmitted: (_) => save(),
+                  ),
                 ],
-                onChanged: (n) => refresh(() => weekly = n == 0 ? null : n),
               ),
-              TextFormField(
-                initialValue: target,
-                decoration: const InputDecoration(labelText: 'Daily number target (optional)'),
-                keyboardType: TextInputType.number,
-                onChanged: (v) => refresh(() => target = v),
-              ),
-              TextFormField(
-                initialValue: unit,
-                decoration: const InputDecoration(labelText: 'Unit, e.g. pages'),
-                onChanged: (v) => unit = v,
-              ),
+            ),
+            actions: [
+              DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(ctx)),
+              DialogConfirm(label: 'Save', onPressed: valid ? save : null),
             ],
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: target.isEmpty || (int.tryParse(target) ?? 0) > 0
-                ? () {
-                    state.setRitualGoal(
-                      year,
-                      month,
-                      h,
-                      weekly: weekly,
-                      target: int.tryParse(target),
-                      unit: cleanNote(unit),
-                    );
-                    Navigator.pop(ctx);
-                  }
-                : null,
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        );
+      },
     ),
   );
 }
 
 Future<void> enterRitualAmount(BuildContext context, DateTime day, Habit h) async {
   final state = AppScope.read(context);
-  var amount = '${state.amountOn(day, h)}';
+  final current = state.amountOn(day, h);
+  var amount = current == 0 ? '' : '$current';
   await showAppDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, refresh) => AppAlertDialog(
-        title: h.name,
-        content: TextFormField(
-          initialValue: amount,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: InputDecoration(labelText: '${h.unit ?? 'Amount'} · target ${h.target}'),
-          onChanged: (v) => refresh(() => amount = v),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: (int.tryParse(amount) ?? -1) < 0
-                ? null
-                : () {
-                    state.recordAmount(day, h, int.parse(amount));
-                    Navigator.pop(ctx);
-                  },
-            child: const Text('Save'),
+      builder: (ctx, refresh) {
+        final trimmed = amount.trim();
+        final parsed = int.tryParse(trimmed);
+        final valid = (parsed != null && parsed >= 0) || (trimmed.isEmpty && current > 0);
+        void save() {
+          if (!valid) return;
+          state.recordAmount(day, h, parsed ?? 0);
+          Navigator.pop(ctx);
+        }
+
+        return ConfirmOnEnter(
+          preserveTextInput: true,
+          onConfirm: valid ? save : () {},
+          child: AppAlertDialog(
+            title: h.name,
+            content: TextFormField(
+              initialValue: amount,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                labelText: '${h.unit ?? 'Amount'} · target ${h.target}',
+                hintText: '0',
+              ),
+              onChanged: (v) => refresh(() => amount = v),
+              onFieldSubmitted: (_) => save(),
+            ),
+            actions: [
+              DialogDismiss(label: 'Cancel', onPressed: () => Navigator.pop(ctx)),
+              DialogConfirm(label: 'Save', onPressed: valid ? save : null),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     ),
   );
 }

@@ -71,11 +71,7 @@ void on_visibility_changed(GtkWidget*, gpointer) { update_toggle_label(); }
 
 void on_toggle_clicked(DbusmenuMenuitem*, guint, gpointer) {
   if (tray.window == nullptr) return;
-  if (gtk_widget_get_visible(GTK_WIDGET(tray.window))) {
-    gtk_widget_hide(GTK_WIDGET(tray.window));
-  } else {
-    tray_show_window(tray.window);
-  }
+  toggle_window();
 }
 
 void finish_quit() {

@@ -83,4 +83,4 @@ jobs:
           cp lib/data/google_client.example.dart lib/data/google_client.dart
           flutter pub get
           flutter build apk --debug --target-platform android-arm64
-          cd android && ./gradlew lintDebug
+          cd android && ./gradlew testDebugUnitTest lintDebug

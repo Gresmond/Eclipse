@@ -27,18 +27,16 @@ Future<(int, Uint8List)> sendHttpRequest(
     abort.abort();
   });
   try {
-    return await (() async {
-      final web.Response response;
-      final Uint8List bytes;
-      try {
-        response = await web.window.fetch(uri.toString().toJS, init).toDart;
-        bytes = (await response.arrayBuffer().toDart).toDart.asUint8List();
-      } on Object {
-        if (timedOut) throw TimeoutException('Request timed out', timeout);
-        throw const SocketException('Couldn’t reach the server');
-      }
-      return (response.status, bytes);
-    })().timeout(timeout);
+    final web.Response response;
+    final Uint8List bytes;
+    try {
+      response = await web.window.fetch(uri.toString().toJS, init).toDart;
+      bytes = (await response.arrayBuffer().toDart).toDart.asUint8List();
+    } on Object {
+      if (timedOut) throw TimeoutException('Request timed out', timeout);
+      throw const SocketException('Couldn’t reach the server');
+    }
+    return (response.status, bytes);
   } finally {
     timer.cancel();
   }

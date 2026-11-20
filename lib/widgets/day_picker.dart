@@ -68,6 +68,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final localizations = MaterialLocalizations.of(context);
     final (first, last) = (widget.first, widget.last);
     final atFirst = first != null && !_month.isAfter(DateTime(first.year, first.month));
@@ -96,7 +97,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
             Expanded(
               child: FadeThrough(
                 layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
-                duration: Motion.morph,
+                duration: reduced ? Duration.zero : Motion.morph,
                 child: Text(
                   '${monthNames[_month.month - 1]} ${_month.year}',
                   key: ValueKey((_month.year, _month.month)),
@@ -119,7 +120,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
         ),
         const SizedBox(height: 4),
         FadeThrough(
-          duration: Motion.morph,
+          duration: reduced ? Duration.zero : Motion.morph,
           child: Column(
             key: ValueKey((_month.year, _month.month)),
             mainAxisSize: MainAxisSize.min,
@@ -179,8 +180,13 @@ class CalendarDay extends StatelessWidget {
         : isToday
         ? p.accent
         : p.ink;
-    return Hoverable(
-      onTap: enabled ? onTap : null,
+    return Semantics(
+      selected: selected,
+      enabled: enabled,
+      child: Hoverable(
+        focusable: enabled,
+        semanticLabel: '$day${isToday ? ', today' : ''}${selected ? ', selected' : ''}',
+        onTap: enabled ? onTap : null,
       builder: (hover) => Padding(
         padding: const EdgeInsets.all(2),
         child: AnimatedContainer(
@@ -224,6 +230,7 @@ class CalendarDay extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

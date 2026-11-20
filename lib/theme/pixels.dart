@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-double get _scale => WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+double get _scale => WidgetsBinding.instance.platformDispatcher.views.firstOrNull?.devicePixelRatio ?? 1.0;
 
 /// [logical] on the nearest whole pixel of the screen. A straight edge off the
 /// pixel grid blurs across two rows, which shows as a faint line beside it.

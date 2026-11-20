@@ -209,7 +209,19 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
               holiday: holidayOn(state.holidays, c.day) != null,
             ),
         };
-        final layout = _ColumnLayout(shown: _shown, colFor: colFor, days: [for (final c in columns) c.number]);
+        final layout = _ColumnLayout(
+          shown: _shown,
+          width: width,
+          colFor: colFor,
+          days: [for (final c in columns) c.number],
+        );
+        final editable = [
+          for (final c in columns)
+            if (!c.leaving && state.canEditDay(c.day)) c.number,
+        ];
+        final firstClickable = editable.isEmpty ? 0 : editable.first;
+        final lastClickable = editable.isEmpty ? 0 : editable.last;
+        final sleepNames = widget.times ? [for (final x in habits) x.name] : null;
 
         final rows = <Widget>[
           for (final (i, h) in habits.indexed)
@@ -224,12 +236,13 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
                   ignoring: false,
                   child: _rows[h.id] = _MonthHabitRow(
                     habit: h,
-                    names: widget.times ? [for (final x in habits) x.name] : null,
+                    names: sleepNames,
                     nameWidth: nameWidth,
                     cellSize: _cellSize,
                     laidOut: cell,
                     layout: layout,
-                    clickableDays: columns.where((c) => !c.leaving && !c.day.isAfter(state.today)).length,
+                    firstClickableDay: firstClickable,
+                    lastClickableDay: lastClickable,
                     cells: _cellsFor(h, state, columns),
                   ),
                 ),
@@ -423,9 +436,10 @@ class _Lerp extends Animation<double> with AnimationWithParentMixin<double> {
 
 /// Where the day columns are at this moment of a morph.
 class _ColumnLayout {
-  const _ColumnLayout({required this.shown, required this.colFor, required this.days});
+  const _ColumnLayout({required this.shown, required this.width, required this.colFor, required this.days});
 
   final Animation<double> shown;
+  final double width;
 
   /// Column width for a (fractional) number of columns.
   final double Function(double days) colFor;
@@ -525,45 +539,69 @@ class _ColumnsDelegate extends FlowDelegate {
   }
 
   @override
-  bool shouldRelayout(_ColumnsDelegate old) => old.height != height;
+  bool shouldRelayout(_ColumnsDelegate old) => old.height != height || old.layout.width != layout.width;
 
   @override
-  bool shouldRepaint(_ColumnsDelegate old) => true;
+  bool shouldRepaint(_ColumnsDelegate old) =>
+      old.height != height ||
+      old.scale != scale ||
+      old.layout.width != layout.width ||
+      old.layout.shown != layout.shown ||
+      !listEquals(old.layout.days, layout.days);
 }
 
-/// The hover highlight behind a row's squares, from the first square to
-/// the last one that can be clicked, following the columns as they move.
+/// The hover highlight behind a row's squares, from the first editable square
+/// to the last one, following the columns as they move.
 class _HighlightPainter extends CustomPainter {
-  _HighlightPainter({required this.layout, required this.clickableDays, required this.cellSize, required this.color})
-    : super(repaint: layout.shown);
+  _HighlightPainter({
+    required this.layout,
+    required this.firstClickableDay,
+    required this.lastClickableDay,
+    required this.cellSize,
+    required this.color,
+  }) : super(repaint: layout.shown);
 
   static const pad = 3.0;
 
   final _ColumnLayout layout;
-  final int clickableDays;
+  final int firstClickableDay;
+  final int lastClickableDay;
   final double cellSize;
   final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (clickableDays == 0) return;
+    if (firstClickableDay <= 0 || lastClickableDay < firstClickableDay) return;
     final col = layout.col;
     final inset = (col - cellSize) / 2;
-    final clickable = clickableDays.clamp(0, layout.shown.value);
+    final lastVisible = layout.shown.value;
+    if (lastVisible < firstClickableDay) return;
+    final clickableEnd = lastVisible < lastClickableDay ? lastVisible : lastClickableDay.toDouble();
     final rect = layout.resting
         ? Rect.fromLTRB(
-            layout.squareLeft(1, cellSize) - pad,
+            layout.squareLeft(firstClickableDay, cellSize) - pad,
             0,
-            layout.squareLeft(clickable.toInt(), cellSize) + cellSize + pad,
+            layout.squareLeft(clickableEnd.toInt(), cellSize) + cellSize + pad,
             size.height,
           )
-        : Rect.fromLTRB(inset - pad, 0, clickable * col - inset + pad, size.height);
+        : Rect.fromLTRB(
+            (firstClickableDay - 1) * col + inset - pad,
+            0,
+            clickableEnd * col - inset + pad,
+            size.height,
+          );
     canvas.drawRRect(RRect.fromRectAndRadius(rect, Radius.circular(cellSize * 0.28 + pad)), Paint()..color = color);
   }
 
   @override
   bool shouldRepaint(_HighlightPainter old) =>
-      old.clickableDays != clickableDays || old.cellSize != cellSize || old.color != color || old.layout != layout;
+      old.firstClickableDay != firstClickableDay ||
+      old.lastClickableDay != lastClickableDay ||
+      old.cellSize != cellSize ||
+      old.color != color ||
+      old.layout.width != layout.width ||
+      old.layout.shown != layout.shown ||
+      !listEquals(old.layout.days, layout.days);
 }
 
 /// A soft band down each run of weekend columns, behind the day headers and

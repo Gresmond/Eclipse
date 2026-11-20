@@ -1,6 +1,7 @@
 import {
   answer,
   claimsOf,
+  fetchWithTimeout,
   missingEnv,
   noStateCookie,
   seal,
@@ -34,7 +35,7 @@ export async function onRequestGet({ request, env }) {
 
   let tokens;
   try {
-    const reply = await fetch('https://oauth2.googleapis.com/token', {
+    const reply = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -60,7 +61,7 @@ export async function onRequestGet({ request, env }) {
     claims.aud !== env.GOOGLE_CLIENT_ID ||
     typeof claims.exp !== 'number' ||
     claims.exp <= now ||
-    claims.email_verified === false ||
+    claims.email_verified !== true ||
     !claims.email ||
     !claims.sub
   ) {

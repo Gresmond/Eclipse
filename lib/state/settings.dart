@@ -11,8 +11,13 @@ mixin _Settings on ChangeNotifier {
   void _removed(String label, List<RowsBefore> before);
   void _todosChanged();
 
-  bool get smartAdd => store.setting('smartAdd') != '0';
-  void setSmartAdd(bool on) { store.setSetting('smartAdd', on ? '1' : '0'); notifyListeners(); }
+  late bool _smartAdd = store.setting('smartAdd') != '0';
+  bool get smartAdd => _smartAdd;
+  void setSmartAdd(bool on) {
+    _smartAdd = on;
+    store.setSetting('smartAdd', on ? '1' : '0');
+    notifyListeners();
+  }
 
   /// The hour a new day starts: 0 for midnight or 4 for night owls.
   late int dayStartHour = parseDayStartHour(store.setting('dayStartHour'));
@@ -181,12 +186,24 @@ mixin _Settings on ChangeNotifier {
 
   void _setHolidays(List<Holiday> next) {
     if (encodeHolidays(next) == encodeHolidays(holidays)) return;
-    _removed('Changed holidays', [store.rowsBefore('settings', ['key'], 'key = ?', ['holidays'])]);
+    _removed('Changed holidays', [
+      store.rowsBefore(
+        'settings',
+        ['key'],
+        'key IN (?, ?, ?)',
+        ['holidays', StoreTodos.pausedTimesSetting, StoreTodos.walkedHolidaysSetting],
+      ),
+      store.rowsBefore('todos', ['uid'], 'uid LIKE ?', ['%@%']),
+      store.rowsBefore('todo_history', ['uid', 'day'], 'uid LIKE ?', ['%@%']),
+    ]);
     holidays = decodeHolidays(encodeHolidays(next));
     store.setSetting('holidays', encodeHolidays(holidays));
     _streaks.clear();
+    _monthScores.clear();
     holidaysChanged();
   }
+
+  LruCache<(int, int), Map<int, (int, int)>> get _monthScores;
 
   /// Whether Further ahead shows birthdays.
   late bool laterBirthdays = store.setting('laterBirthdays') != 'hidden';

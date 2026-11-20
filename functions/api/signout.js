@@ -1,4 +1,4 @@
-import { answer, fromOurPage, missingEnv, noSessionCookie, sessionOf } from '../_session.js';
+import { answer, fetchWithTimeout, fromOurPage, missingEnv, noSessionCookie, sessionOf } from '../_session.js';
 
 export async function onRequestPost({ request, env }) {
   if (!fromOurPage(request)) return answer(403, { error: 'wrong_origin' });
@@ -6,7 +6,7 @@ export async function onRequestPost({ request, env }) {
     const session = await sessionOf(request, env);
     if (session?.refresh) {
       try {
-        await fetch('https://oauth2.googleapis.com/revoke', {
+        await fetchWithTimeout('https://oauth2.googleapis.com/revoke', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({ token: session.refresh }),

@@ -29,8 +29,11 @@ class Appear extends StatefulWidget {
 }
 
 class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
-  late final _controller = AnimationController(vsync: this, duration: widget.duration, value: widget.animate ? 0 : 1)
-    ..forward();
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+    value: widget.shown && !widget.animate ? 1 : 0,
+  );
   late final _curved = CurvedAnimation(parent: _controller, curve: Motion.morphCurve);
 
   late final _sizeFirst = _controller.drive(CurveTween(curve: Motion.firstHalf));
@@ -41,8 +44,10 @@ class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_disabled && _controller.isAnimating) {
+    if (_disabled) {
       _controller.value = widget.shown ? 1 : 0;
+    } else if (widget.shown && widget.animate && !_controller.isCompleted && !_controller.isAnimating) {
+      _controller.forward();
     }
   }
 

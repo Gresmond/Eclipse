@@ -165,12 +165,13 @@ class TileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final p = context.palette;
     final lead = [
       Flexible(
         child: fadeTitle
             ? FadeThrough(
-                duration: Motion.page,
+                duration: reduced ? Duration.zero : Motion.page,
                 layoutBuilder: FadeThrough.aligned(Alignment.centerLeft),
                 child: Text(
                   title,
@@ -330,7 +331,8 @@ class _CaptionSwapState extends State<_CaptionSwap> {
       _grows = width > (_settled ?? width);
       _settled = width;
     }
-    final duration = _withDay ? Motion.page : Motion.morph;
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final duration = reduced ? Duration.zero : (_withDay ? Motion.page : Motion.morph);
     return TweenAnimationBuilder<double>(
       tween: Tween(end: width),
       duration: duration,

@@ -43,6 +43,47 @@ class BackupRow extends StatelessWidget {
     final p = context.palette;
     final (title, subtitle) = describe(backup, today);
 
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          damaged
+              ? 'This copy is damaged.'
+              : confirming
+              ? confirmText
+              : subtitle,
+          style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: damaged ? p.missedInk : p.inkMuted),
+        ),
+      ],
+    );
+    final actions = <Widget>[
+      if (damaged)
+        const SizedBox.shrink()
+      else if (restoring)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.accent)),
+        )
+      else if (confirming) ...[
+        DialogDismiss(label: 'Cancel', onPressed: onCancel),
+        const SizedBox(width: 4),
+        DialogConfirm(label: 'Restore', onPressed: onConfirm),
+      ] else
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: p.accent,
+            side: BorderSide(color: p.accent.withValues(alpha: 0.4)),
+          ),
+          onPressed: enabled ? onAsk : null,
+          child: const Text('Restore'),
+        ),
+    ];
+
     return AnimatedContainer(
       duration: context.themed(Motion.hover),
       curve: Motion.hoverCurve,
@@ -52,49 +93,22 @@ class BackupRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: confirming ? p.accent.withValues(alpha: 0.35) : p.borderSoft),
       ),
-      child: PixelRow(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  damaged
-                      ? 'This copy is damaged.'
-                      : confirming
-                      ? confirmText
-                      : subtitle,
-                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: damaged ? p.missedInk : p.inkMuted),
-                ),
-              ],
-            ),
-          ),
-          if (damaged)
-            const SizedBox.shrink()
-          else if (restoring)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.accent)),
-            )
-          else if (confirming) ...[
-            DialogDismiss(label: 'Cancel', onPressed: onCancel),
-            const SizedBox(width: 4),
-            DialogConfirm(label: 'Restore', onPressed: onConfirm),
-          ] else
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: p.accent,
-                side: BorderSide(color: p.accent.withValues(alpha: 0.4)),
+      child: LayoutBuilder(
+        builder: (context, constraints) => constraints.maxWidth < 380 && confirming
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  details,
+                  const SizedBox(height: 10),
+                  Row(mainAxisAlignment: MainAxisAlignment.end, children: actions),
+                ],
+              )
+            : PixelRow(
+                children: [
+                  Expanded(child: details),
+                  ...actions,
+                ],
               ),
-              onPressed: enabled ? onAsk : null,
-              child: const Text('Restore'),
-            ),
-        ],
       ),
     );
   }

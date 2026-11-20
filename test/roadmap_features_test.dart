@@ -64,6 +64,29 @@ void main() {
     expect(files.map((f) => f.id), ['keep', 'new']);
   });
 
+  test('incomplete Drive changes rebuild the inventory before removing local files', () async {
+    final drive = AppDataFolder(
+      '',
+      accessToken: () async => ('token', 3600),
+      send: (method, uri, {body, type, bearer}) async {
+        final reply = switch (uri.path) {
+          '/drive/v3/changes' => {
+            'changes': [{'fileId': 'keep'}],
+            'newStartPageToken': 'partial',
+          },
+          '/drive/v3/changes/startPageToken' => {'startPageToken': 'fresh'},
+          '/drive/v3/files' => {
+            'files': [{'id': 'keep', 'name': 'preserved', 'modifiedTime': 'v1'}],
+          },
+          _ => throw StateError('Unexpected request to ${uri.path}'),
+        };
+        return (200, Uint8List.fromList(utf8.encode(jsonEncode(reply))));
+      },
+    );
+    final (token, files) = await drive.inventory('old', const []);
+    expect((token, files.single.id), ('fresh', 'keep'));
+  });
+
   testWidgets('a focused command field accepts arrow navigation and Enter', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;

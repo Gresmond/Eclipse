@@ -16,7 +16,8 @@ mixin _Undo on ChangeNotifier {
   Store get store;
 
   /// After rows of [tables] were put back.
-  void _reloadAfterUndo(Set<String> tables);
+  void _reloadAfterUndo(Set<String> tables, List<RowsBefore> undone);
+  void _prepareUndo();
 
   static const _kept = 3;
 
@@ -72,6 +73,7 @@ mixin _Undo on ChangeNotifier {
   }
 
   void _apply(List<Removal> source, List<Removal> destination) {
+    _prepareUndo();
     final action = source.last;
     final inverse = store.transaction(() {
       final snapshots = <RowsBefore>[];
@@ -84,7 +86,7 @@ mixin _Undo on ChangeNotifier {
     source.removeLast();
     destination.add(Removal._(action.label, inverse));
     shownRemoval = null;
-    _reloadAfterUndo({for (final b in inverse) b.table});
+    _reloadAfterUndo({for (final b in inverse) b.table}, action._before);
   }
 
   /// The card naming [removal] has had its time.

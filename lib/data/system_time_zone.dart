@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -24,11 +25,20 @@ class SystemTimeZone {
   /// Current wall-clock time in the system's active time zone.
   static DateTime now() => instance?.currentTime() ?? DateTime.now();
 
+  /// Actual current UTC offset in seconds/minutes, falling back to `DateTime.now().timeZoneOffset`.
+  static Duration currentOffset() => instance?.offset() ?? DateTime.now().timeZoneOffset;
+
   final String _path;
   String? _target;
   DateTime? _modified;
   int? _size;
   TzifZone? _zone;
+
+  /// Active offset for the current instant.
+  Duration offset({DateTime Function()? utcNow}) {
+    final utc = (utcNow ?? DateTime.now)().toUtc();
+    return _zone?.offsetAt(utc) ?? utc.toLocal().timeZoneOffset;
+  }
 
   /// Reads `/etc/localtime` again if its symlink target or file metadata changed.
   void sync() {
@@ -74,14 +84,16 @@ class SystemTimeZone {
   }
 }
 
-/// Minimal parser for compiled TZif (v1/v2/v3) time zone files.
+/// Minimal parser for compiled TZif (v1/v2/v3) time zone files, including the
+/// POSIX TZ footer for dates after explicit transitions or slim files.
 @visibleForTesting
 class TzifZone {
-  TzifZone._(this._transitions, this._typeIndices, this._offsetsSeconds);
+  TzifZone._(this._transitions, this._typeIndices, this._offsetsSeconds, [this._posix]);
 
   final List<int> _transitions;
   final Uint8List _typeIndices;
   final List<int> _offsetsSeconds;
+  final _PosixTz? _posix;
 
   static TzifZone? parse(Uint8List bytes) {
     if (bytes.length < 44 ||
@@ -105,6 +117,10 @@ class TzifZone {
     var leapBytes = 8;
     var countTime = timecnt;
     var countType = typecnt;
+    var countChar = charcnt;
+    var countLeap = leapcnt;
+    var countStd = ttisstdcnt;
+    var countUt = ttisutcnt;
 
     if (version >= 0x32) {
       final v1Size =
@@ -119,8 +135,12 @@ class TzifZone {
       blockOffset = v1Size;
       timeBytes = 8;
       leapBytes = 12;
+      countUt = data.getUint32(blockOffset + 20);
+      countStd = data.getUint32(blockOffset + 24);
+      countLeap = data.getUint32(blockOffset + 28);
       countTime = data.getUint32(blockOffset + 32);
       countType = data.getUint32(blockOffset + 36);
+      countChar = data.getUint32(blockOffset + 40);
     }
 
     if (countType == 0) return null;
@@ -143,15 +163,29 @@ class TzifZone {
       offsets[i] = data.getInt32(pos);
       pos += 6;
     }
-    // Unused leap seconds length retained in case footer parsing is added later.
-    assert(leapBytes > 0);
-    return TzifZone._(transitions, typeIndices, offsets);
+
+    _PosixTz? posix;
+    final footerStart = pos + countChar + countLeap * leapBytes + countStd + countUt;
+    if (version >= 0x32 && footerStart < bytes.length && bytes[footerStart] == 0x0A) {
+      final nl = bytes.indexOf(0x0A, footerStart + 1);
+      final end = nl > footerStart ? nl : bytes.length;
+      if (end > footerStart + 1) {
+        posix = _PosixTz.parse(utf8.decode(bytes.sublist(footerStart + 1, end), allowMalformed: true).trim());
+      }
+    }
+    return TzifZone._(transitions, typeIndices, offsets, posix);
   }
 
   Duration offsetAt(DateTime utc) {
-    if (_transitions.isEmpty) return Duration(seconds: _offsetsSeconds[0]);
-    final seconds = utc.toUtc().millisecondsSinceEpoch ~/ 1000;
+    final u = utc.toUtc();
+    if (_transitions.isEmpty) {
+      return _posix?.offsetAt(u) ?? Duration(seconds: _offsetsSeconds[0]);
+    }
+    final seconds = u.millisecondsSinceEpoch ~/ 1000;
     if (seconds < _transitions[0]) return Duration(seconds: _offsetsSeconds[0]);
+    if (seconds >= _transitions.last && _posix != null) {
+      return _posix.offsetAt(u);
+    }
     var lo = 0;
     var hi = _transitions.length - 1;
     while (lo < hi) {
@@ -163,5 +197,97 @@ class TzifZone {
       }
     }
     return Duration(seconds: _offsetsSeconds[_typeIndices[lo]]);
+  }
+}
+
+class _PosixTz {
+  _PosixTz(this.stdOffsetSeconds, this.dstOffsetSeconds, this.start, this.end);
+
+  final int stdOffsetSeconds;
+  final int? dstOffsetSeconds;
+  final _PosixRule? start, end;
+
+  static final _pattern = RegExp(
+    r'^(?:<[^>]+>|[A-Za-z]+)([+-]?\d+(?::\d{2}(?::\d{2})?)?)'
+    r'(?:(?:<[^>]+>|[A-Za-z]+)([+-]?\d+(?::\d{2}(?::\d{2})?)?)?,([^,]+),([^,]+))?$',
+  );
+
+  static _PosixTz? parse(String text) {
+    final m = _pattern.firstMatch(text);
+    if (m == null) return null;
+    // POSIX TZ offsets are west-positive (AEST-10 => +10h east of UTC).
+    int? parseSignOffset(String raw) {
+      final neg = raw.startsWith('-');
+      final pos = raw.startsWith('+');
+      final parts = (neg || pos ? raw.substring(1) : raw).split(':');
+      final h = int.tryParse(parts[0]);
+      final min = parts.length > 1 ? int.tryParse(parts[1]) : 0;
+      final sec = parts.length > 2 ? int.tryParse(parts[2]) : 0;
+      if (h == null || min == null || sec == null) return null;
+      final magnitude = h * 3600 + min * 60 + sec;
+      return neg ? magnitude : -magnitude;
+    }
+
+    final std = parseSignOffset(m[1]!);
+    if (std == null) return null;
+    if (m[3] == null || m[4] == null) return _PosixTz(std, null, null, null);
+    final dst = m[2] == null ? std + 3600 : parseSignOffset(m[2]!);
+    final start = _PosixRule.parse(m[3]!);
+    final end = _PosixRule.parse(m[4]!);
+    if (dst == null || start == null || end == null) return null;
+    return _PosixTz(std, dst, start, end);
+  }
+
+  Duration offsetAt(DateTime utc) {
+    if (dstOffsetSeconds == null || start == null || end == null) {
+      return Duration(seconds: stdOffsetSeconds);
+    }
+    final year = utc.year;
+    final startUtc = start!.atYear(year, stdOffsetSeconds);
+    final endUtc = end!.atYear(year, dstOffsetSeconds!);
+    final inDst = startUtc.isBefore(endUtc)
+        ? !utc.isBefore(startUtc) && utc.isBefore(endUtc)
+        : !utc.isBefore(startUtc) || utc.isBefore(endUtc);
+    return Duration(seconds: inDst ? dstOffsetSeconds! : stdOffsetSeconds);
+  }
+}
+
+class _PosixRule {
+  _PosixRule(this.month, this.week, this.weekday, this.secondsOfDay);
+
+  final int month, week, weekday, secondsOfDay;
+
+  static _PosixRule? parse(String raw) {
+    final slash = raw.split('/');
+    final datePart = slash[0];
+    if (!datePart.startsWith('M')) return null;
+    final parts = datePart.substring(1).split('.');
+    if (parts.length != 3) return null;
+    final month = int.tryParse(parts[0]);
+    final week = int.tryParse(parts[1]);
+    final posixWeekday = int.tryParse(parts[2]); // 0 = Sunday .. 6 = Saturday
+    if (month == null || week == null || posixWeekday == null) return null;
+    if (month < 1 || month > 12 || week < 1 || week > 5 || posixWeekday < 0 || posixWeekday > 6) return null;
+    var seconds = 2 * 3600;
+    if (slash.length > 1) {
+      final t = slash[1].split(':');
+      final h = int.tryParse(t[0]);
+      final m = t.length > 1 ? int.tryParse(t[1]) : 0;
+      final s = t.length > 2 ? int.tryParse(t[2]) : 0;
+      if (h == null || m == null || s == null) return null;
+      seconds = h * 3600 + m * 60 + s;
+    }
+    return _PosixRule(month, week, posixWeekday == 0 ? 7 : posixWeekday, seconds);
+  }
+
+  DateTime atYear(int year, int offsetSeconds) {
+    final first = DateTime.utc(year, month, 1);
+    final delta = (weekday - first.weekday) % 7;
+    var day = 1 + delta + (week - 1) * 7;
+    final daysInMonth = DateTime.utc(year, month + 1, 0).day;
+    while (day > daysInMonth) {
+      day -= 7;
+    }
+    return DateTime.utc(year, month, day).add(Duration(seconds: secondsOfDay - offsetSeconds));
   }
 }

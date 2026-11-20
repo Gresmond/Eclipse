@@ -23,7 +23,8 @@ import '../screens/startup_error.dart';
 import '../screens/today_view.dart' show JournalCard;
 import '../screens/training_view.dart' show AddSessionExercise;
 import '../training.dart';
-import '../widgets/todo_panel.dart' show PhonePlan, TaskDetailsMenu;
+import '../training_log.dart';
+import '../widgets/todo_panel.dart' show PhonePlan, TaskDetailsMenu, addTaskAnywhere, confirmRemoveTask;
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/app_dialog.dart';
@@ -39,9 +40,15 @@ part 'phone_tabs.dart';
 /// on the same data as the computers through Drive sync.
 Future<void> phoneMain({Future<Directory> Function() supportDirectory = getApplicationSupportDirectory}) async {
   runApp(
-    const MaterialApp(
+    MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      theme: themeNamed(null),
+      home: Builder(
+        builder: (context) => Scaffold(
+          backgroundColor: context.palette.background,
+          body: const Center(child: CircularProgressIndicator()),
+        ),
+      ),
     ),
   );
   await _openPhone(supportDirectory);
@@ -93,6 +100,7 @@ Future<void> _openPhone(Future<Directory> Function() supportDirectory) async {
     );
   } catch (error, stack) {
     AppLog.failure('Couldn’t open the data', error, stack);
+    unawaited(PhonePlatform.reportStartupError('$error'));
     try {
       opened?.close();
     } catch (_) {}
@@ -141,11 +149,17 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   Timer? _scheduling, _dateTimer;
   Object? _reminderKey;
   bool _scheduleDirty = false;
+  bool _askedNotifications = false;
+  bool? _lastSyncOn;
+  bool _wasSignedIn = false;
 
   Object _currentReminderKey() => (
     _state.today,
     _state.todosRevision,
     _state.dayStartHour,
+    _state.snoozeRevision,
+    _state.sync?.isOn ?? false,
+    _state.sync?.email ?? '',
     Object.hashAll(_state.holidays),
   );
 
@@ -153,6 +167,8 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _lastSyncOn = _state.sync?.isOn ?? false;
+    _wasSignedIn = _lastSyncOn!;
     _state.addListener(_onStateChanged);
     _reminderKey = _currentReminderKey();
     _scheduleDirty = true;
@@ -170,6 +186,8 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
     if (old.state != widget.state) {
       old.state.removeListener(_onStateChanged);
       old.state.sync?.removeListener(_onStateChanged);
+      _lastSyncOn = _state.sync?.isOn ?? false;
+      _wasSignedIn = _lastSyncOn!;
       _state.sync?.addListener(_onStateChanged);
       _state.addListener(_onStateChanged);
       _reminderKey = _currentReminderKey();
@@ -183,6 +201,7 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   void dispose() {
     _scheduling?.cancel();
     _dateTimer?.cancel();
+    PhonePlatform.stopListeningReminders();
     _state.sync?.removeListener(_onStateChanged);
     _state.removeListener(_onStateChanged);
     WidgetsBinding.instance.removeObserver(this);
@@ -191,11 +210,22 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
 
   void _openReminder(String uid) {
     _state.openReminder(uid);
-    _home.currentState?.select(0);
+    final inToday = _state.todos[TodoScope.today]!.any((t) => t.uid == uid);
+    final inPlan = !inToday && _state.store.remindingTodoByUid(uid) != null;
+    _home.currentState?.select(inPlan ? 1 : 0);
     _navigator.currentState?.popUntil((route) => route.isFirst);
   }
 
   void _onStateChanged() {
+    final syncOn = _state.sync?.isOn ?? false;
+    if (syncOn != _lastSyncOn) {
+      _lastSyncOn = syncOn;
+      unawaited(PhonePlatform.setBackgroundSync(syncOn));
+    }
+    if (!syncOn && _wasSignedIn) {
+      _navigator.currentState?.popUntil((route) => route.isFirst);
+    }
+    _wasSignedIn = syncOn;
     final key = _currentReminderKey();
     if (key == _reminderKey) return;
     _reminderKey = key;
@@ -213,6 +243,10 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   void _runSchedule() {
     _scheduling = null;
     _scheduleDirty = false;
+    if (!_askedNotifications && _state.upcomingReminders().isNotEmpty) {
+      _askedNotifications = true;
+      unawaited(PhonePlatform.askNotifications());
+    }
     unawaited(widget.schedule(_state).catchError((Object _) {}));
   }
 
@@ -251,7 +285,8 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
         debugShowCheckedModeBanner: false,
         // A finger has no hover, so a touch keeps Material's ripple here.
         theme: themeNamed(themeName).copyWith(splashFactory: InkSparkle.splashFactory),
-        themeAnimationDuration: Motion.morph,
+        themeAnimationDuration:
+            (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ? Duration.zero : Motion.morph,
         themeAnimationCurve: Motion.morphCurve,
         builder: (context, child) => DefaultTextHeightBehavior(
           textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
@@ -439,7 +474,7 @@ class _TodayPage extends StatelessWidget {
     final p = context.palette;
     final state = AppScope.watch(
       context,
-      (s) => (s.today, s.habitsRevision, s.entriesRevision, s.todosRevision, s.shownRemoval),
+      (s) => (s.today, s.habitsRevision, s.entriesRevision, s.todosRevision, s.restWeekends, s.holidays),
     );
     final today = state.today;
     final rest = state.isRestDay(today);
@@ -447,79 +482,45 @@ class _TodayPage extends StatelessWidget {
       for (final h in state.habits)
         if (h.onDay(today) && h.startedBy(today)) h,
     ];
-    return Scaffold(
-      backgroundColor: p.background,
-      // 16 under it, and the list leaves 16 over it above its last card.
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Add task',
-        backgroundColor: p.done,
-        foregroundColor: p.onDone,
-        elevation: 0,
-        focusElevation: 0,
-        hoverElevation: 0,
-        highlightElevation: 0,
-        onPressed: () => _addTask(context),
-        child: const Icon(Icons.add_rounded, size: 22),
-      ),
-      body: SafeArea(
-        child: Stack(
+    return SafeArea(
+      child: RefreshIndicator(
+        color: p.accent,
+        onRefresh: () async {
+          final sync = state.sync;
+          if (sync != null && sync.isOn) await sync.run();
+        },
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
           children: [
-            RefreshIndicator(
-              color: p.accent,
-              onRefresh: () async {
-                final sync = state.sync;
-                if (sync != null && sync.isOn) await sync.run();
-              },
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-                children: [
-                  Row(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(weekdayNames[today.weekday - 1].toUpperCase(), style: capsLabel(p.inkMuted)),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${today.day} ${monthNames[today.month - 1]}',
-                              style: _title(p),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Settings',
-                        icon: Icon(Icons.settings_rounded, color: p.inkMuted),
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => _SettingsPage(updater: updater)),
-                        ),
-                      ),
+                      Text(weekdayNames[today.weekday - 1].toUpperCase(), style: capsLabel(p.inkMuted)),
+                      const SizedBox(height: 4),
+                      Text('${today.day} ${monthNames[today.month - 1]}', style: _title(p)),
                     ],
                   ),
-                  if (updater case final updater?) _UpdateCard(updater: updater),
-                  const SizedBox(height: 16),
-                  _MarksCard(title: 'RITUALS', habits: rituals, rest: rest),
-                  const SizedBox(height: 12),
-                  _MarksCard(title: 'SLEEP', habits: state.sleepHabits, rest: rest),
-                  const SizedBox(height: 12),
-                  const _TasksCard(),
-                ],
-              ),
-            ),
-            if (state.shownRemoval case final removal?)
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 84,
-                child: _PhoneUndoBanner(
-                  removal: removal,
-                  onUndo: state.undo,
-                  onHide: () => state.hideUndoCard(removal),
                 ),
-              ),
+                IconButton(
+                  tooltip: 'Settings',
+                  icon: Icon(Icons.settings_rounded, color: p.inkMuted),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => _SettingsPage(updater: updater)),
+                  ),
+                ),
+              ],
+            ),
+            if (updater case final updater?) _UpdateCard(updater: updater),
+            const SizedBox(height: 16),
+            _MarksCard(title: 'RITUALS', habits: rituals, rest: rest),
+            const SizedBox(height: 12),
+            _MarksCard(title: 'SLEEP', habits: state.sleepHabits, rest: rest),
+            const SizedBox(height: 12),
+            const _TasksCard(),
           ],
         ),
       ),
@@ -528,10 +529,18 @@ class _TodayPage extends StatelessWidget {
 }
 
 class _PhoneUndoBanner extends StatefulWidget {
-  const _PhoneUndoBanner({required this.removal, required this.onUndo, required this.onHide});
+  const _PhoneUndoBanner({
+    this.removal,
+    this.canRedo = false,
+    required this.onUndo,
+    this.onRedo,
+    required this.onHide,
+  });
 
-  final Removal removal;
+  final Removal? removal;
+  final bool canRedo;
   final VoidCallback onUndo;
+  final VoidCallback? onRedo;
   final VoidCallback onHide;
 
   @override
@@ -555,7 +564,7 @@ class _PhoneUndoBannerState extends State<_PhoneUndoBanner> {
   @override
   void didUpdateWidget(_PhoneUndoBanner old) {
     super.didUpdateWidget(old);
-    if (!identical(widget.removal, old.removal)) _startTimer();
+    if (!identical(widget.removal, old.removal) || widget.canRedo != old.canRedo) _startTimer();
   }
 
   @override
@@ -567,6 +576,7 @@ class _PhoneUndoBannerState extends State<_PhoneUndoBanner> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final removal = widget.removal;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
       decoration: BoxDecoration(
@@ -577,9 +587,15 @@ class _PhoneUndoBannerState extends State<_PhoneUndoBanner> {
       child: Row(
         children: [
           Expanded(
-            child: Text(widget.removal.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: _body(p, size: 14)),
+            child: Text(
+              removal?.label ?? 'Undone',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: _body(p, size: 14),
+            ),
           ),
-          TextButton(onPressed: widget.onUndo, child: const Text('Undo')),
+          if (removal != null) TextButton(onPressed: widget.onUndo, child: const Text('Undo')),
+          if (widget.canRedo && widget.onRedo != null) TextButton(onPressed: widget.onRedo, child: const Text('Redo')),
         ],
       ),
     );
@@ -679,19 +695,32 @@ class _MarkRow extends StatelessWidget {
       HabitStatus.other => (p.other, p.onAccent, Icons.remove_rounded),
       HabitStatus.none => (p.empty, p.inkMuted, null),
     };
+    final showStreak = habit.weekly == null && streak > 1;
+    final canEditGoal = state.habits.any((h) => h.id == habit.id);
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onLongPress: state.habits.any((h)=>h.id==habit.id) ? ()=>editRitualGoal(context,habit,today.year,today.month) : null,
-      onTap: () => habit.target != null ? enterRitualAmount(context,today,habit) : state.selectStatus(today, habit, _next[status]!),
+      onLongPress: () => _showMenu(context, state, today, habit, canEditGoal: canEditGoal),
+      onTap: () => habit.target != null
+          ? enterRitualAmount(context, today, habit)
+          : state.selectStatus(today, habit, _next[status]!),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 52),
         child: Row(
           children: [
             Expanded(
-              child: Text(ritualProgress(state,today,habit), maxLines: 2, overflow: TextOverflow.ellipsis, style: _body(p)),
+              child: Text(
+                ritualProgress(state, today, habit),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: _body(p),
+              ),
             ),
-            if (streak > 1) ...[
-              Text('$streak', style: _body(p, size: 13, colour: p.inkMuted)),
+            if (habit.weekly != null) ...[
+              Icon(Icons.event_repeat_rounded, size: 16, color: p.inkMuted),
+              const SizedBox(width: 8),
+            ],
+            if (showStreak) ...[
+              Text('$streak', style: _body(p, size: 12, colour: p.inkMuted)),
               const SizedBox(width: 12),
             ],
             Container(
@@ -700,6 +729,79 @@ class _MarkRow extends StatelessWidget {
               decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(12)),
               child: icon == null ? null : Icon(icon, size: 22, color: ink),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showMenu(
+    BuildContext context,
+    AppState state,
+    DateTime day,
+    Habit habit, {
+    required bool canEditGoal,
+  }) async {
+    final p = context.palette;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: p.tile,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheet) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.check_rounded, size: 18, color: p.done),
+              title: Text('Mark done', style: _body(p)),
+              onTap: () {
+                Navigator.pop(sheet);
+                state.selectStatus(day, habit, HabitStatus.done);
+              },
+            ),
+            if (habit.target != null)
+              ListTile(
+                leading: Icon(Icons.edit_rounded, size: 18, color: p.accent),
+                title: Text('Log progress', style: _body(p)),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  enterRitualAmount(context, day, habit);
+                },
+              ),
+            ListTile(
+              leading: Icon(Icons.close_rounded, size: 18, color: p.missed),
+              title: Text('Mark not done', style: _body(p)),
+              onTap: () {
+                Navigator.pop(sheet);
+                state.selectStatus(day, habit, HabitStatus.missed);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.remove_rounded, size: 18, color: p.other),
+              title: Text('Mark other', style: _body(p)),
+              onTap: () {
+                Navigator.pop(sheet);
+                state.selectStatus(day, habit, HabitStatus.other);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.clear_all_rounded, size: 18, color: p.inkMuted),
+              title: Text('Clear mark', style: _body(p)),
+              onTap: () {
+                Navigator.pop(sheet);
+                state.selectStatus(day, habit, HabitStatus.none);
+              },
+            ),
+            if (canEditGoal)
+              ListTile(
+                leading: Icon(Icons.tune_rounded, size: 18, color: p.inkMuted),
+                title: Text('Edit goal', style: _body(p)),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  editRitualGoal(context, habit, day.year, day.month);
+                },
+              ),
           ],
         ),
       ),
@@ -738,6 +840,12 @@ class _TasksCard extends StatelessWidget {
             Dismissible(
               key: ValueKey('dismiss-${task.id}'),
               direction: DismissDirection.endToStart,
+              confirmDismiss: task.repeatUid == null
+                  ? null
+                  : (_) async {
+                      await confirmRemoveTask(context, TodoScope.today, task, day: state.today);
+                      return false;
+                    },
               onDismissed: (_) => state.removeTodo(TodoScope.today, task),
               background: Container(
                 alignment: Alignment.centerRight,
@@ -945,7 +1053,7 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
       context: context,
       firstDate: today,
       lastDate: DateTime(today.year + 5),
-      initialDate: _day,
+      initialDate: _day.isBefore(today) ? today : _day,
     );
     if (picked != null && mounted) setState(() => _day = picked);
   }
@@ -965,71 +1073,74 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
       side: BorderSide.none,
       onSelected: (_) => onTap(),
     );
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 20, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _name,
-            autofocus: true,
-            textCapitalization: TextCapitalization.sentences,
-            textInputAction: TextInputAction.done,
-            cursorColor: p.ink,
-            style: _body(p, size: 17),
-            decoration: InputDecoration(
-              hintText: 'New task',
-              hintStyle: _body(p, size: 17, colour: p.inkMuted),
-              border: InputBorder.none,
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _name,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.done,
+              cursorColor: p.ink,
+              style: _body(p, size: 16),
+              decoration: InputDecoration(
+                hintText: 'New task',
+                hintStyle: _body(p, size: 16, colour: p.inkMuted),
+                border: InputBorder.none,
+              ),
+              onSubmitted: (_) => _save(),
             ),
-            onSubmitted: (_) => _save(),
-          ),
-          if (AppScope.read(context).smartAdd)
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: _name,
-              builder: (context, value, _) {
-                final parsed = parseQuickTask(value.text, today, defaultDay: _day);
-                if (parsed.name == value.text.trim()) return const SizedBox.shrink();
-                final day = parsed.day ?? _day;
-                final time = parsed.minutes;
-                final actualDay = afterMidnight(time, AppScope.read(context).dayStartHour)
-                    ? DateTime(day.year, day.month, day.day + 1)
-                    : day;
-                final details = [
-                  shortDay(actualDay, today: today),
-                  if (time != null) clockLabel(time),
-                  ?parsed.location,
-                  if (parsed.repeat case final rule?) rule.label,
-                  if (parsed.until case final end?) 'Until ${shortDay(end, today: today)}',
-                  for (final at in Reminder.of(parsed.reminders).map((r) => r.at(actualDay, time)))
-                    'Remind ${shortDay(at, today: today)} at ${clockLabel(at.hour * 60 + at.minute)}',
-                ];
-                return Text(details.join(' · '), style: _body(p, size: 13, colour: p.inkMuted));
-              },
-            ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  children: [
-                    chip('Today', _day == today, () => setState(() => _day = today)),
-                    chip('Tomorrow', _day == tomorrow, () => setState(() => _day = tomorrow)),
-                    chip(picked ? shortDay(_day, today: today) : 'Pick a day', picked, _pick),
-                  ],
+            if (AppScope.read(context).smartAdd)
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _name,
+                builder: (context, value, _) {
+                  final parsed = parseQuickTask(value.text, today, defaultDay: _day);
+                  if (parsed.name == value.text.trim()) return const SizedBox.shrink();
+                  final day = parsed.day ?? _day;
+                  final time = parsed.minutes;
+                  final actualDay = afterMidnight(time, AppScope.read(context).dayStartHour)
+                      ? DateTime(day.year, day.month, day.day + 1)
+                      : day;
+                  final details = [
+                    shortDay(actualDay, today: today),
+                    if (time != null) clockLabel(time),
+                    ?parsed.location,
+                    if (parsed.repeat case final rule?) rule.label,
+                    if (parsed.until case final end?) 'Until ${shortDay(end, today: today)}',
+                    for (final at in Reminder.of(parsed.reminders).map((r) => r.at(actualDay, time)))
+                      'Remind ${shortDay(at, today: today)} at ${clockLabel(at.hour * 60 + at.minute)}',
+                  ];
+                  return Text(details.join(' · '), style: _body(p, size: 12, colour: p.inkMuted));
+                },
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    children: [
+                      chip('Today', _day == today, () => setState(() => _day = today)),
+                      chip('Tomorrow', _day == tomorrow, () => setState(() => _day = tomorrow)),
+                      chip(picked ? shortDay(_day, today: today) : 'Pick a day', picked, _pick),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton.filled(
-                tooltip: 'Add',
-                style: IconButton.styleFrom(backgroundColor: p.done, foregroundColor: p.onDone),
-                onPressed: _save,
-                icon: const Icon(Icons.arrow_upward_rounded),
-              ),
-            ],
-          ),
-        ],
+                IconButton.filled(
+                  tooltip: 'Add',
+                  style: IconButton.styleFrom(backgroundColor: p.done, foregroundColor: p.onDone),
+                  onPressed: _save,
+                  icon: const Icon(Icons.arrow_upward_rounded),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1073,7 +1184,6 @@ class _SettingsPageState extends State<_SettingsPage> {
         if (!proceed || !mounted) return;
       }
       await sync.turnOff();
-      if (mounted) Navigator.pop(context);
     } finally {
       if (mounted) setState(() => _signingOut = false);
     }
@@ -1215,7 +1325,7 @@ class _SettingsPageState extends State<_SettingsPage> {
           if (widget.updater?.installed case final version?)
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('Eclipse $version', style: _body(p, size: 13, colour: p.inkMuted)),
+              child: Text('Eclipse $version', style: _body(p, size: 12, colour: p.inkMuted)),
             ),
         ],
       ),

@@ -222,6 +222,8 @@ class Backups {
       try {
         store.validate();
         for (final MapEntry(key: day, value: text) in (journal?.readAllSync() ?? const <String, String>{}).entries) {
+          final parsed = DateTime.tryParse(day);
+          if (parsed == null || dateKey(parsed) != day) continue;
           final kept = Store.keepWriting(store.journal(day), text);
           if (kept != store.journal(day)) store.setJournal(day, kept);
         }

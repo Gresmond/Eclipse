@@ -29,6 +29,8 @@ data class PlannedReminder(
  * Android framework classes so unit tests run directly on the JVM.
  */
 object ReminderPlanner {
+    const val MAX_ALARMS = 450
+
     val RESTORE_ACTIONS = setOf(
         Intent.ACTION_BOOT_COMPLETED,
         Intent.ACTION_MY_PACKAGE_REPLACED,
@@ -47,8 +49,10 @@ object ReminderPlanner {
         val planned = ArrayList<PlannedReminder>(list.length())
         for (i in 0 until list.length()) {
             val reminder = list.getJSONObject(i)
+            val exact = reminder.optBoolean("exact", false)
             val triggerAt =
-                if (reminder.has("year") &&
+                if (!exact &&
+                    reminder.has("year") &&
                     reminder.has("month") &&
                     reminder.has("day") &&
                     reminder.has("hour") &&
@@ -60,6 +64,7 @@ object ReminderPlanner {
                         reminder.getInt("day"),
                         reminder.getInt("hour"),
                         reminder.getInt("minute"),
+                        reminder.optInt("second", 0),
                     )
                         .atZone(zoneId)
                         .toInstant()
@@ -81,7 +86,7 @@ object ReminderPlanner {
             )
         }
         planned.sortBy { it.triggerAt }
-        return planned
+        return if (planned.size > MAX_ALARMS) planned.subList(0, MAX_ALARMS) else planned
     }
 }
 
@@ -127,6 +132,11 @@ object Reminders {
         } else {
             alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, whenDue, alarm)
         }
+    }
+
+    fun cancelRest(context: Context) {
+        val alarms = context.getSystemService(AlarmManager::class.java)
+        alarms.cancel(pending(context, -1, null))
     }
 
     fun restore(context: Context) {

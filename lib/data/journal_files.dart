@@ -51,14 +51,22 @@ class JournalFiles {
     if (dir.listSync().isEmpty) dir.deleteSync();
   }
 
+  static DateTime? _dayOf(String fileName) {
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}\.md$').hasMatch(fileName)) return null;
+    final stem = p.basenameWithoutExtension(fileName);
+    final parsed = DateTime.tryParse(stem);
+    return parsed != null && dateKey(parsed) == stem ? dateOnly(parsed) : null;
+  }
+
   /// The days that have a file here.
   Future<List<DateTime>> days() async {
     final found = <DateTime>[];
     if (!await dir.exists()) return found;
-    final entry = RegExp(r'^\d{4}-\d{2}-\d{2}\.md$');
     await for (final file in dir.list(recursive: true)) {
-      final name = p.basename(file.path);
-      if (file is File && entry.hasMatch(name)) found.add(DateTime.parse(p.basenameWithoutExtension(name)));
+      if (file is File) {
+        final day = _dayOf(p.basename(file.path));
+        if (day != null) found.add(day);
+      }
     }
     return found;
   }
@@ -67,12 +75,12 @@ class JournalFiles {
   Map<String, String> readAllSync() {
     final found = <String, String>{};
     if (!dir.existsSync()) return found;
-    final entry = RegExp(r'^\d{4}-\d{2}-\d{2}\.md$');
     for (final file in dir.listSync(recursive: true).whereType<File>()) {
-      if (!entry.hasMatch(p.basename(file.path))) continue;
+      final day = _dayOf(p.basename(file.path));
+      if (day == null) continue;
       final text = file.readAsStringSync();
       final body = text.startsWith('# ') && text.contains('\n\n') ? text.substring(text.indexOf('\n\n') + 2) : text;
-      found[p.basenameWithoutExtension(file.path)] = body.endsWith('\n') ? body.substring(0, body.length - 1) : body;
+      found[dateKey(day)] = body.endsWith('\n') ? body.substring(0, body.length - 1) : body;
     }
     return found;
   }

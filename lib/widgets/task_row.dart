@@ -80,6 +80,10 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
   /// The hover buttons exist only while shown or fading out: a long list
   /// would otherwise hold three hidden buttons per row.
   bool _actions = false;
+  bool _touchActions = false;
+
+  @override
+  bool get _hover => (_pointer || _focused || _touchActions) && !(_dragging?.value ?? false);
 
   Set<(TodoScope, int)> get _opened => AppScope.read(context).openedTasks;
   bool get _expanded => _opened.contains((widget.scope, widget.item.id));
@@ -303,7 +307,15 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
           _dragDim(clear: true);
           final order = _dragOrder;
           if (order == null || !mounted) return;
-          if (order.length != item.subtasks.length || listEquals(order, List.generate(order.length, (i) => i))) {
+          final base = item.numbered
+              ? [for (var i = 0; i < item.subtasks.length; i++) i]
+              : [
+                  for (var i = 0; i < item.subtasks.length; i++)
+                    if (!item.subtasks[i].done) i,
+                  for (var i = 0; i < item.subtasks.length; i++)
+                    if (item.subtasks[i].done) i,
+                ];
+          if (order.length != item.subtasks.length || listEquals(order, base)) {
             setState(() => _dragOrder = null);
             return;
           }
@@ -467,12 +479,22 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                     _pointer = false;
                     _pressed = false;
                   }),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: widget.readOnly ? null : (_) => setState(() => _pressed = true),
-              onTapUp: widget.readOnly ? null : (_) => setState(() => _pressed = false),
-              onTapCancel: widget.readOnly ? null : () => setState(() => _pressed = false),
-              onTap: widget.readOnly ? null : () => state.toggleTodo(_real(), day: widget.day, scope: widget.scope),
+            child: TapRegion(
+              onTapOutside: (_) {
+                if (_touchActions && mounted) setState(() => _touchActions = false);
+              },
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: widget.readOnly ? null : (_) => setState(() => _pressed = true),
+                onTapUp: widget.readOnly ? null : (_) => setState(() => _pressed = false),
+                onTapCancel: widget.readOnly ? null : () => setState(() => _pressed = false),
+                onTap: widget.readOnly ? null : () => state.toggleTodo(_real(), day: widget.day, scope: widget.scope),
+                onLongPress: widget.readOnly
+                    ? null
+                    : () => setState(() {
+                        _touchActions = !_touchActions;
+                        if (_touchActions) _actions = true;
+                      }),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: HoverFill(
@@ -619,6 +641,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                 ),
               ),
             ),
+            ),
           ),
         ),
       ),
@@ -633,7 +656,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
             clipBehavior: Clip.none,
             children: [
               Padding(
-                padding: EdgeInsets.only(left: widget.upcomingDate == null ? 18 : 0),
+                padding: EdgeInsets.only(left: widget.upcomingDate == null || item.subtasks.isNotEmpty ? 18 : 0),
                 child: parentRow,
               ),
               if (item.subtasks.isNotEmpty)

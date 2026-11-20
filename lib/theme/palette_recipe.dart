@@ -225,7 +225,7 @@ Palette derivePalette({
     tileBorder: dark ? nightSurface(0.285) : neutral(0.905),
     ink: ink,
     // Lifted surfaces need lighter muted text to keep its contrast.
-    inkMuted: readable(neutral(dark ? 0.73 + surfaceLift / 2 : 0.52, 2), [background, tile], dark: dark),
+    inkMuted: readable(neutral(dark ? 0.73 + surfaceLift / 2 : 0.52, 2), [background, tile, empty], dark: dark),
     accent: readable(Oklch(accentL, accentC, accent.h).toColor(), [background, tile, empty], dark: dark),
     onAccent: onAccent,
     onDone: onDone,

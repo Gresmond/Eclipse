@@ -16,6 +16,7 @@ import 'data/sqlite.dart' show copyOfDatabase, placeDatabase, removeDatabase;
 import 'data/store.dart';
 import 'data/sync.dart';
 import 'data/sync_service.dart';
+import 'data/system_time_zone.dart' if (dart.library.js_interop) 'data/system_time_zone_web.dart';
 import 'models.dart';
 import 'theme/app_theme.dart';
 import 'training_log.dart';
@@ -58,6 +59,13 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     });
     sync?.addListener(_checkJournalFiles);
     sync?.onClear = (days) {
+      _draftTimer?.cancel();
+      _draftTimer = null;
+      _draft = null;
+      _habitTimer?.cancel();
+      _habitTimer = null;
+      _habitDrafts.clear();
+      _journalShown = null;
       for (final day in days) {
         _writeJournalFile(DateTime.parse(day), '');
       }
@@ -117,21 +125,22 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   Future<void>? _shutdown;
 
   /// All quit/restart paths use the same save, sync, stop, close order.
-  Future<void> shutdown() => _shutdown ??= _close().catchError((Object error, StackTrace stack) {
+  Future<void> shutdown({bool sync = true}) => _shutdown ??= _close(sync: sync).catchError((Object error, StackTrace stack) {
     _shutdown = null;
     closing = false;
     notifyListeners();
     Error.throwWithStackTrace(error, stack);
   });
 
-  Future<void> _close() async {
+  Future<void> _close({required bool sync}) async {
     saveDrafts();
     closing = true;
     notifyListeners();
-    await sync?.beforeQuit();
+    if (sync) await this.sync?.beforeQuit();
     saveDrafts();
+    await backedUp;
     await flushFiles();
-    sync?.stop();
+    this.sync?.stop();
     store.flushToDisk();
     await persist?.call();
     store.close();
@@ -140,6 +149,13 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   @override
   void dispose() {
     _disposed = true;
+    notifier?.onOpen = null;
+    if (notifier case final ReminderActions actions) actions.onAction = null;
+    sync?.onIncoming = null;
+    sync?.beforeMerge = null;
+    sync?.beforeJoin = null;
+    sync?.afterDriveCopy = null;
+    sync?.onClear = null;
     sync?.removeListener(_checkJournalFiles);
     draggingTask.dispose();
     super.dispose();
@@ -181,27 +197,64 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
 
   /// Brings in what sync merged from another computer.
   void notificationAction(String key, String action) {
-    final uid = key.split('|').first;
-    TodoItem? item = todos.values.expand((items) => items).where((t) => t.uid == uid).firstOrNull;
-    if (item == null && uid.contains('@')) {
-      final parts = uid.split('@');
-      final day = DateTime.tryParse(parts.last);
-      final repeat = repeats.where((r) => r.uid == parts.first).firstOrNull;
-      if (day != null && repeat != null && unmadeOccurrences(repeat, day, day).contains(day)) item = occurrence(repeat, day);
+    if (action != 'done' && action != 'snooze') return;
+    final alert = _activeAlerts.where((a) => a.key == key).firstOrNull;
+    String? uid;
+    (TodoScope, TodoItem)? found;
+    if (alert != null) {
+      uid = alert.uid;
+      found = todos.entries
+          .where((e) => e.value.any((t) => t.uid == uid))
+          .map((e) => (e.key, e.value.firstWhere((t) => t.uid == uid)))
+          .firstOrNull;
+      found ??= store.remindingTodoByUid(uid);
+    } else {
+      final keyUid = key.split('|').first;
+      if (keyUid.contains('@')) {
+        final parts = keyUid.split('@');
+        final day = DateTime.tryParse(parts.last);
+        final repeat = repeats.where((r) => r.uid == parts.first).firstOrNull;
+        if (day != null && !day.isBefore(today) && repeat != null && unmadeOccurrences(repeat, day, day).contains(day)) {
+          final time = repeat.birthday ? null : repeat.time;
+          final calendarDay = afterMidnight(time, dayStartHour) ? DateTime(day.year, day.month, day.day + 1) : day;
+          final bits = Reminder.allowed(repeat.reminders, birthday: repeat.birthday, time: time);
+          final matchesKey = Reminder.of(bits).any(
+            (r) =>
+                ReminderAlert(
+                  uid: keyUid,
+                  text: repeat.text,
+                  day: calendarDay,
+                  time: time,
+                  birthday: repeat.birthday,
+                  reminder: r,
+                ).key ==
+                key,
+          );
+          if (matchesKey) {
+            final item = occurrence(repeat, day);
+            found = (scopeForDay(today, day).$1, item);
+          }
+        }
+      }
     }
-    if (item == null || item.done || !_activeAlerts.any((a) => a.key == key)) return;
-    if (action == 'done') toggleTodo(item);
+    if (found == null || found.$2.done) return;
+    if (action == 'done') toggleTodo(found.$2, scope: found.$1);
     if (action == 'snooze') snoozeReminder(key);
   }
 
   void _takeIncoming(Incoming incoming) {
-    if (incoming.journalDays.isNotEmpty) journalRevision++;
+    if (incoming.journalDays.isNotEmpty) {
+      journalRevision++;
+      entryNotesRevision++;
+    }
     for (final day in incoming.journalDays) {
       _writeJournalFile(DateTime.parse(day), store.journal(day));
     }
     final entryDays = <String>{};
     var reloadTodos = false;
-    var trainingChanged = false;
+    var reloadTraining = false;
+    var reloadSettings = false;
+    var hadFirstDayChange = incoming.journalDays.isNotEmpty;
     for (final (kind, key) in incoming.rows) {
       switch (kind) {
         case 'entry':
@@ -220,33 +273,45 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
           habitsRevision++;
         case 'todo' || 'todo_history' || 'todo_repeat':
           reloadTodos = true;
+          hadFirstDayChange = true;
         case 'exercise' || 'training_set' || 'weigh_in' || 'routine':
-          if (kind == 'training_set') trainingChanged = true;
-          training.reload();
+          if (kind == 'training_set' || kind == 'weigh_in') hadFirstDayChange = true;
+          reloadTraining = true;
         case 'setting' || 'holiday':
-          restWeekends = store.setting('restWeekends') == '1';
-          holidays = decodeHolidays(store.setting('holidays'));
-          final nextStartHour = parseDayStartHour(store.setting('dayStartHour'));
-          if (nextStartHour != dayStartHour) {
-            dayStartHour = nextStartHour;
-            todosRevision++;
-          }
-          _streaks.clear();
-          // Holidays pause repeats, so what's planned may have changed.
-          reloadTodos = true;
+          reloadSettings = true;
       }
+    }
+    if (reloadTraining) training.reload();
+    if (reloadSettings) {
+      restWeekends = store.setting('restWeekends') == '1';
+      holidays = decodeHolidays(store.setting('holidays'));
+      _smartAdd = store.setting('smartAdd') != '0';
+      final nextStartHour = parseDayStartHour(store.setting('dayStartHour'));
+      if (nextStartHour != dayStartHour) {
+        dayStartHour = nextStartHour;
+        todosRevision++;
+      }
+      _streaks.clear();
+      _monthScores.clear();
+      // Holidays pause repeats, so what's planned may have changed.
+      reloadTodos = true;
     }
     if (entryDays.isNotEmpty) {
       for (final key in entryDays) {
         final day = DateTime.parse(key);
+        final sunday = DateTime(day.year, day.month, day.day + 7 - day.weekday);
         _entryMonths.remove((day.year, day.month));
         _monthScores.remove((day.year, day.month));
+        _monthScores.remove((sunday.year, sunday.month));
       }
       entriesRevision++;
+      entryNotesRevision++;
       _streaks.clear();
+      hadFirstDayChange = true;
     }
-    if (incoming.journalDays.isNotEmpty || entryDays.isNotEmpty || reloadTodos || trainingChanged) {
-      _invalidateFirstDay();
+    if (hadFirstDayChange) _invalidateFirstDay();
+    if (incoming.rows.isNotEmpty || incoming.journalDays.isNotEmpty) {
+      _forgetRemovals();
     }
     final previousToday = today;
     checkDate(notify: false);
@@ -267,6 +332,15 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   @override
   late bool lateNight;
 
+  Duration _currentTzOffset(DateTime clock) =>
+      identical(_clock, SystemTimeZone.now) ? SystemTimeZone.currentOffset() : clock.timeZoneOffset;
+
+  late Duration _lastTzOffset = _currentTzOffset(_clock());
+
+  @override
+  int get _nowEpochMs =>
+      identical(_clock, SystemTimeZone.now) ? DateTime.now().millisecondsSinceEpoch : _clock().millisecondsSinceEpoch;
+
   /// Call periodically: when the date has changed, carries unfinished to-dos
   /// into the new day/week/month.
   @override
@@ -274,7 +348,8 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     final clock = _clock();
     final now = dayOf(clock, dayStartHour);
     final late = dateOnly(clock) != now;
-    final tzChanged = now.timeZoneOffset != today.timeZoneOffset;
+    final currentOffset = _currentTzOffset(clock);
+    final tzChanged = now.timeZoneOffset != today.timeZoneOffset || currentOffset != _lastTzOffset;
     if (now == today && !tzChanged) {
       if (late != lateNight) {
         lateNight = late;
@@ -282,6 +357,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
       }
       return;
     }
+    _lastTzOffset = currentOffset;
     if (now != today) _invalidateFirstDay();
     lateNight = late;
     if (tzChanged) {
@@ -298,6 +374,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     today = now;
     _forgetRemovals();
     _previewHabits.clear();
+    _monthScores.clear();
     _streaks.clear();
     _backUp();
     _startDay();
@@ -386,6 +463,13 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
 
   /// Reloads settings and live tasks; history is loaded into bounded caches.
   void _load() {
+    _draftTimer?.cancel();
+    _draftTimer = null;
+    _draft = null;
+    _habitTimer?.cancel();
+    _habitTimer = null;
+    _habitDrafts.clear();
+    _journalShown = null;
     _invalidateFirstDay();
     _monthHabits.clear();
     _previewHabits.clear();
@@ -394,15 +478,20 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     _monthScores.clear();
     habitsRevision++;
     entriesRevision++;
+    entryNotesRevision++;
     journalRevision++;
     themeName = _savedTheme();
     themeNotifier.value = themeName;
     restWeekends = store.setting('restWeekends') == '1';
     holidays = decodeHolidays(store.setting('holidays'));
     followNightLight = store.setting('followNightLight') != '0';
+    _smartAdd = store.setting('smartAdd') != '0';
     dayStartHour = parseDayStartHour(store.setting('dayStartHour'));
     laterBirthdays = store.setting('laterBirthdays') != 'hidden';
     weekEmptyDays = store.setting('weekEmptyDays') == 'shown';
+    keepsBackupFiles = store.setting('backupFiles') != '0';
+    keepsJournalFiles = store.setting('journalFiles') != '0';
+    _savesFiles = savesJournalFiles;
     _monthSleep.clear();
     _streaks.clear();
     _forgetRemovals();
@@ -486,7 +575,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
       await swap(() {
         sync?.engine.forgetCounts();
         _load();
-        checkDate(); // the backup may start its days at another hour
+        checkDate(notify: false); // the backup may start its days at another hour
       });
     } catch (_) {
       sync?.engine.forgetCounts();
@@ -509,7 +598,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   /// changes, so opening Settings again, or going back to its General
   /// ribbon, doesn't read it all again.
   SearchIndex get searchIndex {
-    final at = (todosRevision, journalRevision, habitsRevision, entriesRevision, training.revision);
+    final at = (todosRevision, journalRevision, habitsRevision, entryNotesRevision, training.revision);
     if (_searchAt != at) {
       _searchAt = at;
       _searchIndex = SearchIndex(store);
@@ -526,38 +615,69 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   @override
   void _quietReminders(bool Function(String uid) which) => _settleReminders(which);
 
+  @override
+  void _prepareUndo() {
+    _draftTimer?.cancel();
+    _draftTimer = null;
+    _draft = null;
+    _habitTimer?.cancel();
+    _habitTimer = null;
+    _habitDrafts.clear();
+  }
+
   /// Only what the rows put back are part of: a task's undo leaves the
   /// rituals, and their rows, as they are.
   @override
-  void _reloadAfterUndo(Set<String> tables) {
+  void _reloadAfterUndo(Set<String> tables, List<RowsBefore> undone) {
     _invalidateFirstDay();
     if (tables.contains('journal')) {
       journalRevision++;
-      store.setSetting('journalFilesStale', '1');
-      if (savesJournalFiles) unawaited(_rewriteStaleJournal());
-    }
-    if (tables.contains('settings')) {
-      holidays = decodeHolidays(store.setting('holidays'));
-      store.applyHolidays(today);
-    }
-    if (tables.contains('todo_repeats')) _repeats = null;
-    if ([tables.remove('training_sets'), tables.remove('exercises')].contains(true)) {
-      training.reload();
-      if (tables.isEmpty) {
-        notifyListeners();
-        return;
+      entryNotesRevision++;
+      final days = {
+        for (final row in undone)
+          if (row.table == 'journal')
+            for (final arg in row.args)
+              if (arg is String && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(arg)) arg,
+      };
+      if (days.isNotEmpty) {
+        if (_journalShown != null && days.contains(dateKey(_journalShown!.day))) {
+          final day = _journalShown!.day;
+          _journalShown = (day: day, text: store.journal(dateKey(day)));
+        }
+        for (final key in days) {
+          _writeJournalFile(DateTime.parse(key), store.journal(key));
+        }
+      } else {
+        store.setSetting('journalFilesStale', '1');
+        if (savesJournalFiles) unawaited(_rewriteStaleJournal());
       }
     }
-    if (!tables.every(const {'todos', 'todo_history', 'todo_repeats'}.contains)) {
+    var todosTouched = tables.any(const {'todos', 'todo_history', 'todo_repeats'}.contains);
+    if (tables.contains('settings')) {
+      holidays = decodeHolidays(store.setting('holidays'));
+      if (!todosTouched) {
+        store.applyHolidays(today);
+        todosTouched = true;
+      }
+    }
+    if (tables.contains('todo_repeats')) _repeats = null;
+    if (tables.any(const {'exercises', 'training_sets', 'weigh_ins', 'routines'}.contains)) {
+      training.reload();
+    }
+    if (tables.any(const {'habits', 'month_habits', 'entries', 'sleep_habits', 'settings'}.contains)) {
       _monthHabits.clear();
       _monthScores.clear();
       _previewHabits.clear();
       _trails.clear();
       _streaks.clear();
+      _entryMonths.clear();
       habitsRevision++;
+      entryNotesRevision++;
     }
-    _startDay();
-    _todosChanged();
+    if (todosTouched) {
+      _startDay();
+    }
+    notifyListeners();
   }
 
   /// Holidays pause repeats: every holiday change puts their times right.
@@ -565,7 +685,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   void holidaysChanged() {
     store.applyHolidays(today);
     _startDay();
-    _todosChanged();
+    notifyListeners();
   }
 
   @override

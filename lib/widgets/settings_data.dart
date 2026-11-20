@@ -58,10 +58,6 @@ extension on _SettingsDialogState {
                   Align(
                     alignment: Alignment.centerRight,
                     child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        disabledBackgroundColor: p.done.withValues(alpha: 0.45),
-                        disabledForegroundColor: p.onDone.withValues(alpha: 0.8),
-                      ),
                       onPressed: null,
                       child: const Text('Sign in with Google'),
                     ),
@@ -136,6 +132,24 @@ extension on _SettingsDialogState {
               ),
             ),
           ),
+        if (_driveError != null && sync != null && sync.isOn) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  curlyQuotes(_driveError!),
+                  style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.missedInk),
+                ),
+              ),
+              TextButton(
+                style: _compactButton,
+                onPressed: () => unawaited(_listDriveCopies(sync)),
+                child: Text('Retry', style: TextStyle(color: p.accent)),
+              ),
+            ],
+          ),
+        ],
         if (_error != null) ...[
           const SizedBox(height: 12),
           Text(
@@ -153,15 +167,8 @@ extension on _SettingsDialogState {
     final small = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted);
     final signOut = AppScope.of(context).signOut;
 
-    // Saying yes to sync wears the tick's colour, even before it can be pressed.
     Widget button(String label, VoidCallback? onTap, {bool filled = false}) => filled
         ? FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: p.done,
-              foregroundColor: p.onDone,
-              disabledBackgroundColor: p.done.withValues(alpha: 0.45),
-              disabledForegroundColor: p.onDone.withValues(alpha: 0.8),
-            ),
             onPressed: onTap,
             child: Text(label),
           )
@@ -220,28 +227,41 @@ extension on _SettingsDialogState {
             style: small.copyWith(color: p.ink),
           ),
         ],
-        Row(
-          children: [
-            if (sync.journalFolderLink case final link? when !sync.needsJournalSignIn)
-              button('Open Eclipse Journals in Drive', () => openExternal(link)),
-            const Spacer(),
-            if (sync.needsJournalSignIn)
-              _signingIn
-                  ? button('Cancel', _stopSigningIn)
-                  : button('Sign in again', () => _signInForJournal(sync), filled: true),
-            const SizedBox(width: 4),
-            if (signOut == null)
-              button('Turn off', sync.busy ? null : sync.turnOff)
-            else
-              button(
-                _signingOut
-                    ? 'Signing out…'
-                    : _signOutProblem != null
-                    ? 'Sign out anyway'
-                    : 'Sign out',
-                _signingOut ? null : () => _signOut(force: _signOutProblem != null),
+        SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (sync.journalFolderLink case final link? when !sync.needsJournalSignIn)
+                button('Open Eclipse Journals in Drive', () => openExternal(link))
+              else
+                const SizedBox.shrink(),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (sync.needsJournalSignIn)
+                    _signingIn
+                        ? button('Cancel', _stopSigningIn)
+                        : button('Sign in again', () => _signInForJournal(sync), filled: true),
+                  const SizedBox(width: 4),
+                  if (signOut == null)
+                    button('Turn off', sync.busy ? null : () => _turnOffSync(sync))
+                  else
+                    button(
+                      _signingOut
+                          ? 'Signing out…'
+                          : _signOutProblem != null
+                          ? 'Sign out anyway'
+                          : 'Sign out',
+                      _signingOut ? null : () => _signOut(force: _signOutProblem != null),
+                    ),
+                ],
               ),
-          ],
+            ],
+          ),
         ),
         if (signOut != null)
           Text(

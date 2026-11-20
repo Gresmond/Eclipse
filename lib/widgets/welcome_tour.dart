@@ -124,9 +124,8 @@ List<_Step> _steps(AppState state) => [
   ),
   _Step(
     'Daily rituals',
-    'Click a square for done, right-click for not done, or middle-click for other. '
-        'Repeat the same mouse button to clear the mark. '
-        'Done days build each streak and your daily score.',
+    'Click a square for done, right-click for not done, or middle/Alt-click (long-press on touch) for other. '
+        'Click again to clear. Daily progress and weekly goals count alongside streaks.',
     TourSpot.rituals,
   ),
   const _Step(
@@ -170,8 +169,8 @@ List<_Step> _steps(AppState state) => [
   ),
   const _Step(
     'Settings',
-    'Choose your journal folder and day-start hour. With weekends as rest days, '
-        'blank weekends do not break streaks. Done rituals still count.',
+    'Choose your journal folder, holidays, Smart quick-add, and day-start hour. '
+        'With weekends as rest days, blank weekends do not break streaks. Done rituals still count.',
     TourSpot.settingsPreview,
     0,
   ),
@@ -195,8 +194,7 @@ List<_Step> _steps(AppState state) => [
   _Step(
     'Appearance',
     'Pick a theme. Each one comes in a light and dark pair.'
-        '${state.nightLightAvailable ? ' With ‘Follow the sun’ enabled, Eclipse switches to your theme’s dark partner '
-                'while night light is on, and back to its light partner when night light turns off.' : ''}',
+        '${state.nightLightAvailable ? ' With ‘${kIsWeb ? 'Follow system dark mode' : 'Follow the sun'}’ enabled, Eclipse switches between your theme’s light and dark partners automatically.' : ''}',
     TourSpot.appearancePreview,
   ),
 ];
@@ -236,9 +234,20 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
         : frame;
   }
 
+  bool? _cachedNightLight;
+  List<_Step>? _cachedSteps;
+  List<_Step> _stepsFor(AppState state) {
+    final avail = state.nightLightAvailable;
+    if (_cachedSteps == null || _cachedNightLight != avail) {
+      _cachedNightLight = avail;
+      _cachedSteps = _steps(state);
+    }
+    return _cachedSteps!;
+  }
+
   // Follow the actual dialog bounds while its ribbon changes height.
   late final _layoutWatch = AnimationController(vsync: this, duration: Motion.morph + Motion.click)
-    ..addListener(() => _measure(_steps(AppScope.read(context))[_index].spot));
+    ..addListener(() => _measure(_stepsFor(AppScope.read(context))[_index].spot));
 
   bool get _disabled => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
@@ -272,7 +281,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
   void _go(int index, int count) {
     if (index < 0) return;
     if (index >= count) return _close();
-    final steps = _steps(AppScope.read(context));
+    final steps = _stepsFor(AppScope.read(context));
     final current = _geometry;
     _followSettingsResize =
         steps[_index].spot == TourSpot.settingsPreview && steps[index].spot == TourSpot.settingsPreview;
@@ -308,7 +317,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
       if (!mounted) return;
       final box = context.findRenderObject() as RenderBox?;
       if (box == null || !box.hasSize) return;
-      if (spot != _steps(AppScope.read(context))[_index].spot) return;
+      if (spot != _stepsFor(AppScope.read(context))[_index].spot) return;
       final bounds = spot == null ? null : TourTarget.rectOf(spot, box, layoutBounds: true);
       final appearanceAnchor = TourTarget.rectOf(TourSpot.appearance, box);
       final exact =
@@ -318,7 +327,8 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
           spot != _measuredSpot ||
           appearanceAnchor != _appearanceAnchor ||
           box.size != _measuredSize) {
-        final width = spot == null ? _welcomeWidth : _cardWidth;
+        final maxW = math.max(120.0, box.size.width - 2 * _margin);
+        final width = math.min(spot == null ? _welcomeWidth : _cardWidth, maxW);
         final target = _TourGeometry(
           hole: rect ?? Rect.fromCenter(center: box.size.center(Offset.zero), width: 0, height: 0),
           card: _cardAt(rect, width, box.size),
@@ -353,7 +363,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
 
   _GuideSide _guideSide(Rect? spot, double width, Size size) {
     if (spot == null) return _GuideSide.center;
-    if (_steps(AppScope.read(context))[_index].spot == TourSpot.settingsPreview) {
+    if (_stepsFor(AppScope.read(context))[_index].spot == TourSpot.settingsPreview) {
       if (size.width - spot.right >= width + _gap + _margin) return _GuideSide.right;
       if (spot.left >= width + _gap + _margin) return _GuideSide.left;
       return _GuideSide.above;
@@ -384,7 +394,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.of(context);
-    final steps = _steps(state);
+    final steps = _stepsFor(state);
     final step = steps[_index];
 
     return LayoutBuilder(
@@ -394,7 +404,8 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
         // With no spot, the light closes to a point in the middle.
         final spot = step.spot == null ? null : _spot;
         final hole = spot ?? Rect.fromCenter(center: size.center(Offset.zero), width: 0, height: 0);
-        final width = spot == null ? _welcomeWidth : _cardWidth;
+        final maxW = math.max(120.0, size.width - 2 * _margin);
+        final width = math.min(spot == null ? _welcomeWidth : _cardWidth, maxW);
         _to ??= _TourGeometry(hole: hole, card: _cardAt(spot, width, size), width: width, radius: 24);
         _from ??= _to;
         final scrim = Color.lerp(
@@ -459,7 +470,7 @@ class _WelcomeTourState extends State<WelcomeTour> with TickerProviderStateMixin
                   right: _appearanceAnchor == null ? 32 : size.width - _appearanceAnchor!.right,
                   top: _appearanceAnchor == null ? 110 : _appearanceAnchor!.bottom + 8,
                   bottom: 24,
-                  width: 330,
+                  width: math.min(330.0, math.max(120.0, size.width - 24)),
                   child: Align(
                     alignment: Alignment.topRight,
                     child: ExcludeFocus(
@@ -619,8 +630,10 @@ class _TourGeometry {
 /// Repaints the moving light without rebuilding the menus and their content.
 class _SpotlightPainter extends CustomPainter {
   _SpotlightPainter({required this.geometry, required Listenable changes, required this.scrim, this.surface})
-    : super(repaint: changes);
+    : _changes = changes,
+      super(repaint: changes);
   final _TourGeometry Function() geometry;
+  final Listenable _changes;
   final Color scrim;
   final Rect? Function()? surface;
 
@@ -643,7 +656,8 @@ class _SpotlightPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SpotlightPainter old) => true;
+  bool shouldRepaint(_SpotlightPainter old) =>
+      old.scrim != scrim || old._changes != _changes || (old.surface == null) != (surface == null);
 }
 
 /// The tour's card: a tile with the step dots along the top.

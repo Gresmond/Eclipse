@@ -9,6 +9,7 @@ import { onRequestGet as session } from '../../functions/api/session.js';
 import { onRequestPost as signout } from '../../functions/api/signout.js';
 import { onRequestPost as token } from '../../functions/api/token.js';
 import {
+  cookies,
   seal,
   sessionCookie,
   SESSION_PURPOSE,
@@ -24,7 +25,13 @@ afterEach(() => (globalThis.fetch = realFetch));
 const futureExp = () => Math.floor(Date.now() / 1000) + 3600;
 const idToken = (claims) =>
   `x.${Buffer.from(
-    JSON.stringify({ iss: 'https://accounts.google.com', aud: env.GOOGLE_CLIENT_ID, exp: futureExp(), ...claims }),
+    JSON.stringify({
+      iss: 'https://accounts.google.com',
+      aud: env.GOOGLE_CLIENT_ID,
+      exp: futureExp(),
+      email_verified: true,
+      ...claims,
+    }),
   ).toString('base64url')}.y`;
 const nameValue = (setCookie) => setCookie.split(';')[0];
 const request = (path, init = {}) => new Request(`${origin}${path}`, init);
@@ -273,6 +280,8 @@ test('callback rejects OIDC tokens with wrong audience, wrong issuer, missing cl
     { iss: 'https://evil.example', email: 'a@b.c', sub: '1' },
     { exp: Math.floor(Date.now() / 1000) - 5, email: 'a@b.c', sub: '1' },
     { email_verified: false, email: 'a@b.c', sub: '1' },
+    { email_verified: 'true', email: 'a@b.c', sub: '1' },
+    { email_verified: undefined, email: 'a@b.c', sub: '1' },
     { sub: '1' },
     { email: 'a@b.c' },
   ]) {
@@ -322,4 +331,13 @@ test('API and auth responses carry hardening headers', async () => {
   ]) {
     assert.equal(s.headers.get(k), v);
   }
+});
+
+test('cookies parser creates a null-prototype map immune to prototype keys', () => {
+  const parsed = cookies(
+    request('/api/session', { headers: { Cookie: '__proto__=bad; constructor=evil; eclipse_session=ok' } }),
+  );
+  assert.equal(Object.getPrototypeOf(parsed), null);
+  assert.equal(parsed.eclipse_session, 'ok');
+  assert.equal({}.bad, undefined);
 });

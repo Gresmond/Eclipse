@@ -108,19 +108,31 @@ Future<void> main() async {
   unawaited(refreshInstalledCopy(Store.schemaVersion));
   state.sync?.start();
   if (state.sync?.isOn ?? false) unawaited(state.sync!.run());
-  _watchWindow(state);
+  final disposers = <void Function()>[
+    _watchWindow(state),
+    _watchDate(state),
+    _watchNightLight(state),
+    _watchReminders(state),
+  ];
 
   if (state.firstRun) state.startTour();
-  _watchDate(state);
-  _watchNightLight(state);
-  _watchReminders(state);
 
   // Installed by linux/install.sh: watches its folder for newer commits.
   // Packaged installs ask GitHub for a newer release.
-  final updater = Updater.forThisApp(onRestart: () => _shutdown(state));
+  final updater = Updater.forThisApp(
+    onRestart: () async {
+      for (final stop in disposers) {
+        stop();
+      }
+      await _shutdown(state);
+    },
+  );
   if (updater != null) {
     unawaited(updater.check());
-    Timer.periodic(updater.checkEvery, (_) => updater.check());
+    final updateTimer = Timer.periodic(updater.checkEvery, (_) {
+      if (!state.closing) updater.check();
+    });
+    disposers.add(updateTimer.cancel);
   }
 
   WarmUp.enabled = true;
@@ -130,7 +142,7 @@ Future<void> main() async {
 /// Shows why the data couldn't be opened, instead of a blank window, and
 /// offers the update when an older copy meets data from a newer one.
 void _showStartupError(Object error, {String? theme, DataFolder? data, required Directory home}) {
-  final updater = Updater.forThisApp();
+  final updater = error is DatabaseTooNewException ? Updater.forThisApp() : null;
   if (updater != null && updater is! GitUpdater) unawaited(updater.check());
   if (Platform.isLinux) {
     // Nothing was opened, so the tray's Quit has nothing to save.
@@ -156,10 +168,12 @@ void _showStartupError(Object error, {String? theme, DataFolder? data, required 
   );
 }
 
-Future<void> _shutdown(AppState state) async {
+Future<void>? _shuttingDown;
+
+Future<void> _shutdown(AppState state) => _shuttingDown ??= () async {
   FocusManager.instance.primaryFocus?.unfocus();
   await state.shutdown();
-}
+}();
 
 /// Rolls the day over on the stroke of midnight (or whenever the user's day
 /// starts). Also looks once a minute,
@@ -235,7 +249,12 @@ void Function() _watchWindow(AppState state) {
       await _shutdown(state);
     });
   }
-  return listener.dispose;
+  return () {
+    listener.dispose();
+    if (!kIsWeb && Platform.isLinux) {
+      const MethodChannel('eclipse/lifecycle').setMethodCallHandler(null);
+    }
+  };
 }
 
 /// Mirrors night light into [AppState]: hyprsunset can't announce a
@@ -265,7 +284,10 @@ void Function() _watchNightLight(AppState state) {
 /// or waking they wait for a sync, for times changed on another computer.
 void Function() _watchReminders(AppState state) {
   void check() {
-    if (!state.closing) state.checkReminders();
+    if (state.closing) return;
+    SystemTimeZone.instance?.sync();
+    state.checkDate();
+    state.checkReminders();
   }
 
   void syncFirst() {
@@ -329,7 +351,7 @@ class EclipseApp extends StatelessWidget {
           navigatorKey: appNavigator,
           debugShowCheckedModeBanner: false,
           theme: themeNamed(themeName),
-          themeAnimationDuration: Motion.morph,
+          themeAnimationDuration: (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ? Duration.zero : Motion.morph,
           themeAnimationCurve: Motion.morphCurve,
           // A line's extra height goes equally above and below it, which
           // centres the fonts' capitals in their line, and so on the tick
@@ -342,6 +364,8 @@ class EclipseApp extends StatelessWidget {
                 bindings: {
                   const SingleActivator(LogicalKeyboardKey.keyK, control: true): _search,
                   const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _search,
+                  const SingleActivator(LogicalKeyboardKey.keyF, control: true): _search,
+                  const SingleActivator(LogicalKeyboardKey.keyF, meta: true): _search,
                   const SingleActivator(LogicalKeyboardKey.keyN, control: true): _newTask,
                   const SingleActivator(LogicalKeyboardKey.keyN, meta: true): _newTask,
                 },

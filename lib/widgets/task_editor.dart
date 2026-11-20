@@ -223,8 +223,6 @@ Future<void> _editTask(
   );
   if (result == null || !context.mounted) return;
   final noted = cleanNote(result.note) != item.note;
-  // Made repeating, the task goes and its first time takes its note.
-  if (noted && repeat == null && result.repeat != null) item.note = cleanNote(result.note);
   final changedRepeat = await _editTaskDetails(context, state, scope, item, day, result, repeat, onToday, make, noted);
   if (changedRepeat == null || !noted || changedRepeat || (repeat == null && result.repeat != null)) return;
   if (onToday) day = state.today;
@@ -275,6 +273,7 @@ Future<bool?> _editTaskDetails(
         birthday: birthday,
         reminders: reminders,
         location: location,
+        note: noted ? (value: result.note) : null,
       );
     }
     return false;
@@ -798,7 +797,7 @@ class _NoteRow extends StatelessWidget {
       label: note == null ? 'Add a note' : note.split('\n').first,
       onPressed: () async {
         final result = await _editNote(context, name(), note);
-        if (result != null) onChanged(cleanNote(result));
+        if (result != null && context.mounted) onChanged(cleanNote(result));
       },
       clear: 'No note',
       onClear: note == null ? null : () => onChanged(null),

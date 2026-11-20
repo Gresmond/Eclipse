@@ -14,13 +14,30 @@ import 'year_heatmap.dart';
 /// The year at a glance: its days, then each ritual's month percentages side by side, then
 /// the year so far. Months are worked out as on their own tabs (ticks out
 /// of logged days).
-class YearView extends StatelessWidget {
+class YearView extends StatefulWidget {
   const YearView({super.key, required this.year});
 
   final int year;
 
+  @override
+  State<YearView> createState() => _YearViewState();
+}
+
+class _YearViewState extends State<YearView> {
   /// The smallest a cell gets before the page scrolls instead.
   static const _minCell = 24.0;
+
+  int? _beforeYear, _beforeRev;
+  final _before = <int, bool>{};
+
+  bool _habitBefore(AppState state, int habitId) {
+    if (_beforeYear != widget.year || _beforeRev != state.habitsRevision) {
+      _beforeYear = widget.year;
+      _beforeRev = state.habitsRevision;
+      _before.clear();
+    }
+    return _before.putIfAbsent(habitId, () => state.store.habitBeforeYear(habitId, widget.year));
+  }
 
   /// [text]'s height in [style], as it's drawn here, wrapping at [width].
   static double _line(BuildContext context, TextStyle style, {String text = 'X', double width = double.infinity}) {
@@ -53,6 +70,7 @@ class YearView extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) => _build(context, c.maxHeight, c.maxWidth));
 
   Widget _build(BuildContext context, double height, double width) {
+    final year = widget.year;
     final state = AppScope.watch(context, (s) => (s.habitsRevision, s.entriesRevision, s.today));
     final header = capsLabel(context.palette.inkMuted);
 
@@ -116,7 +134,7 @@ class YearView extends StatelessWidget {
                     has: (h, m) => inMonth[m]?.contains(h.id) ?? false,
                     // Months before a ritual was first added fade like future ones.
                     notYet: (h, m) =>
-                        !state.store.habitBeforeYear(h.id, year) &&
+                        !_habitBefore(state, h.id) &&
                         !inMonth.entries.any((e) => e.key <= m && e.value.contains(h.id)),
                     totalLabel: 'All rituals',
                     cell: cell,
@@ -245,37 +263,49 @@ class _Table extends StatelessWidget {
       );
     }
 
-    return Column(
-      children: [
-        Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final content = Column(
           children: [
-            const SizedBox(width: _nameWidth),
-            for (final m in shown)
-              Expanded(
-                child: Center(child: Text(shortMonth(m).toUpperCase(), style: label)),
-              ),
-            if (shown.length < 12) Spacer(flex: 12 - shown.length),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: Center(child: Text(year == state.today.year ? 'YEAR TO DATE' : 'YEAR', style: label)),
+            Row(
+              children: [
+                const SizedBox(width: _nameWidth),
+                for (final m in shown)
+                  Expanded(
+                    child: Center(child: Text(shortMonth(m).toUpperCase(), style: label)),
+                  ),
+                if (shown.length < 12) Spacer(flex: 12 - shown.length),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Center(child: Text(year == state.today.year ? 'YEAR TO DATE' : 'YEAR', style: label)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            for (final (i, h) in habits.indexed) row(h.name, scores[i], habit: h),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: ColoredBox(
+                color: p.border,
+                child: const SizedBox(height: 1, width: double.infinity),
               ),
             ),
+            row(totalLabel, monthTotals, total: true),
           ],
-        ),
-        const SizedBox(height: 10),
-        for (final (i, h) in habits.indexed) row(h.name, scores[i], habit: h),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: ColoredBox(
-            color: p.border,
-            child: const SizedBox(height: 1, width: double.infinity),
-          ),
-        ),
-        row(totalLabel, monthTotals, total: true),
-      ],
+        );
+        final minWidth = _nameWidth + shown.length * 38.0 + 10.0 + 96.0;
+        if (constraints.maxWidth < minWidth) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(width: minWidth, child: content),
+          );
+        }
+        return content;
+      },
     );
   }
 }

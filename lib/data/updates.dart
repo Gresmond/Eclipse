@@ -140,7 +140,11 @@ class GitUpdater extends Updater {
   Future<void> check() async {
     if (status == UpdateStatus.updating || status == UpdateStatus.restarting) return;
     final head = await _git(['rev-parse', 'HEAD']);
-    if (head == null || head == installedCommit) return;
+    if (head == null) return;
+    if (head == installedCommit) {
+      if (status == UpdateStatus.available) set(UpdateStatus.none);
+      return;
+    }
     if (head != _newest) {
       _newest = head;
       final count = await _git(['rev-list', '--count', '$installedCommit..$head']);
@@ -194,8 +198,14 @@ class GitUpdater extends Updater {
       return;
     }
 
-    set(UpdateStatus.restarting);
-    await restartApplication(beforeRestart: onRestart ?? () async {}, executable: executable);
+    try {
+      set(UpdateStatus.restarting);
+      await restartApplication(beforeRestart: onRestart ?? () async {}, executable: executable);
+    } catch (e) {
+      error = e.toString();
+      AppLog.failure('Restart failed', e);
+      set(UpdateStatus.failed);
+    }
   }
 }
 

@@ -91,6 +91,7 @@ jobs:
             flutter pub get &&
             flutter analyze &&
             dart run tool/ci_test.dart &&
+            TZ=Australia/Adelaide dart run tool/ci_test.dart test/dates_test.dart &&
             flutter build linux --release
           '
       - name: Package the per-user Linux download

@@ -20,45 +20,23 @@ class MainActivity : FlutterActivity() {
     override fun provideFlutterEngine(context: android.content.Context): FlutterEngine? = PhoneRuntime.current
     override fun shouldDestroyEngineWithHost(): Boolean = false
 
+    private var retained = false
+    private var pendingReminderUid: String? = null
+    private var phoneChannel: MethodChannel? = null
+
     override fun onDestroy() {
         super.onDestroy()
-        PhoneRuntime.release()
+        if (retained) {
+            retained = false
+            PhoneRuntime.release()
+        }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         phoneChannel?.setMethodCallHandler(null)
         phoneChannel = null
-        exportResult?.success(false)
-        exportResult = null
-        exportFile = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
-
-    private var exportFile: File? = null
-    private var exportResult: MethodChannel.Result? = null
-
-    @Deprecated("Platform activity result callback")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != 91) return
-        val callback = exportResult ?: return
-        val file = exportFile
-        exportResult = null
-        exportFile = null
-        val uri = data?.data
-        if (resultCode != RESULT_OK || uri == null || file == null) { callback.success(false); return }
-        Thread {
-            try {
-                requireNotNull(contentResolver.openOutputStream(uri)).use { out -> file.inputStream().use { it.copyTo(out) } }
-                runOnUiThread { callback.success(true) }
-            } catch (e: Exception) {
-                runOnUiThread { callback.error("export", e.message, null) }
-            }
-        }.start()
-    }
-
-    private var pendingReminderUid: String? = null
-    private var phoneChannel: MethodChannel? = null
 
     private fun takeReminderUid(intent: Intent?): String? {
         val uid = intent?.getStringExtra(Reminders.EXTRA_UID)
@@ -83,10 +61,18 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        val reused = PhoneRuntime.current === flutterEngine
         PhoneRuntime.retain(applicationContext, flutterEngine)
-        takeReminderUid(intent)?.let { pendingReminderUid = it }
+        retained = true
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "eclipse/phone")
         phoneChannel = channel
+        takeReminderUid(intent)?.let { uid ->
+            if (reused) {
+                channel.invokeMethod("openReminder", uid)
+            } else {
+                pendingReminderUid = uid
+            }
+        }
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "openUrl" -> {
@@ -110,21 +96,12 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(null)
                 }
-                "saveExport" -> {
-                    val name = call.argument<String>("name")!!
-                    val file = File(call.argument<String>("path")!!).canonicalFile
-                    if (exportResult != null || file.parentFile != cacheDir.canonicalFile || file.name != name) {
-                        result.error("export", "Unavailable export", null)
-                    } else {
-                        exportResult = result
-                        exportFile = file
-                        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT)
-                            .addCategory(Intent.CATEGORY_OPENABLE).setType(if (name.endsWith(".ics")) "text/calendar" else "application/zip")
-                            .putExtra(Intent.EXTRA_TITLE, name), 91)
-                    }
-                }
                 "startRest" -> {
                     Reminders.startRest(this, call.arguments as Int)
+                    result.success(null)
+                }
+                "cancelRest" -> {
+                    Reminders.cancelRest(this)
                     result.success(null)
                 }
                 "schedule" -> {

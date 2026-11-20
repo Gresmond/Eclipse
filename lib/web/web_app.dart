@@ -31,7 +31,11 @@ enum _Answer { signedIn, signedOut, offline }
 
 Future<(_Answer, Map<String, dynamic>?)> _session() async {
   try {
-    final (status, body) = await sendHttpRequest('GET', Uri.base.resolve('/api/session'));
+    final (status, body) = await sendHttpRequest(
+      'GET',
+      Uri.base.resolve('/api/session'),
+      timeout: const Duration(seconds: 5),
+    );
     if (status == 200) return (_Answer.signedIn, jsonDecode(utf8.decode(body)) as Map<String, dynamic>);
     return (status == 401 ? _Answer.signedOut : _Answer.offline, null);
   } catch (_) {
@@ -42,14 +46,27 @@ Future<(_Answer, Map<String, dynamic>?)> _session() async {
 /// Access to Drive from the sign-in the server holds, which never reaches
 /// this page.
 Future<(String, int)> _accessToken() async {
-  final int status;
-  final Uint8List body;
+  Future<(int, Uint8List)> request() => sendHttpRequest(
+    'POST',
+    Uri.base.resolve('/api/token'),
+    body: const [],
+    type: 'text/plain',
+    timeout: const Duration(seconds: 10),
+  );
+
+  int status;
+  Uint8List body;
   try {
-    (status, body) = await sendHttpRequest('POST', Uri.base.resolve('/api/token'), body: const [], type: 'text/plain');
+    (status, body) = await request();
+    if (status >= 500) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      (status, body) = await request();
+    }
   } catch (_) {
     throw const DriveError('Can’t reach Eclipse. Are you online?', unreachable: true);
   }
   if (status == 401) throw const DriveError('Google signed Eclipse out. Sign in again.', signedOut: true);
+  if (status >= 500) throw DriveError('Can’t reach Eclipse (error $status).', unreachable: true);
   if (status != 200) throw DriveError('Eclipse’s sign-in said: error $status');
   final json = jsonDecode(utf8.decode(body)) as Map<String, dynamic>;
   return (json['access_token'] as String, (json['expires_in'] as num?)?.toInt() ?? 3600);
@@ -71,8 +88,9 @@ Future<void> webMain({
   Future<void> Function() close = () async {};
   late final DataLock lock;
   var handingOver = false;
+  var signingOut = false;
   Future<void> handOver() async {
-    if (handingOver) return;
+    if (handingOver || signingOut) return;
     handingOver = true;
     try {
       await close();
@@ -113,6 +131,7 @@ Future<void> webMain({
     await data.close();
   };
 
+  VoidCallback? stopTimers;
   void show(AppState state) {
     final stopPreferences = browserPreferences(state);
     final stopWatching = watch(state);
@@ -127,11 +146,15 @@ Future<void> webMain({
     final updater = WebUpdater();
     unawaited(updater.check());
     final updateTimer = Timer.periodic(updater.checkEvery, (_) => updater.check());
-    close = () async {
+    stopTimers = () {
       stopPreferences();
       stopPageLeave();
       updateTimer.cancel();
       stopWatching();
+    };
+    close = () async {
+      stopTimers?.call();
+      stopTimers = null;
       await state.shutdown();
       await data.close();
     };
@@ -149,7 +172,9 @@ Future<void> webMain({
           data.disk,
           data.store,
           connect: (_) => AppDataFolder('', accessToken: _accessToken),
-          signIn: ({Future<void>? cancel}) {
+          signIn: ({Future<void>? cancel}) async {
+            await close();
+            lock.release();
             goTo(_signIn);
             return Completer<GoogleAccount>().future; // The page is on its way out.
           },
@@ -187,10 +212,7 @@ Future<void> webMain({
       journalAccess: session['journalAccess'] == true,
     );
     if (sync.needsAccountChoice(account)) {
-      _chooseAccount(sync.accountEmail, account, () async {
-        await close();
-        lock.release();
-      });
+      _chooseAccount(sync.accountEmail, account, close, lock.release);
       return;
     }
     if (sync.isOn) {
@@ -236,8 +258,26 @@ Future<void> webMain({
     return;
   }
   remember(_hereKey, '1');
-  var signingOut = false;
   var signOutPending = false;
+  var wasOn = sync.isOn;
+  var handlingExpiry = false;
+  Future<void> Function()? turnOnCopy;
+  late final VoidCallback syncListener;
+  syncListener = () async {
+    if (sync.isOn) {
+      wasOn = true;
+      return;
+    }
+    if (!wasOn || handlingExpiry || state.closing || signingOut || signOutPending || turnOnCopy != null) return;
+    handlingExpiry = true;
+    state.saveDrafts();
+    await data.persist();
+    await close();
+    lock.release();
+    remember(_hereKey, null);
+    goTo('$_welcome?expired=1');
+  };
+  sync.addListener(syncListener);
   state.signOut = ({bool force = false}) => _signOut(
     state,
     data,
@@ -246,39 +286,28 @@ Future<void> webMain({
     onStart: () {
       signingOut = true;
       signOutPending = false;
+      sync.removeListener(syncListener);
+      stopTimers?.call();
+      stopTimers = null;
     },
     onPending: () {
       signingOut = false;
       signOutPending = true;
+      sync.addListener(syncListener);
     },
   );
   show(state);
 
-  // Sign-in taken back while open: nothing here is lost, it just waits.
-  var wasOn = sync.isOn;
-  var handlingExpiry = false;
-  sync.addListener(() async {
-    if (sync.isOn) {
-      wasOn = true;
-      return;
-    }
-    if (!wasOn || handlingExpiry || state.closing || signingOut || signOutPending || turnOn != null) return;
-    handlingExpiry = true;
-    state.saveDrafts();
-    await data.persist();
-    await close();
-    lock.release();
-    remember(_hereKey, null);
-    goTo('$_welcome?expired=1');
-  });
-
   if (turnOn case final first?) {
+    turnOnCopy = first;
     try {
       await first();
       wasOn = sync.isOn;
     } on Object catch (e, stack) {
       AppLog.failure('Couldn’t finish turning on sync', e, stack);
       turnOn = null;
+      turnOnCopy = null;
+      sync.removeListener(syncListener);
       await close();
       lock.release();
       runApp(
@@ -291,6 +320,7 @@ Future<void> webMain({
       return;
     } finally {
       turnOn = null;
+      turnOnCopy = null;
     }
   }
   sync.start();
@@ -298,16 +328,26 @@ Future<void> webMain({
 }
 
 /// Signed in with another account than this browser's copy belongs to.
-void _chooseAccount(String? had, GoogleAccount now, Future<void> Function() close) {
+void _chooseAccount(
+  String? had,
+  GoogleAccount now,
+  Future<void> Function() closeData,
+  VoidCallback releaseLock,
+) {
   Future<void> signOutFirst() async {
-    await close();
+    await closeData();
+    releaseLock();
     await sendHttpRequest('POST', Uri.base.resolve('/api/signout'), body: const [], type: 'text/plain');
     goTo(_welcome);
   }
 
   Future<void> erase() async {
-    await close();
-    await BrowserData.erase();
+    await closeData();
+    try {
+      await BrowserData.erase();
+    } finally {
+      releaseLock();
+    }
     reloadPage();
   }
 
@@ -344,7 +384,7 @@ Future<String?> _signOut(
     onPending();
     return sync.error;
   }
-  await state.shutdown();
+  await state.shutdown(sync: !force);
   var serverCleared = false;
   try {
     final (status, _) = await sendHttpRequest(

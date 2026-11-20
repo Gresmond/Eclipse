@@ -204,6 +204,16 @@ extension StoreTodos on Store {
         (_todo(r), day),
   ];
 
+  /// Looks up a reminding open task by [uid] across all scopes/periods,
+  /// including deferred future-month tasks not in `AppState.todos`.
+  (TodoScope, TodoItem)? remindingTodoByUid(String uid) {
+    final rows = _db.select('SELECT * FROM todos WHERE uid = ? AND done = 0', [uid]);
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    final scope = TodoScope.values.byName(row['scope'] as String);
+    return (scope, _todo(row));
+  }
+
   /// The first day of the stay in Today that [r] is on now with its current
   /// time and reminders: the day after the last its record shows it in
   /// another list or before its time or reminders were changed.

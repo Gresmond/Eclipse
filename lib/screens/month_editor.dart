@@ -30,7 +30,7 @@ class _RitualEditorState extends State<_RitualEditor> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.of(context);
+    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.today));
     final (year, month) = (widget.year, widget.month);
     final habits = state.habitsFor(year, month);
 
@@ -47,7 +47,6 @@ class _RitualEditorState extends State<_RitualEditor> {
             proxyDecorator: (child, _, _) => Material(
               color: p.tile,
               elevation: 0,
-              shadowColor: p.shadow.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(16),
               child: child,
             ),
@@ -122,7 +121,7 @@ class _SleepEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
+    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.today));
     // Stand-ins, never seen, that take the grid's header and score heights.
     Widget spacer(Widget child) => IgnorePointer(
       child: ExcludeSemantics(
@@ -207,7 +206,7 @@ class _TimeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.read(context);
+    final state = AppScope.watch(context, (s) => s.habitsRevision);
     final sleep = state.sleepHabitsFor(year, month);
     final index = sleep.indexWhere((h) => h.id == habit.id);
     if (index < 0) return const SizedBox.shrink();
@@ -270,7 +269,7 @@ class _EditableRowState extends State<_EditableRow> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.of(context);
+    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.today));
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 2),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -337,19 +336,28 @@ class _EditableRowState extends State<_EditableRow> {
                   onSubmitted: (_) => widget.onDone(),
                   onChanged: (v) => state.draftHabitNote(widget.year, widget.month, widget.habit, v),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: TextFieldTapRegion(
-                    child: DayToggles(
-                      bits: widget.habit.weekdays,
-                      onChanged: (bits) => state.setHabitDays(widget.year, widget.month, widget.habit, bits),
+                if (widget.habit.weekly == null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextFieldTapRegion(
+                      child: DayToggles(
+                        bits: widget.habit.weekdays,
+                        onChanged: (bits) => state.setHabitDays(widget.year, widget.month, widget.habit, bits),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
-          PixelTooltip(message:'Ritual targets',child:IconButton(icon:const Icon(Icons.flag_rounded),onPressed:()=>editRitualGoal(context,widget.habit,widget.year,widget.month))),
+          PixelTooltip(
+            message: 'Ritual targets',
+            child: IconButton(
+              iconSize: 18,
+              color: (widget.habit.target != null || widget.habit.weekly != null) ? p.accent : p.inkMuted,
+              icon: const Icon(Icons.flag_rounded),
+              onPressed: () => editRitualGoal(context, widget.habit, widget.year, widget.month),
+            ),
+          ),
           PixelTooltip(
             message: 'Remove from ${monthNames[widget.month - 1]}',
             child: IconButton(

@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
 object PhoneRuntime {
     private var engine: FlutterEngine? = null
     private var users = 0
-    private var ready = CompletableDeferred<Unit>()
+    private var ready = CompletableDeferred<Boolean>()
     private val mutex = Mutex()
     private lateinit var channel: MethodChannel
 
@@ -32,21 +32,46 @@ object PhoneRuntime {
         }
         channel = MethodChannel(created.dartExecutor.binaryMessenger, "eclipse/background")
         channel.setMethodCallHandler { call, result ->
-            if (call.method == "ready") {
-                ready.complete(Unit)
-                try {
-                    SyncWorker.schedule(context)
-                    result.success(null)
-                } catch (e: IllegalStateException) {
-                    result.error("schedule", e.message, null)
+            when (call.method) {
+                "ready" -> {
+                    if (ready.isCompleted) ready = CompletableDeferred()
+                    ready.complete(true)
+                    try {
+                        if (call.arguments as? Boolean == true) {
+                            SyncWorker.schedule(context)
+                        } else {
+                            SyncWorker.cancel(context)
+                        }
+                        result.success(null)
+                    } catch (e: IllegalStateException) {
+                        result.error("schedule", e.message, null)
+                    }
                 }
-            } else result.notImplemented()
+                "scheduleSync" -> {
+                    try {
+                        if (call.arguments as? Boolean == true) {
+                            SyncWorker.schedule(context)
+                        } else {
+                            SyncWorker.cancel(context)
+                        }
+                        result.success(null)
+                    } catch (e: IllegalStateException) {
+                        result.error("schedule", e.message, null)
+                    }
+                }
+                "startupError" -> {
+                    ready.complete(false)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
         }
         engine = created
         users = 1
     }
 
     fun release() {
+        if (users <= 0) return
         if (--users == 0) {
             channel.setMethodCallHandler(null)
             engine?.destroy()
@@ -56,7 +81,7 @@ object PhoneRuntime {
     }
 
     suspend fun sync(context: Context, input: Data): Boolean = mutex.withLock {
-        ready.await()
+        if (!ready.await()) return@withLock false
         val completed = CompletableDeferred<Boolean>()
         channel.invokeMethod(if (input.getString("action") == null) "sync" else "action", input.keyValueMap, object : MethodChannel.Result {
             override fun success(result: Any?) {
@@ -82,8 +107,13 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             if (existing == null) {
                 engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
             }
-            if (withTimeoutOrNull(480_000) { PhoneRuntime.sync(applicationContext, inputData) } == true)
-                Result.success() else Result.retry()
+            if (withTimeoutOrNull(480_000) { PhoneRuntime.sync(applicationContext, inputData) } == true) {
+                Result.success()
+            } else if (runAttemptCount >= 3) {
+                Result.failure()
+            } else {
+                Result.retry()
+            }
         } finally {
             PhoneRuntime.release()
         }
@@ -101,6 +131,10 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork("drive-sync", ExistingPeriodicWorkPolicy.KEEP, request)
+        }
+
+        fun cancel(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork("drive-sync")
         }
     }
 }

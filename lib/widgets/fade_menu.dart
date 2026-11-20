@@ -31,6 +31,7 @@ Future<void> showFadeMenu(
       width: width,
       builder: builder,
       barrierLabel: MaterialLocalizations.of(anchor).modalBarrierDismissLabel,
+      disableAnimations: MediaQuery.maybeDisableAnimationsOf(anchor) ?? false,
     ),
   );
 }
@@ -62,6 +63,7 @@ class _FadeMenuRoute extends PopupRoute<void> {
     required this.width,
     required this.builder,
     required this.barrierLabel,
+    required this.disableAnimations,
   });
 
   final double width;
@@ -69,6 +71,7 @@ class _FadeMenuRoute extends PopupRoute<void> {
   /// One of each pair is set: the edges the panel lines up with.
   final double? top, bottom, left, right;
   final WidgetBuilder builder;
+  final bool disableAnimations;
 
   @override
   final String barrierLabel;
@@ -80,7 +83,7 @@ class _FadeMenuRoute extends PopupRoute<void> {
   bool get barrierDismissible => true;
 
   @override
-  Duration get transitionDuration => Motion.morph;
+  Duration get transitionDuration => disableAnimations ? Duration.zero : Motion.morph;
 
   @override
   Widget buildPage(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {

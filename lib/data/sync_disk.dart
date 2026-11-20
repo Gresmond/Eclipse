@@ -179,6 +179,18 @@ class DatabaseDisk implements SyncDisk {
 
   @override
   Future<T> away<T>(T Function(SyncDisk disk) job) async => job(this);
+
+  /// Runs [job] inside a single transaction so multi-file pulls trigger only one save.
+  Future<void> batch(Future<void> Function() job) async {
+    _db.execute('BEGIN');
+    try {
+      await job();
+      _db.execute('COMMIT');
+    } catch (_) {
+      _db.execute('ROLLBACK');
+      rethrow;
+    }
+  }
 }
 
 /// Where sync keeps its settings, sync.json on a computer: beside the data

@@ -40,24 +40,40 @@ class _ChartTileState extends State<_ChartTile> {
     final percent = log.axis == TrainingAxis.change;
     final layout = log.layout;
     // A card of its own gives a bodyweight exercise its own scale, so it
-    // shows in kg too; sharing a chart, reps would sit on a kg axis.
+    // shows in kg too; sharing a chart, reps would sit on a kg axis unless
+    // weighted sets + a weigh-in let us chart total load in kg.
     final bodyweightShown = percent || layout == TrainingLayout.exercises;
     final visible = [
       for (final MapEntry(key: e, value: points) in all.entries)
         if (!log.hidden.contains(e.uid) && !log.hidden.contains('g:${e.group.name}'))
-          _Series(e, points, groupColour(e.group, p), dash[e.uid] ?? const [], square: square.contains(e.uid)),
+          _Series(
+            e,
+            points,
+            groupColour(e.group, p),
+            dash[e.uid] ?? const [],
+            square: square.contains(e.uid),
+            repsUnit: e.bodyweight && !log.usesTotalLoad(e),
+          ),
     ]..sort(_bySeries);
     final series = [
       for (final s in visible)
-        if (bodyweightShown || !s.exercise.bodyweight) s,
+        if (bodyweightShown || !s.repsUnit) s,
     ];
+    final effectiveFocus = _focus != null &&
+            series.any((s) => s.exercise.uid == _focus || 'g:${s.exercise.group.name}' == _focus)
+        ? _focus
+        : null;
     final start = series.isEmpty
         ? from ?? today
         : series.map((s) => s.points.first.day).reduce((a, b) => b.isBefore(a) ? b : a);
     final charted = all.keys.toList()
       ..sort((a, b) => a.group.index != b.group.index ? a.group.index - b.group.index : a.name.compareTo(b.name));
+    final repsOnlyUids = {
+      for (final e in charted)
+        if (e.bodyweight && !log.usesTotalLoad(e)) e.uid,
+    };
     final Widget body = switch (layout) {
-      TrainingLayout.all => _Chart(series: series, from: start, to: today, percent: percent, focus: _focus),
+      TrainingLayout.all => _Chart(series: series, from: start, to: today, percent: percent, focus: effectiveFocus),
       TrainingLayout.exercises => _CardGrid(
         minWidth: 240,
         minHeight: 196,
@@ -69,7 +85,7 @@ class _ChartTileState extends State<_ChartTile> {
               from: start,
               to: today,
               percent: percent,
-              focus: _focus,
+              focus: effectiveFocus,
             ),
         ],
       ),
@@ -89,7 +105,7 @@ class _ChartTileState extends State<_ChartTile> {
                 from: start,
                 to: today,
                 percent: percent,
-                focus: _focus,
+                focus: effectiveFocus,
               ),
         ],
       ),
@@ -100,37 +116,48 @@ class _ChartTileState extends State<_ChartTile> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TileHeader(
-            fadeTitle: true,
-            title: percent
-                ? 'Progress since ${from == null ? 'the start' : _shortDate(start)}'
-                : 'Estimated one-rep max',
-            trailingAtEnd: true,
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SegmentedPills(
-                  labels: [for (final l in TrainingLayout.values) l.label],
-                  selected: layout.index,
-                  compact: true,
-                  onSelect: (i) => log.setLayout(TrainingLayout.values[i]),
-                ),
-                const SizedBox(width: 10),
-                SegmentedPills(
-                  labels: [for (final r in TrainingRange.values) r.label],
-                  selected: log.range.index,
-                  compact: true,
-                  onSelect: (i) => log.setRange(TrainingRange.values[i]),
-                ),
-                const SizedBox(width: 10),
-                SegmentedPills(
-                  labels: const ['kg', '% change'],
-                  selected: log.axis.index,
-                  compact: true,
-                  onSelect: (i) => log.setAxis(TrainingAxis.values[i]),
-                ),
-              ],
-            ),
+          LayoutBuilder(
+            builder: (context, box) {
+              final title = percent
+                  ? 'Progress since ${from == null ? 'the start' : _shortDate(start, todayYear: today.year)}'
+                  : 'Estimated one-rep max';
+              final controls = Wrap(
+                spacing: 10,
+                runSpacing: 6,
+                alignment: WrapAlignment.end,
+                children: [
+                  SegmentedPills(
+                    labels: [for (final l in TrainingLayout.values) l.label],
+                    selected: layout.index,
+                    compact: true,
+                    onSelect: (i) => log.setLayout(TrainingLayout.values[i]),
+                  ),
+                  SegmentedPills(
+                    labels: [for (final r in TrainingRange.values) r.label],
+                    selected: log.range.index,
+                    compact: true,
+                    onSelect: (i) => log.setRange(TrainingRange.values[i]),
+                  ),
+                  SegmentedPills(
+                    labels: const ['kg', '% change'],
+                    selected: log.axis.index,
+                    compact: true,
+                    onSelect: (i) => log.setAxis(TrainingAxis.values[i]),
+                  ),
+                ],
+              );
+              if (box.maxWidth < 680) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TileHeader(fadeTitle: true, title: title),
+                    const SizedBox(height: 8),
+                    Align(alignment: Alignment.centerRight, child: controls),
+                  ],
+                );
+              }
+              return TileHeader(fadeTitle: true, title: title, trailingAtEnd: true, trailing: controls);
+            },
           ),
           const SizedBox(height: 12),
           // Another layout, range or axis fades through, as another day does.
@@ -156,6 +183,7 @@ class _ChartTileState extends State<_ChartTile> {
             const SizedBox(height: 12),
             _Legend(
               exercises: charted,
+              repsOnly: repsOnlyUids,
               dash: dash,
               square: square,
               hidden: log.hidden,
@@ -176,14 +204,21 @@ int _bySeries(_Series a, _Series b) {
   return g != 0 ? g : a.exercise.name.compareTo(b.exercise.name);
 }
 
+String _pct(double v, {int decimals = 1, bool sign = true}) {
+  final rounded = double.parse(v.toStringAsFixed(decimals));
+  final clean = rounded.abs() < 1e-9 ? 0.0 : rounded;
+  final prefix = sign && clean > 0 ? '+' : '';
+  return '$prefix${clean.toStringAsFixed(decimals)}%';
+}
+
 /// [s]'s latest point as a card heads it: kg, reps, or % since its first.
 String _latest(_Series s, {required bool percent}) {
   final first = s.points.first, last = s.points.last;
   if (percent) {
     final change = first.value <= 0 ? 0.0 : (last.value / first.value - 1) * 100;
-    return '${change >= 0 ? '+' : ''}${change.toStringAsFixed(1)}%';
+    return _pct(change);
   }
-  if (s.exercise.bodyweight) return '${_kg(last.value)} reps';
+  if (s.repsUnit) return '${_kg(last.value)} reps';
   return '${last.rough ? '≈ ' : ''}${_kg(last.value)} kg';
 }
 
@@ -213,6 +248,9 @@ class _CardGrid extends StatefulWidget {
     required double minWidth,
     required double minHeight,
   }) {
+    if (count <= 0 || box.width <= 0 || box.height <= 0) {
+      return (columns: 1, rows: math.max(1, count), width: math.max(0.0, box.width), height: math.max(0.0, minHeight));
+    }
     final most = math.max(1, ((box.width + gap) / (minWidth + gap)).floor());
     double widthFor(int columns) => (box.width - gap * (columns - 1)) / columns;
     double fitHeight(int rows) => (box.height - gap * (rows - 1)) / rows;
@@ -375,11 +413,11 @@ class _ExerciseCard extends StatelessWidget {
     if (series.points.length == 1) {
       since = 'One session so far';
     } else if (percent) {
-      since = 'since ${_shortDate(first.day)}';
+      since = 'since ${_shortDate(first.day, todayYear: to.year)}';
     } else {
       final change = last.value - first.value;
       since =
-          '${change >= 0 ? '+' : '−'}${_kg(change.abs())} ${e.bodyweight ? 'reps' : 'kg'} since ${_shortDate(first.day)}';
+          '${change >= 0 ? '+' : '−'}${_kg(change.abs())} ${series.repsUnit ? 'reps' : 'kg'} since ${_shortDate(first.day, todayYear: to.year)}';
     }
     return _MiniCard(
       child: PixelColumn(
@@ -455,32 +493,41 @@ class _MuscleCard extends StatelessWidget {
         children: [
           PixelFit(child: Text(group.label.toUpperCase(), style: capsLabel(groupColour(group, p)))),
           const SizedBox(height: 6),
-          for (final s in series)
-            PixelRow(
-              children: [
-                CustomPaint(
-                  size: const Size(22, 10),
-                  painter: _DashSample(s.colour, s.dash, square: s.square),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    s.exercise.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: _label(p, size: 14),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                PixelFit(
-                  child: RollingFigure(
-                    text: _latest(s, percent: percent),
-                    value: s.points.last.value,
-                    style: _label(p, size: 14, color: p.inkMuted),
-                  ),
-                ),
-              ],
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 84),
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (final s in series)
+                    PixelRow(
+                      children: [
+                        CustomPaint(
+                          size: const Size(22, 10),
+                          painter: _DashSample(s.colour, s.dash, square: s.square),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            s.exercise.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: _label(p, size: 14),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PixelFit(
+                          child: RollingFigure(
+                            text: _latest(s, percent: percent),
+                            value: s.points.last.value,
+                            style: _label(p, size: 14, color: p.inkMuted),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ),
+          ),
           const SizedBox(height: 6),
           Expanded(
             child: series.isEmpty
@@ -500,11 +547,12 @@ class _MuscleCard extends StatelessWidget {
 }
 
 class _Series {
-  _Series(this.exercise, this.points, this.colour, this.dash, {this.square = false});
+  _Series(this.exercise, this.points, this.colour, this.dash, {this.square = false, this.repsUnit = false});
   final Exercise exercise;
 
   /// Its points are squares, not circles.
   final bool square;
+  final bool repsUnit;
   final List<TrainingPoint> points;
   final Color colour;
   final List<double> dash;
@@ -603,7 +651,13 @@ class _ChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final p = palette;
-    final plot = Rect.fromLTRB(_left, _top, size.width - _right, size.height - _bottom);
+    final scale = math.max(1.0, textScaler.scale(12) / 12);
+    final plot = Rect.fromLTRB(
+      _left * scale,
+      _top * scale,
+      size.width - _right * scale,
+      size.height - _bottom * scale,
+    );
     if (plot.width <= 0 || plot.height <= 0) return;
 
     // Y range, padded a little and rounded to tidy ticks.
@@ -643,7 +697,7 @@ class _ChartPainter extends CustomPainter {
     for (var v = lo; v <= hi + step / 2; v += step) {
       final yy = y(v);
       canvas.drawLine(Offset(plot.left, _crisp(yy)), Offset(plot.right, _crisp(yy)), grid);
-      final text = percent ? '${v > 0 ? '+' : ''}${v.toStringAsFixed(step < 1 ? 1 : 0)}%' : _kg(v);
+      final text = percent ? _pct(v, decimals: step < 1 ? 1 : 0) : _kg(v);
       _text(canvas, text, Offset(plot.left - 10, yy), p.inkMuted, align: Alignment.centerRight);
     }
     if (percent && lo < 0 && hi > 0) {
@@ -657,7 +711,7 @@ class _ChartPainter extends CustomPainter {
     }
     // Over more than one calendar year a date says which: on the first label
     // and on the first of each new year. Fewer labels where they would crowd.
-    final years = start.year != end.year;
+    final years = start.year != end.year || start.year != to.year;
     final ticks = math.min(span, (plot.width / (years ? 90 : 60)).floor()).clamp(0, 6);
     int? year;
     for (var i = 0; i <= ticks; i++) {
@@ -787,22 +841,30 @@ class _ChartPainter extends CustomPainter {
     final blocks = <List<TextPainter>>[];
     try {
       for (final hit in stack) {
-        final pt = hit.point, e = hit.series.exercise;
-        final value = e.bodyweight
+        final pt = hit.point, s = hit.series, e = s.exercise;
+        final value = s.repsUnit
             ? '${_kg(pt.value)} reps'
             : '${pt.rough ? '≈ ' : ''}${_kg(pt.value)} kg${pt.rough ? '  (±5–10%)' : ''}';
-        final change = percent && hit.series.points.first != pt
-            ? '  ·  ${_value(hit.series, pt) >= 0 ? '+' : ''}${_value(hit.series, pt).toStringAsFixed(1)}%'
-            : '';
+        final change = percent && s.points.first != pt ? '  ·  ${_pct(_value(s, pt))}' : '';
+        String describeSet(TrainingSet set) {
+          final base = e.bodyweight
+              ? (set.weight != null && set.weight! > 0
+                    ? '+${_kg(set.weight!)} kg × ${set.reps}'
+                    : '${set.reps} reps')
+              : '${_kg(set.weight ?? 0)} × ${set.reps}';
+          return set.rpe == null ? base : '$base @ RPE ${_kg(set.rpe!)}';
+        }
+        final notes = [
+          for (final (i, set) in pt.sets.indexed)
+            if ((set.note ?? '').trim().isNotEmpty)
+              pt.sets.length == 1 ? set.note!.trim() : 'Set ${i + 1}: ${set.note!.trim()}',
+        ];
         blocks.add([
-          line(e.name, colour: hit.series.colour, title: true),
+          line(e.name, colour: s.colour, title: true),
           line('${_shortDate(pt.day)}${year ? ' ${pt.day.year}' : ''}  ·  $value$change'),
           // What was actually done that day: the line itself goes set by set.
-          line(
-            e.bodyweight
-                ? '${pt.sets.map((s) => s.reps).join(', ')} reps'
-                : pt.sets.map((s) => '${_kg(s.weight ?? 0)} × ${s.reps}').join(',  '),
-          ),
+          line(pt.sets.map(describeSet).join(',  ')),
+          for (final n in notes) line(n),
         ]);
       }
       const gap = 2.0, between = 10.0;
@@ -933,6 +995,7 @@ class _ChartPainter extends CustomPainter {
       if (sa.exercise.uid != sb.exercise.uid ||
           sa.exercise.name != sb.exercise.name ||
           sa.exercise.bodyweight != sb.exercise.bodyweight ||
+          sa.repsUnit != sb.repsUnit ||
           sa.colour != sb.colour ||
           sa.square != sb.square ||
           !listEquals(sa.dash, sb.dash) ||
@@ -952,7 +1015,9 @@ class _ChartPainter extends CustomPainter {
       }
       for (var j = 0; j < pa.sets.length; j++) {
         final ca = pa.sets[j], cb = pb.sets[j];
-        if (ca.uid != cb.uid || ca.weight != cb.weight || ca.reps != cb.reps) return false;
+        if (ca.uid != cb.uid || ca.weight != cb.weight || ca.reps != cb.reps || ca.rpe != cb.rpe || ca.note != cb.note) {
+          return false;
+        }
       }
     }
     return true;
@@ -981,6 +1046,7 @@ class _Hit {
 class _Legend extends StatelessWidget {
   const _Legend({
     required this.exercises,
+    required this.repsOnly,
     required this.dash,
     required this.square,
     required this.hidden,
@@ -990,6 +1056,7 @@ class _Legend extends StatelessWidget {
   });
 
   final List<Exercise> exercises;
+  final Set<String> repsOnly;
   final Map<String, List<double>> dash;
 
   /// Exercises whose points are squares.
@@ -1008,7 +1075,7 @@ class _Legend extends StatelessWidget {
     for (final e in exercises) {
       (groups[e.group] ??= []).add(e);
     }
-    final hasBodyweight = exercises.any((e) => e.bodyweight);
+    final hasRepsOnly = repsOnly.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1035,7 +1102,7 @@ class _Legend extends StatelessWidget {
                       off:
                           hidden.contains(e.uid) ||
                           hidden.contains('g:${g.name}') ||
-                          (!bodyweightShown && e.bodyweight),
+                          (!bodyweightShown && repsOnly.contains(e.uid)),
                       onHover: onHover,
                       onToggle: onToggle,
                       child: Row(
@@ -1058,7 +1125,7 @@ class _Legend extends StatelessWidget {
               ),
           ],
         ),
-        if (!bodyweightShown && hasBodyweight)
+        if (!bodyweightShown && hasRepsOnly)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
@@ -1125,5 +1192,6 @@ class _DashSample extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_DashSample old) => old.colour != colour || old.dash != dash || old.square != square;
+  bool shouldRepaint(_DashSample old) =>
+      old.colour != colour || !listEquals(old.dash, dash) || old.square != square;
 }

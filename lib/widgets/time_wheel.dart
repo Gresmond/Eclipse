@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -99,8 +101,11 @@ class TimePill extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final minutes = this.minutes;
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final style = SleepName.timeStyle(p).copyWith(fontSize: 14, color: p.ink);
     return Hoverable(
+      focusable: true,
+      semanticLabel: minutes == null ? placeholder : clockLabel(minutes),
       onTap: () => _open(context),
       builder: (hover) => AnimatedContainer(
         duration: context.themed(Motion.hover),
@@ -112,7 +117,7 @@ class TimePill extends StatelessWidget {
           border: Border.all(color: p.border),
         ),
         child: FadeThrough(
-          duration: Motion.click,
+          duration: reduced ? Duration.zero : Motion.click,
           child: minutes == null
               ? PixelFit(
                   key: const ValueKey(false),
@@ -135,7 +140,7 @@ class TimePill extends StatelessWidget {
                         RollingNumber(value: minutes % 60, digits: 2, style: style),
                         Text(' ', style: style),
                         FadeThrough(
-                          duration: Motion.morph,
+                          duration: reduced ? Duration.zero : Motion.morph,
                           child: Text(minutes < 12 * 60 ? 'am' : 'pm', key: ValueKey(minutes < 12 * 60), style: style),
                         ),
                       ],
@@ -238,6 +243,7 @@ class _TimeWheelState extends State<TimeWheel> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     // Its line height set, so the colon's line is the same as the digits'.
     final style = SleepName.timeStyle(p).copyWith(fontSize: 22, fontWeight: FontWeight.w600, color: p.ink, height: 1.2);
 
@@ -256,14 +262,16 @@ class _TimeWheelState extends State<TimeWheel> {
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () => controller.animateToItem(
-            // The nearest way round to it.
-            loop
+          onTap: () {
+            final target = loop
                 ? controller.selectedItem + (i - controller.selectedItem % count + count ~/ 2) % count - count ~/ 2
-                : i,
-            duration: Motion.click,
-            curve: Motion.clickCurve,
-          ),
+                : i;
+            if (reduced) {
+              controller.jumpToItem(target);
+            } else {
+              controller.animateToItem(target, duration: Motion.click, curve: Motion.clickCurve);
+            }
+          },
           child: Padding(
             padding: padding,
             child: Align(
@@ -357,7 +365,7 @@ class _TimeWheelState extends State<TimeWheel> {
                         // minutes are, however many digits.
                         alignment: Alignment.centerRight,
                         padding: EdgeInsets.only(
-                          right: (56 - _digitsWidth(style, MediaQuery.textScalerOf(context))) / 2,
+                          right: math.max(0.0, (56 - _digitsWidth(style, MediaQuery.textScalerOf(context))) / 2),
                         ),
                         selected: _hour,
                         onChanged: (i) => setState(() => _hour = i),

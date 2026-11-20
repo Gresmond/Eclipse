@@ -110,6 +110,7 @@ mixin _Reminders on ChangeNotifier {
   Store get store;
   DateTime get today;
   DateTime Function() get _clock;
+  int get _nowEpochMs;
   ReminderNotifier? get notifier;
   bool get closing;
   bool get _disposed;
@@ -181,18 +182,23 @@ mixin _Reminders on ChangeNotifier {
     }
   }
 
+  int snoozeRevision = 0;
+
   Iterable<ReminderAlert> get _activeAlerts sync* {
     for (final (task, day) in _remindingTodos()) {
-      for (final reminder in Reminder.of(task.reminders)) {
-        yield ReminderAlert(uid: task.uid!, text: task.text, day: day, time: task.birthday ? null : task.dueTime, birthday: task.birthday, reminder: reminder);
+      final time = task.birthday ? null : task.dueTime;
+      final bits = Reminder.allowed(task.reminders, birthday: task.birthday, time: time);
+      for (final reminder in Reminder.of(bits)) {
+        yield ReminderAlert(uid: task.uid!, text: task.text, day: day, time: time, birthday: task.birthday, reminder: reminder);
       }
     }
   }
 
   void snoozeReminder(String key) {
-    final snoozes = _snoozed()..[key] = _clock().add(const Duration(minutes: 10)).millisecondsSinceEpoch;
+    final snoozes = _snoozed()..[key] = _nowEpochMs + const Duration(minutes: 10).inMilliseconds;
     store.setSetting('snoozed', jsonEncode(snoozes));
     reminderCards.removeWhere((a) => a.key == key);
+    snoozeRevision++;
     notifyListeners();
   }
 
@@ -200,17 +206,41 @@ mixin _Reminders on ChangeNotifier {
   void checkReminders() {
     if (_held != null || _disposed) return;
     final now = _clock();
+    final nowEpoch = _nowEpochMs;
     final shown = _shownKeys();
-    final due = dueReminders(_remindingTodos(), now, shown, startHour: dayStartHour);
+    final reminding = _remindingTodos();
+    final due = dueReminders(reminding, now, shown, startHour: dayStartHour);
     final snoozed = _snoozed();
     if (snoozed.isNotEmpty) {
-      final live = {for (final a in _activeAlerts) a.key: a};
+      final live = <String, (ReminderAlert, DateTime)>{};
+      for (final (task, day) in reminding) {
+        final uid = task.uid;
+        if (uid == null) continue;
+        final time = task.birthday ? null : task.dueTime;
+        final over = task.birthday
+            ? DateTime(day.year, day.month, day.day + 1, dayStartHour)
+            : DateTime(day.year, day.month, day.day, 0, time ?? 0);
+        final bits = Reminder.allowed(task.reminders, birthday: task.birthday, time: time);
+        for (final reminder in Reminder.of(bits)) {
+          final alert = ReminderAlert(
+            uid: uid,
+            text: task.text,
+            day: day,
+            time: time,
+            birthday: task.birthday,
+            reminder: reminder,
+          );
+          live[alert.key] = (alert, over);
+        }
+      }
       final before = snoozed.length;
       snoozed.removeWhere((key, ms) {
-        final alert = live[key];
-        if (alert == null) return true;
-        if (ms > now.millisecondsSinceEpoch) return false;
-        if (now.millisecondsSinceEpoch - ms < const Duration(hours: 1).inMilliseconds) due.add((alert, [key]));
+        final found = live[key];
+        if (found == null) return true;
+        final (alert, over) = found;
+        if (!now.isBefore(over)) return true;
+        if (ms > nowEpoch) return false;
+        if (nowEpoch - ms < const Duration(hours: 1).inMilliseconds) due.add((alert, [key]));
         return true;
       });
       if (snoozed.length != before) store.setSetting('snoozed', jsonEncode(snoozed));
@@ -297,12 +327,12 @@ mixin _Reminders on ChangeNotifier {
   /// Every reminder still to go off, soonest first and at most [limit], for
   /// a phone to set as alarms. Includes unmaterialized repeating tasks and
   /// birthdays up to [lookaheadDays] ahead.
-  List<({String key, String uid, DateTime at, String title, String body})> upcomingReminders({
+  List<({String key, String uid, DateTime at, String title, String body, bool snoozed})> upcomingReminders({
     int limit = 100,
     int lookaheadDays = 60,
   }) {
     final now = _clock();
-    final all = <({String key, String uid, DateTime at, String title, String body})>[];
+    final all = <({String key, String uid, DateTime at, String title, String body, bool snoozed})>[];
     final seenKeys = <String>{};
 
     void addAlert({
@@ -326,7 +356,7 @@ mixin _Reminders on ChangeNotifier {
           reminder: reminder,
         );
         if (!seenKeys.add(alert.key)) continue;
-        all.add((key: alert.key, uid: uid, at: at, title: text, body: alert.body(at, startHour: dayStartHour)));
+        all.add((key: alert.key, uid: uid, at: at, title: text, body: alert.body(at, startHour: dayStartHour), snoozed: false));
       }
     }
 
@@ -363,12 +393,17 @@ mixin _Reminders on ChangeNotifier {
 
     final snoozed = _snoozed();
     if (snoozed.isNotEmpty) {
-      for (final alert in _activeAlerts) {
-        final ms = snoozed[alert.key];
-        if (ms == null || ms <= now.millisecondsSinceEpoch) continue;
+      final nowEpoch = _nowEpochMs;
+      final live = {for (final a in _activeAlerts) a.key: a};
+      final before = snoozed.length;
+      snoozed.removeWhere((key, ms) {
+        final alert = live[key];
+        if (alert == null || ms <= nowEpoch) return true;
         final at = DateTime.fromMillisecondsSinceEpoch(ms);
-        all.add((key: alert.key, uid: alert.uid, at: at, title: alert.text, body: 'Snoozed reminder'));
-      }
+        all.add((key: alert.key, uid: alert.uid, at: at, title: alert.text, body: 'Snoozed reminder', snoozed: true));
+        return false;
+      });
+      if (snoozed.length != before) store.setSetting('snoozed', jsonEncode(snoozed));
     }
     all.sort((a, b) {
       final cmp = a.at.compareTo(b.at);
@@ -388,9 +423,7 @@ mixin _Reminders on ChangeNotifier {
 
   /// Opens the task [uid] where it's listed and lights it.
   void openReminder(String uid) {
-    final before = reminderCards.length;
     reminderCards.removeWhere((a) => a.uid == uid);
-    if (reminderCards.length != before) notifyListeners();
     showFound(today, uid);
   }
 }

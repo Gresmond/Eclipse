@@ -16,6 +16,7 @@ mixin _Journal on ChangeNotifier {
   Future<void> flushFiles();
 
   int journalRevision = 0;
+  int entryNotesRevision = 0;
 
   /// Drive's Eclipse Journals folder is made and kept up to date, so the
   /// files on this computer can be turned off.
@@ -119,6 +120,7 @@ mixin _Journal on ChangeNotifier {
     _journalShown = (day: day, text: store.journal(dateKey(day)));
     _invalidateFirstDay();
     journalRevision++;
+    entryNotesRevision++;
     notifyListeners();
     return _writeJournalFile(day, text);
   }

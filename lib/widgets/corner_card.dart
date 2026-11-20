@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -5,6 +7,11 @@ import '../theme/palette_recipe.dart' show readable;
 import '../theme/tokens.dart';
 import 'hover_fill.dart';
 import '../theme/pixels.dart';
+
+/// Width for floating corner cards, narrowing on tight phone/web viewports so
+/// they keep clean margins inside the viewport.
+double cornerCardMaxWidth(BuildContext context) =>
+    math.min(cornerCardWidth, math.max(0.0, MediaQuery.sizeOf(context).width - 32));
 
 /// A card floating in the bottom-right corner. It slides up and fades in
 /// while [visible], and back down and out when not, still showing what it
@@ -24,7 +31,7 @@ class CornerCard extends StatefulWidget {
 class _CornerCardState extends State<CornerCard> with SingleTickerProviderStateMixin {
   late final _controller = AnimationController(vsync: this, duration: Motion.morph)
     ..addStatusListener((status) {
-      if (status == AnimationStatus.dismissed) setState(() {});
+      if (status == AnimationStatus.dismissed && mounted) setState(() {});
     });
   late final _curve = CurvedAnimation(parent: _controller, curve: Motion.morphCurve);
   late final _slide = _curve.drive(Tween(begin: const Offset(0, 0.35), end: Offset.zero));
@@ -41,6 +48,7 @@ class _CornerCardState extends State<CornerCard> with SingleTickerProviderStateM
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _controller.duration = context.themed(Motion.morph);
     if (_disabled) {
       _controller.value = widget.visible ? 1 : 0;
     }
@@ -145,7 +153,7 @@ class BriefCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     return Container(
-      width: cornerCardWidth,
+      width: cornerCardMaxWidth(context),
       padding: const EdgeInsets.fromLTRB(18, 16, 20, 16),
       decoration: BoxDecoration(
         color: p.tile,
@@ -195,7 +203,7 @@ class NoticeCard extends StatelessWidget {
     final p = context.palette;
     final body = TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.4, color: p.inkMuted);
     return Container(
-      width: cornerCardWidth,
+      width: cornerCardMaxWidth(context),
       padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
       decoration: BoxDecoration(
         color: p.tile,

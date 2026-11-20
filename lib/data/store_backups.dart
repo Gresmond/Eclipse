@@ -175,6 +175,7 @@ extension StoreBackups on Store {
         _db
             .select(
               "SELECT 1 FROM todos WHERE uid IS NULL OR scope NOT IN ('today', 'tomorrow', 'week', 'month') OR done NOT IN (0, 1) "
+              "OR typeof(carried) != 'integer' OR carried < 0 "
               "OR (position IS NOT NULL AND typeof(position) != 'integer') "
               "OR (reminders IS NOT NULL AND (typeof(reminders) != 'integer' OR reminders NOT BETWEEN 0 AND 31)) LIMIT 1",
             )
@@ -182,23 +183,31 @@ extension StoreBackups on Store {
         _db.select('SELECT 1 FROM sleep_habits').length != SleepItem.values.length ||
         _db
             .select(
-              'SELECT 1 FROM exercises WHERE muscle NOT IN (${MuscleGroup.values.map((g) => "'${g.name}'").join(', ')}) LIMIT 1',
+              'SELECT 1 FROM exercises WHERE bodyweight NOT IN (0, 1) OR muscle NOT IN (${MuscleGroup.values.map((g) => "'${g.name}'").join(', ')}) LIMIT 1',
             )
             .isNotEmpty ||
-        _db.select('SELECT 1 FROM month_habits WHERE weekly NOT BETWEEN 1 AND 7 OR target <= 0 LIMIT 1').isNotEmpty ||
-        _db.select('SELECT 1 FROM entries WHERE amount < 0 LIMIT 1').isNotEmpty ||
-        _db.select('SELECT 1 FROM weigh_ins WHERE kg <= 0 LIMIT 1').isNotEmpty ||
+        _db.select("SELECT 1 FROM month_habits WHERE (weekly IS NOT NULL AND (typeof(weekly) != 'integer' OR weekly NOT BETWEEN 1 AND 7)) OR (target IS NOT NULL AND (typeof(target) != 'integer' OR target <= 0)) LIMIT 1").isNotEmpty ||
+        _db.select("SELECT 1 FROM entries WHERE amount IS NOT NULL AND (typeof(amount) != 'integer' OR amount < 0) LIMIT 1").isNotEmpty ||
+        _db.select("SELECT 1 FROM weigh_ins WHERE typeof(kg) NOT IN ('integer', 'real') OR kg <= 0 LIMIT 1").isNotEmpty ||
+        _db.select('SELECT kg FROM weigh_ins').any((r) => !(r['kg'] as num).isFinite) ||
         _db
-            .select('SELECT sets FROM routines')
-            .any((r) => r['sets'] is! String || !validRoutine(r['sets'] as String)) ||
+            .select('SELECT name, sets FROM routines')
+            .any((r) => r['name'] is! String || (r['name'] as String).trim().isEmpty || r['sets'] is! String || !validRoutine(r['sets'] as String)) ||
         _db
-            .select('SELECT 1 FROM training_sets WHERE reps < 0 OR weight < 0 OR rpe NOT BETWEEN 1 AND 10 LIMIT 1')
+            .select("SELECT 1 FROM training_sets WHERE typeof(position) != 'integer' OR position < 0 OR typeof(reps) != 'integer' OR reps < 0 OR (weight IS NOT NULL AND (typeof(weight) NOT IN ('integer', 'real') OR weight < 0)) OR (rpe IS NOT NULL AND (typeof(rpe) NOT IN ('integer', 'real') OR rpe < 1 OR rpe > 10)) LIMIT 1")
+            .isNotEmpty ||
+        _db.select('SELECT weight, rpe FROM training_sets WHERE weight IS NOT NULL OR rpe IS NOT NULL').any((r) => (r['weight'] != null && !(r['weight'] as num).isFinite) || (r['rpe'] != null && !(r['rpe'] as num).isFinite)) ||
+        _db
+            .select("SELECT 1 FROM todo_repeats WHERE typeof(reminders) != 'integer' OR reminders < 0 OR reminders > 31 LIMIT 1")
             .isNotEmpty) {
       throw StateError('Backup contains invalid data');
     }
     for (final r in _db.select(
       'SELECT day FROM entries UNION SELECT day FROM journal UNION SELECT since AS day FROM todos '
-      'UNION SELECT due_date AS day FROM todos WHERE due_date IS NOT NULL UNION SELECT day FROM training_sets '
+      'UNION SELECT due_date AS day FROM todos WHERE due_date IS NOT NULL '
+      'UNION SELECT defer_promotion_day AS day FROM todos WHERE defer_promotion_day IS NOT NULL '
+      'UNION SELECT added_on AS day FROM month_habits WHERE added_on IS NOT NULL '
+      'UNION SELECT day FROM training_sets '
       'UNION SELECT uid AS day FROM weigh_ins UNION SELECT start AS day FROM todo_repeats UNION SELECT until AS day FROM todo_repeats WHERE until IS NOT NULL',
     )) {
       final day = r['day'];

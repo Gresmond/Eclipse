@@ -126,6 +126,7 @@ static void my_application_startup(GApplication* application) {
 
 // Implements GApplication::shutdown.
 static void my_application_shutdown(GApplication* application) {
+  notifications_stop();
   tray_stop();
 
   G_APPLICATION_CLASS(my_application_parent_class)->shutdown(application);

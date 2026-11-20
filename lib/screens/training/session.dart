@@ -22,28 +22,47 @@ class _SessionTile extends StatelessWidget {
           key: ValueKey(dateKey(day)),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TileHeader(
-              title: isToday ? "Today’s session" : '${weekdayNames[day.weekday - 1]}  ·  ${_shortDate(day)}',
-              trailingAtEnd: true,
-              trailing: Row(mainAxisSize:MainAxisSize.min,children:[WorkoutToolsButton(day:day), Builder(
-                builder: (anchor) => _TextButton(
-                  label: isToday ? 'Another day' : 'Back to today',
-                  icon: isToday ? Icons.calendar_today_rounded : null,
-                  onTap: isToday
-                      ? () => showFadeMenu(
-                          anchor,
-                          width: 312,
-                          builder: (_) => DayPicker(
-                            today: state.today,
-                            first: DateTime(state.firstMonth.$1, state.firstMonth.$2),
-                            selected: day,
-                            onPick: (d) => log.showDay(d == state.today ? null : d),
-                          ),
-                        )
-                      : () => log.showDay(null),
-                ),
-              ),
-              ]),
+            LayoutBuilder(
+              builder: (context, box) {
+                final title = isToday
+                    ? "Today’s session"
+                    : '${weekdayNames[day.weekday - 1]}  ·  ${_shortDate(day, todayYear: state.today.year)}';
+                final trailing = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    WorkoutToolsButton(day: day),
+                    Builder(
+                      builder: (anchor) => _TextButton(
+                        label: isToday ? 'Another day' : 'Back to today',
+                        icon: isToday ? Icons.calendar_today_rounded : null,
+                        onTap: isToday
+                            ? () => showFadeMenu(
+                                anchor,
+                                width: 312,
+                                builder: (_) => DayPicker(
+                                  today: state.today,
+                                  first: DateTime(state.firstMonth.$1, state.firstMonth.$2),
+                                  selected: day,
+                                  onPick: (d) => log.showDay(d == state.today ? null : d),
+                                ),
+                              )
+                            : () => log.showDay(null),
+                      ),
+                    ),
+                  ],
+                );
+                if (box.maxWidth < 400) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TileHeader(title: title),
+                      const SizedBox(height: 6),
+                      Align(alignment: Alignment.centerRight, child: trailing),
+                    ],
+                  );
+                }
+                return TileHeader(title: title, trailingAtEnd: true, trailing: trailing);
+              },
             ),
             const SizedBox(height: 10),
             Expanded(
@@ -107,15 +126,17 @@ class _ExerciseBlock extends StatelessWidget {
                   children: [
                     // The name and group take what the remove button leaves.
                     Expanded(
-                      child: PixelRow(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.start,
                         children: [
-                          Flexible(
+                          PixelFit(
                             child: _InlineName(
                               name: exercise.name,
                               onRename: (name) => log.updateExercise(exercise, name: name),
                             ),
                           ),
-                          const SizedBox(width: 8),
                           Builder(
                             builder: (anchor) => _GroupPill(
                               group: exercise.group,
@@ -133,7 +154,6 @@ class _ExerciseBlock extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
                           PixelTooltip(
                             message: exercise.bodyweight ? 'Switch to weighted' : 'Switch to bodyweight',
                             child: _Chip(
@@ -196,29 +216,44 @@ class _DeleteExerciseState extends State<_DeleteExercise> {
   bool _asking = false;
 
   @override
-  Widget build(BuildContext context) => MouseRegion(
-    onExit: (_) => setState(() => _asking = false),
-    // The bin and the question swap as a fade-through, the room easing
-    // between their widths.
-    child: AnimatedSize(
-      duration: context.themed(Motion.morph),
-      curve: Motion.morphCurve,
-      alignment: Alignment.centerRight,
-      child: FadeThrough(
-        duration: Motion.morph,
-        layoutBuilder: FadeThrough.aligned(Alignment.centerRight),
-        child: _asking
-            ? _TextButton(
-                key: const ValueKey(true),
-                label: 'Delete with all ${widget.count} ${widget.count == 1 ? 'set' : 'sets'}',
-                onTap: widget.onDelete,
-              )
-            : _IconAction(
-                key: const ValueKey(false),
-                icon: Icons.delete_outline_rounded,
-                tooltip: 'Delete this exercise',
-                onTap: () => setState(() => _asking = true),
-              ),
+  Widget build(BuildContext context) => TapRegion(
+    onTapOutside: (_) {
+      if (_asking) setState(() => _asking = false);
+    },
+    child: MouseRegion(
+      onExit: (_) => setState(() => _asking = false),
+      // The bin and the question swap as a fade-through, the room easing
+      // between their widths.
+      child: AnimatedSize(
+        duration: context.themed(Motion.morph),
+        curve: Motion.morphCurve,
+        alignment: Alignment.centerRight,
+        child: FadeThrough(
+          duration: Motion.morph,
+          layoutBuilder: FadeThrough.aligned(Alignment.centerRight),
+          child: _asking
+              ? Row(
+                  key: const ValueKey(true),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _TextButton(
+                      label: 'Cancel',
+                      onTap: () => setState(() => _asking = false),
+                    ),
+                    const SizedBox(width: 10),
+                    _TextButton(
+                      label: 'Delete with all ${widget.count} ${widget.count == 1 ? 'set' : 'sets'}',
+                      onTap: widget.onDelete,
+                    ),
+                  ],
+                )
+              : _IconAction(
+                  key: const ValueKey(false),
+                  icon: Icons.delete_outline_rounded,
+                  tooltip: 'Delete this exercise',
+                  onTap: () => setState(() => _asking = true),
+                ),
+        ),
       ),
     ),
   );
@@ -301,9 +336,15 @@ class _SetRowState extends State<_SetRow> {
               child: Text('${widget.index + 1}', style: _label(p, size: 14, color: p.inkMuted)),
             ),
             if (widget.bodyweight)
-              SizedBox(
-                width: 108,
-                child: Text('Bodyweight', style: _label(p, size: 14, color: p.inkMuted)),
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 108),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text(
+                    s.weight != null && s.weight! > 0 ? 'Bodyweight +${_kg(s.weight!)} kg' : 'Bodyweight',
+                    style: _label(p, size: 14, color: p.inkMuted),
+                  ),
+                ),
               )
             else ...[
               _NumberBox(
@@ -338,36 +379,68 @@ class _SetRowState extends State<_SetRow> {
               padding: const EdgeInsets.only(left: 6),
               child: Text('reps', style: _label(p, size: 14, color: p.inkMuted)),
             ),
-            if (!widget.bodyweight && s.reps > maxEstimateReps)
+            if (s.rpe != null)
               Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: Text(
-                  'Over $maxEstimateReps reps, so not charted',
-                  style: _label(p, size: 12, color: p.inkMuted),
+                padding: const EdgeInsets.only(left: 10),
+                child: Text('RPE ${_kg(s.rpe!)}', style: _label(p, size: 12, color: p.inkMuted)),
+              ),
+            if (!widget.bodyweight && s.reps > maxEstimateReps)
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Text(
+                    'Over $maxEstimateReps reps, so not charted',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _label(p, size: 12, color: p.inkMuted),
+                  ),
                 ),
               ),
             if (widget.best)
-              Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: Text(
-                  'Personal best',
-                  style: _label(p, size: 12, weight: FontWeight.w700, color: p.accent),
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Text(
+                    'Personal best',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _label(p, size: 12, weight: FontWeight.w700, color: p.accent),
+                  ),
                 ),
               ),
             const Spacer(),
-            _IconAction(icon: Icons.notes, tooltip: 'Set note and effort', onTap: () => editSetDetails(context,s,widget.exercise)),
+            _IconAction(
+              icon: Icons.notes_rounded,
+              color: (s.note?.trim().isNotEmpty == true || s.rpe != null || (widget.bodyweight && (s.weight ?? 0) > 0))
+                  ? p.accent
+                  : null,
+              tooltip: s.note?.trim().isNotEmpty == true ? '${s.note!.trim()}\nEdit set details' : 'Set note and effort',
+              onTap: () => editSetDetails(context, s, widget.exercise),
+            ),
             Focus(
               onFocusChange: (_) {
                 if (mounted) setState(() {});
               },
               child: Builder(
                 builder: (context) {
-                  final showRemove = _hover || _weightFocus.hasFocus || _repsFocus.hasFocus || Focus.of(context).hasFocus;
-                  return AnimatedOpacity(
-                    opacity: showRemove ? 1 : 0,
-                    duration: context.themed(Motion.hover),
-                    curve: Motion.hoverCurve,
-                    child: _IconAction(icon: Icons.remove_rounded, tooltip: 'Remove set', onTap: () => log.deleteSet(s)),
+                  final alwaysShowRemove =
+                      defaultTargetPlatform == TargetPlatform.android ||
+                      defaultTargetPlatform == TargetPlatform.iOS ||
+                      (kIsWeb && MediaQuery.sizeOf(context).width < 900);
+                  final showRemove =
+                      alwaysShowRemove ||
+                      _hover ||
+                      _weightFocus.hasFocus ||
+                      _repsFocus.hasFocus ||
+                      Focus.of(context).hasFocus;
+                  return IgnorePointer(
+                    ignoring: !showRemove,
+                    child: AnimatedOpacity(
+                      opacity: showRemove ? 1 : 0,
+                      duration: context.themed(Motion.hover),
+                      curve: Motion.hoverCurve,
+                      child: _IconAction(icon: Icons.remove_rounded, tooltip: 'Remove set', onTap: () => log.deleteSet(s)),
+                    ),
                   );
                 },
               ),
@@ -548,9 +621,9 @@ class _GroupPill extends StatelessWidget {
           curve: Motion.hoverCurve,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: colour.withValues(alpha: selected ? 0.2 : 0.06),
+            color: selected ? p.empty : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: colour.withValues(alpha: selected ? 0.6 : 0.25)),
+            border: Border.all(color: colour.withValues(alpha: selected ? 0.8 : 0.35)),
           ),
           child: PixelFit(
             child: Text(
@@ -777,7 +850,7 @@ class _Chip extends StatelessWidget {
 }
 
 class _TextButton extends StatelessWidget {
-  const _TextButton({super.key, required this.label, required this.onTap, this.icon});
+  const _TextButton({required this.label, required this.onTap, this.icon});
 
   final String label;
   final IconData? icon;
@@ -812,26 +885,32 @@ class _TextButton extends StatelessWidget {
 }
 
 class _IconAction extends StatelessWidget {
-  const _IconAction({super.key, required this.icon, required this.tooltip, required this.onTap});
+  const _IconAction({super.key, required this.icon, required this.tooltip, required this.onTap, this.color});
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     return PixelTooltip(
       message: tooltip,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(icon, size: 16, color: p.inkMuted),
+      child: Hoverable(
+        focusable: true,
+        semanticLabel: tooltip,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        builder: (hover) => AnimatedContainer(
+          duration: context.themed(Motion.hover),
+          curve: Motion.hoverCurve,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: hover ? p.empty.withValues(alpha: 0.6) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
           ),
+          child: Icon(icon, size: 16, color: color ?? p.inkMuted),
         ),
       ),
     );

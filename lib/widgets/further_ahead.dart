@@ -55,7 +55,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
                 trailingAtEnd: true,
                 trailing: AnimatedOpacity(
                   opacity: past ? 0 : 1,
-                  duration: Motion.page,
+                  duration: (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ? Duration.zero : Motion.page,
                   curve: past ? Motion.outgoingCurve : Motion.incoming,
                   child: IgnorePointer(
                     ignoring: past,
@@ -152,9 +152,6 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
     setState(() => _built += _firstBuilt);
   }
 
-  /// Birthdays were just shown or hidden: this build jumps to how it is.
-  var _instant = false;
-
   /// Birthday repeats just hidden, closing up where they were.
   final _hiding = <String, ({String group, int index, Repeat repeat})>{};
 
@@ -170,7 +167,6 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
     // Birthdays shown or hidden pop in or out at once, as empty days do in
     // the week: the list is simply drawn as it now is.
     if (widget.birthdays != old.birthdays) {
-      _instant = true;
       _drawn
         ..clear()
         ..addAll({
@@ -208,8 +204,6 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
 
   @override
   Widget build(BuildContext context) {
-    final instant = _instant;
-    _instant = false;
     final p = context.palette;
     final state = AppScope.read(context);
     final day = state.shownDay;
@@ -282,11 +276,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
                         child: Appear(
                           animate: false,
                           shown: current.contains(g.key),
-                          child: AnimatedPadding(
-                            duration: instant ? Duration.zero : Motion.morph,
-                            padding: EdgeInsets.zero,
-                            child: _UpcomingDateTile(date: g.date),
-                          ),
+                          child: _UpcomingDateTile(date: g.date),
                         ),
                       ),
                     ),
@@ -462,6 +452,10 @@ class _LaterRow extends StatefulWidget {
 
 class _LaterRowState extends State<_LaterRow> {
   bool _hover = false;
+  bool _focused = false;
+  bool _touchActions = false;
+
+  bool get _showActions => (_hover || _focused || _touchActions) && !widget.readOnly;
 
   /// The to-do, or the one the repeat will make, not made until it's
   /// changed on its own.
@@ -480,69 +474,106 @@ class _LaterRowState extends State<_LaterRow> {
     return Appear(
       animate: widget.fadeIn,
       shown: !widget.leaving,
-      child: IgnorePointer(
-        ignoring: widget.readOnly || widget.leaving,
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _hover = true),
-          onExit: (_) => setState(() => _hover = false),
-          child: HoverFill(
-            hover: _hover,
-            child: SizedBox(
-              width: double.infinity,
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2, bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // The same caption as a task row's, so the two
-                        // can't drift: weekday, time, place, then Birthday.
-                        _Caption(
-                          weekday: date == null ? null : weekdayNames[date.weekday - 1],
-                          time: item.dueTime,
-                          location: item.location,
-                          birthday: item.birthday,
-                          gap: true,
-                        ),
-                        Text(
-                          item.text,
-                          style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink),
-                        ),
-                        if (item.subtasks.isNotEmpty)
-                          Text(
-                            '${item.subtasks.where((s) => s.done).length} of ${item.subtasks.length} subtasks complete',
-                            style: TextStyle(fontSize: 12, color: p.inkMuted),
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (_hover && !widget.readOnly)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+      child: Focus(
+        canRequestFocus: !widget.readOnly,
+        descendantsAreFocusable: !widget.readOnly,
+        onFocusChange: (focused) {
+          if (_focused != focused) setState(() => _focused = focused);
+        },
+        onKeyEvent: widget.readOnly
+            ? null
+            : (node, event) {
+                if (node.hasPrimaryFocus &&
+                    event is KeyDownEvent &&
+                    (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.space)) {
+                  _editTask(context, scope, item, widget.day, make: made ? null : _make);
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+        child: IgnorePointer(
+          ignoring: widget.readOnly || widget.leaving,
+          child: MouseRegion(
+            cursor: widget.readOnly ? MouseCursor.defer : SystemMouseCursors.click,
+            onEnter: (_) => setState(() => _hover = true),
+            onExit: (_) => setState(() => _hover = false),
+            child: TapRegion(
+              onTapOutside: (_) {
+                if (_touchActions && mounted) setState(() => _touchActions = false);
+              },
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.readOnly
+                    ? null
+                    : () => _editTask(context, scope, item, widget.day, make: made ? null : _make),
+                onLongPress: widget.readOnly
+                    ? null
+                    : () => setState(() => _touchActions = !_touchActions),
+                child: SearchGlow(
+                  target: item.uid,
+                  child: HoverFill(
+                    hover: _hover || _focused || _touchActions,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Stack(
                         children: [
-                          _TaskAction(
-                            tooltip: 'Edit task',
-                            icon: Icons.edit_rounded,
-                            onPressed: () => _editTask(context, scope, item, widget.day, make: made ? null : _make),
-                          ),
-                          _TaskAction(
-                            tooltip: 'Remove',
-                            icon: Icons.close_rounded,
-                            onPressed: () => _removeTask(
-                              context,
-                              item,
-                              widget.day,
-                              made ? widget.onRemove! : () => state.removeTodo(TodoScope.month, _make()),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2, bottom: 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // The same caption as a task row's, so the two
+                                // can't drift: weekday, time, place, then Birthday.
+                                _Caption(
+                                  weekday: date == null ? null : weekdayNames[date.weekday - 1],
+                                  time: item.dueTime,
+                                  location: item.location,
+                                  birthday: item.birthday,
+                                  gap: true,
+                                ),
+                                Text(
+                                  item.text,
+                                  style: TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink),
+                                ),
+                                if (item.subtasks.isNotEmpty)
+                                  Text(
+                                    '${item.subtasks.where((s) => s.done).length} of ${item.subtasks.length} subtasks complete',
+                                    style: TextStyle(fontSize: 12, color: p.inkMuted),
+                                  ),
+                              ],
                             ),
                           ),
+                          if (_showActions)
+                            Positioned(
+                              right: 0,
+                              top: 0,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _TaskAction(
+                                    tooltip: 'Edit task',
+                                    icon: Icons.edit_rounded,
+                                    onPressed: () =>
+                                        _editTask(context, scope, item, widget.day, make: made ? null : _make),
+                                  ),
+                                  _TaskAction(
+                                    tooltip: 'Remove',
+                                    icon: Icons.close_rounded,
+                                    onPressed: () => _removeTask(
+                                      context,
+                                      item,
+                                      widget.day,
+                                      made ? widget.onRemove! : () => state.removeTodo(TodoScope.month, _make()),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     ),
-                ],
+                  ),
+                ),
               ),
             ),
           ),
