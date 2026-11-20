@@ -112,12 +112,20 @@ class _WorkoutPage extends StatefulWidget {
 }
 
 class _WorkoutPageState extends State<_WorkoutPage> {
-  DateTime? _restEndsAt;
+  final _restLeft = ValueNotifier<int?>(null);
   Timer? _restTicker;
+  bool _restChanged = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreRest());
+  }
 
   @override
   void dispose() {
     _restTicker?.cancel();
+    _restLeft.dispose();
     super.dispose();
   }
 
@@ -130,30 +138,43 @@ class _WorkoutPageState extends State<_WorkoutPage> {
     return value != null && value.isFinite ? value : null;
   }
 
-  void _startRestTimer(int seconds) {
+  Future<void> _restoreRest() async {
+    final endsAt = await PhonePlatform.restDeadline();
+    if (mounted && !_restChanged && endsAt != null) _showRestCountdown(endsAt);
+  }
+
+  void _showRestCountdown(DateTime endsAt) {
     _restTicker?.cancel();
-    if (seconds <= 0) {
-      setState(() => _restEndsAt = null);
-      return;
+    void tick() {
+      final millis = endsAt.difference(DateTime.now()).inMilliseconds;
+      _restLeft.value = millis <= 0 ? 0 : (millis + 999) ~/ 1000;
+      if (_restLeft.value == 0) _restTicker?.cancel();
     }
-    setState(() => _restEndsAt = DateTime.now().add(Duration(seconds: seconds)));
-    _restTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      final ends = _restEndsAt;
-      if (ends == null || !DateTime.now().isBefore(ends)) {
-        _restTicker?.cancel();
-        _restTicker = null;
-        setState(() => _restEndsAt = null);
-      } else {
-        setState(() {});
+
+    tick();
+    if (_restLeft.value != 0) _restTicker = Timer.periodic(const Duration(milliseconds: 250), (_) => tick());
+  }
+
+  Future<void> _startRestTimer(int seconds) async {
+    if (seconds <= 0 || seconds > 3600) return;
+    _restChanged = true;
+    final endsAt = DateTime.now().add(Duration(seconds: seconds));
+    _showRestCountdown(endsAt);
+    try {
+      await PhonePlatform.startRest(endsAt);
+    } on PlatformException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message ?? 'The rest timer sound could not be scheduled.')));
       }
-    });
+    }
   }
 
   void _cancelRest() {
+    _restChanged = true;
     _restTicker?.cancel();
     _restTicker = null;
-    setState(() => _restEndsAt = null);
+    _restLeft.value = null;
     unawaited(PhonePlatform.cancelRest());
   }
 
@@ -226,17 +247,7 @@ class _WorkoutPageState extends State<_WorkoutPage> {
     } else {
       log.addSet(day, exercise, reps: result.$1, loggedWeight: result.$2);
     }
-    final seconds = int.tryParse(state.store.setting('restSeconds') ?? '') ?? 120;
-    if (seconds == 0) return;
-    _startRestTimer(seconds);
-    try {
-      await PhonePlatform.startRest(seconds);
-    } on PlatformException {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Set saved. The rest timer could not start.')));
-      }
-    }
+    await _startRestTimer(int.tryParse(state.store.setting('restSeconds') ?? '') ?? 120);
   }
 
   Future<void> _editSet(BuildContext context, TrainingLog log, TrainingSet set, Exercise exercise) async {
@@ -384,10 +395,7 @@ class _WorkoutPageState extends State<_WorkoutPage> {
     final state = AppScope.watch(context, (s) => (s.today, s.training.revision));
     final log = state.training;
     final session = log.session(state.today);
-    final restLeft = switch (_restEndsAt) {
-      final ends? => ends.difference(DateTime.now()).inSeconds.clamp(0, 3600),
-      null => 0,
-    };
+    final restSeconds = int.tryParse(state.store.setting('restSeconds') ?? '') ?? 120;
     return SafeArea(
       child: Column(
         children: [
@@ -400,9 +408,10 @@ class _WorkoutPageState extends State<_WorkoutPage> {
                 PopupMenuButton<int>(
                   tooltip: 'Rest timer',
                   icon: const Icon(Icons.timer_rounded, size: 22),
-                  initialValue: int.tryParse(state.store.setting('restSeconds') ?? '') ?? 120,
+                  initialValue: restSeconds,
                   onSelected: (v) {
                     state.store.setSetting('restSeconds', v.toString());
+                    if (v == 0) _cancelRest();
                     setState(() {});
                   },
                   itemBuilder: (_) => [
@@ -416,24 +425,40 @@ class _WorkoutPageState extends State<_WorkoutPage> {
               ],
             ),
           ),
-          if (restLeft > 0)
+          if (restSeconds > 0)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Tile(
-                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.timer_rounded, size: 18, color: p.accent),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Rest ${restLeft ~/ 60}:${(restLeft % 60).toString().padLeft(2, '0')}',
-                        style: _body(p, size: 14),
-                      ),
+              child: ValueListenableBuilder<int?>(
+                valueListenable: _restLeft,
+                builder: (context, remaining, _) {
+                  final running = remaining != null && remaining > 0;
+                  final seconds = remaining ?? restSeconds;
+                  final time = '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+                  return Tile(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          remaining == 0 ? Icons.check_circle_outline_rounded : Icons.timer_rounded,
+                          size: 20,
+                          color: p.accent,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(switch (remaining) {
+                            null => 'Rest timer · $time',
+                            0 => 'Rest complete',
+                            _ => 'Rest $time',
+                          }, style: _body(p, size: 18)),
+                        ),
+                        TextButton(
+                          onPressed: running ? _cancelRest : () => unawaited(_startRestTimer(restSeconds)),
+                          child: Text(running ? 'Cancel' : 'Start'),
+                        ),
+                      ],
                     ),
-                    TextButton(onPressed: _cancelRest, child: const Text('Cancel')),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           Expanded(

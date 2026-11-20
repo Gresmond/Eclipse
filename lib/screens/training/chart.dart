@@ -529,17 +529,10 @@ class _MuscleCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Expanded(
-            child: series.isEmpty
-                ? Center(
-                    child: Text(
-                      'Bodyweight exercises show in the % change view.',
-                      textAlign: TextAlign.center,
-                      style: _label(p, size: 12, color: p.inkMuted),
-                    ),
-                  )
-                : _Chart(series: series, from: from, to: to, percent: percent, focus: focus),
-          ),
+          if (series.isNotEmpty)
+            Expanded(
+              child: _Chart(series: series, from: from, to: to, percent: percent, focus: focus),
+            ),
         ],
       ),
     );
@@ -1075,63 +1068,47 @@ class _Legend extends StatelessWidget {
     for (final e in exercises) {
       (groups[e.group] ??= []).add(e);
     }
-    final hasRepsOnly = repsOnly.isNotEmpty;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Wrap(
+      spacing: 18,
+      runSpacing: 6,
       children: [
-        Wrap(
-          spacing: 18,
-          runSpacing: 6,
-          children: [
-            for (final MapEntry(key: g, value: list) in groups.entries)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _LegendItem(
-                    keyName: 'g:${g.name}',
-                    off: hidden.contains('g:${g.name}'),
-                    onHover: onHover,
-                    onToggle: onToggle,
-                    child: PixelFit(
-                      child: Text(g.label.toUpperCase(), style: capsLabel(groupColour(g, p))),
-                    ),
-                  ),
-                  for (final e in list)
-                    _LegendItem(
-                      keyName: e.uid,
-                      off:
-                          hidden.contains(e.uid) ||
-                          hidden.contains('g:${g.name}') ||
-                          (!bodyweightShown && repsOnly.contains(e.uid)),
-                      onHover: onHover,
-                      onToggle: onToggle,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CustomPaint(
-                            size: const Size(22, 10),
-                            painter: _DashSample(
-                              groupColour(g, p),
-                              dash[e.uid] ?? const [],
-                              square: square.contains(e.uid),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          PixelFit(child: Text(e.name, style: _label(p, size: 14))),
-                        ],
-                      ),
-                    ),
-                ],
+        for (final MapEntry(key: g, value: list) in groups.entries)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _LegendItem(
+                keyName: 'g:${g.name}',
+                off: hidden.contains('g:${g.name}'),
+                onHover: onHover,
+                onToggle: onToggle,
+                child: PixelFit(child: Text(g.label.toUpperCase(), style: capsLabel(groupColour(g, p)))),
               ),
-          ],
-        ),
-        if (!bodyweightShown && hasRepsOnly)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              'Bodyweight exercises show in the % change view.',
-              style: _label(p, size: 12, color: p.inkMuted),
-            ),
+              for (final e in list)
+                _LegendItem(
+                  keyName: e.uid,
+                  off:
+                      hidden.contains(e.uid) ||
+                      hidden.contains('g:${g.name}') ||
+                      (!bodyweightShown && repsOnly.contains(e.uid)),
+                  onHover: onHover,
+                  onToggle: onToggle,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CustomPaint(
+                        size: const Size(22, 10),
+                        painter: _DashSample(
+                          groupColour(g, p),
+                          dash[e.uid] ?? const [],
+                          square: square.contains(e.uid),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      PixelFit(child: Text(e.name, style: _label(p, size: 14))),
+                    ],
+                  ),
+                ),
+            ],
           ),
       ],
     );

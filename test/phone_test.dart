@@ -307,7 +307,11 @@ void main() {
     store.setSetting('restSeconds', '60');
     const channel = MethodChannel('eclipse/phone');
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    final restCalls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'startRest' || call.method == 'cancelRest') restCalls.add(call);
+      return null;
+    });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     await show(tester, state);
 
@@ -333,11 +337,19 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Log set'));
     await tester.pumpAndSettle();
     expect(find.text('+10 kg × 8 reps'), findsOneWidget);
-    expect(find.textContaining('Rest '), findsOneWidget);
+    expect(find.text('Rest 1:00'), findsOneWidget);
+    expect(restCalls.single.method, 'startRest');
+    expect(restCalls.single.arguments, isA<int>());
 
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Rest '), findsNothing);
+    expect(find.text('Rest timer · 1:00'), findsOneWidget);
+    expect(restCalls.last.method, 'cancelRest');
+
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rest 1:00'), findsOneWidget);
+    expect(restCalls.last.method, 'startRest');
 
     await tester.tap(find.text('+10 kg × 8 reps'));
     await tester.pumpAndSettle();

@@ -122,23 +122,6 @@ object Reminders {
         prefs.edit().putString(LIST, json).putInt(COUNT, set).apply()
     }
 
-    fun startRest(context: Context, seconds: Int) {
-        require(seconds in 1..3600)
-        val alarms = context.getSystemService(AlarmManager::class.java)
-        val whenDue = android.os.SystemClock.elapsedRealtime() + seconds * 1000L
-        val alarm = pending(context, -1, PlannedReminder(-1, "", 0, "Rest complete", "Ready for your next set"))
-        if (Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms()) {
-            alarms.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, whenDue, alarm)
-        } else {
-            alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, whenDue, alarm)
-        }
-    }
-
-    fun cancelRest(context: Context) {
-        val alarms = context.getSystemService(AlarmManager::class.java)
-        alarms.cancel(pending(context, -1, null))
-    }
-
     fun restore(context: Context) {
         val json = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(LIST, null) ?: return
         schedule(context, json)
@@ -217,6 +200,9 @@ class ReminderReceiver : BroadcastReceiver() {
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            RestTimer.cancel(context)
+        }
         if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             context.deleteSharedPreferences("widget")
         }

@@ -10,6 +10,7 @@ import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/training.dart';
 import 'package:eclipse/training_log.dart';
+import 'package:eclipse/widgets/glide_pill.dart';
 import 'package:eclipse/widgets/rolling_number.dart';
 
 /// The user's own example session, logged on [day] with [extra] kg added
@@ -239,11 +240,14 @@ void main() {
       state.training.toggleHidden(pullups.uid);
       await tester.pumpAndSettle();
 
+      final layoutPills = find.ancestor(of: find.text('Exercises'), matching: find.byType(SegmentedPills));
+      final exercisePills = tester.getRect(layoutPills);
       await tester.tap(find.text('Muscles'));
       await tester.pumpAndSettle();
-      // Five groups; Back has only Pullups, so in kg it says where to find it.
+      expect(tester.getRect(layoutPills), exercisePills);
+      // Back has only Pullups, which aren't plotted here on a kg axis.
       expect(charts, findsNWidgets(4));
-      expect(find.text('Bodyweight exercises show in the % change view.'), findsNWidgets(2));
+      expect(find.text('Bodyweight exercises show in the % change view.'), findsNothing);
 
       state.training.setAxis(TrainingAxis.change);
       await tester.pumpAndSettle();
@@ -295,7 +299,7 @@ void main() {
       expect(find.byType(EditableText), findsNWidgets(2));
       expect(find.text('Over 20 reps, so not charted'), findsNothing);
       expect(log.points().values.single.single.value, 22);
-      expect(find.text('Bodyweight exercises show in the % change view.'), findsOneWidget);
+      expect(find.text('Bodyweight exercises show in the % change view.'), findsNothing);
 
       await tester.tap(find.text('Bodyweight').first);
       await tester.pumpAndSettle();

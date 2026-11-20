@@ -1,11 +1,13 @@
 package dev.nicholas.eclipse
 
 import android.Manifest
+import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -15,6 +17,9 @@ import java.io.File
 
 /** What Dart can't do by itself on a phone, over one channel. */
 class MainActivity : FlutterActivity() {
+    private companion object {
+        const val REST_NOTIFICATION_REQUEST = 2
+    }
     // On a cold launch, let FlutterActivity create and attach its own engine.
     // A running worker already owns the database, so reuse its isolate.
     override fun provideFlutterEngine(context: android.content.Context): FlutterEngine? = PhoneRuntime.current
@@ -59,6 +64,16 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REST_NOTIFICATION_REQUEST) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            RestTimer.showCountdown(this)
+        } else {
+            Toast.makeText(this, "Allow Eclipse notifications for rest timer sounds.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val reused = PhoneRuntime.current === flutterEngine
@@ -97,11 +112,26 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "startRest" -> {
-                    Reminders.startRest(this, call.arguments as Int)
-                    result.success(null)
+                    try {
+                        RestTimer.start(this, (call.arguments as Number).toLong())
+                        if (Build.VERSION.SDK_INT >= 33 &&
+                            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            requestPermissions(
+                                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                                REST_NOTIFICATION_REQUEST,
+                            )
+                        } else if (!getSystemService(NotificationManager::class.java).areNotificationsEnabled()) {
+                            Toast.makeText(this, "Allow Eclipse notifications for rest timer sounds.", Toast.LENGTH_LONG).show()
+                        }
+                        result.success(null)
+                    } catch (_: SecurityException) {
+                        result.error("rest_alarm", "Allow Eclipse to schedule exact alarms for rest timer sounds.", null)
+                    }
                 }
+                "restDeadline" -> result.success(RestTimer.deadline(this))
                 "cancelRest" -> {
-                    Reminders.cancelRest(this)
+                    RestTimer.cancel(this)
                     result.success(null)
                 }
                 "initialReminder" -> {

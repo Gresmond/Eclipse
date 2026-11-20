@@ -77,9 +77,16 @@ class PhonePlatform {
     }
   }
 
-  static Future<void> startRest(int seconds) async {
-    await askNotifications();
-    await _channel.invokeMethod<void>('startRest', seconds);
+  static Future<void> startRest(DateTime deadline) =>
+      _channel.invokeMethod<void>('startRest', deadline.millisecondsSinceEpoch);
+
+  static Future<DateTime?> restDeadline() async {
+    try {
+      final deadline = await _channel.invokeMethod<int>('restDeadline');
+      return deadline == null ? null : DateTime.fromMillisecondsSinceEpoch(deadline);
+    } on MissingPluginException {
+      return null;
+    }
   }
 
   static Future<void> cancelRest() async {
