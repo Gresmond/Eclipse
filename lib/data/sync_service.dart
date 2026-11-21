@@ -343,6 +343,12 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// Pauses periodic foreground polling without stopping future syncs.
+  void pauseTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
   void stop() {
     _stopped = true;
     _timer?.cancel();

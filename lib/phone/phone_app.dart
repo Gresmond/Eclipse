@@ -40,20 +40,26 @@ part 'phone_settings.dart';
 
 /// The phone's Eclipse: today's rituals, sleep and tasks, and adding tasks,
 /// on the same data as the computers through Drive sync.
-Future<void> phoneMain({Future<Directory> Function() supportDirectory = getApplicationSupportDirectory}) async {
-  runApp(
-    MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: themeNamed(null),
-      home: Builder(
-        builder: (context) => Scaffold(
-          backgroundColor: context.palette.background,
-          body: const Center(child: CircularProgressIndicator()),
+Future<void> phoneMain({
+  Future<Directory> Function() supportDirectory = getApplicationSupportDirectory,
+  Future<Directory> Function() documentsDirectory = getApplicationDocumentsDirectory,
+}) async {
+  final headless = !await PhonePlatform.hasUi();
+  if (!headless) {
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: themeNamed(null),
+        home: Builder(
+          builder: (context) => Scaffold(
+            backgroundColor: context.palette.background,
+            body: const Center(child: CircularProgressIndicator()),
+          ),
         ),
       ),
-    ),
-  );
-  await _openPhone(supportDirectory);
+    );
+  }
+  await _openPhone(supportDirectory, documentsDirectory: documentsDirectory, headless: headless);
 }
 
 Future<bool> _backupBeforeUpgrade(Directory home, String directory, String database) => Isolate.run(() {
@@ -62,7 +68,11 @@ Future<bool> _backupBeforeUpgrade(Directory home, String directory, String datab
   return backups.updateCopyFailed;
 });
 
-Future<void> _openPhone(Future<Directory> Function() supportDirectory) async {
+Future<void> _openPhone(
+  Future<Directory> Function() supportDirectory, {
+  Future<Directory> Function() documentsDirectory = getApplicationDocumentsDirectory,
+  bool headless = false,
+}) async {
   Directory? home;
   DataFolder? data;
   Store? opened;
@@ -78,7 +88,7 @@ Future<void> _openPhone(Future<Directory> Function() supportDirectory) async {
       AppLog.failure('Uncaught', error, stack);
       return false;
     };
-    final documents = await getApplicationDocumentsDirectory();
+    final documents = await documentsDirectory();
     data = DataFolder.load(dir, documents);
     await data.root.create(recursive: true);
     final backups = Backups(data.backups);
@@ -91,11 +101,18 @@ Future<void> _openPhone(Future<Directory> Function() supportDirectory) async {
       AppLog.failure('Sync couldn’t start', error);
     }
     final state = AppState(store, backups: backups, dataFolder: data, sync: sync);
-    sync?.start();
-    if (sync?.isOn ?? false) unawaited(sync!.run());
-    runApp(PhoneApp(state: state, updater: PhoneUpdater()));
+    var uiMounted = false;
+    void mountUi() {
+      if (uiMounted) return;
+      uiMounted = true;
+      sync?.start();
+      if (sync?.isOn ?? false) unawaited(sync!.run());
+      runApp(PhoneApp(state: state, updater: PhoneUpdater()));
+    }
+
+    if (!headless) mountUi();
     unawaited(
-      PhonePlatform.enableBackgroundSync(state).catchError((Object error, StackTrace stack) {
+      PhonePlatform.enableBackgroundSync(state, onAttachUi: mountUi).catchError((Object error, StackTrace stack) {
         AppLog.failure('Background sync couldn’t start', error, stack);
       }),
     );
@@ -105,6 +122,7 @@ Future<void> _openPhone(Future<Directory> Function() supportDirectory) async {
     try {
       opened?.close();
     } catch (_) {}
+    if (headless) return;
     String? theme;
     try {
       if (data != null) theme = savedThemeName(data.database);
@@ -116,14 +134,14 @@ Future<void> _openPhone(Future<Directory> Function() supportDirectory) async {
         error: error,
         phoneUpdater: updater,
         themeName: theme,
-        onRetry: () => _openPhone(supportDirectory),
+        onRetry: () => _openPhone(supportDirectory, documentsDirectory: documentsDirectory),
         recovery: data == null || home == null
             ? null
             : StartupRecovery(
                 backups: Backups(data.backups),
                 database: data.database,
                 driveCopies: SyncService.copiesAt(home),
-                reopen: () => _openPhone(supportDirectory),
+                reopen: () => _openPhone(supportDirectory, documentsDirectory: documentsDirectory),
               ),
       ),
     );
@@ -164,6 +182,11 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
     Object.hashAll(_state.holidays),
   );
 
+  void _startDateTimer() {
+    _dateTimer?.cancel();
+    _dateTimer = Timer.periodic(const Duration(seconds: 30), (_) => _state.checkDate());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -176,7 +199,7 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
     _onStateChanged();
     _changed();
     _state.sync?.addListener(_onStateChanged);
-    _dateTimer = Timer.periodic(const Duration(seconds: 30), (_) => _state.checkDate());
+    _startDateTimer();
     unawaited(widget.updater?.check());
     unawaited(PhonePlatform.listenReminders(_openReminder));
   }
@@ -268,15 +291,22 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
     final sync = _state.sync;
     switch (lifecycle) {
       case AppLifecycleState.resumed:
+        _startDateTimer();
         _state.checkDate();
-        if (sync != null && sync.isOn) unawaited(sync.run());
+        if (sync != null && sync.isOn) {
+          sync.start();
+          unawaited(sync.run());
+        }
         unawaited(widget.updater?.check());
       case AppLifecycleState.paused:
+        _dateTimer?.cancel();
+        _dateTimer = null;
+        sync?.pauseTimer();
         // What was just ticked reaches the computers before Android stops it.
         _state.saveDrafts();
         _flushSchedule();
         _state.store.flushToDisk();
-        if (sync != null && sync.isOn) unawaited(sync.run());
+        sync?.sendChanges();
       default:
     }
   }

@@ -77,8 +77,9 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val reused = PhoneRuntime.current === flutterEngine
-        PhoneRuntime.retain(applicationContext, flutterEngine)
+        PhoneRuntime.retain(applicationContext, flutterEngine, withUi = true)
         retained = true
+        if (reused) PhoneRuntime.attachUi()
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "eclipse/phone")
         phoneChannel = channel
         takeReminderUid(intent)?.let { uid ->

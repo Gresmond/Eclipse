@@ -15,13 +15,15 @@ import java.util.concurrent.TimeUnit
 object PhoneRuntime {
     private var engine: FlutterEngine? = null
     private var users = 0
+    private var uiAttached = false
     private var ready = CompletableDeferred<Boolean>()
     private lateinit var channel: MethodChannel
 
     val current: FlutterEngine? get() = engine
 
     // Called on Android's main thread by both the activity and the worker.
-    fun retain(context: Context, created: FlutterEngine) {
+    fun retain(context: Context, created: FlutterEngine, withUi: Boolean = false) {
+        if (withUi) uiAttached = true
         if (users > 0) {
             check(engine === created)
             users++
@@ -30,6 +32,7 @@ object PhoneRuntime {
         channel = MethodChannel(created.dartExecutor.binaryMessenger, "eclipse/background")
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "hasUi" -> result.success(uiAttached)
                 "ready" -> {
                     if (ready.isCompleted) ready = CompletableDeferred()
                     ready.complete(true)
@@ -39,7 +42,7 @@ object PhoneRuntime {
                         } else {
                             SyncWorker.cancel(context)
                         }
-                        result.success(null)
+                        result.success(uiAttached)
                     } catch (e: IllegalStateException) {
                         result.error("schedule", e.message, null)
                     }
@@ -75,12 +78,21 @@ object PhoneRuntime {
         users = 1
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun attachUi() {
+        uiAttached = true
+        if (users > 0 && ready.isCompleted && runCatching { ready.getCompleted() }.getOrDefault(false)) {
+            channel.invokeMethod("attachUi", null)
+        }
+    }
+
     fun release() {
         if (users <= 0) return
         if (--users == 0) {
             channel.setMethodCallHandler(null)
             engine?.destroy()
             engine = null
+            uiAttached = false
             ready = CompletableDeferred()
         }
     }
@@ -131,11 +143,16 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         }
 
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
-                .setInitialDelay(15, TimeUnit.MINUTES)
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            val request = PeriodicWorkRequestBuilder<SyncWorker>(30, TimeUnit.MINUTES)
+                .setInitialDelay(30, TimeUnit.MINUTES)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .setRequiresBatteryNotLow(true)
+                        .build(),
+                )
                 .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork("drive-sync", ExistingPeriodicWorkPolicy.KEEP, request)
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork("drive-sync", ExistingPeriodicWorkPolicy.UPDATE, request)
         }
 
         fun cancel(context: Context) {

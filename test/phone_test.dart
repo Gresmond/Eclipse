@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:crypto/crypto.dart';
 import 'package:eclipse/app_state.dart';
@@ -40,8 +41,14 @@ void main() {
   }
 
   testWidgets('phone draws while opening storage and offers retry if storage is unavailable', (tester) async {
+    const bgChannel = MethodChannel('eclipse/background');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(bgChannel, (call) async => call.method == 'hasUi' ? true : null);
+    addTearDown(() => messenger.setMockMethodCallHandler(bgChannel, null));
+
     final directory = Completer<Directory>();
     final startup = phoneMain(supportDirectory: () => directory.future);
+    await tester.pump();
     await tester.pump();
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     directory.completeError(const FileSystemException('Storage unavailable'));
@@ -843,16 +850,188 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 2));
   });
+
+  testWidgets('PhoneApp pauses timers and skips empty sync on paused, sends dirty changes, and resumes', (
+    tester,
+  ) async {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final drive = _PhoneFakeDrive();
+    const acct = GoogleAccount(email: 'a@example.com', id: 'id-a', refreshToken: 'r-a');
+    final sync = memorySync(
+      store,
+      connect: (_) => drive,
+      signIn: ({cancel}) async => acct,
+    );
+    await sync.look(acct);
+    await sync.turnOn(acct, join: false);
+    final initialCalls = drive.listCalls;
+
+    final state = AppState(store, sync: sync, clock: () => DateTime(2026, 11, 6, 9));
+    addTearDown(state.dispose);
+
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(PhoneApp(state: state, schedule: (_) async {}));
+    await tester.pumpAndSettle();
+
+    void setLifecycle(List<AppLifecycleState> states) {
+      for (final s in states) {
+        tester.binding.handleAppLifecycleStateChanged(s);
+      }
+    }
+
+    // Pausing with no local changes does not sync and stops periodic polling.
+    setLifecycle([AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]);
+    await tester.pump();
+    expect(drive.listCalls, initialCalls);
+
+    await tester.pump(const Duration(minutes: 4));
+    expect(drive.listCalls, initialCalls);
+
+    // Resuming restarts polling and triggers an immediate sync.
+    setLifecycle([AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]);
+    await tester.pump();
+    expect(drive.listCalls, greaterThan(initialCalls));
+    final afterResume = drive.listCalls;
+
+    // Pausing with unsent local changes triggers sendChanges().
+    state.addTodo(TodoScope.today, 'Unsent change');
+    setLifecycle([AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]);
+    await tester.pump();
+    expect(drive.listCalls, greaterThan(afterResume));
+
+    sync.stop();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('Workout rest timer pauses ticker in background and resyncs deadline on resume', (tester) async {
+    final (store, state) = make();
+    final squat = state.training.createExercise('Squat', MuscleGroup.quads, bodyweight: false);
+    state.training.addToDay(state.today, squat);
+    store.setSetting('restSeconds', '60');
+
+    const channel = MethodChannel('eclipse/phone');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    int? storedDeadline;
+    var deadlineReads = 0;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'startRest':
+          storedDeadline = call.arguments as int;
+        case 'restDeadline':
+          deadlineReads++;
+          return storedDeadline;
+        case 'cancelRest':
+          storedDeadline = null;
+      }
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    await show(tester, state);
+    await tester.tap(find.text('Training'));
+    await tester.pumpAndSettle();
+    final readsBeforeStart = deadlineReads;
+
+    await tester.tap(find.text('Start'));
+    await tester.pump();
+    expect(storedDeadline, isNotNull);
+    expect(find.textContaining('Rest '), findsOneWidget);
+
+    void setLifecycle(List<AppLifecycleState> states) {
+      for (final s in states) {
+        tester.binding.handleAppLifecycleStateChanged(s);
+      }
+    }
+
+    // Pause stops the local countdown ticker and does not poll restDeadline.
+    setLifecycle([AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]);
+    await tester.pump(const Duration(seconds: 5));
+    expect(deadlineReads, readsBeforeStart);
+
+    // Simulate time passing natively before resuming.
+    storedDeadline = DateTime.now().add(const Duration(seconds: 15)).millisecondsSinceEpoch;
+    setLifecycle([AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]);
+    await tester.pump();
+    await tester.pump();
+    expect(deadlineReads, readsBeforeStart + 1);
+    expect(find.text('Rest 0:15'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(storedDeadline, isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('headless phoneMain skips UI until attachUi is invoked', (tester) async {
+    final oldFlutterError = FlutterError.onError;
+    final oldPlatformError = PlatformDispatcher.instance.onError;
+    addTearDown(() {
+      FlutterError.onError = oldFlutterError;
+      PlatformDispatcher.instance.onError = oldPlatformError;
+    });
+
+    final root = makeTemp('eclipse-headless-phone');
+    final supportDir = Directory(p.join(root.path, 'support'));
+    final docsDir = Directory(p.join(root.path, 'docs'));
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    const bgChannel = MethodChannel('eclipse/background');
+    final bgCalls = <String>[];
+    messenger.setMockMethodCallHandler(bgChannel, (call) async {
+      bgCalls.add(call.method);
+      if (call.method == 'hasUi') return false;
+      if (call.method == 'ready') return false;
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(bgChannel, null));
+
+    await tester.runAsync(
+      () => phoneMain(supportDirectory: () async => supportDir, documentsDirectory: () async => docsDir),
+    );
+    await tester.pump();
+
+    expect(bgCalls, containsAll(['hasUi', 'ready']));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(PhoneApp), findsNothing);
+
+    await messenger.handlePlatformMessage(
+      'eclipse/background',
+      const StandardMethodCodec().encodeMethodCall(const MethodCall('attachUi')),
+      (_) {},
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(PhoneApp), findsOneWidget);
+    final mountedState = tester.widget<PhoneApp>(find.byType(PhoneApp)).state;
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+    await tester.runAsync(() async {
+      await mountedState.backedUp;
+      await mountedState.flushFiles();
+    });
+    mountedState.dispose();
+    mountedState.store.close();
+  });
 }
 
 class _PhoneFakeDrive implements SyncDrive {
   final files = <String, (String, List<int>, int)>{};
   int _seq = 1;
+  int listCalls = 0;
   bool failList = false;
   Completer<void>? listGate;
 
   @override
   Future<List<DriveFile>> list() async {
+    listCalls++;
     if (listGate != null) await listGate!.future;
     if (failList) throw const DriveError('Offline', unreachable: true);
     return [

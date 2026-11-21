@@ -16,8 +16,20 @@ import '../data/updates.dart' show ReleaseFetch, ReleaseUpdater, fetchReleaseByt
 class PhonePlatform {
   static const _background = MethodChannel('eclipse/background');
 
-  static Future<void> enableBackgroundSync(AppState state) async {
+  static Future<bool> hasUi() async {
+    try {
+      return await _background.invokeMethod<bool>('hasUi') ?? true;
+    } on MissingPluginException {
+      return true;
+    }
+  }
+
+  static Future<void> enableBackgroundSync(AppState state, {VoidCallback? onAttachUi}) async {
     _background.setMethodCallHandler((call) async {
+      if (call.method == 'attachUi') {
+        onAttachUi?.call();
+        return null;
+      }
       final sync = state.sync;
       state.checkDate();
       final activeSync = sync != null && sync.isOn;
@@ -48,7 +60,8 @@ class PhonePlatform {
       state.store.flushToDisk();
       return _alarms(state);
     });
-    await _background.invokeMethod<void>('ready', state.sync?.isOn ?? false);
+    final needUi = await _background.invokeMethod<bool>('ready', state.sync?.isOn ?? false);
+    if (needUi == true) onAttachUi?.call();
   }
 
   static Future<void> setBackgroundSync(bool enabled) async {

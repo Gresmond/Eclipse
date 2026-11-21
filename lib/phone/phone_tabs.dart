@@ -133,7 +133,14 @@ class _WorkoutPageState extends State<_WorkoutPage> with WidgetsBindingObserver 
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) unawaited(_syncRest());
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_syncRest());
+      case AppLifecycleState.paused:
+        _restTicker?.cancel();
+        _restTicker = null;
+      default:
+    }
   }
 
   static String _fmtNum(double v) => v == v.roundToDouble() ? '${v.toInt()}' : '$v';
@@ -164,14 +171,22 @@ class _WorkoutPageState extends State<_WorkoutPage> with WidgetsBindingObserver 
 
   void _showRestCountdown(DateTime endsAt) {
     _restTicker?.cancel();
+    _restTicker = null;
     void tick() {
+      if (!mounted) return;
       final millis = endsAt.difference(DateTime.now()).inMilliseconds;
-      _restLeft.value = millis <= 0 ? 0 : (millis + 999) ~/ 1000;
-      if (_restLeft.value == 0) _restTicker?.cancel();
+      final left = millis <= 0 ? 0 : (millis + 999) ~/ 1000;
+      _restLeft.value = left;
+      if (left == 0) {
+        _restTicker = null;
+        return;
+      }
+      final rem = millis % 1000;
+      final delay = (rem == 0 ? 1000 : rem) + 10;
+      _restTicker = Timer(Duration(milliseconds: delay), tick);
     }
 
     tick();
-    if (_restLeft.value != 0) _restTicker = Timer.periodic(const Duration(milliseconds: 250), (_) => tick());
   }
 
   Future<void> _startRestTimer(int seconds) async {
