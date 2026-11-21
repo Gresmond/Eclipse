@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart' show AllowedArgumentCount;
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/backups.dart';
@@ -709,7 +710,7 @@ void main() {
     final dir = Directory.systemTemp.createTempSync('eclipse-sync');
     addTearDown(() => dir.deleteSync(recursive: true));
     join();
-    pc.store.addExercise('Squat', MuscleGroup.quads, bodyweight: false);
+    pc.store.raw.execute("INSERT INTO weigh_ins(uid, kg) VALUES('2026-10-24', 72.5)");
     final path = '${dir.path}/laptop.db';
     var old = Store.open(path);
     SyncEngine(old, 'laptop')
@@ -717,18 +718,19 @@ void main() {
       ..mergeAll([(pc.engine.changesSince(0).values.expand((d) => d).toList(), 'pc')]);
     pc.engine.flush();
     SyncEngine(old, 'laptop').mergeAll([(pc.engine.changesSince(0).values.expand((d) => d).toList(), 'pc')]);
-    // As a version from before training: the change kept, but not the row.
-    old.raw.execute('DELETE FROM exercises');
+    // As v37 before weigh-ins: the change kept in sync_reg, but not the row/table.
+    old.raw.execute('DROP TABLE weigh_ins');
+    old.raw.execute('DROP TABLE routines');
     old.raw.execute('DELETE FROM sync_dirty');
-    old.raw.execute('PRAGMA user_version = 21');
+    old.raw.execute('PRAGMA user_version = 37');
     old.close();
 
     final upgraded = Store.open(path);
     addTearDown(upgraded.close);
     final engine = SyncEngine(upgraded, 'laptop');
-    expect(upgraded.exercises().map((e) => e.name), ['Squat']);
+    expect(upgraded.raw.select('SELECT uid, kg FROM weigh_ins').single['kg'], 72.5);
     pc.engine.mergeAll([(engine.changesSince(0).values.expand((d) => d).toList(), 'laptop')]);
-    expect(pc.store.exercises().map((e) => e.name), ['Squat'], reason: 'not deleted everywhere');
+    expect(pc.store.raw.select('SELECT uid, kg FROM weigh_ins').single['kg'], 72.5, reason: 'not deleted everywhere');
   });
 
   test('a change of a kind a newer version makes is kept, and never stops sync', () {
@@ -1454,7 +1456,637 @@ void main() {
       });
     }
   });
+
+  test('Drive changes retain untouched files and follow pagination through deletions', () async {
+    final pages = <String>[];
+    final drive = AppDataFolder(
+      '',
+      accessToken: () async => ('token', 3600),
+      send: (method, uri, {body, type, bearer}) async {
+        pages.add(uri.queryParameters['pageToken']!);
+        final reply = pages.length == 1
+            ? {
+                'changes': [
+                  {'fileId': 'old', 'removed': true},
+                ],
+                'nextPageToken': 'b',
+              }
+            : {
+                'changes': [
+                  {
+                    'fileId': 'new',
+                    'file': {'id': 'new', 'name': 'added', 'modifiedTime': 'v2'},
+                  },
+                ],
+                'newStartPageToken': 'c',
+              };
+        return (200, Uint8List.fromList(utf8.encode(jsonEncode(reply))));
+      },
+    );
+    final (token, files) = await drive.inventory('a', const [
+      DriveFile(id: 'keep', name: 'keep', modified: 'v1'),
+      DriveFile(id: 'old', name: 'old', modified: 'v1'),
+    ]);
+    expect(pages, ['a', 'b']);
+    expect(token, 'c');
+    expect(files.map((f) => f.id), ['keep', 'new']);
+  });
+
+  test('incomplete Drive changes rebuild the inventory before removing local files', () async {
+    final drive = AppDataFolder(
+      '',
+      accessToken: () async => ('token', 3600),
+      send: (method, uri, {body, type, bearer}) async {
+        final reply = switch (uri.path) {
+          '/drive/v3/changes' => {
+            'changes': [
+              {'fileId': 'keep'},
+            ],
+            'newStartPageToken': 'partial',
+          },
+          '/drive/v3/changes/startPageToken' => {'startPageToken': 'fresh'},
+          '/drive/v3/files' => {
+            'files': [
+              {'id': 'keep', 'name': 'preserved', 'modifiedTime': 'v1'},
+            ],
+          },
+          _ => throw StateError('Unexpected request to ${uri.path}'),
+        };
+        return (200, Uint8List.fromList(utf8.encode(jsonEncode(reply))));
+      },
+    );
+    final (token, files) = await drive.inventory('old', const []);
+    expect((token, files.single.id), ('fresh', 'keep'));
+  });
+
+  Directory syncTempDir() {
+    final d = Directory.systemTemp.createTempSync('eclipse-sync-extra-');
+    addTearDown(() {
+      if (d.existsSync()) d.deleteSync(recursive: true);
+    });
+    return d;
+  }
+
+  List<List<Object?>> sentOf(SyncEngine e) => e.changesSince(0).values.expand((v) => v).toList();
+
+  test('todo_history_delete trigger syncs undone task deletions', () async {
+    final dir = syncTempDir();
+    final pcPath = p.join(dir.path, 'pc.db');
+    final migrated = Store.open(pcPath);
+    addTearDown(migrated.close);
+    expect(migrated.raw.select('PRAGMA user_version').single.columnAt(0), Store.schemaVersion);
+    expect(
+      migrated.raw.select("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'todo_history_delete'"),
+      hasLength(1),
+    );
+
+    final laptopStore = Store.memory();
+    addTearDown(laptopStore.close);
+    final drive = _SafetySyncDrive();
+    final day1 = DateTime(2026, 11, 18);
+    var currentDay = day1;
+    final pcSync = SyncService.load(Directory(p.join(dir.path, 'pc-home'))..createSync(), migrated, connect: (_) => drive);
+    final laptopSync = SyncService.load(
+      Directory(p.join(dir.path, 'laptop-home'))..createSync(),
+      laptopStore,
+      connect: (_) => drive,
+    );
+    addTearDown(pcSync.dispose);
+    addTearDown(laptopSync.dispose);
+
+    const account = GoogleAccount(email: 'a@example.com', id: 'a', refreshToken: 'R');
+    await pcSync.look(account);
+    await pcSync.turnOn(account, join: false);
+    await laptopSync.look(account);
+    await laptopSync.turnOn(account, join: true);
+
+    final pcState = AppState(migrated, sync: pcSync, clock: () => currentDay);
+    final laptopState = AppState(laptopStore, sync: laptopSync, clock: () => currentDay);
+    addTearDown(pcState.dispose);
+    addTearDown(laptopState.dispose);
+
+    pcState.addTodo(TodoScope.today, 'Buy milk');
+    final item = pcState.todos[TodoScope.today]!.single;
+    await pcSync.run();
+    await laptopSync.run();
+    expect(laptopStore.todoListsOn(day1)[TodoScope.today]!.map((t) => t.text), ['Buy milk']);
+
+    currentDay = DateTime(2026, 11, 19);
+    pcState.checkDate();
+    laptopState.checkDate();
+    pcState.removeTodo(TodoScope.today, pcState.todos[TodoScope.today]!.single);
+    await pcSync.run();
+    await laptopSync.run();
+    expect(laptopStore.todoListsOn(currentDay)[TodoScope.today], isEmpty);
+
+    pcState.undo();
+    expect(pcState.todos[TodoScope.today]!.map((t) => t.text), ['Buy milk']);
+    await pcSync.run();
+    await laptopSync.run();
+
+    expect(laptopStore.todos(TodoScope.today, dateKey(currentDay)).map((t) => t.text), ['Buy milk']);
+    final historyRows = laptopStore.raw.select('SELECT day, snapshot FROM todo_history WHERE uid = ?', [item.uid]);
+    expect(
+      historyRows.any((r) => r['day'] == dateKey(currentDay) && (jsonDecode(r['snapshot'] as String)['deleted'] == true)),
+      isFalse,
+    );
+  });
+
+  test('SyncEngine handles weak writes under clock skew, flushGradually, missing training_set day, rollback caches, and join cleanup', () async {
+    final pcStore = Store.memory();
+    final laptopStore = Store.memory();
+    addTearDown(pcStore.close);
+    addTearDown(laptopStore.close);
+
+    var pcClock = 5000;
+    var laptopClock = 4500;
+    final pc = SyncEngine(pcStore, 'pc', clock: () => pcClock);
+    final laptop = SyncEngine(laptopStore, 'laptop', clock: () => laptopClock);
+
+    pcStore.setSetting('restWeekends', '0');
+    pc.claimAll();
+    laptop.mergeAll([(pc.changesSince(0).values.expand((d) => d), 'pc')]);
+
+    pcStore.weak(() => pcStore.ensureMonth(2026, 12));
+    pcStore.weak(() {
+      pcStore.initializeMonth(2026, 12);
+    });
+    laptop.mergeAll([(pc.changesSince(0).values.expand((d) => d), 'pc')]);
+
+    pcStore.setSleepNote(2026, 12, SleepItem.riseEarly, '07:00');
+    pc.flush();
+    laptop.mergeAll([(pc.changesSince(0).values.expand((d) => d), 'pc')]);
+    laptopStore.weak(() => laptopStore.setSleepNote(2026, 12, SleepItem.riseEarly, '06:30'));
+    pc.mergeAll([(laptop.changesSince(0).values.expand((d) => d), 'laptop')]);
+    expect(pcStore.sleepNote(2026, 12, SleepItem.riseEarly), '06:30');
+    expect(laptopStore.sleepNote(2026, 12, SleepItem.riseEarly), '06:30');
+
+    pcStore.setSleepNote(2026, 12, SleepItem.sleepEarly, '22:00');
+    pc.flush();
+    laptopStore.weak(() => laptopStore.setSleepNote(2026, 12, SleepItem.sleepEarly, '22:30'));
+    final pcOut = pc.changesSince(0).values.expand((d) => d).toList();
+    final laptopOut = laptop.changesSince(0).values.expand((d) => d).toList();
+    pc.mergeAll([(laptopOut, 'laptop')]);
+    laptop.mergeAll([(pcOut, 'pc')]);
+    expect(pcStore.sleepNote(2026, 12, SleepItem.sleepEarly), '22:00');
+    expect(laptopStore.sleepNote(2026, 12, SleepItem.sleepEarly), '22:00');
+
+    for (var i = 0; i < 60; i++) {
+      pcStore.setJournal('2026-01-${(i % 28 + 1).toString().padLeft(2, '0')}', 'Note $i');
+    }
+    await pc.flushGradually();
+    expect(pcStore.raw.select('SELECT 1 FROM sync_dirty'), isEmpty);
+
+    final badSetReg = [
+      ['training_set', 'ts1', '_', jsonEncode(true), 9000, 'other', {'other': 1}],
+      ['training_set', 'ts1', 'exercise', jsonEncode('ex1'), 9000, 'other', {'other': 1}],
+      ['training_set', 'ts1', 'position', jsonEncode(0), 9000, 'other', {'other': 1}],
+      ['training_set', 'ts1', 'reps', jsonEncode(5), 9000, 'other', {'other': 1}],
+    ];
+    laptop.mergeAll([(badSetReg, 'other')]);
+    expect(laptopStore.raw.select("SELECT * FROM training_sets WHERE uid = 'ts1'"), isEmpty);
+
+    final freshStore = Store.memory();
+    addTearDown(freshStore.close);
+    final fresh = SyncEngine(freshStore, 'pc', clock: () => 20000);
+    final failingBatch = [
+      ['todo', 'bad-ts', 'text', jsonEncode('x'), 9999999999999, 'other', {'pc': 999999}],
+      ['entry', 'no-slash', 'status', jsonEncode(1), 9999999999999, 'other', {'pc': 999999}],
+    ];
+    final res = fresh.mergeAll([(failingBatch, 'other')]);
+    expect(res.failed, {0});
+    freshStore.setJournal('2026-11-19', 'After rollback');
+    fresh.flush();
+    expect(fresh.latest, lessThan(999999));
+
+    pcStore.setSetting(StoreTodos.walkedSetting, '{}');
+    pcStore.setSetting(StoreTodos.walkedHolidaysSetting, '[]');
+    pcStore.setSetting(StoreTodos.pausedTimesSetting, '["r1@2026-11-19"]');
+    pc.clearForJoining();
+    expect(pcStore.setting(StoreTodos.walkedSetting), isNull);
+    expect(pcStore.setting(StoreTodos.walkedHolidaysSetting), isNull);
+    expect(pcStore.setting(StoreTodos.pausedTimesSetting), isNull);
+  });
+
+  test('sync register validation rejects invalid dates, months, weights, muscles, positions, and task history', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final dir = syncTempDir();
+    final folder = SyncFolder(dir, 'pc', 'PC');
+    final invalidCases = <List<Object?>>[
+      ['entry', '2026-02-31/h1', 'status', jsonEncode(1), 1, 'other', {'other': 1}],
+      ['habit_month', '2026-13', 'initialized', jsonEncode(true), 1, 'other', {'other': 1}],
+      ['training_set', 's1', 'weight', jsonEncode(-5), 1, 'other', {'other': 1}],
+      ['exercise', 'e1', 'muscle', jsonEncode('wings'), 1, 'other', {'other': 1}],
+      ['month_habit', '2026-11/h1', 'position', jsonEncode(-1), 1, 'other', {'other': 1}],
+      [
+        'todo_history',
+        '2026-11-19/t1',
+        'snapshot',
+        jsonEncode(jsonEncode({'scope': 'today', 'text': 'x', 'period': 'bad', 'since': '2026-11-19', 'done': 0, 'carried': 0, 'deleted': false})),
+        1,
+        'other',
+        {'other': 1},
+      ],
+    ];
+    for (final (i, reg) in invalidCases.indexed) {
+      final sub = Directory(p.join(dir.path, 'case$i'))..createSync();
+      final f = SyncFolder(sub, 'pc', 'PC');
+      File(p.join(sub.path, 'other', '2026-11-19.json'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(jsonEncode({'version': 1, 'name': 'Other', 'registers': [reg]}));
+      f.read(SyncEngine(store, 'pc'));
+      expect(f.unread, {'Other'}, reason: 'case $i should be rejected: $reg');
+    }
+    expect(folder.hasOthers, isFalse);
+  });
+
+  test('AppDataFolder uses random boundaries, octet-stream for .db, coalesces bearer refreshes, retries 429/5xx, and keeps oldest journal duplicate', () async {
+    final calls = <(String method, Uri uri, String? type, List<int>? body, String? bearer)>[];
+    var refreshCount = 0;
+    var listAttempt = 0;
+    final folder = AppDataFolder(
+      'refresh-token',
+      send: (method, uri, {body, type, bearer}) async {
+        calls.add((method, uri, type, body, bearer));
+        if (uri.host == 'oauth2.googleapis.com') {
+          refreshCount++;
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          return (200, Uint8List.fromList(utf8.encode(jsonEncode({'access_token': 'tok-$refreshCount', 'expires_in': 3600}))));
+        }
+        if (method == 'GET' && uri.path == '/drive/v3/files' && (uri.queryParameters['spaces'] == 'appDataFolder')) {
+          listAttempt++;
+          if (listAttempt == 1) return (429, Uint8List(0));
+          if (listAttempt == 2) return (503, Uint8List(0));
+          return (200, Uint8List.fromList(utf8.encode(jsonEncode({'files': []}))));
+        }
+        if (uri.queryParameters['q']?.contains('mimeType =') == true) {
+          return (
+            200,
+            Uint8List.fromList(
+              utf8.encode(
+                jsonEncode({
+                  'files': [
+                    {'id': 'year-old', 'name': '2026'},
+                    {'id': 'year-new', 'name': '2026'},
+                  ],
+                }),
+              ),
+            ),
+          );
+        }
+        if (uri.queryParameters['q']?.contains('year-old') == true) {
+          return (
+            200,
+            Uint8List.fromList(
+              utf8.encode(
+                jsonEncode({
+                  'files': [
+                    {'id': 'file-old', 'name': '2026-11-19.md', 'md5Checksum': 'abc'},
+                    {'id': 'file-new', 'name': '2026-11-19.md', 'md5Checksum': 'def'},
+                  ],
+                }),
+              ),
+            ),
+          );
+        }
+        return (200, Uint8List.fromList(utf8.encode(jsonEncode({'id': 'u1', 'name': 'backup.db', 'modifiedTime': '2026-11-19T00:00:00Z'}))));
+      },
+      wait: (_) async {},
+    );
+
+    final results = await Future.wait([folder.list(), folder.list()]);
+    expect(results, [[], []]);
+    expect(refreshCount, 1);
+
+    await folder.upload('backup_pc_2026-11-19.db', [1, 2, 3]);
+    await folder.upload('backup_pc_2026-11-20.db', [4, 5, 6]);
+    final dbPosts = calls.where((c) => c.$1 == 'POST' && c.$2.path == '/upload/drive/v3/files').toList();
+    expect(dbPosts, hasLength(2));
+    final b1 = RegExp(r'boundary=([^\s;]+)').firstMatch(dbPosts[0].$3!)!.group(1)!;
+    final b2 = RegExp(r'boundary=([^\s;]+)').firstMatch(dbPosts[1].$3!)!.group(1)!;
+    expect(b1, isNot(b2));
+    expect(utf8.decode(dbPosts[0].$4!, allowMalformed: true), contains('Content-Type: application/octet-stream'));
+    await folder.upload('backup_pc_2026-11-19.db', [7, 8], id: 'existing-id');
+    final dbPatch = calls.last;
+    expect(dbPatch.$1, 'PATCH');
+    expect(dbPatch.$3, 'application/octet-stream');
+
+    final (files, years) = await folder.listJournal('root-folder');
+    expect(years['2026'], 'year-old');
+    expect(files['2026/2026-11-19.md'], ('file-old', 'abc'));
+  });
+
+  test('SyncService redacts sync.json.damaged with 0600 perms and look() does not wipe disk before turnOn()', () async {
+    final dir = syncTempDir();
+    final home = Directory(p.join(dir.path, 'home'))..createSync();
+    final syncFile = File(p.join(home.path, 'sync.json'))
+      ..writeAsStringSync(jsonEncode({'refresh': '1//super-secret', 'machine': 123}));
+    Process.runSync('chmod', ['644', syncFile.path]);
+
+    final store = Store.memory();
+    addTearDown(store.close);
+    final drive = _SafetySyncDrive();
+    await drive.upload('other_2026-11-19.json', utf8.encode(jsonEncode({'version': 1, 'name': 'Other', 'registers': []})));
+
+    final service = SyncService.load(home, store, connect: (_) => drive);
+    addTearDown(service.dispose);
+    final damagedFile = File('${syncFile.path}.damaged');
+    expect(damagedFile.existsSync(), isTrue);
+    final damagedText = damagedFile.readAsStringSync();
+    expect(damagedText, isNot(contains('1//super-secret')));
+    expect(damagedText, contains('<redacted>'));
+    final mode = damagedFile.statSync().mode & 0x1FF;
+    expect(mode, 0x180);
+
+    await service.folder.disk.writeBytes('pc', '2026-11-19.json', utf8.encode('{"cached":true}'));
+    final hasOthers = await service.look(const GoogleAccount(email: 'a@example.com', id: 'a', refreshToken: 'R'));
+    expect(hasOthers, isTrue);
+    expect(service.folder.disk.exists('pc', '2026-11-19.json'), isTrue);
+  });
+
+  test('SyncService.stop() mid-_copyToDrive aborts cleanly without invoking afterDriveCopy', () async {
+    final dir = syncTempDir();
+    final home = Directory(p.join(dir.path, 'home'))..createSync();
+    final store = Store.memory();
+    addTearDown(store.close);
+    final drive = _SafetySyncDrive();
+    final service = SyncService.load(home, store, connect: (_) => drive);
+    addTearDown(service.dispose);
+
+    const account = GoogleAccount(email: 'a@example.com', id: 'a', refreshToken: 'R');
+    await service.look(account);
+    await service.turnOn(account, join: false);
+    service.copiesToDrive = true;
+
+    var afterCopyCalled = false;
+    service.afterDriveCopy = () => afterCopyCalled = true;
+    final gate = Completer<void>();
+    drive.backupUploadGate = gate;
+
+    final running = service.run();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    service.stop();
+    gate.complete();
+    await running;
+
+    expect(afterCopyCalled, isFalse);
+    expect(service.hasDriveCopy, isFalse);
+    expect(service.error, isNull);
+  });
+
+  test('signInWithGoogle starts listening before openUrl runs and respects cancel', () async {
+    await HttpOverrides.runWithHttpOverrides(() async {
+      late String callbackStatus;
+      await expectLater(
+        () => signInWithGoogle(
+          clientId: 'test-client',
+          clientSecret: 'test-secret',
+          openUrl: (url) async {
+            final authUri = Uri.parse(url);
+            final redirect = Uri.parse(authUri.queryParameters['redirect_uri']!);
+            final stateParam = authUri.queryParameters['state']!;
+            final callbackUri = redirect.replace(queryParameters: {'error': 'access_denied', 'state': stateParam});
+            final client = HttpClient();
+            try {
+              final req = await client.getUrl(callbackUri);
+              final res = await req.close();
+              await res.drain<void>();
+              callbackStatus = '${res.statusCode}';
+            } finally {
+              client.close(force: true);
+            }
+          },
+        ),
+        throwsA(isA<DriveError>().having((e) => e.message, 'message', contains('cancelled'))),
+      );
+      expect(callbackStatus, '200');
+
+      final cancel = Completer<void>();
+      await expectLater(
+        () => signInWithGoogle(
+          clientId: 'test-client',
+          clientSecret: 'test-secret',
+          cancel: cancel.future,
+          openUrl: (_) async {
+            cancel.complete();
+          },
+        ),
+        throwsA(isA<DriveError>().having((e) => e.message, 'message', 'Sign-in cancelled.')),
+      );
+    }, _SyncLoopbackHttpOverrides());
+  });
+
+  test('account switching is blocked until an explicit transfer, including after restart', () async {
+    final temp = syncTempDir();
+    final store = Store.memory();
+    addTearDown(store.close);
+    final a = _SafetySyncDrive(), b = _SafetySyncDrive();
+    SyncService load() => SyncService.load(temp, store, connect: (token) => token == 'A' ? a : b);
+    var service = load();
+    const accountA = GoogleAccount(email: 'a@example.com', id: 'google-a', refreshToken: 'A');
+    const accountB = GoogleAccount(email: 'b@example.com', id: 'google-b', refreshToken: 'B');
+    store.setJournal('2026-10-25', 'Private to account A');
+    await service.look(accountA);
+    await service.turnOn(accountA, join: false);
+    await service.turnOff();
+    service.dispose();
+    service = load();
+    addTearDown(service.dispose);
+    expect(service.isReturning(accountA), isTrue);
+    expect(service.needsAccountChoice(accountB), isTrue);
+    await service.look(accountB);
+    await expectLater(service.turnOn(accountB, join: false), throwsA(isA<DriveError>()));
+    expect(b.files, isEmpty);
+    await service.turnOn(accountB, join: false, transfer: true);
+    expect(b.files.values.any((f) => utf8.decode(f.$2).contains('Private to account A')), isTrue);
+  });
+
+  test('joining a different account replaces local history after the backup callback', () async {
+    final temp = syncTempDir();
+    final store = Store.memory();
+    addTearDown(store.close);
+    final a = _SafetySyncDrive(), b = _SafetySyncDrive();
+    final remote = Store.memory();
+    addTearDown(remote.close);
+    remote.setJournal('2026-10-25', 'B history');
+    final engine = SyncEngine(remote, 'remote')..claimAll();
+    await b.upload('remote_2026-10-25.json', utf8.encode(jsonEncode({'name': 'remote', 'registers': sentOf(engine)})));
+    final service = SyncService.load(temp, store, connect: (token) => token == 'A' ? a : b);
+    addTearDown(service.dispose);
+    const accountA = GoogleAccount(email: 'a@example.com', refreshToken: 'A');
+    const accountB = GoogleAccount(email: 'b@example.com', refreshToken: 'B');
+    store.setJournal('2026-10-24', 'A history');
+    await service.look(accountA);
+    await service.turnOn(accountA, join: false);
+    await service.turnOff();
+    service.beforeJoin = () => expect(store.journal('2026-10-24'), 'A history');
+    expect(await service.look(accountB), isTrue);
+    await service.turnOn(accountB, join: true);
+    expect(store.journal('2026-10-24'), '');
+    expect(store.journal('2026-10-25'), 'B history');
+    expect(b.files.values.any((f) => utf8.decode(f.$2).contains('A history')), isFalse);
+  });
+
+  test('journal-only sync preserves unrelated caches and entry sync refreshes marks', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final service = SyncService.load(syncTempDir(), store);
+    addTearDown(service.dispose);
+    final state = AppState(store, sync: service, clock: () => DateTime(2026, 10, 25));
+    addTearDown(state.dispose);
+    final habits = state.habits;
+    final todos = state.todos[TodoScope.today];
+    store.setJournal('2026-10-25', 'Incoming');
+    service.onIncoming!(Incoming({('journal', '2026-10-25')}, {'other'}));
+    expect(identical(state.habits, habits), isTrue);
+    expect(identical(state.todos[TodoScope.today], todos), isTrue);
+    final uid = store.raw.select('SELECT uid FROM habits WHERE id = ?', [habits.first.id]).first['uid'];
+    store.setEntry('2026-10-25', habits.first.id, HabitStatus.done);
+    service.onIncoming!(Incoming({('entry', '2026-10-25/$uid')}, {'other'}));
+    expect(state.statusOf(state.today, habits.first), HabitStatus.done);
+    expect(identical(state.habits, habits), isTrue);
+  });
+
+  test('exclusive data changes wait for an in-flight sync round', () async {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final drive = _SafetySyncDrive();
+    final service = SyncService.load(syncTempDir(), store, connect: (_) => drive);
+    addTearDown(service.dispose);
+    const account = GoogleAccount(email: 'a@example.com', refreshToken: 'A');
+    await service.look(account);
+    await service.turnOn(account, join: false);
+    final gate = Completer<void>();
+    drive.listGate = gate;
+    final running = service.run();
+    var ran = false;
+    final change = service.exclusive(() async {
+      ran = true;
+      expect(service.busy, isFalse);
+    });
+    await Future<void>.delayed(Duration.zero);
+    expect(ran, isFalse);
+    gate.complete();
+    await running;
+    await change;
+    expect(ran, isTrue);
+  });
+
+  test('a stopped sync ignores late network failures and retains its sign-in', () async {
+    final drive = _SafetySyncDrive();
+    final store = Store.memory();
+    addTearDown(store.close);
+    final service = SyncService.load(syncTempDir(), store, connect: (_) => drive);
+    addTearDown(service.dispose);
+    const account = GoogleAccount(email: 'a@example.com', refreshToken: 'A');
+    await service.look(account);
+    await service.turnOn(account, join: false);
+    final gate = Completer<void>();
+    drive.listGate = gate;
+    final running = service.run();
+    service.stop();
+    gate.completeError(const DriveError('Late sign-out', signedOut: true));
+    await running;
+    expect(service.isOn, isTrue);
+    expect(service.error, isNull);
+  });
 }
+
+class _SafetySyncDrive implements SyncDrive, JournalDrive, CopiesDrive {
+  final files = <String, (String name, List<int> bytes, String modified)>{};
+  final journalFiles = <String, (String name, String parent, List<int> bytes, String md5)>{};
+  final folders = <String, (String name, String? parent)>{};
+  final deleted = <String>[];
+  int _seq = 0;
+  Completer<void>? listGate;
+  Completer<void>? backupUploadGate;
+
+  @override
+  Future<List<DriveFile>> list() async {
+    if (listGate case final gate?) await gate.future;
+    return [for (final e in files.entries) DriveFile(id: e.key, name: e.value.$1, modified: e.value.$3)];
+  }
+
+  @override
+  Future<List<int>> download(String id) async => files[id]!.$2;
+
+  @override
+  Future<DriveFile> upload(String name, List<int> bytes, {String? id}) async {
+    if (name.startsWith('backup_') && backupUploadGate != null) {
+      await backupUploadGate!.future;
+    }
+    final key = id ?? 'f${_seq++}';
+    final modified = '${++_seq}';
+    files[key] = (name, bytes, modified);
+    return DriveFile(id: key, name: name, modified: modified);
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    deleted.add(id);
+    files.remove(id);
+  }
+
+  @override
+  Future<bool> exists(String id) async => folders.containsKey(id);
+
+  @override
+  Future<String?> findFolder(String name, {String? parent}) async {
+    for (final e in folders.entries) {
+      if (e.value.$1 == name && e.value.$2 == parent) return e.key;
+    }
+    return null;
+  }
+
+  @override
+  Future<String> makeFolder(String name, {String? parent}) async {
+    final id = 'dir${_seq++}';
+    folders[id] = (name, parent);
+    return id;
+  }
+
+  @override
+  Future<(String, String)?> findFile(String name, String folder) async {
+    for (final e in journalFiles.entries) {
+      if (e.value.$1 == name && e.value.$2 == folder) return (e.key, e.value.$4);
+    }
+    return null;
+  }
+
+  @override
+  Future<(Map<String, (String, String)>, Map<String, String>)> listJournal(String folder) async {
+    final years = <String, String>{};
+    for (final e in folders.entries) {
+      if (e.value.$2 == folder) years.putIfAbsent(e.value.$1, () => e.key);
+    }
+    final filesOut = <String, (String, String)>{};
+    for (final y in years.entries) {
+      for (final f in journalFiles.entries) {
+        if (f.value.$2 == y.value) {
+          filesOut.putIfAbsent('${y.key}/${f.value.$1}', () => (f.key, f.value.$4));
+        }
+      }
+    }
+    return (filesOut, years);
+  }
+
+  @override
+  Future<(String, String)> writeFile(String name, String folder, List<int> bytes, {String? id}) async {
+    final key = id ?? 'j${_seq++}';
+    final sum = md5.convert(bytes).toString();
+    journalFiles[key] = (name, folder, bytes, sum);
+    return (key, sum);
+  }
+
+  @override
+  Future<void> bin(String id) async {
+    folders.remove(id);
+    journalFiles.remove(id);
+  }
+}
+
+class _SyncLoopbackHttpOverrides extends HttpOverrides {}
 
 /// A computer in the randomized simulation, used the way the app uses it.
 class _Sim {

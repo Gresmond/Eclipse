@@ -147,7 +147,7 @@ class _RenderKeepTop extends RenderShiftedBox {
     child.layout(constraints.loosen().copyWith(maxHeight: double.infinity), parentUsesSize: true);
     if (child.size.height > size.height) child.layout(constraints.loosen(), parentUsesSize: true);
     final spare = size - child.size as Offset;
-    final centre = const PixelCentre().alongOffset(spare);
+    final centre = Offset(pixelRound(spare.dx / 2), pixelRound(spare.dy / 2));
     if (_top == null || _room != size.height) {
       _top = centre.dy;
       _room = size.height;

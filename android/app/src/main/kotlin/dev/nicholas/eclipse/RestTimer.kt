@@ -13,12 +13,15 @@ import android.media.RingtoneManager
 
 internal object RestTimer {
     private const val DEADLINE = "deadline"
-    private const val COUNTDOWN = "rest-countdown"
+    private const val LEGACY_COUNTDOWN = "rest-countdown"
+    private const val COUNTDOWN = "rest-countdown-v2"
     private const val ALERT = "rest-alert"
     private const val COUNTDOWN_ID = 710
     private const val ALERT_ID = 711
     private const val TAG = "workout-rest"
     private const val ALARM_REQUEST = 710
+    private const val CANCEL_REQUEST = 711
+    const val ACTION_CANCEL = "dev.nicholas.eclipse.REST_CANCEL"
 
     private fun prefs(context: Context) = context.getSharedPreferences("workout-rest", Context.MODE_PRIVATE)
 
@@ -26,6 +29,13 @@ internal object RestTimer {
         context,
         ALARM_REQUEST,
         Intent(context, RestTimerReceiver::class.java).putExtra(DEADLINE, deadline),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    private fun cancelIntent(context: Context) = PendingIntent.getBroadcast(
+        context,
+        CANCEL_REQUEST,
+        Intent(context, RestTimerReceiver::class.java).setAction(ACTION_CANCEL),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
@@ -61,8 +71,13 @@ internal object RestTimer {
         val deadline = deadline(context) ?: return
         val notifications = context.getSystemService(NotificationManager::class.java)
         if (!notifications.areNotificationsEnabled()) return
+        notifications.deleteNotificationChannel(LEGACY_COUNTDOWN)
         notifications.createNotificationChannel(
-            NotificationChannel(COUNTDOWN, "Rest countdown", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(COUNTDOWN, "Rest countdown", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                setSound(null, null)
+                enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            },
         )
         notifications.notify(
             TAG,
@@ -73,6 +88,8 @@ internal object RestTimer {
                 .setUsesChronometer(true)
                 .setChronometerCountDown(true)
                 .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .addAction(Notification.Action.Builder(null, "Cancel", cancelIntent(context)).build())
                 .build(),
         )
     }
@@ -112,5 +129,11 @@ internal object RestTimer {
 }
 
 class RestTimerReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) = RestTimer.finish(context, intent)
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == RestTimer.ACTION_CANCEL) {
+            RestTimer.cancel(context)
+        } else {
+            RestTimer.finish(context, intent)
+        }
+    }
 }

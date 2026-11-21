@@ -1,11 +1,14 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:flutter/material.dart' show Theme;
+import 'package:flutter/material.dart' show Size, Theme;
 import 'package:sqlite3/sqlite3.dart' show sqlite3;
+import 'package:eclipse/phone/phone_platform.dart';
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/data/dev_install.dart';
 import 'package:eclipse/data/store.dart' show DatabaseTooNewException;
@@ -74,5 +77,55 @@ void main() {
   testWidgets('the error screen wears the saved theme', (tester) async {
     await tester.pumpWidget(StartupErrorApp(error: const FileSystemException('Disk is full'), themeName: 'Sunset'));
     expect(Theme.of(tester.element(find.text('Quit'))).extension<Palette>()!.name, 'Sunset');
+  });
+
+  testWidgets('StartupErrorApp renders retry and phone update prompt when database is too new', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    var retried = false;
+    await tester.pumpWidget(
+      StartupErrorApp(
+        error: StateError('disk issue'),
+        phoneUpdater: PhoneUpdater(installed: '1.0.0'),
+        onRetry: () => retried = true,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Try again'), findsOneWidget);
+    await tester.tap(find.text('Try again'));
+    expect(retried, isTrue);
+
+    final updater = PhoneUpdater(
+      installed: '1.0.0',
+      installedBuild: 1,
+      fetch: (_) async => (
+        200,
+        utf8.encode(
+          jsonEncode({
+            'tag_name': 'v1.1.0',
+            'body': '<!-- eclipse-build: 1 -->',
+            'assets': [
+              {
+                'name': 'Eclipse.apk',
+                'browser_download_url': 'https://github.com/Gresmond/Eclipse/releases/download/v1.1.0/Eclipse.apk',
+                'digest': 'sha256:${sha256.convert([1]).toString()}',
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+    await updater.check();
+    await tester.pumpWidget(
+      StartupErrorApp(
+        error: const DatabaseTooNewException(),
+        phoneUpdater: updater,
+        onRetry: () {},
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1.1.0'), findsOneWidget);
   });
 }

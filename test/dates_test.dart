@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
+import 'package:eclipse/data/system_time_zone.dart';
 import 'package:eclipse/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -172,4 +177,118 @@ void main() {
       }
     });
   });
+
+  test('Repeat.on/next normalize non-midnight dates and RepeatRule.decode bounds every', () {
+    final r = Repeat(
+      uid: 'r1',
+      text: 'Daily',
+      rule: const RepeatRule.every(2),
+      start: DateTime(2026, 11, 1, 15, 30),
+      until: DateTime(2026, 11, 5, 8, 0),
+    );
+    expect(r.on(DateTime(2026, 11, 5, 23, 59)), isTrue);
+    expect(r.next(DateTime(2026, 11, 1, 20, 0)), DateTime(2026, 11, 1));
+    expect(RepeatRule.decode('days:1001'), isNull);
+    expect(RepeatRule.decode('days:1000'), const RepeatRule.every(1000));
+  });
+
+  test('parseClock and dayStartHour validate ranges and setDayStartHour bumps todosRevision', () {
+    expect(parseClock('25:00'), isNull);
+    expect(parseClock('12:60'), isNull);
+    expect(parseClock('13:00 pm'), isNull);
+    expect(parseClock('08:30'), 510);
+    expect(parseDayStartHour('24'), 0);
+    expect(parseDayStartHour('-1'), 0);
+    expect(parseDayStartHour('4'), 4);
+
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.addHabit(2026, 11, 'Read');
+    store.setSetting('dayStartHour', '99');
+    final state = AppState(store, clock: () => DateTime(2026, 11, 5, 2));
+    addTearDown(state.dispose);
+    expect(state.dayStartHour, 0);
+
+    final rev = state.todosRevision;
+    state.setDayStartHour(99);
+    expect(state.dayStartHour, 0);
+    state.setDayStartHour(4);
+    expect(state.dayStartHour, 4);
+    expect(state.todosRevision, greaterThan(rev));
+    expect(state.today, DateTime(2026, 11, 4));
+  });
+
+  test('TzifZone parses transitions and SystemTimeZone detects symlink zone switches', () {
+    final dir = Directory.systemTemp.createTempSync('eclipse_tzif');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final utcTransition = DateTime.utc(2026, 4, 5, 1, 0).millisecondsSinceEpoch ~/ 1000;
+    final zoneA = File('${dir.path}/zoneA')
+      ..writeAsBytesSync(
+        _buildTzifV2(
+          transitionsSeconds: [utcTransition],
+          typeIndices: [1],
+          utcOffsetsSeconds: [10 * 3600, 9 * 3600],
+        ),
+      );
+    final zoneB = File('${dir.path}/zoneB')
+      ..writeAsBytesSync(
+        _buildTzifV2(
+          transitionsSeconds: const [],
+          typeIndices: const [],
+          utcOffsetsSeconds: [-5 * 3600],
+        ),
+      );
+
+    final parsedA = TzifZone.parse(zoneA.readAsBytesSync())!;
+    expect(parsedA.offsetAt(DateTime.utc(2026, 4, 5, 0, 59)), const Duration(hours: 10));
+    expect(parsedA.offsetAt(DateTime.utc(2026, 4, 5, 1, 0)), const Duration(hours: 9));
+    expect(TzifZone.parse(Uint8List.fromList([1, 2, 3])), isNull);
+
+    final link = Link('${dir.path}/localtime')..createSync(zoneA.path);
+    final sys = SystemTimeZone.forPath(link.path)..sync();
+    final sampleUtc = DateTime.utc(2026, 5, 1, 12, 0);
+    expect(sys.currentTime(utcNow: () => sampleUtc), DateTime(2026, 5, 1, 21, 0));
+
+    link.deleteSync();
+    link.createSync(zoneB.path);
+    sys.sync();
+    expect(sys.currentTime(utcNow: () => sampleUtc), DateTime(2026, 5, 1, 7, 0));
+  });
+}
+
+Uint8List _buildTzifV2({
+  required List<int> transitionsSeconds,
+  required List<int> typeIndices,
+  required List<int> utcOffsetsSeconds,
+}) {
+  final builder = BytesBuilder();
+  void writeHeader(int timeCount, int typeCount) {
+    builder.add(ascii.encode('TZif2'));
+    builder.add(List<int>.filled(15, 0));
+    final bd = ByteData(24)
+      ..setUint32(0, 0)
+      ..setUint32(4, 0)
+      ..setUint32(8, 0)
+      ..setUint32(12, timeCount)
+      ..setUint32(16, typeCount)
+      ..setUint32(20, 1);
+    builder.add(bd.buffer.asUint8List());
+  }
+
+  writeHeader(0, 1);
+  builder.add(Uint8List(6));
+  builder.addByte(0);
+
+  writeHeader(transitionsSeconds.length, utcOffsetsSeconds.length);
+  for (final ts in transitionsSeconds) {
+    final bd = ByteData(8)..setInt64(0, ts);
+    builder.add(bd.buffer.asUint8List());
+  }
+  builder.add(typeIndices);
+  for (final offset in utcOffsetsSeconds) {
+    final bd = ByteData(6)..setInt32(0, offset);
+    builder.add(bd.buffer.asUint8List());
+  }
+  builder.addByte(0);
+  return builder.takeBytes();
 }

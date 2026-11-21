@@ -2,6 +2,8 @@ import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/theme/app_theme.dart';
+import 'package:eclipse/widgets/smooth_task_scroll.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -107,5 +109,48 @@ void main() {
     expect(task('Soon').dueDate, DateTime(2026, 10, 31));
     expect(today.isBefore(task('Soon').dueDate!), isTrue);
     expect(find.descendant(of: find.byType(FurtherAheadCard), matching: find.text('Soon')), findsOneWidget);
+  });
+
+  testWidgets('wheel and edge scrolling work during an actual task drag', (tester) async {
+    final store = Store.memory();
+    final localState = AppState(store, clock: () => DateTime(2026, 10, 26));
+    addTearDown(() {
+      localState.dispose();
+      store.close();
+    });
+    for (final item in [...localState.todos[TodoScope.today]!]) {
+      localState.removeTodo(TodoScope.today, item);
+    }
+    for (var i = 0; i < 40; i++) {
+      localState.addTodo(TodoScope.today, 'Task $i');
+    }
+    await tester.pumpWidget(
+      AppScope(
+        state: localState,
+        child: MaterialApp(
+          theme: buildTheme(palettes.first),
+          home: const Scaffold(body: SizedBox(width: 420, height: 500, child: WeekCard())),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final scroll = tester.state<ScrollableState>(
+      find.descendant(of: find.byType(SmoothTaskScroll), matching: find.byType(Scrollable)),
+    );
+    final gesture = await tester.startGesture(tester.getCenter(find.text('Task 0')));
+    await gesture.moveBy(const Offset(0, 20));
+    await tester.pump();
+    final bounds = tester.getRect(find.byType(SmoothTaskScroll));
+    await tester.sendEventToBinding(PointerScrollEvent(position: bounds.center, scrollDelta: const Offset(0, 100)));
+    await tester.pump();
+    expect(scroll.position.pixels, closeTo(100, 0.01));
+    final beforeEdge = scroll.position.pixels;
+    await gesture.moveTo(Offset(bounds.center.dx, bounds.bottom - 5));
+    await tester.pump(const Duration(milliseconds: 160));
+    expect(scroll.position.pixels, greaterThan(beforeEdge));
+    await gesture.moveTo(const Offset(600, 550));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(SmoothTaskScroll.dragPosition.value, isNull);
   });
 }

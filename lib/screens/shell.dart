@@ -23,13 +23,10 @@ import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/reminder_cards.dart';
 import '../widgets/search_dialog.dart';
-import '../widgets/smooth_gradient.dart';
 import '../widgets/sync_banner.dart';
 import '../widgets/update_banner.dart';
-import '../widgets/welcome_tour.dart';
 import 'month_view.dart';
 import 'today_view.dart';
-import 'warm_up.dart';
 import 'training_view.dart';
 import 'year_view.dart';
 
@@ -74,7 +71,7 @@ class Shell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.navigation, s.touring));
+    final state = AppScope.watch(context, (s) => s.navigation);
     final month = state.viewMonth;
 
     final hasWideGrid = kIsWeb && !state.showingTraining && (state.viewingYear || month != null);
@@ -118,8 +115,6 @@ class Shell extends StatelessWidget {
           Positioned.fill(
             child: ColoredBox(color: context.palette.background, child: page),
           ),
-          if (WarmUp.enabled) const Positioned.fill(child: WarmUp()),
-          if (state.touring) Positioned.fill(child: WelcomeTour(appearanceBuilder: (_) => const _AppearanceMenu())),
         ],
       ),
     );
@@ -261,37 +256,34 @@ class _Header extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(32, 15, 32, 11),
-      child: PixelRow(
+      child: Row(
         children: [
           // Fit the visible date, easing the right edge as its length changes.
-          TourTarget(
-            spot: TourSpot.date,
-            child: _DateButton(
-              enabled: onDay,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                // A longer date's room opens before it fades in, and a shorter
-                // one's closes only once the old has faded: never clipped.
-                child: PageSize(
-                  page: (kicker, title),
-                  // Fades with the page below it, rather than snapping first.
-                  child: FadeThrough(
-                    // Outgoing text fades without holding the old width.
-                    layoutBuilder: FadeThrough.pinTopLeft,
-                    // Tooltip enablement belongs to each fading label, so it
-                    // cannot remount the pill's size or fade animations.
-                    child: PixelTooltip(
-                      key: ValueKey((kicker, title)),
-                      message: onDay ? 'Look back at another day' : '',
-                      child: PixelFit(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ...[Text(kicker.toUpperCase(), style: capsLabel(p.inkMuted)), const SizedBox(height: 4)],
-                            Text(title, style: titleStyle),
-                          ],
-                        ),
+          _DateButton(
+            enabled: onDay,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              // A longer date's room opens before it fades in, and a shorter
+              // one's closes only once the old has faded: never clipped.
+              child: PageSize(
+                page: (kicker, title),
+                // Fades with the page below it, rather than snapping first.
+                child: FadeThrough(
+                  // Outgoing text fades without holding the old width.
+                  layoutBuilder: FadeThrough.pinTopLeft,
+                  // Tooltip enablement belongs to each fading label, so it
+                  // cannot remount the pill's size or fade animations.
+                  child: PixelTooltip(
+                    key: ValueKey((kicker, title)),
+                    message: onDay ? 'Look back at another day' : '',
+                    child: PixelFit(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ...[Text(kicker.toUpperCase(), style: capsLabel(p.inkMuted)), const SizedBox(height: 4)],
+                          Text(title, style: titleStyle),
+                        ],
                       ),
                     ),
                   ),
@@ -310,48 +302,45 @@ class _Header extends StatelessWidget {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   clipBehavior: Clip.none,
-                  child: PixelRow(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const _PageButtons(),
                       const SizedBox(width: 10),
-                      TourTarget(
-                        spot: TourSpot.tabs,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: p.tile.withValues(alpha: 0.8),
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: p.border),
-                          ),
-                          child: _TabBar(
-                            selected: elsewhere
-                                ? null
-                                : state.viewDay != null
-                                ? -1
-                                : state.viewingYear
-                                ? months.length + 1
-                                : month == null
-                                ? 0
-                                : months.indexOf(month) + 1,
-                            past: state.viewDay == null
-                                ? null
-                                : shown == DateTime(today.year, today.month, today.day - 1)
-                                ? 'Yesterday'
-                                : dayAndMonth(shown, today: today),
-                            onPast: elsewhere ? state.closePages : null,
-                            tabs: [
-                              _Tab(label: 'Today', selected: onDay && state.viewDay == null, onTap: state.showToday),
-                              for (final m in months)
-                                _Tab(
-                                  label: shortMonth(m),
-                                  selected: !elsewhere && month == m,
-                                  isCurrent: state.viewYear == today.year && m == today.month,
-                                  onTap: () => state.showMonth(m),
-                                ),
-                              _Tab(label: 'Year', selected: !elsewhere && state.viewingYear, onTap: state.showYear),
-                            ],
-                          ),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: p.tile.withValues(alpha: 0.8),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: p.border),
+                        ),
+                        child: _TabBar(
+                          selected: elsewhere
+                              ? null
+                              : state.viewDay != null
+                              ? -1
+                              : state.viewingYear
+                              ? months.length + 1
+                              : month == null
+                              ? 0
+                              : months.indexOf(month) + 1,
+                          past: state.viewDay == null
+                              ? null
+                              : shown == DateTime(today.year, today.month, today.day - 1)
+                              ? 'Yesterday'
+                              : dayAndMonth(shown, today: today),
+                          onPast: elsewhere ? state.closePages : null,
+                          tabs: [
+                            _Tab(label: 'Today', selected: onDay && state.viewDay == null, onTap: state.showToday),
+                            for (final m in months)
+                              _Tab(
+                                label: shortMonth(m),
+                                selected: !elsewhere && month == m,
+                                isCurrent: state.viewYear == today.year && m == today.month,
+                                onTap: () => state.showMonth(m),
+                              ),
+                            _Tab(label: 'Year', selected: !elsewhere && state.viewingYear, onTap: state.showYear),
+                          ],
                         ),
                       ),
                     ],
@@ -370,9 +359,9 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          const TourTarget(spot: TourSpot.settings, child: _SettingsButton()),
+          const _SettingsButton(),
           const SizedBox(width: 10),
-          const TourTarget(spot: TourSpot.appearance, child: _ThemeButton()),
+          const _ThemeButton(),
         ],
       ),
     );
@@ -857,7 +846,7 @@ class _SettingsButton extends StatelessWidget {
           child: Container(
             width: 46,
             height: 46,
-            decoration: SmoothGradientDecoration(
+            decoration: BoxDecoration(
               color: p.tile.withValues(alpha: 0.8),
               shape: BoxShape.circle,
               border: Border.all(color: p.border),
@@ -892,7 +881,7 @@ class _ThemeButton extends StatelessWidget {
             onTap: () => showFadeMenu(context, builder: (_) => const _AppearanceMenu()),
             child: Container(
               padding: const EdgeInsets.all(4),
-              decoration: SmoothGradientDecoration(
+              decoration: BoxDecoration(
                 color: p.tile.withValues(alpha: 0.8),
                 shape: BoxShape.circle,
                 border: Border.all(color: p.border),
@@ -986,7 +975,7 @@ class _Swatch extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: SmoothGradientDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(color: palette.tile, width: size * 0.08),
         gradient: SweepGradient(colors: [...palette.gradient, palette.gradient.first]),

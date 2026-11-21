@@ -37,7 +37,7 @@ class HolidaysRow extends StatelessWidget {
     ];
     Widget row(Holiday h, {required bool over}) => Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: PixelRow(
+      child: Row(
         children: [
           Icon(Icons.beach_access_rounded, size: 16, color: over ? p.inkMuted : p.accent),
           const SizedBox(width: 8),
@@ -65,7 +65,7 @@ class HolidaysRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PixelRow(
+          Row(
             children: [
               Expanded(
                 child: Column(

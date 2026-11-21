@@ -91,7 +91,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        PixelRow(
+        Row(
           children: [
             const SizedBox(width: 6),
             Expanded(
@@ -110,7 +110,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           ],
         ),
         const SizedBox(height: 4),
-        PixelRow(
+        Row(
           children: [
             for (final name in weekdayNames)
               Expanded(
@@ -126,7 +126,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
             mainAxisSize: MainAxisSize.min,
             children: [
               for (var week = 0; week < 6; week++)
-                PixelRow(
+                Row(
                   children: [
                     for (var col = 0; col < 7; col++)
                       if (week * 7 + col - lead + 1 case final d when d >= 1 && d <= days)

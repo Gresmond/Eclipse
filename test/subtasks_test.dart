@@ -424,4 +424,64 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+
+  test('nestTodo rejects completed targets and preserves from.note on future open occurrences', () {
+    final localStore = Store.memory();
+    addTearDown(localStore.close);
+    localStore.addHabit(2026, 11, 'Read');
+    final localState = AppState(localStore, clock: () => DateTime(2026, 11, 5, 9));
+    addTearDown(localState.dispose);
+
+    localState.addTodo(TodoScope.today, 'Done target');
+    localState.toggleTodo(localState.todos[TodoScope.today]!.single);
+    localState.addTodo(TodoScope.today, 'Open source');
+    expect(
+      localState.nestTodo(
+        TodoScope.today,
+        localState.todos[TodoScope.today]!.firstWhere((t) => t.text == 'Open source'),
+        TodoScope.today,
+        localState.todos[TodoScope.today]!.firstWhere((t) => t.text == 'Done target'),
+      ),
+      isFalse,
+    );
+
+    localState.addRepeat('Trip prep', const RepeatRule.every(1), DateTime(2026, 11, 5));
+    final source = localState.todos[TodoScope.today]!.firstWhere((t) => t.text == 'Open source');
+    localState.setTodoNote(TodoScope.today, source, 'Bring receipt');
+    final target = localState.todos[TodoScope.today]!.firstWhere((t) => t.text == 'Trip prep');
+    final reloadedSource = localState.todos[TodoScope.today]!.firstWhere((t) => t.text == 'Open source');
+
+    expect(localState.nestTodo(TodoScope.today, reloadedSource, TodoScope.today, target, future: true), isTrue);
+    final tomorrowOcc = localState.todos.values
+        .expand((l) => l)
+        .singleWhere((t) => t.text == 'Trip prep' && t.repeatDay == DateTime(2026, 11, 6));
+    expect(tomorrowOcc.subtasks.single.note, 'Bring receipt');
+    // Template itself remains note-free.
+    expect(localState.repeats.single.subtasks.single.note, isNull);
+  });
+
+  test('setPastTodoDone preserves today subtasks and wraps promotions in local()', () {
+    final localStore = Store.memory();
+    addTearDown(localStore.close);
+    localStore.addHabit(2026, 11, 'Read');
+    var now = DateTime(2026, 11, 4, 9);
+    final localState = AppState(localStore, clock: () => now);
+    addTearDown(localState.dispose);
+
+    localState.addTodo(TodoScope.today, 'Project');
+    final yTask = localState.todos[TodoScope.today]!.single;
+    localState.setTodoSubtasks(TodoScope.today, yTask, const [TodoSubtask('One')]);
+
+    now = DateTime(2026, 11, 5, 9);
+    localState.checkDate();
+    final todayTask = localState.todos[TodoScope.today]!.single;
+    localState.setTodoSubtasks(TodoScope.today, todayTask, const [TodoSubtask('One'), TodoSubtask('Two')]);
+
+    final yesterday = DateTime(2026, 11, 4);
+    final pastItem = localState.todosOn(TodoScope.today, yesterday).single;
+    localState.toggleTodo(pastItem, day: yesterday);
+    final liveAfter = localStore.todos(TodoScope.today, dateKey(yesterday)).single;
+    expect(liveAfter.done, isTrue);
+    expect(liveAfter.subtasks.map((s) => (s.text, s.done)), [('One', true), ('Two', true)]);
+  });
 }

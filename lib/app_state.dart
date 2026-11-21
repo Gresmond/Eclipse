@@ -165,20 +165,6 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
   /// folder.
   late final bool firstRun;
 
-  /// The welcome tour is showing.
-  bool touring = false;
-
-  /// Opens the welcome tour, on the Today view it walks through.
-  void startTour() {
-    touring = true;
-    showToday();
-  }
-
-  void endTour() {
-    touring = false;
-    notifyListeners();
-  }
-
   /// Null where nothing should be written to disk (tests).
   final Backups? backups;
 

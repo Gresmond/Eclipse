@@ -111,7 +111,7 @@ class _WorkoutPage extends StatefulWidget {
   State<_WorkoutPage> createState() => _WorkoutPageState();
 }
 
-class _WorkoutPageState extends State<_WorkoutPage> {
+class _WorkoutPageState extends State<_WorkoutPage> with WidgetsBindingObserver {
   final _restLeft = ValueNotifier<int?>(null);
   Timer? _restTicker;
   bool _restChanged = false;
@@ -119,14 +119,21 @@ class _WorkoutPageState extends State<_WorkoutPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_restoreRest());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _restTicker?.cancel();
     _restLeft.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_syncRest());
   }
 
   static String _fmtNum(double v) => v == v.roundToDouble() ? '${v.toInt()}' : '$v';
@@ -141,6 +148,18 @@ class _WorkoutPageState extends State<_WorkoutPage> {
   Future<void> _restoreRest() async {
     final endsAt = await PhonePlatform.restDeadline();
     if (mounted && !_restChanged && endsAt != null) _showRestCountdown(endsAt);
+  }
+
+  Future<void> _syncRest() async {
+    final endsAt = await PhonePlatform.restDeadline();
+    if (!mounted) return;
+    if (endsAt != null) {
+      _showRestCountdown(endsAt);
+    } else if (_restLeft.value != null && _restLeft.value! > 0) {
+      _restTicker?.cancel();
+      _restTicker = null;
+      _restLeft.value = null;
+    }
   }
 
   void _showRestCountdown(DateTime endsAt) {
@@ -440,7 +459,7 @@ class _WorkoutPageState extends State<_WorkoutPage> {
                       children: [
                         Icon(
                           remaining == 0 ? Icons.check_circle_outline_rounded : Icons.timer_rounded,
-                          size: 20,
+                          size: 18,
                           color: p.accent,
                         ),
                         const SizedBox(width: 10),

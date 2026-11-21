@@ -14,7 +14,6 @@ import '../widgets/day_toggles.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/note_input.dart';
 import '../widgets/sleep_time.dart';
-import '../widgets/smooth_gradient.dart';
 import '../widgets/status_cell.dart';
 import '../widgets/tile.dart';
 import '../widgets/time_wheel.dart';
@@ -379,7 +378,7 @@ class _PillButton extends StatelessWidget {
           duration: context.themed(Motion.hover),
           curve: Motion.hoverCurve,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: SmoothGradientDecoration(
+          decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(30),
             gradient: filled ? LinearGradient(colors: p.gradient.skip(1).toList()) : null,
             border: filled ? null : Border.all(color: p.tileBorder),

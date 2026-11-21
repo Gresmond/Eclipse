@@ -7,7 +7,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqlite3/sqlite3.dart';
 import 'package:path/path.dart' as path;
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/backups.dart';
@@ -55,30 +54,6 @@ Future<void> _loadFonts() async {
     final loader = FontLoader('MaterialIcons')..addFont(Future.value(ByteData.sublistView(icons.readAsBytesSync())));
     await loader.load();
   }
-}
-
-/// Takes a database back to before sync (version 7): its triggers, tables
-/// and the ids that mean the same on every computer.
-void _undoSync(Database db) {
-  for (final r in db.select("SELECT name FROM sqlite_master WHERE type = 'trigger'")) {
-    db.execute('DROP TRIGGER ${r['name']}');
-  }
-  db.execute('''
-    DROP INDEX IF EXISTS todos_done_reminders;
-    DROP INDEX IF EXISTS todos_since;
-    DROP INDEX IF EXISTS todos_done_due_date;
-    DROP INDEX IF EXISTS month_habits_habit_id;
-    DROP TABLE routines; DROP TABLE weigh_ins;
-    ALTER TABLE month_habits DROP COLUMN weekly; ALTER TABLE month_habits DROP COLUMN target;
-    ALTER TABLE month_habits DROP COLUMN unit; ALTER TABLE entries DROP COLUMN amount;
-    ALTER TABLE training_sets DROP COLUMN note; ALTER TABLE training_sets DROP COLUMN rpe;
-    ALTER TABLE month_habits DROP COLUMN added_on; ALTER TABLE month_habits DROP COLUMN days;
-    DROP TABLE habit_months; DROP TABLE todo_history;
-    DROP INDEX entries_habit_day; DROP INDEX sleep_notes_item_month;
-    DROP TABLE sync_reg; DROP TABLE sync_dirty; DROP TABLE sync_seen;
-    DROP INDEX habits_uid; ALTER TABLE habits DROP COLUMN uid;
-    DROP INDEX todos_uid; ALTER TABLE todos DROP COLUMN uid;
-  ''');
 }
 
 /// A store with eight synthetic rituals for persistence and widget tests.
@@ -552,24 +527,6 @@ void main() {
       expect(state.todos[TodoScope.today]!.single.since, DateTime(2026, 10, 22));
     });
 
-    test('older to-dos get a since date one period back per carry', () {
-      final path = '${Directory.systemTemp.createTempSync('productivity_since').path}/old.db';
-      Store.open(path).close();
-      final db = sqlite3.open(path);
-      _undoSync(db);
-      db.execute('''
-        DROP TABLE sleep_notes; ALTER TABLE todos DROP COLUMN since; PRAGMA user_version = 5;
-        INSERT INTO todos (scope, period, text, carried) VALUES
-          ('today', '2026-10-24', 'Day', 2), ('week', '2026-10-19', 'Week', 1), ('month', '2026-10', 'Month', 1);
-      ''');
-      db.close();
-      final store = Store.open(path);
-      expect(store.todos(TodoScope.today, '2026-10-24').single.since, DateTime(2026, 10, 22));
-      expect(store.todos(TodoScope.week, '2026-10-19').single.since, DateTime(2026, 10, 12));
-      expect(store.todos(TodoScope.month, '2026-10').single.since, DateTime(2026, 9, 1));
-      store.close();
-    });
-
     test('nothing vanishes when the clock goes back over midnight', () {
       var now = DateTime(2026, 10, 24, 0, 30); // flew in from further east
       final state = AppState(_testStore(), clock: () => now);
@@ -704,48 +661,6 @@ void main() {
     });
   });
 
-  group('sleep schedule', () {
-    test('an older database folds its sleep rituals in, keeping their history', () {
-      final path = '${Directory.systemTemp.createTempSync('productivity_sleep').path}/old.db';
-      Store.open(path).close();
-      // Back to how a database looked before the sleep schedule.
-      final db = sqlite3.open(path);
-      _undoSync(db);
-      db.execute('''
-        DELETE FROM sleep_habits; DELETE FROM habits; DROP TABLE sleep_habits;
-        ALTER TABLE month_habits DROP COLUMN note; DROP TABLE sleep_notes; ALTER TABLE todos DROP COLUMN since; PRAGMA user_version = 2;
-      ''');
-      final ids = <String, int>{};
-      for (final (i, name) in [
-        'Get up at 8:30 am',
-        'Sort stamps',
-        'Wind down at 8:45',
-        'Journal',
-        'Meditate', //
-        'Screens, shower finished by 9:30 pm', 'Sketch', 'Bed by 10:30 pm',
-      ].indexed) {
-        db.execute('INSERT INTO habits DEFAULT VALUES');
-        ids[name] = db.lastInsertRowId;
-        db.execute('INSERT INTO month_habits VALUES (2026, 10, ?, ?, ?)', [ids[name], name, i]);
-      }
-      db.execute("INSERT INTO entries (day, habit_id, status) VALUES ('2026-10-01', ?, 1)", [ids['Get up at 8:30 am']]);
-      db.close();
-
-      final store = Store.open(path);
-      final state = AppState(store, clock: () => DateTime(2026, 10, 23));
-      expect(state.habits.map((h) => h.name), ['Sort stamps', 'Sketch']);
-      final sleep = state.sleepHabits;
-      expect(sleep.map((h) => h.name), ['Rise Early', 'Unwind', 'Screen Curfew', 'Sleep Early']);
-      expect(sleep.first.minutes, 8 * 60 + 30);
-      expect(sleep.first.id, ids['Get up at 8:30 am']);
-      expect(sleep[1].id, isNot(ids['Wind down at 8:45']), reason: 'Unwind starts fresh');
-      expect(sleep[2].id, ids['Screens, shower finished by 9:30 pm']);
-      expect(sleep[3].id, ids['Bed by 10:30 pm']);
-      expect(state.statusOf(DateTime(2026, 10, 1), sleep.first), HabitStatus.done);
-      expect(state.habitsFor(2025, 3).map((h) => h.name), ['Sort stamps', 'Sketch'], reason: 'every month');
-    });
-  });
-
   group('per-month rituals', () {
     test('a new month copies the last one, and edits stay in their month', () {
       var now = DateTime(2026, 10, 31);
@@ -845,26 +760,6 @@ void main() {
       state.setHabitNote(2026, 11, state.habits.firstWhere((h) => h.name == 'Sketch'), '  ');
       expect(state.habits.firstWhere((h) => h.name == 'Sketch').description, isNull, reason: 'blank removes it');
       state.store.close();
-    });
-
-    test('notes from when they followed a ritual everywhere stay in every month it is in', () {
-      final path = '${Directory.systemTemp.createTempSync('productivity_notes_v4').path}/old.db';
-      Store.open(path).close();
-      final db = sqlite3.open(path);
-      _undoSync(db);
-      db.execute('''
-        ALTER TABLE month_habits DROP COLUMN note; ALTER TABLE habits ADD COLUMN note TEXT;
-        INSERT INTO habits (note) VALUES ('Home gym');
-        DROP TABLE sleep_notes; ALTER TABLE todos DROP COLUMN since; PRAGMA user_version = 4;
-      ''');
-      final id = db.lastInsertRowId;
-      db.execute("INSERT INTO month_habits VALUES (2026, 9, ?, 'Gym', 0), (2026, 10, ?, 'Gym', 0)", [id, id]);
-      db.close();
-
-      final store = Store.open(path);
-      expect(store.monthHabits(2026, 9).single.description, 'Home gym');
-      expect(store.monthHabits(2026, 10).single.description, 'Home gym');
-      store.close();
     });
   });
 
@@ -2056,78 +1951,6 @@ void main() {
     expect(find.byIcon(Icons.chevron_left_rounded), findsNothing);
   });
 
-  testWidgets('the welcome tour walks round, and opens again from the appearance menu', (tester) async {
-    await tester.runAsync(_loadFonts);
-    tester.view.physicalSize = const Size(1440, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    final state = AppState(Store.memory(), clock: () => DateTime(2026, 10, 23));
-    state.nightLightAvailable = true;
-    expect(state.firstRun, isTrue);
-    expect(state.habits.first.name, 'Drink water on waking', reason: 'a new install starts with examples');
-    expect(state.todos[TodoScope.today]!.first.text, 'Tick this off to try it');
-    expect(AppState(state.store).firstRun, isFalse, reason: 'only an empty store is a first run');
-    state.showMonth(3);
-    state.startTour();
-    expect(state.viewMonth, isNull, reason: 'the tour walks the Today view');
-    await tester.pumpWidget(EclipseApp(state: state));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Welcome to Eclipse!'), findsOneWidget);
-    // Tests only decode images when asked to.
-    await tester.runAsync(() async {
-      for (final e in find.byType(Image).evaluate()) {
-        await precacheImage((e.widget as Image).image, e);
-      }
-    });
-    await tester.pump();
-    await _shoot(tester, 'tour_0');
-    await tester.tap(find.text('Show me around'));
-    await tester.pumpAndSettle();
-    expect(find.text('Daily rituals'), findsWidgets);
-    // The app underneath waits while the tour is up.
-    await tester.tap(find.text('Oct').first, warnIfMissed: false);
-    await tester.pumpAndSettle();
-    expect(state.viewMonth, isNull);
-    for (var i = 1; i < 12; i++) {
-      await _shoot(tester, 'tour_$i');
-      await tester.tap(find.text(i == 11 ? 'Get started' : 'Next'));
-      if (_shotDir.isNotEmpty && i == 7) {
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 55));
-        await _shoot(tester, 'tour_settings_open_55ms');
-        await tester.pump(const Duration(milliseconds: 55));
-        await _shoot(tester, 'tour_settings_open_110ms');
-      }
-      if (_shotDir.isNotEmpty && (i == 8 || i == 9)) {
-        await tester.pump();
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 210));
-        await _shoot(tester, i == 8 ? 'tour_data_transition' : 'tour_google_transition');
-      }
-      if (_shotDir.isNotEmpty && i == 10) {
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 105));
-        await _shoot(tester, 'tour_appearance_open_105ms');
-        await tester.pump(const Duration(milliseconds: 105));
-        await _shoot(tester, 'tour_appearance_open_210ms');
-      }
-      await tester.pumpAndSettle();
-    }
-    expect(state.touring, isFalse);
-    expect(find.text('Get started'), findsNothing);
-
-    await tester.tap(find.byTooltip('Settings'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Show the welcome tour'));
-    await tester.pumpAndSettle();
-    expect(find.text('Welcome to Eclipse!'), findsOneWidget);
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
-    expect(state.touring, isFalse);
-  });
-
   testWidgets('theme switcher, and every theme renders', (tester) async {
     await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);
@@ -2292,9 +2115,6 @@ void main() {
     state.showYear();
     await tester.pumpAndSettle();
     await sweep('Year');
-    state.startTour();
-    await tester.pumpAndSettle();
-    await sweep('Welcome tour');
 
     expect(missing, isEmpty);
   });

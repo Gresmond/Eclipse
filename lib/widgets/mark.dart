@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../util/lru_cache.dart';
-import 'lazy_motion.dart';
 
 /// Pieces shared by the things you tick: ritual squares and to-do circles.
 
@@ -88,11 +87,10 @@ class PressScale extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => LazyMotion(
-    value: pressed ? dip : (hover ? lift : 1.0),
-    duration: Motion.hover,
+  Widget build(BuildContext context) => AnimatedScale(
+    scale: pressed ? dip : (hover ? lift : 1.0),
+    duration: (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ? Duration.zero : Motion.hover,
     curve: Motion.hoverCurve,
-    transition: (animation, child) => ScaleTransition(scale: animation, child: child),
     child: child,
   );
 }

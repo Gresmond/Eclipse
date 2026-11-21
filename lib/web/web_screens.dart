@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import '../widgets/smooth_spinner.dart';
 
 /// A plain page of the web version, shown before the app itself or instead
 /// of it: a title, what's going on, and what can be done about it.
@@ -52,7 +51,7 @@ class WebNotice extends StatelessWidget {
                       ],
                       if (busy) ...[
                         const SizedBox(height: 20),
-                        SizedBox.square(dimension: 20, child: SmoothSpinner(color: p.accent)),
+                        SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: p.accent)),
                       ],
                       if (actions.isNotEmpty) ...[
                         const SizedBox(height: 20),

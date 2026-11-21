@@ -33,6 +33,7 @@ import 'time_wheel.dart';
 
 part 'day_lists.dart';
 part 'task_row.dart';
+part 'task_subtasks.dart';
 part 'task_editor.dart';
 part 'further_ahead.dart';
 part 'task_add.dart';

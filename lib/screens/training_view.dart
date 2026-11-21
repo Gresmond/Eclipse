@@ -27,6 +27,8 @@ import '../widgets/rolling_number.dart';
 
 part 'training/session.dart';
 part 'training/chart.dart';
+part 'training/chart_cards.dart';
+part 'training/chart_painter.dart';
 
 /// Gym training: every exercise's estimated 1RM over time,
 /// and the sessions that make it.
@@ -46,14 +48,14 @@ class TrainingView extends StatelessWidget {
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
-      child: PixelColumn(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: const [
           Expanded(flex: 11, child: _ChartTile()),
           SizedBox(height: 20),
           Expanded(
             flex: 9,
-            child: PixelRow(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(flex: 3, child: _SessionTile()),

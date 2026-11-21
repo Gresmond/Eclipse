@@ -8,6 +8,8 @@ import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
+import 'package:eclipse/screens/training_view.dart';
+import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/training.dart';
 import 'package:eclipse/training_log.dart';
 import 'package:eclipse/widgets/glide_pill.dart';
@@ -165,7 +167,6 @@ void main() {
     setUp(() {
       store = Store.memory();
       state = AppState(store, clock: () => today);
-      state.endTour();
     });
     tearDown(() {
       state.dispose();
@@ -652,6 +653,198 @@ void main() {
       expect(log.exercises.single.name, 'Squat');
       expect(find.text('Front squat'), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  test('weighted bodyweight uses total load for 1RM, clears added weight, and manages routines', () {
+    final today = DateTime(2026, 11, 20);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 11, 20, 12));
+    addTearDown(state.dispose);
+    final log = state.training;
+
+    log.weighIn(DateTime(2026, 11, 1), 80);
+    final dips = log.createExercise('Dips', MuscleGroup.chest, bodyweight: true);
+    log.addSet(today, dips, reps: 5, loggedWeight: 20);
+    expect(log.usesTotalLoad(dips), isTrue);
+
+    final sets = log.session(today).single.$2;
+    expect(sets.single.weight, 20);
+    log.setDetails(sets.single, 'Felt heavy', 8.5, clearWeight: true);
+    expect(log.session(today).single.$2.single.weight, isNull);
+    expect(log.session(today).single.$2.single.rpe, 8.5);
+    expect(log.usesTotalLoad(dips), isFalse);
+
+    log.addSet(today, dips, reps: 8, loggedWeight: 10);
+    log.saveRoutine('Upper A', today);
+    final routine = log.routines.single;
+    log.renameRoutine(routine.$1, 'Upper Power');
+    expect(log.routines.single.$2, 'Upper Power');
+    log.deleteRoutine(routine.$1);
+    expect(log.routines, isEmpty);
+  });
+
+  test('routine reapplication preserves performed sets and does not duplicate planned sets', () {
+    final day = DateTime(2026, 11, 19);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 11, 19, 12));
+    addTearDown(state.dispose);
+    final log = state.training;
+    final exercise = log.createExercise('Weighted chin-ups', MuscleGroup.back, bodyweight: true);
+    log.addSet(day, exercise, reps: 5);
+    final performed = log.session(day).single.$2.single;
+    log.setDetails(performed, 'Strict', 8, addedWeight: 10);
+    log.weighIn(day, 80);
+    expect(log.weeklyVolume(day)[MuscleGroup.back], (1, 450.0));
+    log.saveRoutine('Pull', day);
+    final next = DateTime(2026, 11, 20);
+    final uid = log.routines.single.$1;
+    log.applyRoutine(uid, next);
+    log.applyRoutine(uid, next);
+    final row = log.session(next).single.$2.single;
+    expect(row.weight, 10);
+    expect(row.reps, 0);
+    expect(log.session(day).single.$2.single.note, 'Strict');
+  });
+
+  test('a set logged on an earlier day keeps the days and the chart in order', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 11, 10, 10));
+    addTearDown(state.dispose);
+    final log = state.training;
+    final bench = log.createExercise('Bench press', MuscleGroup.chest, bodyweight: false);
+    void lift(DateTime day, double kg) {
+      log.addToDay(day, bench);
+      log.updateSet(log.session(day).single.$2.single, weight: kg, reps: 5);
+    }
+
+    lift(DateTime(2026, 11, 8), 60);
+    lift(DateTime(2026, 11, 10), 70);
+    lift(DateTime(2026, 11, 9), 65);
+
+    expect(log.loggedDays, ['2026-11-10', '2026-11-09', '2026-11-08']);
+    expect(log.points().values.single.map((p) => p.day.day), [
+      8,
+      9,
+      10,
+    ], reason: 'oldest first, as the chart draws them');
+    log.addToDay(DateTime(2026, 11, 11), bench);
+    expect(log.session(DateTime(2026, 11, 11)).single.$2.single.weight, 70);
+  });
+
+  group('Training Math & Validation', () {
+    test('trainingPoints indexes by counted working set and stays positive without drift', () {
+      TrainingSet s(String uid, double? w, int r, int pos) =>
+          TrainingSet(uid: uid, day: '2026-11-01', exercise: 'e', position: pos, weight: w, reps: r);
+
+      final points = trainingPoints([
+        (
+          DateTime(2026, 11, 1),
+          [s('1', 20, 25, 0), s('2', 100, 5, 1)],
+        ),
+        (
+          DateTime(2026, 11, 3),
+          [s('3', 100, 5, 0)],
+        ),
+      ], bodyweight: false);
+      expect(points, hasLength(2));
+      expect(points[1].value, closeTo(points[0].value, 1e-9));
+
+      final extreme = trainingPoints([
+        (
+          DateTime(2026, 11, 1),
+          [s('a1', null, 20, 0), s('a2', null, 2, 1)],
+        ),
+        (
+          DateTime(2026, 11, 2),
+          [s('b1', null, 2, 0)],
+        ),
+      ], bodyweight: true);
+      expect(extreme.last.value, greaterThan(0));
+      expect(extreme.last.value, greaterThanOrEqualTo(1.0));
+    });
+
+    test('personalBests ignores empty placeholder prior sets and lighter sets after high-rep sets', () {
+      final store = Store.memory();
+      addTearDown(store.close);
+      final log = TrainingLog(store, () {});
+      final bench = log.createExercise('Bench', MuscleGroup.chest, bodyweight: false);
+
+      final d1 = DateTime(2026, 11, 1);
+      log.addToDay(d1, bench);
+      log.updateSet(log.session(d1).single.$2.single, weight: 60, reps: 0);
+
+      final d2 = DateTime(2026, 11, 3);
+      log.addToDay(d2, bench);
+      log.updateSet(log.session(d2).single.$2.single, weight: 40, reps: 25);
+      expect(log.personalBests(d2, bench), isEmpty);
+
+      final d3 = DateTime(2026, 11, 5);
+      log.addToDay(d3, bench);
+      log.updateSet(log.session(d3).single.$2.single, weight: 20, reps: 5);
+      expect(log.personalBests(d3, bench), isEmpty);
+    });
+
+    test('loggedDays and loggedOrder filter orphaned sets, validation rejects invalid inputs, and _lastSet respects date', () {
+      final store = Store.memory();
+      addTearDown(store.close);
+      store.addTrainingSet('2026-11-01', 'deleted-exercise', position: 0, weight: 50, reps: 5);
+      final log = TrainingLog(store, () {});
+      expect(log.loggedDays, isEmpty);
+      expect(log.loggedOrder, isEmpty);
+
+      expect(() => log.createExercise('   ', MuscleGroup.chest, bodyweight: false), throwsArgumentError);
+
+      final squat = log.createExercise('Squat', MuscleGroup.quads, bodyweight: false);
+      final later = DateTime(2026, 11, 10);
+      final earlier = DateTime(2026, 11, 5);
+      log.addToDay(later, squat);
+      log.updateSet(log.session(later).single.$2.single, weight: 100, reps: 5);
+
+      log.updateSet(log.session(later).single.$2.single, weight: -10);
+      log.updateSet(log.session(later).single.$2.single, reps: -3);
+      expect(log.session(later).single.$2.single.weight, 100);
+      expect(log.session(later).single.$2.single.reps, 5);
+
+      final mid = DateTime(2026, 11, 7);
+      log.addToDay(earlier, squat);
+      log.updateSet(log.session(earlier).single.$2.single, weight: 62.25, reps: 5);
+      log.addToDay(mid, squat);
+      expect(log.session(mid).single.$2.single.weight, 62.25);
+
+      final press = log.createExercise('Press', MuscleGroup.chest, bodyweight: false);
+      log.addSet(mid, press);
+      expect(log.session(mid).map((g) => g.$1.name), ['Squat', 'Press']);
+    });
+
+    testWidgets('TrainingView displays quarter-kilo microplates like 62.25 accurately', (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      final store = Store.memory();
+      addTearDown(store.close);
+      store.addHabit(2026, 11, 'Read');
+      final state = AppState(store, clock: () => DateTime(2026, 11, 5, 10));
+      addTearDown(state.dispose);
+      final press = state.training.createExercise('Press', MuscleGroup.chest, bodyweight: false);
+      state.training.addToDay(state.today, press);
+      state.training.updateSet(state.training.session(state.today).single.$2.single, weight: 62.25, reps: 5);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: themeNamed(null),
+          home: ThemeMorph(
+            target: paletteNamed(null),
+            child: AppScope(state: state, child: const Scaffold(body: TrainingView())),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('62.25'), findsOneWidget);
     });
   });
 }

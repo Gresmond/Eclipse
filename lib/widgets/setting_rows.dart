@@ -5,7 +5,6 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import 'fade_menu.dart';
 import 'glide_pill.dart';
-import 'smooth_gradient.dart';
 
 /// A setting you flip by clicking anywhere on its row.
 class SettingSwitchRow extends StatelessWidget {
@@ -121,7 +120,7 @@ class SettingToggle extends StatelessWidget {
         height: 22,
         padding: const EdgeInsets.all(3),
         alignment: Alignment.lerp(Alignment.centerLeft, Alignment.centerRight, t),
-        decoration: SmoothGradientDecoration(
+        decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(colors: [for (final c in p.gradient.skip(1)) Color.lerp(p.empty, c, t)!]),
           border: Border.all(color: p.tileBorder.withValues(alpha: 1 - t)),

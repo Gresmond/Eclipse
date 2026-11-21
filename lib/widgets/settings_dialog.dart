@@ -16,7 +16,6 @@ import '../data/google_drive.dart';
 import '../data/platform_files.dart';
 import '../data/sync_service.dart';
 import '../models.dart';
-import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'fade_menu.dart';
@@ -24,8 +23,6 @@ import 'fade_through.dart';
 import 'glide_pill.dart';
 import 'holidays.dart';
 import 'setting_rows.dart';
-import 'smooth_spinner.dart';
-import 'welcome_tour.dart';
 
 part 'settings_data.dart';
 
@@ -33,14 +30,10 @@ part 'settings_data.dart';
 /// Restoring a backup asks first, inline on its row. Pops with the
 /// restored [Backup], or nothing.
 class SettingsDialog extends StatefulWidget {
-  const SettingsDialog({super.key, this.tourRibbon, this.tourTargetKey, this.ribbon = 0});
+  const SettingsDialog({super.key, this.ribbon = 0});
 
   /// The ribbon it opens on.
   final int ribbon;
-
-  /// Shows the actual panel beneath the welcome tour's interaction barrier.
-  final int? tourRibbon;
-  final GlobalKey? tourTargetKey;
 
   @override
   State<SettingsDialog> createState() => _SettingsDialogState();
@@ -48,7 +41,7 @@ class SettingsDialog extends StatefulWidget {
 
 class _SettingsDialogState extends State<SettingsDialog> {
   /// 0 for General, 1 for Data. Opens on General unless told otherwise.
-  late int _ribbon = widget.tourRibbon ?? widget.ribbon;
+  late int _ribbon = widget.ribbon;
 
   late List<Backup> _backups = AppScope.of(context).backups?.list() ?? [];
 
@@ -271,14 +264,6 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 
   @override
-  void didUpdateWidget(SettingsDialog oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.tourRibbon != oldWidget.tourRibbon && widget.tourRibbon != null) {
-      _ribbon = widget.tourRibbon!;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final p = context.palette;
     return ConfirmOnEnter(
@@ -290,77 +275,73 @@ class _SettingsDialogState extends State<SettingsDialog> {
         clipBehavior: Clip.antiAlias,
         backgroundColor: p.tile,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),
-        child: TourTarget(
-          key: widget.tourTargetKey,
-          spot: widget.tourRibbon == null ? TourSpot.settings : TourSpot.settingsPreview,
-          child: SizedBox(
-            width: 480,
-            // Scrolls when the window is too short for all of it.
-            child: SingleChildScrollView(
-              padding: dialogPadding,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  LayoutBuilder(
-                    builder: (context, box) {
-                      final pills = SegmentedPills(
-                        labels: const ['General', 'Data'],
-                        selected: _ribbon,
-                        expand: true,
-                        onSelect: (i) => setState(() {
-                          _ribbon = i;
-                          _error = null;
-                          _journalError = null;
-                        }),
-                      );
-                      if (box.maxWidth < 400) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text('Settings', style: dialogTitleStyle(p)),
-                            const SizedBox(height: 12),
-                            pills,
-                          ],
-                        );
-                      }
-                      return PixelRow(
+        child: SizedBox(
+          width: 480,
+          // Scrolls when the window is too short for all of it.
+          child: SingleChildScrollView(
+            padding: dialogPadding,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LayoutBuilder(
+                  builder: (context, box) {
+                    final pills = SegmentedPills(
+                      labels: const ['General', 'Data'],
+                      selected: _ribbon,
+                      expand: true,
+                      onSelect: (i) => setState(() {
+                        _ribbon = i;
+                        _error = null;
+                        _journalError = null;
+                      }),
+                    );
+                    if (box.maxWidth < 400) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(child: Text('Settings', style: dialogTitleStyle(p))),
-                          SizedBox(width: 270, child: pills),
+                          Text('Settings', style: dialogTitleStyle(p)),
+                          const SizedBox(height: 12),
+                          pills,
                         ],
                       );
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  // Clipped, so the old page never lies over Close as it fades.
-                  ClipRect(
-                    child: AnimatedSize(
-                      duration: context.themed(Motion.morph),
-                      curve: Motion.morphCurve,
-                      alignment: Alignment.topCenter,
-                      clipBehavior: Clip.none,
-                      child: FadeThrough(
-                        layoutBuilder: FadeThrough.pinTop,
-                        child: KeyedSubtree(
-                          key: ValueKey(_ribbon),
-                          child: _ribbon == 0 ? _general(p) : _backupsAndSync(p),
-                        ),
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: Text('Settings', style: dialogTitleStyle(p))),
+                        SizedBox(width: 270, child: pills),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 20),
+                // Clipped, so the old page never lies over Close as it fades.
+                ClipRect(
+                  child: AnimatedSize(
+                    duration: context.themed(Motion.morph),
+                    curve: Motion.morphCurve,
+                    alignment: Alignment.topCenter,
+                    clipBehavior: Clip.none,
+                    child: FadeThrough(
+                      layoutBuilder: FadeThrough.pinTop,
+                      child: KeyedSubtree(
+                        key: ValueKey(_ribbon),
+                        child: _ribbon == 0 ? _general(p) : _backupsAndSync(p),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      const Spacer(),
-                      DialogDismiss(
-                        label: 'Close',
-                        onPressed: _restoring || _moving || _signingOut ? null : () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    const Spacer(),
+                    DialogDismiss(
+                      label: 'Close',
+                      onPressed: _restoring || _moving || _signingOut ? null : () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -420,30 +401,6 @@ extension on _SettingsDialogState {
                     },
                   ),
                 ],
-                const FadeMenuDivider(),
-                FadeMenuRow(
-                  height: 50,
-                  onTap: () {
-                    Navigator.pop(context);
-                    state.startTour();
-                  },
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Show the welcome tour',
-                          style: TextStyle(
-                            fontFamily: Fonts.ui,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: p.ink,
-                          ),
-                        ),
-                      ),
-                      Icon(Icons.arrow_forward_rounded, size: 18, color: p.inkMuted),
-                    ],
-                  ),
-                ),
                 const SizedBox(height: 4),
               ],
             ),

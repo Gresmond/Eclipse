@@ -1,8 +1,12 @@
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
+import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/widgets/todo_panel.dart';
 
 void main() {
   test('every so many weeks finds its next time however far apart', () {
@@ -311,5 +315,225 @@ void main() {
     b.mergeAll([(a.changesSince(0).values.expand((changes) => changes), 'first')]);
     expect(uids(first), uids(second), reason: 'no doubles either way');
     expect(second.todos(TodoScope.today, dateKey(today)).singleWhere((t) => t.uid == friday.uid).done, isTrue);
+  });
+
+  testWidgets('RepeatPanel lets users click Ends never to set an end date with left-click', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.addHabit(2026, 10, 'Read');
+    final state = AppState(store, clock: () => DateTime(2026, 10, 23, 12));
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.descendant(of: find.byType(FurtherAheadCard), matching: find.byTooltip('Pick a day')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Repeat'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Starts 30 Oct'), findsOneWidget);
+    expect(find.text('Ends never'), findsOneWidget);
+
+    // Click 'Ends never' to enter end-date picking mode, then left-click Nov 6 (7 days later).
+    await tester.tap(find.text('Ends never'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Next month'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('6'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ends 6 Nov'), findsOneWidget);
+    expect(find.byTooltip('No end date'), findsOneWidget);
+  });
+
+  group('repeat editing and view checks', () {
+    late Store store;
+    late AppState state;
+    late DateTime now;
+    var opened = false;
+
+    void open(DateTime at) {
+      opened = true;
+      now = at;
+      store = Store.memory();
+      state = AppState(store, clock: () => now);
+      for (final scope in TodoScope.values) {
+        for (final task in [...state.todos[scope]!]) {
+          state.removeTodo(scope, task);
+        }
+      }
+      state.hideUndoCard(state.shownRemoval ?? (throw StateError('no removal')));
+    }
+
+    tearDown(() {
+      if (!opened) return;
+      opened = false;
+      state.dispose();
+      store.close();
+    });
+
+    Future<void> show(WidgetTester tester) async {
+      state.openedTasks.clear();
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(EclipseApp(state: state));
+      await tester.pumpAndSettle();
+    }
+
+    Future<TestGesture> mouse(WidgetTester tester) async {
+      final m = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await m.addPointer(location: Offset.zero);
+      addTearDown(m.removePointer);
+      return m;
+    }
+
+    void packEveryMonth() {
+      state.addTodo(TodoScope.today, 'Pack');
+      state.setTodoSubtasks(TodoScope.today, state.todos[TodoScope.today]!.single, [
+        const TodoSubtask('Passport'),
+        const TodoSubtask('Tickets'),
+      ]);
+      state.makeRepeating(
+        TodoScope.today,
+        state.todos[TodoScope.today]!.single,
+        'Pack',
+        const RepeatRule.monthly(20),
+        start: DateTime(2026, 11, 20),
+      );
+    }
+
+    testWidgets('ticking a step of a repeat’s time in Further ahead, not made yet, ticks it', (tester) async {
+      open(DateTime(2026, 11, 3, 10));
+      packEveryMonth();
+      expect(state.todos[TodoScope.month], isEmpty, reason: 'its time on the 20th isn’t made yet');
+      await show(tester);
+
+      final row = find.ancestor(of: find.text('Pack'), matching: find.byType(TaskRow)).first;
+      await tester.tap(find.descendant(of: row, matching: find.byTooltip('Expand subtasks')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Passport'));
+      await tester.pumpAndSettle();
+
+      final made = state.todos[TodoScope.month]!.single;
+      expect(made.uid, endsWith('@2026-11-20'));
+      expect({for (final s in made.subtasks) s.text: s.done}, {'Passport': true, 'Tickets': false});
+      expect(state.repeats.single.subtasks.every((s) => !s.done), isTrue, reason: 'the times after start unticked');
+    });
+
+    testWidgets('stopping a repeat and moving its time in one edit does both', (tester) async {
+      open(DateTime(2026, 11, 3, 10));
+      state.addRepeat('Water the plants', const RepeatRule.every(1), DateTime(2026, 11, 3));
+      await show(tester);
+
+      final row = find.ancestor(of: find.text('Water the plants'), matching: find.byType(TaskRow)).first;
+      final m = await mouse(tester);
+      await m.moveTo(tester.getCenter(find.descendant(of: row, matching: find.text('Water the plants'))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: row, matching: find.byTooltip('Edit task')));
+      await tester.pumpAndSettle();
+      final dialog = find.byType(Dialog);
+      await tester.tap(find.descendant(of: dialog, matching: find.byTooltip('Stop repeating')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: dialog, matching: find.text('5')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: dialog, matching: find.text('Save')));
+      await tester.pumpAndSettle();
+
+      final left = [
+        for (final scope in TodoScope.values)
+          for (final item in state.todos[scope]!)
+            if (item.text == 'Water the plants') item,
+      ];
+      expect(left.map((t) => t.dueDate), [DateTime(2026, 11, 5)], reason: 'the one time left, on its new day');
+      now = DateTime(2026, 11, 12, 10);
+      state.checkDate();
+      expect([
+        for (final scope in TodoScope.values)
+          for (final item in state.todos[scope]!)
+            if (item.text == 'Water the plants') item,
+      ], hasLength(1));
+    });
+
+    testWidgets('looking back, Further ahead counts its days from the day shown', (tester) async {
+      open(DateTime(2026, 11, 3, 10));
+      state.addTodo(TodoScope.month, 'Dentist', dueDate: DateTime(2026, 11, 20));
+      now = DateTime(2026, 11, 25, 10);
+      state.checkDate();
+      await show(tester);
+      state.showDay(DateTime(2026, 11, 3));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Dentist'), findsOneWidget, reason: 'as the 3rd had it');
+      expect(find.text('In 17 days'), findsOneWidget);
+      expect(find.textContaining('In -'), findsNothing);
+    });
+  });
+
+  test('changeRepeat preserves note, subtask progress/notes, and carried-over occurrences', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.addHabit(2026, 11, 'Read');
+    var now = DateTime(2026, 11, 1, 9);
+    final state = AppState(store, clock: () => now);
+    addTearDown(state.dispose);
+
+    state.addRepeat('Pack', const RepeatRule.every(1), DateTime(2026, 11, 1));
+    now = DateTime(2026, 11, 3, 9);
+    state.checkDate();
+
+    final nov3 = state.todos[TodoScope.today]!.firstWhere((t) => t.repeatDay == DateTime(2026, 11, 3));
+    state.setTodoNote(TodoScope.today, nov3, 'Keep this note');
+    state.setTodoSubtasks(TodoScope.today, nov3, const [
+      TodoSubtask('Passport', done: true, note: 'Top drawer'),
+      TodoSubtask('Tickets'),
+    ]);
+    final repeat = state.repeatOf(nov3)!;
+    state.changeRepeat(repeat, DateTime(2026, 11, 3), 'Pack', const RepeatRule.every(2));
+
+    final carried = state.todos[TodoScope.today]!.where((t) => t.repeatDay == DateTime(2026, 11, 1)).toList();
+    expect(carried, hasLength(1));
+
+    final updated = state.todos[TodoScope.today]!.firstWhere((t) => t.repeatDay == DateTime(2026, 11, 3));
+    expect(updated.note, 'Keep this note');
+    expect(updated.subtasks.first.done, isTrue);
+    expect(updated.subtasks.first.note, 'Top drawer');
+  });
+
+  test('makeRepeating handles TodoScope.tomorrow, completed tasks, and holiday starts', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.addHabit(2026, 11, 'Read');
+    final state = AppState(store, clock: () => DateTime(2026, 11, 5, 9));
+    addTearDown(state.dispose);
+
+    state.addHoliday(DateTime(2026, 11, 6), DateTime(2026, 11, 6));
+    state.addTodo(TodoScope.tomorrow, 'Stretch');
+    final tomorrowItem = state.todos[TodoScope.tomorrow]!.single;
+    state.makeRepeating(TodoScope.tomorrow, tomorrowItem, 'Stretch', const RepeatRule.every(1));
+    expect(state.repeats.single.start, DateTime(2026, 11, 6));
+    expect(state.todos[TodoScope.tomorrow], isEmpty);
+    expect(
+      state.todos.values.expand((l) => l).any((t) => t.repeatDay == DateTime(2026, 11, 7) && t.text == 'Stretch'),
+      isTrue,
+    );
+
+    state.addTodo(TodoScope.today, 'Vitamins');
+    final doneItem = state.todos[TodoScope.today]!.single;
+    state.toggleTodo(doneItem);
+    state.makeRepeating(
+      TodoScope.today,
+      state.todos[TodoScope.today]!.single,
+      'Vitamins',
+      const RepeatRule.every(1),
+    );
+    final todayOcc = state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Vitamins');
+    expect(todayOcc.done, isTrue);
+    expect(todayOcc.repeatDay, DateTime(2026, 11, 5));
   });
 }

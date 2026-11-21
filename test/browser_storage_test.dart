@@ -11,6 +11,8 @@ import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/data/sync_disk.dart';
 import 'package:eclipse/data/sync_service.dart';
+import 'package:eclipse/data/updates.dart';
+import 'package:eclipse/web/web_app.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Drive, in memory, with deleting for the copies.
@@ -327,5 +329,29 @@ void main() {
     final saved = DateTime(2026, 1, 2, 3, 4);
     final copy = DriveBackup(id: 'x', name: 'n', day: null, saved: saved, from: 'laptop');
     expect(copy.modified, saved);
+  });
+
+  test('WebUpdater uses isNewer for update detection and reloads on update', () async {
+    var reloaded = false;
+    String? offered = '1.2.0';
+    final updater = WebUpdater(
+      running: '1.2.0',
+      fetch: (_) async => (200, utf8.encode(jsonEncode({'version': offered}))),
+      onReload: () => reloaded = true,
+    );
+
+    await updater.check();
+    expect(updater.status, UpdateStatus.none);
+
+    offered = '1.1.9';
+    await updater.check();
+    expect(updater.status, UpdateStatus.none);
+
+    offered = '1.10.0';
+    await updater.check();
+    expect(updater.status, UpdateStatus.available);
+    expect(updater.newVersion, '1.10.0');
+    await updater.update();
+    expect(reloaded, isTrue);
   });
 }

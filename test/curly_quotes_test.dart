@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/models.dart';
@@ -110,50 +109,5 @@ void main() {
     expect(exercise.name, '“Farmer” carry');
     log.updateExercise(exercise, name: "Don't shrug");
     expect(store.exercises().single.name, 'Don’t shrug');
-  });
-
-  test('version 15 saved text and task history migrate once without losing metadata', () {
-    final dir = Directory.systemTemp.createTempSync('eclipse-curly-quotes');
-    addTearDown(() => dir.deleteSync(recursive: true));
-    final path = '${dir.path}/test.db';
-    var store = Store.open(path);
-    final day = DateTime(2026, 10, 26);
-    final habit = store.addHabit(2026, 10, 'Read "Dune"');
-    store.setHabitNote(2026, 10, habit.id, "Don't rush");
-    store.setNote('2026-10-26', habit.id, 'Said "done"');
-    store.setJournal('2026-10-26', '''She said "I'm 6' 2"".''');
-    final task = store.addTodo(TodoScope.today, day, 'Buy "Dune"');
-    final children = TodoSubtask.encode([const TodoSubtask("Don't forget", done: true)]);
-    store.raw.execute('UPDATE todos SET subtasks = ? WHERE id = ?', [children, task.id]);
-    final uid = store.raw.select('SELECT uid FROM todos WHERE id = ?', [task.id]).single['uid'];
-    store.raw.execute('INSERT OR REPLACE INTO todo_history VALUES (?, ?, ?)', [
-      uid,
-      '2026-10-25',
-      jsonEncode({'text': 'Buy "Dune"', 'subtasks': children, 'done': true}),
-    ]);
-    store.raw.execute('PRAGMA user_version = 15');
-    store.close();
-
-    store = Store.open(path);
-    expect(store.monthHabits(2026, 10).single.name, 'Read “Dune”');
-    expect(store.monthHabits(2026, 10).single.description, 'Don’t rush');
-    expect(store.journal('2026-10-26'), 'She said “I’m 6’ 2””.');
-    final saved = store.todos(TodoScope.today, '2026-10-26').single;
-    expect(saved.text, 'Buy “Dune”');
-    expect(saved.subtasks.single.text, 'Don’t forget');
-    expect(saved.subtasks.single.done, isTrue);
-    final snapshot = jsonDecode(
-      store.raw.select('SELECT snapshot FROM todo_history WHERE day = ?', ['2026-10-25']).single['snapshot'] as String,
-    );
-    expect(snapshot['text'], 'Buy “Dune”');
-    expect(snapshot['done'], isTrue);
-    expect(TodoSubtask.decode(snapshot['subtasks'] as String).single.text, 'Don’t forget');
-    expect(store.raw.select('PRAGMA user_version').single.columnAt(0), Store.schemaVersion);
-    store.raw.execute('DELETE FROM sync_dirty');
-    store.close();
-
-    store = Store.open(path);
-    expect(store.raw.select('SELECT * FROM sync_dirty'), isEmpty, reason: 'do not rewrite on every launch');
-    store.close();
   });
 }

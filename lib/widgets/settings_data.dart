@@ -23,50 +23,8 @@ extension on _SettingsDialogState {
           style: TextStyle(fontFamily: Fonts.ui, fontSize: 18, fontWeight: FontWeight.w600, color: p.ink),
         ),
         const SizedBox(height: 14),
-        if (state.sync != null) ...[
-          TourTarget(
-            spot: TourSpot.googleSync,
-            child: ListenableBuilder(listenable: state.sync!, builder: (context, _) => _sync(p, state.sync!)),
-          ),
-        ],
-        if (state.sync == null && widget.tourRibbon != null) ...[
-          TourTarget(
-            spot: TourSpot.googleSync,
-            // A stand-in for the sync card in builds without Google sign-in,
-            // worded and styled as the real one.
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 8, 12, 12),
-              decoration: BoxDecoration(
-                color: p.empty.withValues(alpha: 0.45),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Sync',
-                    style: TextStyle(fontFamily: Fonts.ui, fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
-                  ),
-                  Text(
-                    'Keep everything the same on your other computers: sign in with the same Google account on each. '
-                    'Eclipse keeps its data in a hidden folder in your Google Drive, with a copy of your journal in '
-                    'an Eclipse Journals folder, and can’t see anything else there.',
-                    style: TextStyle(fontFamily: Fonts.body, fontSize: 14, height: 1.45, color: p.inkMuted),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton(
-                      onPressed: null,
-                      child: const Text('Sign in with Google'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        if (state.sync != null)
+          ListenableBuilder(listenable: state.sync!, builder: (context, _) => _sync(p, state.sync!)),
         if (state.journalFiles != null) ...[const SizedBox(height: 10), _journalFolder(p, state.journalFiles!.dir)],
         const SizedBox(height: 18),
         Text(
@@ -205,7 +163,7 @@ extension on _SettingsDialogState {
         Row(
           children: [
             if (sync.busy) ...[
-              SizedBox.square(dimension: 12, child: SmoothSpinner(color: p.accent)),
+              SizedBox.square(dimension: 12, child: CircularProgressIndicator(strokeWidth: 2, color: p.accent)),
               const SizedBox(width: 8),
             ],
             Expanded(
@@ -319,7 +277,7 @@ extension on _SettingsDialogState {
               const SizedBox(width: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.accent)),
+                child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.accent)),
               ),
             ] else
               button('Sign in with Google', () => _signIn(sync), filled: true),

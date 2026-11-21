@@ -1,8 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:eclipse/app_state.dart';
+import 'package:eclipse/data/sqlite.dart' show sqlite3;
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
+import 'package:eclipse/data/sync_disk.dart';
+import 'package:eclipse/data/sync_service.dart';
 import 'package:eclipse/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -270,5 +274,43 @@ void main() {
       expect(laptop.store.todos(TodoScope.today, '2026-11-03').map((t) => t.text), contains('X'));
       expect(() => laptop.store.searchableTodos().toList(), returnsNormally);
     });
+  });
+
+  test('a holiday set on another computer reaches what’s planned here', () {
+    final now = DateTime(2026, 11, 3, 10);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final settings = sqlite3.openInMemory();
+    addTearDown(settings.close);
+    final sync = SyncService.loadFrom(DatabaseSettings(settings), DatabaseDisk(settings), store);
+    final engine = sync.engine..claimAll();
+    final state = AppState(store, sync: sync, clock: () => now);
+    addTearDown(state.dispose);
+    state.addRepeat('Gym', const RepeatRule.every(1), DateTime(2026, 11, 3));
+    final repeat = state.repeats.single;
+    final from = DateTime(2026, 11, 11);
+    expect(state.comingOccurrence(repeat, from), from);
+    final planned = state.todosRevision;
+
+    // The laptop, in step with this one, books a fortnight off.
+    final laptopStore = Store.memory();
+    addTearDown(laptopStore.close);
+    final there = SyncEngine(laptopStore, 'laptop');
+    engine.flush();
+    there.mergeAll([(engine.changesSince(0).values.expand((d) => d).toList(), 'pc')]);
+    laptopStore.setSetting('holidays', encodeHolidays([(start: DateTime(2026, 11, 11), end: DateTime(2026, 11, 24))]));
+    there.flush();
+    final sent = [
+      for (final r in there.changesSince(0).values.expand((d) => d))
+        if (r[0] == 'holiday' || r[0] == 'setting') r,
+    ];
+    final incoming = engine.mergeAll([(sent, 'laptop')]);
+    expect(incoming.rows.map((r) => r.$1).toSet(), {'holiday', 'setting'}, reason: 'no task was touched');
+    // What each round does with what it brought in.
+    sync.onIncoming!(incoming);
+
+    expect(state.holidays, hasLength(1));
+    expect(state.todosRevision, greaterThan(planned), reason: 'the lists are worked out again');
+    expect(state.comingOccurrence(repeat, from), DateTime(2026, 11, 25), reason: 'paused through the holiday');
   });
 }

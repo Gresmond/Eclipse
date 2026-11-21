@@ -6,11 +6,17 @@ import 'package:eclipse/data/app_log.dart';
 import 'package:eclipse/data/backups.dart';
 import 'package:eclipse/data/google_drive.dart';
 import 'package:eclipse/data/journal_files.dart';
+import 'package:eclipse/data/sqlite.dart' show Database, OpenMode, checkedCopyOf, offThread;
 import 'package:eclipse/data/store.dart';
+import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/data/sync_service.dart';
+import 'package:eclipse/models.dart';
 import 'package:eclipse/screens/startup_error.dart';
 import 'package:eclipse/theme/app_theme.dart';
+import 'package:eclipse/training.dart';
+import 'package:eclipse/training_log.dart';
 import 'package:eclipse/widgets/backup_card.dart';
+import 'package:eclipse/widgets/backup_row.dart';
 import 'package:eclipse/widgets/sync_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -489,4 +495,266 @@ void main() {
       AppLog.note('Goes nowhere');
     });
   });
+
+  test('saved copies and the last sync give the time as the rest of the app does', () {
+    final saved = DriveBackup(
+      id: 'x',
+      name: 'backup_pc_before-restore.db',
+      day: null,
+      saved: DateTime(2026, 11, 9, 14, 5),
+      from: 'this computer',
+    );
+    expect(BackupRow.describe(saved, DateTime(2026, 11, 10)).$2, 'Saved 9 November, 2:05 pm, in Google Drive');
+    expect(BackupRow.describe(saved, DateTime(2026, 11, 10)).$2, isNot(contains('14:05')));
+    // The same clock a task's time reads on.
+    expect(clockLabel(14 * 60 + 5), '2:05 pm');
+  });
+
+  test('the daily copy and the copy for Drive are made away from the UI', () async {
+    final dir = Directory.systemTemp.createTempSync('eclipse-off-thread');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final store = Store.open('${dir.path}/app.db');
+    addTearDown(store.close);
+    store.setJournal('2026-11-10', 'Written today');
+    _here = true;
+    expect(await offThread(store.raw, _onThisIsolate), isFalse, reason: 'a file is read on an isolate of its own');
+    expect(await offThread(Store.memory().raw, _onThisIsolate), isTrue, reason: 'one in memory has no file to open');
+
+    final copy = File('${dir.path}/copy.db')..writeAsBytesSync((await offThread(store.raw, checkedCopyOf))!);
+    final saved = sqlite3.open(copy.path, mode: OpenMode.readOnly);
+    addTearDown(saved.close);
+    expect(saved.select('SELECT text FROM journal').single['text'], 'Written today');
+
+    final backups = Backups(Directory('${dir.path}/backups'));
+    await backups.daily(store, DateTime(2026, 11, 10));
+    expect(Backups.isHealthy(backups.list().single.file), isTrue);
+  });
+
+  test('restore reloads Training prefs, clears undo/reminders, and failed restore rolls back cleanly', () async {
+    final dir = temporary();
+    final backups = Backups(Directory(p.join(dir.path, 'backups')));
+    final store = Store.open(p.join(dir.path, 'live.db'));
+    addTearDown(store.close);
+    final drive = _RecoveryDrive();
+    final sync = SyncService.load(Directory(p.join(dir.path, 'home'))..createSync(), store, connect: (_) => drive);
+    addTearDown(sync.dispose);
+    const account = GoogleAccount(email: 'a@example.com', id: 'a', refreshToken: 'R');
+    await sync.look(account);
+    await sync.turnOn(account, join: false);
+
+    final state = AppState(store, backups: backups, sync: sync, clock: () => DateTime(2026, 11, 19, 10));
+    addTearDown(state.dispose);
+
+    final bench = state.training.createExercise('Bench', MuscleGroup.chest, bodyweight: false);
+    state.training.setAxis(TrainingAxis.change);
+    state.training.setLayout(TrainingLayout.muscles);
+    state.training.setRange(TrainingRange.year);
+    state.training.toggleHidden(bench.uid);
+    state.store.setJournal('2026-11-18', 'Backup day');
+    await sync.run();
+    final goodBackupPath = p.join(dir.path, 'good.db');
+    store.saveCopy(goodBackupPath);
+
+    state.training.setAxis(TrainingAxis.kg);
+    state.training.setLayout(TrainingLayout.all);
+    state.training.setRange(TrainingRange.month);
+    state.training.toggleHidden(bench.uid);
+    state.addTodo(TodoScope.today, 'Delete me');
+    state.removeTodo(TodoScope.today, state.todos[TodoScope.today]!.last);
+    state.reminderCards.add(
+      ReminderAlert(
+        uid: 'u1',
+        text: 'Old reminder',
+        day: DateTime(2026, 11, 19),
+        time: 600,
+        birthday: false,
+        reminder: Reminder.quarterBefore,
+      ),
+    );
+    expect(state.canUndo, isTrue);
+    expect(state.reminderCards, isNotEmpty);
+
+    await state.restore(Backup(File(goodBackupPath), DateTime(2026, 11, 19)));
+    expect(state.training.axis, TrainingAxis.change);
+    expect(state.training.layout, TrainingLayout.muscles);
+    expect(state.training.range, TrainingRange.year);
+    expect(state.training.hidden, {bench.uid});
+    expect(state.canUndo, isFalse);
+    expect(state.shownRemoval, isNull);
+    expect(state.reminderCards, isEmpty);
+
+    final badBackupPath = p.join(dir.path, 'other.db');
+    final other = Store.open(badBackupPath);
+    other.setJournal('2026-11-17', 'From failed restore');
+    other.close();
+    final regsBefore = store.raw.select('SELECT kind, rowkey, field, value, ts, origin FROM sync_reg').toList();
+
+    final beforePath = p.join(dir.path, 'before.db');
+    store.saveCopy(beforePath);
+    await expectLater(
+      backups.restore(
+        store,
+        Backup(File(badBackupPath), DateTime(2026, 11, 17)),
+        check: () => throw StateError('check failed'),
+      ),
+      throwsStateError,
+    );
+    expect(store.journal('2026-11-17'), '');
+    expect(store.raw.select('SELECT kind, rowkey, field, value, ts, origin FROM sync_reg').toList(), regsBefore);
+    sync.engine.flush();
+  });
+
+  test('Backups.recover rejects invalid-schema SQLite files and restores original intact', () {
+    final dir = temporary();
+    final dbPath = p.join(dir.path, 'live.db');
+    final live = Store.open(dbPath);
+    live.setJournal('2026-11-19', 'Original live');
+    live.close();
+    final originalBytes = File(dbPath).readAsBytesSync();
+
+    final fakeBackup = p.join(dir.path, 'not-eclipse.db');
+    final raw = sqlite3.open(fakeBackup);
+    raw.execute('CREATE TABLE stray (x INTEGER); PRAGMA user_version = ${Store.schemaVersion};');
+    raw.close();
+
+    final backups = Backups(Directory(p.join(dir.path, 'backups')));
+    expect(() => backups.recover(Backup(File(fakeBackup), null), dbPath), throwsA(anything));
+    expect(File(dbPath).readAsBytesSync(), originalBytes);
+    expect(backups.dir.listSync(), isEmpty);
+  });
+
+  test('SQLite busy_timeout, flushToDisk result, and atomic addHabit work as expected', () async {
+    final dir = temporary();
+    final path = p.join(dir.path, 'busy.db');
+    final store = Store.open(path);
+    addTearDown(store.close);
+    expect(store.raw.select('PRAGMA busy_timeout').single.columnAt(0), 5000);
+    final offTimeout = await offThread(store.raw, (db) => db.select('PRAGMA busy_timeout').single.columnAt(0) as int);
+    expect(offTimeout, 5000);
+    expect(store.flushToDisk(), isTrue);
+
+    store.raw.execute(
+      "CREATE TRIGGER fail_mh BEFORE INSERT ON month_habits BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+    );
+    final beforeHabits = store.raw.select('SELECT COUNT(*) FROM habits').single.columnAt(0) as int;
+    expect(() => store.addHabit(2026, 11, 'Blocked'), throwsA(anything));
+    final afterHabits = store.raw.select('SELECT COUNT(*) FROM habits').single.columnAt(0) as int;
+    expect(afterHabits, beforeHabits);
+  });
+
+  test('a backup the app could not read back is refused before anything is replaced', () async {
+    final source = Store.memory();
+    addTearDown(source.close);
+    source.addHabit(2026, 10, 'Read');
+    source.raw.execute("UPDATE month_habits SET days = 'not json'");
+    final path = '${temporary().path}/bad.db';
+    source.saveCopy(path);
+    final live = Store.memory();
+    addTearDown(live.close);
+    live.addHabit(2026, 10, 'Keep me');
+    await expectLater(live.restoreFrom(path), throwsA(anything));
+    expect(live.monthHabits(2026, 10).single.name, 'Keep me');
+  });
+
+  test('a restore the app then fails to load goes back to what was there', () async {
+    final source = Store.memory();
+    addTearDown(source.close);
+    source.addHabit(2026, 10, 'From the copy');
+    final dir = temporary();
+    source.saveCopy('${dir.path}/good.db');
+    final live = Store.memory();
+    addTearDown(live.close);
+    live.addHabit(2026, 10, 'Keep me');
+    final backups = Backups(Directory('${dir.path}/backups'));
+    final copy = Backup(File('${dir.path}/good.db'), DateTime(2026, 10, 30));
+    await expectLater(backups.restore(live, copy, check: () => throw StateError('Won’t load')), throwsStateError);
+    expect(live.monthHabits(2026, 10).single.name, 'Keep me');
+  });
+
+  test('an invalid schema backup is rejected without replacing live data', () async {
+    final temp = temporary();
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.setJournal('2026-10-25', 'Current journal');
+    final source = Store.open('${temp.path}/bad.db');
+    source.raw.execute('DROP TABLE todos');
+    source.close();
+    await expectLater(store.restoreFrom('${temp.path}/bad.db'), throwsA(anything));
+    expect(store.journal('2026-10-25'), 'Current journal');
+    expect(store.raw.select("SELECT name FROM sqlite_master WHERE name = 'todos'"), hasLength(1));
+  });
+
+  test('future-schema backups are rejected before touching the database', () async {
+    final temp = temporary();
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.setJournal('2026-10-25', 'Current journal');
+    final source = Store.open('${temp.path}/future.db');
+    source.raw.execute('PRAGMA user_version = 100');
+    source.close();
+    await expectLater(store.restoreFrom('${temp.path}/future.db'), throwsStateError);
+    expect(store.journal('2026-10-25'), 'Current journal');
+  });
+
+  test('v37 databases migrate to v38 and restore without losing data', () async {
+    final temp = temporary();
+    final path = '${temp.path}/old.db';
+    final old = Store.open(path);
+    final habit = old.addHabit(2026, 10, 'Read');
+    old.setEntry('2026-10-24', habit.id, HabitStatus.done);
+    old.setJournal('2026-10-24', 'Older journal');
+    SyncEngine(old, 'old').claimAll();
+    old.raw.execute('''
+      DROP TABLE routines; DROP TABLE weigh_ins;
+      ALTER TABLE month_habits DROP COLUMN weekly; ALTER TABLE month_habits DROP COLUMN target;
+      ALTER TABLE month_habits DROP COLUMN unit; ALTER TABLE entries DROP COLUMN amount;
+      ALTER TABLE training_sets DROP COLUMN note; ALTER TABLE training_sets DROP COLUMN rpe;
+      PRAGMA user_version = 37;
+    ''');
+    old.close();
+    final current = Store.memory();
+    addTearDown(current.close);
+    await current.restoreFrom(path);
+    expect(current.raw.select('PRAGMA user_version').first.columnAt(0), Store.schemaVersion);
+    expect(current.monthHabits(2026, 10).single.name, 'Read');
+    expect(current.journal('2026-10-24'), 'Older journal');
+    expect(current.entriesInMonth(2026, 10).single.status, HabitStatus.done);
+    expect(current.hasMonth(2026, 10), isTrue);
+    final upgraded = Store.open(path);
+    expect(upgraded.journal('2026-10-24'), 'Older journal');
+    expect(upgraded.hasMonth(2026, 10), isTrue);
+    upgraded.close();
+  });
 }
+
+class _RecoveryDrive implements SyncDrive, JournalDrive, CopiesDrive {
+  final files = <String, (String name, List<int> bytes, String modified)>{};
+  int _seq = 0;
+
+  @override
+  Future<List<DriveFile>> list() async => [
+    for (final e in files.entries) DriveFile(id: e.key, name: e.value.$1, modified: e.value.$3),
+  ];
+
+  @override
+  Future<List<int>> download(String id) async => files[id]!.$2;
+
+  @override
+  Future<DriveFile> upload(String name, List<int> bytes, {String? id}) async {
+    final key = id ?? 'f${_seq++}';
+    final modified = '${++_seq}';
+    files[key] = (name, bytes, modified);
+    return DriveFile(id: key, name: name, modified: modified);
+  }
+
+  @override
+  Future<void> delete(String id) async => files.remove(id);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Set on the test's isolate only; another isolate starts with it unset.
+var _here = false;
+
+bool _onThisIsolate(Database _) => _here;

@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
+import 'package:eclipse/data/sync_service.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/theme/app_theme.dart';
 import 'package:eclipse/widgets/undo_card.dart';
@@ -167,5 +170,45 @@ void main() {
     expect(state.shownRemoval, isNull);
     expect(state.canUndo, isTrue, reason: 'Ctrl+Z still reaches it');
     await tester.pumpAndSettle();
+  });
+
+  test('holidays record undo/redo snapshots, makeRepeating keeps notes, and shutdown is single-flight', () async {
+    final home = Directory.systemTemp.createTempSync('eclipse-audit-test');
+    final localStore = Store.memory();
+    final sync = SyncService.load(home, localStore);
+    final localState = AppState(localStore, sync: sync, clock: () => DateTime(2026, 11, 20, 12));
+    addTearDown(() {
+      localState.dispose();
+      sync.dispose();
+      localStore.close();
+      home.deleteSync(recursive: true);
+    });
+
+    localState.addHoliday(DateTime(2026, 12, 25), DateTime(2026, 12, 26));
+    expect(localState.holidays, hasLength(1));
+    localState.undo();
+    expect(localState.holidays, isEmpty);
+    localState.redo();
+    expect(localState.holidays, hasLength(1));
+
+    localState.addTodo(TodoScope.today, 'Pay rent');
+    TodoItem rent() => localState.todos[TodoScope.today]!.singleWhere((item) => item.text == 'Pay rent');
+    final item = rent();
+    localState.setTodoNote(TodoScope.today, item, 'BSB 123-456');
+    localState.makeRepeating(
+      TodoScope.today,
+      rent(),
+      'Pay rent',
+      const RepeatRule.monthly(20),
+      note: (value: 'Updated note'),
+    );
+    expect(rent().note, 'Updated note');
+
+    sync.onIncoming!(Incoming({('todo', 'fake')}, {'Other'}));
+    expect(localState.canUndo, isFalse);
+    expect(localState.canRedo, isFalse);
+
+    await Future.wait([localState.shutdown(sync: false), localState.shutdown(sync: false)]);
+    expect(localState.closing, isTrue);
   });
 }

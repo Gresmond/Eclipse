@@ -75,7 +75,7 @@ class _SegmentedPillsState extends State<SegmentedPills> {
       row = GlidePill(
         target: target,
         color: p.done,
-        child: PixelRow(
+        child: Row(
           mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
           children: [
             for (final i in List.generate(widget.labels.length, (idx) => idx))
@@ -97,7 +97,7 @@ class _SegmentedPillsState extends State<SegmentedPills> {
         ),
       );
     } else {
-      row = PixelRow(
+      row = Row(
         mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
         children: [
           for (final (i, label) in widget.labels.indexed)

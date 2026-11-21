@@ -94,4 +94,81 @@ void main() {
     expect(named(TodoScope.today, 'First').subtasks.single.text, 'Third');
     expect(tester.takeException(), isNull);
   });
+
+  test('unfinished projects, chronological due dates, plain tasks, then ticked ones in the same groups', () {
+    final today = DateTime(2026, 10, 26);
+    TodoItem task(int id, {int? ticked, DateTime? due, bool project = false}) => TodoItem(
+      id,
+      '$id',
+      since: today,
+      done: ticked != null,
+      doneAt: ticked == null || ticked == 0 ? null : today.add(Duration(minutes: ticked)),
+      dueDate: due,
+      subtasks: project ? [const TodoSubtask('Step')] : [],
+    );
+    final tasks = [
+      task(1, ticked: 5, project: true),
+      task(2),
+      task(3, due: DateTime(2026, 10, 30)),
+      task(4, project: true),
+      task(5, due: DateTime(2026, 10, 28)),
+      task(6),
+      task(7, ticked: 3),
+      task(8, ticked: 1),
+      task(9, ticked: 2, project: true),
+      task(10, ticked: 9, due: DateTime(2026, 10, 29)),
+      task(11, ticked: 4, due: DateTime(2026, 10, 29)),
+      task(12, ticked: 8, due: DateTime(2026, 10, 27)),
+      task(13, ticked: 0),
+    ];
+    // Ticked before tick times were kept (13) counts as ticked first.
+    expect(sortTodos(tasks).map((t) => t.id), [4, 5, 3, 2, 6, 9, 1, 12, 11, 10, 13, 8, 7]);
+  });
+
+  test('ticking records when, a changed checklist keeps it and unticking clears it', () {
+    final localStore = Store.memory();
+    addTearDown(localStore.close);
+    final day = DateTime(2026, 10, 26);
+    final first = localStore.addTodo(TodoScope.today, day, 'First');
+    final second = localStore.addTodo(TodoScope.today, day, 'Second');
+    localStore.setTodoDone(second.id, true, day: day);
+    localStore.setTodoDone(first.id, true, day: day);
+    expect(sortTodos(localStore.todos(TodoScope.today, dateKey(day))).map((t) => t.text), ['Second', 'First']);
+
+    final ticked = localStore.todos(TodoScope.today, dateKey(day)).firstWhere((t) => t.id == second.id).doneAt;
+    expect(ticked, isNotNull);
+    localStore.setTodoDone(second.id, true, day: day, cascade: false);
+    expect(localStore.todos(TodoScope.today, dateKey(day)).firstWhere((t) => t.id == second.id).doneAt, ticked);
+    expect(localStore.todoListsOn(day)[TodoScope.today]!.firstWhere((t) => t.id == second.id).doneAt, ticked);
+
+    localStore.setTodoDone(second.id, false, day: day);
+    expect(localStore.todos(TodoScope.today, dateKey(day)).firstWhere((t) => t.id == second.id).doneAt, isNull);
+  });
+
+  test('sortTodos satisfies strict weak ordering with mixed dated and undated subtasks', () {
+    final day = DateTime(2026, 11, 5);
+    TodoItem project(int id, {DateTime? due, int? position, bool done = false}) => TodoItem(
+      id,
+      'P$id',
+      since: day,
+      dueDate: due,
+      position: position,
+      done: done,
+      subtasks: const [TodoSubtask('Step')],
+    );
+
+    final items = [
+      project(1, position: 0),
+      project(2, due: DateTime(2026, 11, 8), position: 1),
+      project(3, due: DateTime(2026, 11, 6), position: 2),
+      project(4),
+      project(5, done: true),
+      project(6, due: DateTime(2026, 11, 7), done: true),
+    ];
+
+    final sorted = sortTodos(items);
+    expect(sorted.map((t) => t.id), [3, 2, 1, 4, 6, 5]);
+    final reversed = sortTodos(items.reversed);
+    expect(reversed.map((t) => t.dueDate != null), [true, true, false, false, true, false]);
+  });
 }

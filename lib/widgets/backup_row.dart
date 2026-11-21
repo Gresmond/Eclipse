@@ -3,10 +3,8 @@ import 'package:flutter/material.dart';
 import '../data/backups.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
-import '../theme/pixels.dart';
 import '../theme/tokens.dart';
 import 'app_dialog.dart';
-import 'smooth_spinner.dart';
 
 /// One saved copy in a list of them, with its Restore button, which asks
 /// first in place.
@@ -67,7 +65,7 @@ class BackupRow extends StatelessWidget {
       else if (restoring)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18),
-          child: SizedBox(width: 18, height: 18, child: SmoothSpinner(color: p.accent)),
+          child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.accent)),
         )
       else if (confirming) ...[
         DialogDismiss(label: 'Cancel', onPressed: onCancel),
@@ -103,7 +101,7 @@ class BackupRow extends StatelessWidget {
                   Row(mainAxisAlignment: MainAxisAlignment.end, children: actions),
                 ],
               )
-            : PixelRow(
+            : Row(
                 children: [
                   Expanded(child: details),
                   ...actions,

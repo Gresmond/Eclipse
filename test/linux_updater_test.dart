@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:eclipse/data/http_request.dart';
 import 'package:eclipse/data/updates.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -256,4 +257,145 @@ void main() {
       updater.dispose();
     });
   }
+
+  test('static reliability guards exist in web/sw.js and Linux install/runner scripts', () {
+    final sw = File('web/sw.js').readAsStringSync();
+    expect(sw, contains('__ECLIPSE_VERSION__'));
+    expect(sw, contains('caches.delete'));
+    expect(sw, contains('AbortController'));
+    expect(sw, contains('skipWaiting'));
+
+    final buildWeb = File('tool/build_web.sh').readAsStringSync();
+    expect(buildWeb, isNot(contains('--no-tree-shake-icons')));
+
+    final install = File('linux/install.sh').readAsStringSync();
+    expect(install, contains('mktemp'));
+    expect(install, matches(RegExp(r'^Exec="\$[a-zA-Z_][a-zA-Z0-9_]*"$', multiLine: true)));
+
+    final installRelease = File('linux/install-release.sh').readAsStringSync();
+    expect(installRelease, contains('ldconfig'));
+    expect(installRelease, contains(r'libsqlite3\.so'));
+
+    final appCc = File('linux/runner/my_application.cc').readAsStringSync();
+    expect(appCc, contains('gtk_window_set_decorated(window, FALSE)'));
+    expect(appCc, contains('g_application_get_is_remote'));
+  });
+
+  test('sendHttpRequest reuses pooled HttpClient across calls and downloadFile streams & guards redirects', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final payload = utf8.encode('streamed-content-1234567890');
+    server.listen((req) async {
+      req.response.persistentConnection = false;
+      if (req.uri.path == '/ok') {
+        req.response.write('ok');
+        await req.response.close();
+      } else if (req.uri.path == '/slow') {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        try {
+          req.response.write('late');
+          await req.response.close();
+        } catch (_) {}
+      } else if (req.uri.path == '/file') {
+        req.response.add(payload);
+        await req.response.close();
+      } else if (req.uri.path == '/redir') {
+        req.response.statusCode = HttpStatus.found;
+        req.response.headers.set(HttpHeaders.locationHeader, '/file');
+        await req.response.close();
+      }
+    });
+
+    await HttpOverrides.runWithHttpOverrides(() async {
+      final base = Uri.parse('http://127.0.0.1:${server.port}');
+      final startClients = debugHttpClientsCreated;
+
+      for (var i = 0; i < 3; i++) {
+        final (status, body) = await sendHttpRequest('GET', base.resolve('/ok'));
+        expect(status, 200);
+        expect(utf8.decode(body), 'ok');
+      }
+      expect(debugHttpClientsCreated - startClients, 1);
+
+      await expectLater(
+        () => sendHttpRequest('GET', base.resolve('/slow'), timeout: const Duration(milliseconds: 50)),
+        throwsA(isA<TimeoutException>()),
+      );
+      final (statusAfter, _) = await sendHttpRequest('GET', base.resolve('/ok'));
+      expect(statusAfter, 200);
+      expect(debugHttpClientsCreated - startClients, 1);
+
+      final dir = Directory.systemTemp.createTempSync('eclipse_dl');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final dest = File('${dir.path}/out.bin');
+      final dlStatus = await downloadFile(
+        base.resolve('/redir'),
+        dest,
+        httpsOnlyRedirects: false,
+      );
+      expect(dlStatus, 200);
+      expect(dest.readAsBytesSync(), payload);
+
+      final blocked = File('${dir.path}/blocked.bin');
+      await expectLater(
+        () => downloadFile(base.resolve('/redir'), blocked, httpsOnlyRedirects: true),
+        throwsA(isA<FormatException>()),
+      );
+    }, _LoopbackHttpOverrides());
+  });
+
+  test('release assets select the Linux archive and Linux requires installation metadata', () {
+    final dir = Directory.systemTemp.createTempSync('eclipse-linux-meta-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final executable = '${dir.path}/eclipse';
+    expect(LinuxUpdater.forExecutable(executable), isNull);
+    final metadata = File('${dir.path}/version')..writeAsStringSync('26.10.1\n');
+    final updater = LinuxUpdater('26.10.1', installRoot: dir.path);
+    expect(updater.installedVersion, '26.10.1');
+    expect(updater.actionLabel, 'Update');
+    final release = <String, dynamic>{
+      'tag_name': 'v26.10.2',
+      'html_url': 'https://example.com/release',
+      'assets': [
+        {'name': 'Eclipse.apk', 'browser_download_url': 'https://example.com/android'},
+        {'name': 'Eclipse.tar.zst', 'browser_download_url': 'https://example.com/linux'},
+      ],
+    };
+    expect(updater.downloadForRelease(release), 'https://example.com/linux');
+    release['assets'] = <Map<String, dynamic>>[];
+    expect(updater.downloadForRelease(release), isNull);
+    expect(updater.newerRelease('26.10.2', null), isFalse);
+    expect(isNewer('26.10.1', '1.10.31'), isTrue);
+    metadata.writeAsStringSync('invalid');
+    expect(LinuxUpdater.forExecutable(executable), isNull);
+  });
+
+  test(
+    'HTTP deadline includes a response body that stalls after headers',
+    () => HttpOverrides.runWithHttpOverrides(() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final gotHeaders = Completer<void>();
+      server.listen((request) async {
+        request.response.bufferOutput = false;
+        request.response.contentLength = 100;
+        request.response.write('partial');
+        await request.response.flush();
+        gotHeaders.complete();
+      });
+      try {
+        final request = sendHttpRequest(
+          'GET',
+          Uri.parse('http://127.0.0.1:${server.port}'),
+          timeout: const Duration(milliseconds: 300),
+        );
+        final expectation = expectLater(request, throwsA(isA<TimeoutException>()));
+        await gotHeaders.future.timeout(const Duration(seconds: 3));
+        await expectation;
+      } finally {
+        await server.close(force: true);
+      }
+    }, _LoopbackHttpOverrides()),
+  );
 }
+
+class _LoopbackHttpOverrides extends HttpOverrides {}

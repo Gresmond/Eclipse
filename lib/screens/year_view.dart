@@ -233,7 +233,7 @@ class _Table extends StatelessWidget {
     Widget row(String name, List<_Score> months, {Habit? habit, bool total = false}) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: PixelRow(
+        child: Row(
           children: [
             SizedBox(
               width: _nameWidth,

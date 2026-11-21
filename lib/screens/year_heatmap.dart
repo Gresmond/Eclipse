@@ -255,7 +255,7 @@ class _YearHeatmapState extends State<YearHeatmap> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              PixelRow(
+              Row(
                 children: [
                   SizedBox(width: grid, child: Text(title, style: label)),
                   const SizedBox(width: YearHeatmap._between),
@@ -265,7 +265,7 @@ class _YearHeatmapState extends State<YearHeatmap> {
               const SizedBox(height: 18),
               SizedBox(
                 height: YearHeatmap._bodyHeight(widget.year, c.maxWidth),
-                child: PixelRow(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(width: grid, child: gridWidget),

@@ -145,7 +145,6 @@ Future<void> webMain({
       unawaited(data.persist().catchError((Object error) => AppLog.failure('Saving before leaving', error)));
       state.sync?.sendChanges();
     });
-    if (state.firstRun) state.startTour();
     final updater = WebUpdater();
     unawaited(updater.check());
     final updateTimer = Timer.periodic(updater.checkEvery, (_) => updater.check());

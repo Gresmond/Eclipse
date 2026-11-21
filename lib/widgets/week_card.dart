@@ -412,7 +412,7 @@ class _DayHeading extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PixelRow(
+          Row(
             children: [
               Expanded(
                 child: Text.rich(

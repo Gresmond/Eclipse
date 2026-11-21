@@ -229,4 +229,153 @@ void main() {
     final added = store.raw.select("SELECT reminders FROM todos WHERE text = 'Dentist'").single;
     expect(added['reminders'], Reminder.dayBefore.bit);
   });
+
+  test('carried-over undated Today task fires reminder when time/reminder is added today', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.addHabit(2026, 11, 'Read');
+    var now = DateTime(2026, 11, 4, 10);
+    final notifier = _Notifier();
+    final state = AppState(store, notifier: notifier, clock: () => now);
+    addTearDown(state.dispose);
+
+    state.addTodo(TodoScope.today, 'Call bank');
+    now = DateTime(2026, 11, 5, 10);
+    state.checkDate();
+
+    final carried = state.todos[TodoScope.today]!.single;
+    state.editTodo(
+      TodoScope.today,
+      carried,
+      carried.text,
+      carried.dueDate,
+      time: 15 * 60,
+      reminders: Reminder.quarterBefore.bit,
+    );
+
+    now = DateTime(2026, 11, 5, 14, 46);
+    state.checkReminders();
+    expect(notifier.shown, [('Call bank', 'In 14 min, at 3:00 pm')]);
+  });
+
+  test('carried-over past-due task anchors dueDate to today when time/reminders change', () {
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.addHabit(2026, 11, 'Read');
+    var now = DateTime(2026, 11, 4, 10);
+    final notifier = _Notifier();
+    final state = AppState(store, notifier: notifier, clock: () => now);
+    addTearDown(state.dispose);
+
+    state.addTodo(TodoScope.today, 'Submit report', dueDate: DateTime(2026, 11, 4));
+    now = DateTime(2026, 11, 5, 10);
+    state.checkDate();
+
+    final carried = state.todos[TodoScope.today]!.single;
+    state.editTodo(
+      TodoScope.today,
+      carried,
+      carried.text,
+      carried.dueDate,
+      time: 16 * 60,
+      reminders: Reminder.quarterBefore.bit,
+    );
+
+    expect(state.todos[TodoScope.today]!.single.dueDate, isNull);
+    now = DateTime(2026, 11, 5, 15, 46);
+    state.checkReminders();
+    expect(notifier.shown, [('Submit report', 'In 14 min, at 4:00 pm')]);
+  });
+
+  test('reminderCards prune on edit/complete/delete, openReminder removes all matching cards, and holdReminders guards dispose', () async {
+    final store = Store.memory();
+    addTearDown(store.close);
+    store.addHabit(2026, 11, 'Read');
+    var now = DateTime(2026, 11, 5, 14);
+    final state = AppState(store, clock: () => now);
+
+    state.addTodo(TodoScope.today, 'Dentist', time: 15 * 60, reminders: Reminder.quarterBefore.bit);
+    state.addTodo(TodoScope.today, 'Call', time: 16 * 60, reminders: Reminder.quarterBefore.bit);
+    now = DateTime(2026, 11, 5, 14, 46);
+    state.checkReminders();
+    expect(state.reminderCards, hasLength(1));
+
+    // Renaming updates the shown reminder card text.
+    var dentist = state.todos[TodoScope.today]!.firstWhere((t) => t.text == 'Dentist');
+    state.editTodo(
+      TodoScope.today,
+      dentist,
+      'Orthodontist',
+      dentist.dueDate,
+      time: dentist.dueTime,
+      reminders: dentist.reminders,
+    );
+    expect(state.reminderCards.single.text, 'Orthodontist');
+
+    // Moving to tomorrow removes the stale card.
+    dentist = state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Orthodontist');
+    state.moveTodoTo(TodoScope.today, dentist, DateTime(2026, 11, 6));
+    expect(state.reminderCards, isEmpty);
+
+    // Completing a task removes its card; openReminder removes all cards for that uid.
+    now = DateTime(2026, 11, 5, 15, 46);
+    state.checkReminders();
+    expect(state.reminderCards.single.text, 'Call');
+    final call = state.todos[TodoScope.today]!.singleWhere((t) => t.text == 'Call');
+    state.reminderCards.add(state.reminderCards.single);
+    state.openReminder(call.uid!);
+    expect(state.reminderCards, isEmpty);
+
+    // Malformed remindersShown setting does not crash.
+    store.setSetting('remindersShown', '{"not":"a list"}');
+    state.checkReminders();
+    store.setSetting('remindersShown', '["badkey"]');
+    state.checkReminders();
+
+    // Disposing during holdReminders does not throw or notify.
+    final sync = Completer<void>();
+    state.holdReminders(sync.future);
+    state.dispose();
+    sync.complete();
+    await Future<void>.delayed(Duration.zero);
+  });
+
+  test('ReminderAlert.body and dueReminders respect dayStartHour', () {
+    const startHour = 4;
+    final item = TodoItem(
+      1,
+      'Late call',
+      since: DateTime(2026, 11, 3),
+      uid: 'late',
+      dueTime: 60, // 1:00 am
+      reminders: Reminder.dayBefore.bit,
+    );
+    // 1:00 am on logical day Nov 3 is calendar Nov 4 01:00.
+    final calendarDay = DateTime(2026, 11, 4);
+    final [(alert, _)] = dueReminders(
+      [(item, calendarDay)],
+      DateTime(2026, 11, 3, 22),
+      const {},
+      startHour: startHour,
+    );
+    expect(alert.body(DateTime(2026, 11, 3, 22), startHour: startHour), 'In 3 hours, at 1:00 am');
+
+    final mum = TodoItem(
+      2,
+      'Mum',
+      since: DateTime(2026, 11, 3),
+      uid: 'mum',
+      birthday: true,
+      reminders: Reminder.dayBefore.bit | Reminder.onTheDay.bit,
+    );
+    // At 1:00 am on Nov 4 with 4am day start, it's still Nov 3 ("Birthday tomorrow").
+    final [(bdayAlert, _)] = dueReminders(
+      [(mum, DateTime(2026, 11, 4))],
+      DateTime(2026, 11, 4, 1),
+      const {},
+      startHour: startHour,
+    );
+    expect(bdayAlert.reminder, Reminder.dayBefore);
+    expect(bdayAlert.body(DateTime(2026, 11, 4, 1), startHour: startHour), 'Birthday tomorrow');
+  });
 }

@@ -24,7 +24,6 @@ import 'models.dart';
 import 'phone/phone_app.dart';
 import 'screens/shell.dart';
 import 'screens/startup_error.dart';
-import 'screens/warm_up.dart';
 import 'theme/app_theme.dart';
 import 'web/web_app.dart';
 import 'widgets/app_dialog.dart';
@@ -41,7 +40,6 @@ Future<void> main() async {
         final stopWindow = _watchWindow(state);
         final stopDate = _watchDate(state);
         final stopReminders = _watchReminders(state);
-        WarmUp.enabled = true;
         return () {
           stopWindow();
           stopDate();
@@ -115,8 +113,6 @@ Future<void> main() async {
     _watchReminders(state),
   ];
 
-  if (state.firstRun) state.startTour();
-
   // Installed by linux/install.sh: watches its folder for newer commits.
   // Packaged installs ask GitHub for a newer release.
   final updater = Updater.forThisApp(
@@ -135,7 +131,6 @@ Future<void> main() async {
     disposers.add(updateTimer.cancel);
   }
 
-  WarmUp.enabled = true;
   runApp(EclipseApp(state: state, updater: updater));
 }
 
@@ -329,14 +324,14 @@ class EclipseApp extends StatelessWidget {
 
   void _search() {
     final navigator = appNavigator.currentState;
-    if (navigator == null || navigator.canPop() || state.touring || state.closing) return;
+    if (navigator == null || navigator.canPop() || state.closing) return;
     showAppDialog<void>(context: navigator.context, builder: (_) => const SearchDialog());
   }
 
-  /// Ctrl+N, unless a dialog or the tour is open.
+  /// Ctrl+N, unless a dialog is open.
   void _newTask() {
     final navigator = appNavigator.currentState;
-    if (navigator == null || navigator.canPop() || state.touring || state.closing) return;
+    if (navigator == null || navigator.canPop() || state.closing) return;
     addTaskAnywhere(navigator.context);
   }
 

@@ -9,6 +9,8 @@ import '../training.dart';
 import 'safe_write.dart';
 
 part 'store_todos.dart';
+part 'store_todo_history.dart';
+part 'store_repeats.dart';
 part 'store_undo.dart';
 part 'store_backups.dart';
 part 'store_migrations.dart';

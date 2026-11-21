@@ -126,7 +126,7 @@ class _ExerciseBlock extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                PixelRow(
+                Row(
                   children: [
                     // The name and group take what the remove button leaves.
                     Expanded(
@@ -333,7 +333,7 @@ class _SetRowState extends State<_SetRow> {
         children: [
           SizedBox(
             height: 36,
-            child: PixelRow(
+            child: Row(
               children: [
                 SizedBox(
                   width: 22,

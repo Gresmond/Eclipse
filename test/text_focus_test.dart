@@ -1,10 +1,12 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/widgets/search_dialog.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 
 void main() {
@@ -77,5 +79,19 @@ void main() {
     final now = field(tester, card);
     expect(now.widget.focusNode.hasFocus, isTrue);
     expect(now.widget.controller.selection, const TextSelection.collapsed(offset: 3));
+  });
+
+  testWidgets('a focused command field accepts arrow navigation and Enter', (tester) async {
+    final state = await show(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    final dialogField = find.descendant(of: find.byType(SearchDialog), matching: find.byType(TextField));
+    await tester.enterText(dialogField, 'Show');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(state.viewMonth, 10);
   });
 }

@@ -1,13 +1,19 @@
 // State and UI logic found in the 3 Nov 2026 audit (LOGIC-01 to LOGIC-19):
 // each test holds the behaviour the spec, or the rest of the app, implies.
+import 'dart:io';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
+import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/theme/app_theme.dart';
+import 'package:eclipse/widgets/appear.dart';
+import 'package:eclipse/widgets/fade_menu.dart';
+import 'package:eclipse/widgets/tile.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 
 void main() {
@@ -339,5 +345,261 @@ void main() {
     }
     expect(find.descendant(of: dialog, matching: find.text('February 2027')), findsOneWidget);
     expect(tester.getCenter(next), at);
+  });
+
+  testWidgets('Appear hides safely under reduced motion without setState-during-build', (tester) async {
+    var hiddenCalls = 0;
+    var shown = true;
+    late StateSetter rebuild;
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: MaterialApp(
+          theme: themeNamed(null),
+          home: ThemeMorph(
+            target: paletteNamed(null),
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                rebuild = setState;
+                return Appear(
+                  animate: true,
+                  shown: shown,
+                  onHidden: () {
+                    hiddenCalls++;
+                    // Parent removing the widget synchronously in onHidden must not throw.
+                    setState(() {});
+                  },
+                  child: const Text('Closing item'),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    rebuild(() => shown = false);
+    await tester.pump();
+    await tester.pump();
+    expect(hiddenCalls, 1);
+  });
+
+  testWidgets('HeaderIconButton highlights background and icon when active', (tester) async {
+    final palette = paletteNamed(null);
+    Widget buildButton(bool active) => MaterialApp(
+      theme: themeNamed(palette.name),
+      home: ThemeMorph(
+        target: palette,
+        child: Scaffold(
+          body: HeaderIconButton(
+            icon: Icons.calendar_today_rounded,
+            tooltip: 'Toggle empty days',
+            active: active,
+            onPressed: () {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(buildButton(true));
+    final activeButton = tester.widget<IconButton>(find.byType(IconButton));
+    expect(activeButton.style?.backgroundColor?.resolve({}), palette.done);
+    expect(activeButton.style?.foregroundColor?.resolve({}), palette.onDone);
+
+    await tester.pumpWidget(buildButton(false));
+    final inactiveButton = tester.widget<IconButton>(find.byType(IconButton));
+    expect(inactiveButton.style?.backgroundColor?.resolve({}), Colors.transparent);
+  });
+
+  testWidgets('showFadeMenu clamps and scrolls cleanly on short viewports', (tester) async {
+    tester.view.physicalSize = const Size(800, 320);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: themeNamed(null),
+        home: ThemeMorph(
+          target: paletteNamed(null),
+          child: Scaffold(
+            body: Builder(
+              builder: (context) => Align(
+                alignment: Alignment.topRight,
+                child: ElevatedButton(
+                  onPressed: () => showFadeMenu(
+                    context,
+                    builder: (_) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < 20; i++) SizedBox(height: 40, child: Text('Menu item $i')),
+                      ],
+                    ),
+                  ),
+                  child: const Text('Open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Menu item 0'), findsOneWidget);
+  });
+
+  test('adding a task under Today while viewing Yesterday persists to Today', () {
+    open(DateTime(2026, 11, 5, 9));
+    final yesterday = DateTime(2026, 11, 4);
+    state.showDay(yesterday);
+    state.addTodo(TodoScope.tomorrow, 'Added while looking back', day: yesterday);
+
+    expect(state.todosOn(TodoScope.tomorrow, yesterday).map((t) => t.text), ['Added while looking back']);
+    expect(state.todos[TodoScope.today]!.map((t) => t.text), ['Added while looking back']);
+    state.showToday();
+    expect(state.todos[TodoScope.today]!.map((t) => t.text), ['Added while looking back']);
+  });
+
+  group('months, rituals, debounced typing and streaks', () {
+    Store localMemory() {
+      final s = Store.memory();
+      addTearDown(s.close);
+      return s;
+    }
+
+    Directory temporary() {
+      final temp = Directory.systemTemp.createTempSync('eclipse-state-logic-');
+      addTearDown(() => temp.deleteSync(recursive: true));
+      return temp;
+    }
+
+    List<List<Object?>> sent(SyncEngine e) => e.changesSince(0).values.expand((v) => v).toList();
+
+    test('adding a ritual to a month still showing an earlier list keeps that list, once', () {
+      final s = localMemory();
+      s.setJournal('2026-09-01', 'Earlier writing makes September a month to look at');
+      final st = AppState(s, clock: () => DateTime(2026, 10, 31));
+      addTearDown(st.dispose);
+      final before = st.habitsFor(2026, 9).map((h) => h.name).toList();
+      expect(before, isNotEmpty);
+      st.addHabit(2026, 9, 'Stretch');
+      expect(st.habitsFor(2026, 9).map((h) => h.name), [...before, 'Stretch']);
+      expect(s.monthHabits(2026, 9).map((h) => h.name), [...before, 'Stretch']);
+    });
+
+    test('empty monthly lists survive reopening, copying, and sync', () {
+      final s = localMemory();
+      s.addHabit(2026, 9, 'Read');
+      var st = AppState(s, clock: () => DateTime(2026, 10, 25));
+      st.removeHabit(2026, 10, st.habits.single);
+      st.dispose();
+      st = AppState(s, clock: () => DateTime(2026, 10, 25));
+      addTearDown(st.dispose);
+      expect(st.habits, isEmpty);
+      expect(st.habitsFor(2026, 11), isEmpty, reason: 'empty lists are inherited too');
+      final sender = SyncEngine(s, 'a')..claimAll();
+      final other = localMemory();
+      final receiver = SyncEngine(other, 'b')..clearForJoining();
+      receiver.mergeAll([(sent(sender), 'a')]);
+      expect(other.hasMonth(2026, 10), isTrue);
+      expect(other.monthHabits(2026, 10), isEmpty);
+      final reopened = AppState(other, clock: () => DateTime(2026, 10, 25));
+      addTearDown(reopened.dispose);
+      expect(reopened.habits, isEmpty);
+    });
+
+    test('empty-month tombstones from older sync also initialize the month', () {
+      final s = localMemory();
+      final engine = SyncEngine(s, 'b');
+      engine.mergeAll([
+        (
+          [
+            [
+              'month_habit',
+              '2026-10/old-id',
+              '_',
+              'false',
+              1,
+              'a',
+              {'a': 1},
+            ],
+          ],
+          'a',
+        ),
+      ]);
+      expect(s.hasMonth(2026, 10), isTrue);
+      expect(s.monthHabits(2026, 10), isEmpty);
+    });
+
+    test('an empty initialized month does not seed onboarding rituals on restart', () {
+      final s = localMemory();
+      s.initializeMonth(2026, 10);
+      final st = AppState(s, clock: () => DateTime(2026, 10, 25));
+      addTearDown(st.dispose);
+      expect(st.firstRun, isFalse);
+      expect(st.habits, isEmpty);
+    });
+
+    testWidgets('ritual typing is debounced and navigation flushes pending edits', (tester) async {
+      final s = localMemory();
+      final st = AppState(s, clock: () => DateTime(2026, 10, 25));
+      final habit = st.habits.first;
+      final original = habit.name;
+      st.draftHabitName(2026, 10, habit, 'Read');
+      st.draftHabitName(2026, 10, habit, 'Read daily');
+      st.draftHabitNote(2026, 10, habit, 'Before breakfast');
+      expect(s.monthHabits(2026, 10).first.name, original);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(s.monthHabits(2026, 10).first.name, 'Read daily');
+      expect(s.monthHabits(2026, 10).first.description, 'Before breakfast');
+      st.draftHabitName(2026, 10, habit, 'Read two pages');
+      st.showMonth(10);
+      expect(s.monthHabits(2026, 10).first.name, 'Read two pages');
+      st.dispose();
+    });
+
+    test('shutdown flushes pending typing and closes only once', () async {
+      final temp = temporary();
+      final path = '${temp.path}/app.db';
+      final st = AppState(Store.open(path), clock: () => DateTime(2026, 10, 25));
+      st.draftJournal(st.today, 'Before quitting');
+      await Future.wait([st.shutdown(), st.shutdown()]);
+      final reopened = Store.open(path);
+      expect(reopened.journal('2026-10-25'), 'Before quitting');
+      reopened.close();
+    });
+
+    test('long current streaks and all-time bests keep their full history', () {
+      final s = localMemory();
+      final habit = s.addHabit(2025, 1, 'Read');
+      final today = DateTime(2026, 10, 25);
+      for (var i = 0; i < 400; i++) {
+        s.setEntry(dateKey(DateTime(today.year, today.month, today.day - i)), habit.id, HabitStatus.done);
+      }
+      final st = AppState(s, clock: () => today);
+      addTearDown(st.dispose);
+      expect(st.currentStreak(habit), 400);
+      expect(st.bestStreak(habit), 400);
+      final later = AppState(s, clock: () => DateTime(2028, 1, 1));
+      addTearDown(later.dispose);
+      expect(later.bestStreak(habit), 400);
+      expect(later.currentStreak(habit), 0);
+    });
+
+    test('today can remain open, but an explicit miss breaks the streak', () {
+      final s = localMemory();
+      final habit = s.addHabit(2026, 10, 'Read');
+      s.setEntry('2026-10-24', habit.id, HabitStatus.done);
+      final st = AppState(s, clock: () => DateTime(2026, 10, 25));
+      addTearDown(st.dispose);
+      expect(st.currentStreak(habit), 1);
+      st.selectStatus(st.today, habit, HabitStatus.done);
+      st.selectStatus(st.today, habit, HabitStatus.missed);
+      expect(st.currentStreak(habit), 0);
+      expect(st.bestStreak(habit), 1);
+    });
   });
 }

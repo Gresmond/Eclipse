@@ -1,5 +1,6 @@
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/store.dart';
+import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:flutter/material.dart';
@@ -54,7 +55,6 @@ void main() {
     addTearDown(tester.view.reset);
     final (store, state) = make();
     store.addHabit(2026, 11, 'Read');
-    state.endTour();
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
     state.showYear();
@@ -74,5 +74,39 @@ void main() {
     final task = state.todos[TodoScope.month]!.singleWhere((t) => t.text == 'Call the bank');
     expect(task.dueDate, DateTime(2026, 11, 13));
     expect(task.dueTime, 1175);
+  });
+
+  test('holiday-paused repeats recover when holiday is removed on another synced device', () {
+    final aStore = Store.memory(), bStore = Store.memory();
+    addTearDown(aStore.close);
+    addTearDown(bStore.close);
+    aStore.addHabit(2026, 11, 'Read');
+    bStore.addHabit(2026, 11, 'Read');
+    final syncAt = DateTime(2026, 11, 2, 9);
+    final aState = AppState(aStore, clock: () => syncAt);
+    final bState = AppState(bStore, clock: () => syncAt);
+    addTearDown(aState.dispose);
+    addTearDown(bState.dispose);
+
+    aState.addRepeat('Water plants', const RepeatRule.every(1), DateTime(2026, 11, 2));
+    final ea = SyncEngine(aStore, 'a'), eb = SyncEngine(bStore, 'b');
+
+    // Sync initial repeat to B.
+    ea.flush();
+    eb.mergeAll([(ea.changesSince(0).values.expand((c) => c), 'a')]);
+    bStore.startDay(syncAt);
+
+    // A adds holiday Nov 3-4, pausing those occurrences.
+    aState.addHoliday(DateTime(2026, 11, 3), DateTime(2026, 11, 4));
+    ea.flush();
+    final incoming = eb.mergeAll([(ea.changesSince(0).values.expand((c) => c), 'a')]);
+    expect(incoming.rows, isNotEmpty);
+    bState.holidays = decodeHolidays(bStore.setting('holidays'));
+
+    // B removes the holiday and must restore Nov 3 and Nov 4.
+    bState.removeHoliday(bState.holidays.single);
+    final bUids = bState.todos.values.expand((l) => l).map((t) => t.uid).toSet();
+    expect(bUids, contains(endsWith('@2026-11-03')));
+    expect(bUids, contains(endsWith('@2026-11-04')));
   });
 }

@@ -19,7 +19,6 @@ import '../widgets/search_glow.dart';
 import '../widgets/status_cell.dart';
 import '../widgets/tile.dart';
 import '../widgets/todo_panel.dart';
-import '../widgets/welcome_tour.dart';
 
 /// Three columns that exactly fill the window: the week ahead's to-dos,
 /// rituals over the sleep schedule, and what's further ahead over the
@@ -43,10 +42,7 @@ class _TodayViewState extends State<TodayView> {
   late final _rituals = StagedBuild(frames: 1, child: _HabitColumn(firstCheckboxInset: _firstCheckboxInset));
   late final _further = StagedBuild(
     frames: 2,
-    child: TourTarget(
-      spot: TourSpot.later,
-      child: FurtherAheadCard(firstCheckboxInset: _firstCheckboxInset),
-    ),
+    child: FurtherAheadCard(firstCheckboxInset: _firstCheckboxInset),
   );
 
   @override
@@ -81,13 +77,10 @@ class _TodayViewState extends State<TodayView> {
             ]);
           }
 
-          final content = PixelRow(
+          final content = Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Expanded(
-                flex: 22,
-                child: TourTarget(spot: TourSpot.week, child: WeekCard()),
-              ),
+              const Expanded(flex: 22, child: WeekCard()),
               const SizedBox(width: TodayView._gap),
               Expanded(flex: 19, child: _rituals),
               const SizedBox(width: TodayView._gap),
@@ -100,10 +93,7 @@ class _TodayViewState extends State<TodayView> {
                     const SizedBox(height: TodayView._gap),
                     SizedBox(
                       height: sleepHeight,
-                      child: const StagedBuild(
-                        frames: 2,
-                        child: TourTarget(spot: TourSpot.journal, child: JournalCard()),
-                      ),
+                      child: const StagedBuild(frames: 2, child: JournalCard()),
                     ),
                   ],
                 ),
@@ -167,23 +157,17 @@ class _HabitColumn extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: TourTarget(
-                spot: TourSpot.rituals,
-                child: _HabitsCard(
-                  title: 'Daily rituals',
-                  habits: rituals,
-                  cardHeight: constraints.maxHeight - sleepHeight - TodayView._gap,
-                  firstCheckboxInset: firstCheckboxInset,
-                ),
+              child: _HabitsCard(
+                title: 'Daily rituals',
+                habits: rituals,
+                cardHeight: constraints.maxHeight - sleepHeight - TodayView._gap,
+                firstCheckboxInset: firstCheckboxInset,
               ),
             ),
             const SizedBox(height: TodayView._gap),
             SizedBox(
               height: sleepHeight,
-              child: TourTarget(
-                spot: TourSpot.sleep,
-                child: _HabitsCard(title: 'Sleep schedule', habits: sleep, times: true),
-              ),
+              child: _HabitsCard(title: 'Sleep schedule', habits: sleep, times: true),
             ),
           ],
         );
@@ -342,8 +326,9 @@ class _HabitsCard extends StatelessWidget {
                   // subtitle and the space inside its first row add an inset.
                   final headerHeight = TileHeader.titleHeight(context, title);
                   final normalChrome = 2 * (24.0 + 1) + headerHeight + 22;
-                  final inset = pixelRound(
-                    max(0.0, cardHeight! - constraints.maxHeight - normalChrome + (rows.heights.first - rows.cell) / 2),
+                  final inset = max(
+                    0.0,
+                    cardHeight! - constraints.maxHeight - normalChrome + (rows.heights.first - rows.cell) / 2,
                   );
                   if ((alignment.value - inset).abs() > 0.01) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -495,7 +480,7 @@ class _HabitRow extends StatelessWidget {
         divider: divider,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: PixelRow(
+          child: Row(
             children: [
               Expanded(
                 child: PixelTooltip(

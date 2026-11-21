@@ -8,10 +8,9 @@ import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/util/lru_cache.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
-import 'package:eclipse/widgets/lazy_motion.dart';
 import 'package:eclipse/screens/month_view.dart';
-import 'package:eclipse/screens/warm_up.dart';
-import 'package:eclipse/widgets/settings_dialog.dart';
+import 'package:eclipse/screens/year_heatmap.dart';
+import 'package:eclipse/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -137,29 +136,6 @@ void main() {
     });
   });
 
-  testWidgets('warming up builds out of sight, takes no focus, and leaves nothing behind', (tester) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(1500, 1000);
-    addTearDown(tester.view.reset);
-    WarmUp.enabled = true;
-    addTearDown(() => WarmUp.enabled = false);
-    await show(tester);
-    final before = FocusManager.instance.primaryFocus;
-    var built = <String>{};
-    debugOnRebuildDirtyWidget = (element, _) => built.add(element.widget.runtimeType.toString());
-    addTearDown(() => debugOnRebuildDirtyWidget = null);
-    await tester.pump(const Duration(seconds: 1));
-    for (var i = 0; i < 40; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(FocusManager.instance.primaryFocus, before);
-      expect(find.byType(SettingsDialog), findsNothing, reason: 'only offstage, which finders skip');
-    }
-    expect(built, containsAll(<String>['MonthView', 'SettingsDialog', 'TimeWheel']));
-    expect(find.byType(MonthView, skipOffstage: false), findsNothing, reason: 'all gone again');
-    expect(find.byType(SettingsDialog, skipOffstage: false), findsNothing);
-    expect(tester.binding.hasScheduledFrame, isFalse);
-  });
-
   testWidgets('a long week builds only the rows on screen', (tester) async {
     for (var i = 0; i < 200; i++) {
       state.addTodo(TodoScope.today, 'Review task $i');
@@ -199,31 +175,6 @@ void main() {
     state.showMonth(10);
     await tester.pumpAndSettle();
     expect(find.byType(MonthView), findsOneWidget);
-  });
-
-  testWidgets('lazy motion settles, releases its ticker and supports another interaction', (tester) async {
-    Future<void> showValue(double value) => tester.pumpWidget(
-      LazyMotion(
-        value: value,
-        duration: const Duration(milliseconds: 100),
-        curve: Curves.linear,
-        transition: (animation, child) => FadeTransition(opacity: animation, child: child),
-        child: const SizedBox(width: 20, height: 20),
-      ),
-    );
-    double opacity() => tester.widget<FadeTransition>(find.byType(FadeTransition)).opacity.value;
-    await showValue(1);
-    await showValue(0.5);
-    await tester.pump(const Duration(milliseconds: 25));
-    expect(opacity(), allOf(greaterThan(0.5), lessThan(1)));
-    await showValue(1);
-    await tester.pumpAndSettle();
-    expect(opacity(), 1);
-    expect(tester.binding.transientCallbackCount, 0);
-    await showValue(0.6);
-    await tester.pumpAndSettle();
-    expect(opacity(), 0.6);
-    expect(tester.binding.transientCallbackCount, 0);
   });
 
   test('historical lists share a day load and invalidate after a correction', () {
@@ -336,5 +287,120 @@ void main() {
     expect(store.journal('2026-10-26'), contains('Local draft'));
     expect(store.journal('2026-10-26'), contains('Remote edit'));
     await folder.readAsync(ours, canMerge: () => false, beforeMerge: () => fail('stopped sync must not merge'));
+  });
+
+  testWidgets('YearHeatmap memoizes SQLite aggregation across theme cross-fades', (tester) async {
+    final localStore = Store.memory();
+    addTearDown(localStore.close);
+    final h = localStore.addHabit(2026, 11, 'Read');
+    final localState = AppState(localStore, clock: () => DateTime(2026, 11, 6, 9));
+    addTearDown(localState.dispose);
+
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    YearHeatmap.debugComputes = 0;
+    await tester.pumpWidget(
+      AppScope(
+        state: localState,
+        child: ValueListenableBuilder<String?>(
+          valueListenable: localState.themeNotifier,
+          builder: (context, themeName, _) => MaterialApp(
+            theme: buildTheme(paletteNamed(themeName)),
+            home: ThemeMorph(
+              target: paletteNamed(themeName),
+              child: Scaffold(
+                body: SingleChildScrollView(
+                  child: SizedBox(
+                    width: 1100,
+                    child: YearHeatmap(year: 2026, rituals: {11: {h.id}}),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(YearHeatmap.debugComputes, 1);
+
+    localState.setTheme('Lunar Eclipse');
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(YearHeatmap.debugComputes, 1);
+
+    localState.selectStatus(localState.today, h, HabitStatus.done);
+    await tester.pumpAndSettle();
+    expect(YearHeatmap.debugComputes, 2);
+  });
+
+  test('AppState caches firstMonth, emits single post-write notifications, keeps habitsFor read-only, and isolates UI state', () {
+    final localStore = Store.memory();
+    addTearDown(localStore.close);
+    localStore.addHabit(2026, 10, 'Read');
+    final localState = AppState(localStore, clock: () => DateTime(2026, 10, 23));
+    addTearDown(localState.dispose);
+
+    expect(localState.firstMonth, (2026, 10));
+    final lookupsBefore = localState.debugFirstMonthLookups;
+    localState.setTheme('Lunar Eclipse');
+    localState.setRestWeekends(true);
+    expect(localState.firstMonth, (2026, 10));
+    expect(localState.debugFirstMonthLookups, lookupsBefore);
+
+    localState.setJournal(DateTime(2026, 9, 5), 'Earlier day');
+    expect(localState.firstMonth, (2026, 9));
+    expect(localState.debugFirstMonthLookups, lookupsBefore + 1);
+
+    final monthsBefore = localStore.raw.select('SELECT year, month FROM habit_months').length;
+    final preview = localState.habitsFor(2026, 8);
+    expect(preview.map((h) => h.name), ['Read']);
+    expect(localState.isPreviewMonth(2026, 8), isTrue);
+    expect(localStore.raw.select('SELECT year, month FROM habit_months').length, monthsBefore);
+
+    var notifications = 0;
+    late int seenHour;
+    late String? seenTheme;
+    late bool seenFollow;
+    late bool seenJournalFiles;
+    localState.addListener(() {
+      notifications++;
+      seenHour = localState.dayStartHour;
+      seenTheme = localState.themeName;
+      seenFollow = localState.followNightLight;
+      seenJournalFiles = localState.keepsJournalFiles;
+    });
+
+    notifications = 0;
+    localState.setDayStartHour(4);
+    expect(notifications, 1);
+    expect(seenHour, 4);
+
+    notifications = 0;
+    localState.setTheme('Sunrise');
+    expect(notifications, 1);
+    expect(seenTheme, 'Sunrise');
+
+    notifications = 0;
+    localState.setFollowNightLight(false);
+    expect(notifications, 1);
+    expect(seenFollow, isFalse);
+
+    notifications = 0;
+    localState.setKeepsJournalFiles(false);
+    expect(notifications, 1);
+    expect(seenJournalFiles, isFalse);
+
+    final store2 = Store.memory();
+    addTearDown(store2.close);
+    final other = AppState(store2, clock: () => DateTime(2026, 10, 23));
+    addTearDown(other.dispose);
+    localState.openedTasks.add((TodoScope.today, 42));
+    localState.draggingTask.value = true;
+    expect(other.openedTasks, isEmpty);
+    expect(other.draggingTask.value, isFalse);
   });
 }

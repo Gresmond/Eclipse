@@ -431,7 +431,7 @@ ThemeData buildTheme(Palette p) {
     // No ripple: a press shows as the same tint a hover does.
     splashFactory: NoSplash.splashFactory,
     dialogTheme: DialogThemeData(
-      alignment: const PixelCentre(),
+      alignment: Alignment.center,
       elevation: 0,
       backgroundColor: p.tile,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(dialogRadius)),

@@ -129,7 +129,7 @@ class _UndoAction extends Action<_UndoIntent> {
   @override
   bool isEnabled(_UndoIntent intent) {
     if (!(intent.redo ? state.canRedo : state.canUndo)) return false;
-    if (_typing || state.touring || state.closing) return false;
+    if (_typing || state.closing) return false;
     return !(appNavigator.currentState?.canPop() ?? false);
   }
 

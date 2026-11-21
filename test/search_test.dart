@@ -1,7 +1,10 @@
 import 'package:eclipse/app_state.dart';
 import 'package:eclipse/data/search.dart';
 import 'package:eclipse/data/store.dart';
+import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/widgets/search_dialog.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -58,5 +61,40 @@ void main() {
 
   test('matches are lit wherever they fall, overlaps merged', () {
     expect(matchRanges('Dentist bill, dentist', ['dent', 'ntist']), [(0, 7), (14, 21)]);
+  });
+
+  testWidgets('Ctrl+K opens SearchDialog shortcut', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final localStore = Store.memory();
+    addTearDown(localStore.close);
+    localStore.addHabit(2026, 10, 'Read');
+    final localState = AppState(localStore, clock: () => DateTime(2026, 10, 23, 12));
+    addTearDown(localState.dispose);
+
+    await tester.pumpWidget(EclipseApp(state: localState));
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SearchDialog), findsOneWidget);
+  });
+
+  test('handles expanding lowercase like Turkish dotted I, surrogate pairs, and empty words', () {
+    final longTail = '${'a ' * 119}\u{1F600} İstanbul trip';
+    store.setJournal('2026-11-05', longTail);
+
+    final index = SearchIndex(store);
+    final hits = index.search('istanbul');
+    expect(hits, hasLength(1));
+    expect(hits.single.text.runes.toList(), isNotEmpty);
+
+    final ranges = matchRanges('Visit İstanbul today', ['istanbul', '', '   ']);
+    expect(ranges, [(6, 14)]);
   });
 }

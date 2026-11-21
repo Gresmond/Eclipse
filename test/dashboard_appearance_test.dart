@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:eclipse/app_state.dart';
@@ -5,13 +6,17 @@ import 'package:eclipse/data/journal_files.dart';
 import 'package:eclipse/data/store.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/screens/today_view.dart';
 import 'package:eclipse/theme/app_theme.dart';
+import 'package:eclipse/theme/oklch.dart' show contrast;
 import 'package:eclipse/widgets/rolling_number.dart';
 import 'package:eclipse/widgets/status_cell.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:eclipse/widgets/tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -299,5 +304,333 @@ void main() {
     await tester.pumpAndSettle();
     await mouse.removePointer();
     await tester.pumpWidget(const SizedBox());
+  });
+
+  group('consistency and sizing checks', () {
+    setUpAll(() async {
+      final manifest = jsonDecode(await rootBundle.loadString('FontManifest.json')) as List;
+      for (final family in manifest.cast<Map<String, dynamic>>()) {
+        final loader = FontLoader(family['family'] as String);
+        for (final font in (family['fonts'] as List).cast<Map<String, dynamic>>()) {
+          loader.addFont(rootBundle.load(font['asset'] as String));
+        }
+        await loader.load();
+      }
+    });
+
+    testWidgets('narrow dashboard preserves readable columns and task drafts across resizing', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final store = Store.memory();
+      final state = AppState(store, clock: () => DateTime(2026, 10, 31));
+      addTearDown(() {
+        state.dispose();
+        store.close();
+      });
+      state.addTodo(TodoScope.month, 'A future meeting', dueDate: DateTime(2026, 11, 11));
+      tester.view.physicalSize = const Size(1280, 1000);
+      await tester.pumpWidget(EclipseApp(state: state));
+      await tester.pumpAndSettle();
+      final referenceWidth = tester.getSize(find.byType(WeekCard)).width;
+      final field = find.descendant(of: find.byType(WeekCard), matching: find.byType(TextField)).last;
+      await tester.enterText(field, 'Keep this draft');
+
+      for (final width in [800.0, 860.0, 900.0, 1000.0, 1280.0]) {
+        tester.view.physicalSize = Size(width, 1000);
+        await tester.pumpAndSettle();
+        expect(tester.getSize(find.byType(WeekCard)).width, closeTo(referenceWidth, 0.1));
+        expect(tester.widget<TextField>(field).controller!.text, 'Keep this draft');
+        expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+        expect(tester.renderObject<RenderParagraph>(find.text('Further ahead')).didExceedMaxLines, isFalse);
+        expect(tester.takeException(), isNull);
+      }
+
+      tester.view.physicalSize = const Size(800, 1000);
+      await tester.pumpAndSettle();
+      final horizontal = find.descendant(
+        of: find.byType(TodayView),
+        matching: find.byWidgetPredicate((w) => w is SingleChildScrollView && w.scrollDirection == Axis.horizontal),
+      );
+      await tester.drag(horizontal, const Offset(-700, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('Further ahead').hitTestable(), findsOneWidget);
+      expect(find.text('A future meeting').hitTestable(), findsOneWidget);
+      expect(tester.getRect(find.byType(FurtherAheadCard)).right, closeTo(800 - 32, 0.1));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('scaled pills keep their text inside and completed pills fit every palette', (tester) async {
+      for (final palette in palettes) {
+        for (final (label, complete) in [('14 PLANNED', false), ('10 OPEN', false), ('ALL DONE', true)]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: buildTheme(palette),
+              home: MediaQuery(
+                data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+                child: Scaffold(
+                  body: Center(
+                    child: StatusPill(label: label, complete: complete),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final pill = tester.getRect(find.byType(StatusPill));
+          final texts = find.descendant(of: find.byType(StatusPill), matching: find.byType(Text));
+          for (final element in texts.evaluate()) {
+            final text = element.widget as Text;
+            if (text.data?.isEmpty ?? true) continue;
+            final bounds = tester.getRect(find.byWidget(text));
+            expect(bounds.top - pill.top, greaterThanOrEqualTo(4), reason: '${palette.name}: $label');
+            expect(pill.bottom - bounds.bottom, greaterThanOrEqualTo(4), reason: '${palette.name}: $label');
+          }
+          expect(pill.height, greaterThan(28));
+          if (complete) {
+            final container = tester.widget<AnimatedContainer>(
+              find.descendant(of: find.byType(StatusPill), matching: find.byType(AnimatedContainer)),
+            );
+            final fill = (container.decoration! as BoxDecoration).color!;
+            final ink = tester.widget<Text>(find.text('ALL DONE')).style!.color!;
+            expect(contrast(ink, fill), greaterThanOrEqualTo(4.5), reason: palette.name);
+            expect(contrast(fill, palette.tile), lessThan(2), reason: 'subtle surface in ${palette.name}');
+          }
+          expect(tester.takeException(), isNull);
+        }
+      }
+    });
+
+    testWidgets('Further ahead only says nothing but birthdays when some are hidden', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1680, 1160);
+      addTearDown(tester.view.reset);
+      final store = Store.memory();
+      final state = AppState(store, clock: () => DateTime(2026, 10, 31));
+      addTearDown(() {
+        state.dispose();
+        store.close();
+      });
+      for (final scope in TodoScope.values) {
+        for (final task in [...state.todos[scope]!]) {
+          state.removeTodo(scope, task);
+        }
+      }
+      await tester.pumpWidget(EclipseApp(state: state));
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing planned.'), findsOneWidget);
+      state.toggleLaterBirthdays();
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing planned.'), findsOneWidget);
+      state.addTodo(TodoScope.month, 'Ana', dueDate: DateTime(2026, 12, 20), birthday: true);
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing but birthdays.'), findsOneWidget);
+      expect(find.text('Nothing planned.'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('empty states and task-entry hints stay readable and share typography in every theme', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1680, 1160);
+      addTearDown(tester.view.reset);
+      final store = Store.memory();
+      final state = AppState(store, clock: () => DateTime(2026, 10, 31));
+      addTearDown(() {
+        state.dispose();
+        store.close();
+      });
+      for (final scope in TodoScope.values) {
+        for (final task in [...state.todos[scope]!]) {
+          state.removeTodo(scope, task);
+        }
+      }
+      await tester.pumpWidget(EclipseApp(state: state));
+      for (final palette in palettes) {
+        state.setTheme(palette.name);
+        await tester.pumpAndSettle();
+        final fields = tester
+            .widgetList<TextField>(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Add task'))
+            .toList();
+        expect(fields.length, greaterThanOrEqualTo(3));
+        for (final field in fields) {
+          expect(field.style, fields.first.style);
+          final hint = field.decoration!.hintStyle!;
+          for (final opacity in [0.0, 0.45, 0.65]) {
+            final surface = Color.alphaBlend(palette.empty.withValues(alpha: opacity), palette.tile);
+            expect(contrast(hint.color!, surface), greaterThanOrEqualTo(4.5), reason: palette.name);
+          }
+        }
+        for (final label in ['Nothing due.', 'Nothing planned.']) {
+          final text = tester.widget<Text>(find.text(label));
+          expect(text.style!.fontSize, 15);
+          expect(contrast(text.style!.color!, palette.tile), greaterThanOrEqualTo(4.5), reason: palette.name);
+        }
+        expect(tester.takeException(), isNull);
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('date tile and first ritual checkbox align with enlarged text', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1680, 1160);
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final store = Store.memory();
+      store.addHabit(2026, 10, 'A ritual with a name that can wrap');
+      final state = AppState(store, clock: () => DateTime(2026, 10, 31));
+      addTearDown(() {
+        state.dispose();
+        store.close();
+      });
+      state.addTodo(TodoScope.month, 'A future meeting', dueDate: DateTime(2026, 11, 11));
+      for (final scale in [1.0, 1.3, 2.0]) {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        await tester.pumpWidget(EclipseApp(state: state));
+        await tester.pumpAndSettle();
+        final date = find.ancestor(of: find.text('NOV'), matching: find.byType(Container)).first;
+        expect(tester.getTopLeft(date).dy, closeTo(tester.getTopLeft(find.byType(StatusCell).first).dy, 0.1));
+        expect(tester.renderObject<RenderParagraph>(find.text('Further ahead')).didExceedMaxLines, isFalse);
+        expect(tester.takeException(), isNull);
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a streak waits for the page, both ways, rather than popping in', (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final store = Store.memory();
+      final habit = store.addHabit(2026, 11, 'Sketch', addedOn: DateTime(2026, 11, 1));
+      final state = AppState(store, clock: () => DateTime(2026, 11, 5, 10));
+      addTearDown(() {
+        state.dispose();
+        store.close();
+      });
+      store.setEntry('2026-11-04', habit.id, HabitStatus.done);
+      store.setEntry('2026-11-05', habit.id, HabitStatus.done);
+      state.showDay(DateTime(2026, 11, 2));
+      await tester.pumpWidget(EclipseApp(state: state));
+      await tester.pumpAndSettle();
+      final flame = find.byIcon(Icons.local_fire_department_rounded);
+      expect(flame, findsNothing);
+      double shown() => tester
+          .widget<FadeTransition>(find.ancestor(of: flame, matching: find.byType(FadeTransition)).first)
+          .opacity
+          .value;
+
+      state.showToday();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(shown(), 0, reason: 'nothing new shows until the old day has faded');
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(shown(), inExclusiveRange(0, 1), reason: 'partway through the page fade');
+      await tester.pumpAndSettle();
+      expect(shown(), 1);
+
+      state.showDay(DateTime(2026, 11, 2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(shown(), inExclusiveRange(0, 1), reason: 'still fading out with the page');
+      await tester.pumpAndSettle();
+      expect(flame, findsNothing);
+    });
+
+    test('a past day has the streak it ended with', () {
+      final store = Store.memory();
+      final state = AppState(store, clock: () => DateTime(2026, 11, 6, 10));
+      addTearDown(() {
+        state.dispose();
+        store.close();
+      });
+      final habit = store.addHabit(2026, 11, 'Sketch', addedOn: DateTime(2026, 11, 1));
+      for (final day in ['01', '02', '04', '05', '06']) {
+        store.setEntry('2026-11-$day', habit.id, HabitStatus.done);
+      }
+      (int, int) on(int day) => state.streaksOn(habit, DateTime(2026, 11, day));
+      expect(on(2), (2, 2));
+      expect(on(3), (0, 2), reason: 'left blank, so the run ended');
+      expect(on(5), (2, 2));
+      expect(on(6), (3, 3));
+      state.selectStatus(DateTime(2026, 11, 5), habit, HabitStatus.missed);
+      expect(on(5), (0, 2), reason: 'follows a correction');
+    });
+
+    testWidgets('another day rolls the count in a pill that stays put', (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final store = Store.memory();
+      final habit = store.addHabit(2026, 11, 'Sketch', addedOn: DateTime(2026, 11, 1));
+      final state = AppState(store, clock: () => DateTime(2026, 11, 5, 10));
+      addTearDown(() {
+        state.dispose();
+        store.close();
+      });
+      for (final day in ['01', '02', '03', '04', '05']) {
+        store.setEntry('2026-11-$day', habit.id, HabitStatus.done);
+      }
+      await tester.pumpWidget(EclipseApp(state: state));
+      await tester.pumpAndSettle();
+      final flame = find.byIcon(Icons.local_fire_department_rounded);
+      final number = find.descendant(
+        of: find.ancestor(of: flame, matching: find.byType(Row)).first,
+        matching: find.byType(RollingNumber),
+      );
+      final at = tester.getTopLeft(flame);
+      final kept = tester.element(number);
+
+      state.showDay(DateTime(2026, 11, 2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.element(number), same(kept), reason: 'the same pill, so its number rolls');
+      expect(tester.widget<RollingNumber>(number).value, 2);
+      final fade = tester.widget<FadeTransition>(find.ancestor(of: flame, matching: find.byType(FadeTransition)).first);
+      expect(fade.opacity.value, 1, reason: 'the pill itself never fades');
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(flame), at);
+
+      state.showToday();
+      await tester.pumpAndSettle();
+      state.clear(DateTime(2026, 11, 5), habit);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(tester.element(number), same(kept), reason: 'a new count on the same day rolls too');
+      expect(tester.widget<RollingNumber>(number).value, 4);
+    });
+
+    testWidgets('only the day\'s name or date is in full ink, not its weekday', (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final store = Store.memory();
+      final state = AppState(store, clock: () => DateTime(2026, 11, 6, 10));
+      addTearDown(() {
+        state.dispose();
+        store.close();
+      });
+      await tester.pumpWidget(EclipseApp(state: state));
+      await tester.pumpAndSettle();
+      Map<String, Color?> heading(String ends) {
+        final text = tester.widget<RichText>(
+          find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText().endsWith(ends)).first,
+        );
+        final colours = <String, Color?>{};
+        text.text.visitChildren((span) {
+          if (span is TextSpan && span.text != null) colours[span.text!] = span.style?.color;
+          return true;
+        });
+        return colours;
+      }
+
+      state.showDay(DateTime(2026, 11, 5));
+      await tester.pumpAndSettle();
+      final yesterday = heading('Thursday');
+      final ink = yesterday['Yesterday'], grey = yesterday['5 Nov'];
+      expect(grey, isNot(ink));
+      expect(yesterday['Thursday'], grey);
+      state.showDay(DateTime(2026, 11, 4));
+      await tester.pumpAndSettle();
+      expect(heading('Wednesday')['4 Nov'], ink);
+      expect(heading('Wednesday')['Wednesday'], grey);
+    });
   });
 }

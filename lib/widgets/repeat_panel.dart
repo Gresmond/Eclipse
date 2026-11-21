@@ -221,7 +221,7 @@ class _RepeatPanelState extends State<_RepeatPanel> {
         // width would otherwise cut it off. The rows are centred; the notes
         // line up with the switch's text.
         Align(
-          alignment: const PixelCentre(),
+          alignment: Alignment.center,
           child: _ScaleDown(
             alignment: Alignment.center,
             child: Row(
@@ -473,7 +473,7 @@ class _DateTags extends StatelessWidget {
       message: pickingEnd
           ? 'Click a marked day on the calendar to set an end date.'
           : 'Left-click to set a start date. Click “Ends” or right-click a day for an end date.',
-      child: PixelRow(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           tag(starts, active: !pickingEnd, onTap: onPickStart),
@@ -667,7 +667,7 @@ class _NotifyRow extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(0, 6, 0, 8),
               child: Align(
-                alignment: const PixelCentre(),
+                alignment: Alignment.center,
                 child: _ScaleDown(
                   alignment: Alignment.center,
                   child: SegmentedPills(
