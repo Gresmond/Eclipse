@@ -109,8 +109,12 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
     });
   }
 
-  Widget _dimmed(bool dim, Widget child) =>
-      AnimatedOpacity(opacity: dim ? 0.3 : 1, duration: Motion.hover, curve: Motion.hoverCurve, child: child);
+  Widget _dimmed(bool dim, Widget child) => AnimatedOpacity(
+    opacity: dim ? 0.3 : 1,
+    duration: context.themed(Motion.hover),
+    curve: Motion.hoverCurve,
+    child: child,
+  );
   bool _acceptingNest = false;
 
   /// A dragged task is over the middle of the row, to nest in it.
@@ -695,7 +699,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
           ),
         ),
         ClipRect(
-          child: AnimatedSize(
+          child: MotionSize(
             // An arriving subtask opens its space at a new task's pace.
             duration: _incomingSubtask == null ? Motion.click : Motion.morph,
             curve: _incomingSubtask == null ? Motion.clickCurve : Motion.morphCurve,

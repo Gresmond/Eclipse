@@ -412,7 +412,12 @@ class _LegendItem extends StatelessWidget {
       onTap: () => onToggle(keyName),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-        child: AnimatedOpacity(opacity: off ? 0.35 : 1, duration: Motion.hover, curve: Motion.hoverCurve, child: child),
+        child: AnimatedOpacity(
+          opacity: off ? 0.35 : 1,
+          duration: context.themed(Motion.hover),
+          curve: Motion.hoverCurve,
+          child: child,
+        ),
       ),
     ),
   );

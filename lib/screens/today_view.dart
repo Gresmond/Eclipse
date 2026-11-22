@@ -460,7 +460,7 @@ class _HoverHighlight extends StatelessWidget {
                 child: IgnorePointer(
                   child: AnimatedOpacity(
                     opacity: hover ? 0 : 1,
-                    duration: Motion.hover,
+                    duration: context.themed(Motion.hover),
                     curve: Motion.hoverCurve,
                     child: ColoredBox(color: p.borderSoft, child: const SizedBox(height: 1)),
                   ),
@@ -742,7 +742,7 @@ class _WeekTrailMarksState extends State<_WeekTrailMarks> {
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
       tween: Tween(end: _morphStep),
-      duration: Motion.morph,
+      duration: context.themed(Motion.morph),
       curve: Motion.morphCurve,
       builder: (context, v, _) {
         _currentStep = v;

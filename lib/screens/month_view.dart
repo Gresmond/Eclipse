@@ -121,7 +121,7 @@ class _MonthViewState extends State<MonthView> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                AnimatedSize(
+                MotionSize(
                   duration: Motion.morph,
                   curve: Motion.morphCurve,
                   alignment: Alignment.topCenter,
@@ -162,7 +162,7 @@ class _MonthViewState extends State<MonthView> {
       ignoring: future,
       child: AnimatedOpacity(
         opacity: future ? 0 : 1,
-        duration: Motion.morph,
+        duration: context.themed(Motion.morph),
         curve: Motion.morphCurve,
         child: _PillButton(
           label: editing ? 'Done' : label,
@@ -197,7 +197,7 @@ class _MonthViewState extends State<MonthView> {
           // The card stays still. Moving between months morphs the grid in
           // place (see [_Grid]); only switching to the editor fades. The
           // height eases when the new month has a different number of rituals.
-          AnimatedSize(
+          MotionSize(
             duration: Motion.morph,
             curve: Motion.morphCurve,
             alignment: Alignment.topCenter,
@@ -337,7 +337,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
                           valueListenable: _hover,
                           builder: (_, hover, child) => AnimatedOpacity(
                             opacity: hover ? 1 : 0,
-                            duration: Motion.hover,
+                            duration: context.themed(Motion.hover),
                             curve: Motion.hoverCurve,
                             child: child,
                           ),
@@ -443,11 +443,11 @@ class _DayHeader extends StatelessWidget {
       // they follow a theme cross-fade exactly instead of trailing it.
       child: TweenAnimationBuilder<double>(
         tween: Tween(end: rest ? 1 : 0),
-        duration: Motion.morph,
+        duration: context.themed(Motion.morph),
         curve: Motion.morphCurve,
         builder: (context, r, _) => TweenAnimationBuilder<double>(
           tween: Tween(end: isToday ? 1 : 0),
-          duration: Motion.morph,
+          duration: context.themed(Motion.morph),
           curve: Motion.morphCurve,
           builder: (context, t, _) {
             final letterFg = holiday
@@ -470,7 +470,7 @@ class _DayHeader extends StatelessWidget {
                   // out above it, rather than every letter blinking out at once.
                   // Clipped to one line, so the two never show stacked.
                   AnimatedSwitcher(
-                    duration: Motion.morph,
+                    duration: context.themed(Motion.morph),
                     switchInCurve: Motion.morphCurve,
                     switchOutCurve: Motion.morphCurve,
                     layoutBuilder: (current, previous) => ClipRect(

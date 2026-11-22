@@ -82,8 +82,8 @@ class _Digit extends StatelessWidget {
   Widget build(BuildContext context) {
     final current = ValueKey(digit);
     final d = context.themed(duration);
-    return AnimatedSize(
-      duration: d,
+    return MotionSize(
+      duration: duration,
       curve: Motion.morphCurve,
       alignment: Alignment.centerRight,
       clipBehavior: Clip.none,

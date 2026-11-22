@@ -317,8 +317,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 const SizedBox(height: 20),
                 // Clipped, so the old page never lies over Close as it fades.
                 ClipRect(
-                  child: AnimatedSize(
-                    duration: context.themed(Motion.morph),
+                  child: MotionSize(
+                    duration: Motion.morph,
                     curve: Motion.morphCurve,
                     alignment: Alignment.topCenter,
                     clipBehavior: Clip.none,
@@ -377,6 +377,13 @@ extension on _SettingsDialogState {
                   subtitle: 'Read schedules and places from phrases like “tomorrow at 3pm at the library”.',
                   on: state.smartAdd,
                   onTap: () => state.setSmartAdd(!state.smartAdd),
+                ),
+                const FadeMenuDivider(),
+                SettingSwitchRow(
+                  title: 'Reduce motion',
+                  subtitle: 'Turn off animations and smooth scrolling for a snappier feel.',
+                  on: state.reduceMotion,
+                  onTap: () => state.setReduceMotion(!state.reduceMotion),
                 ),
                 const FadeMenuDivider(),
                 const HolidaysRow(),

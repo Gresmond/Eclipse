@@ -273,6 +273,29 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   });
 
+  testWidgets('phone settings Reduce motion disables animations across PhoneApp', (tester) async {
+    final (store, state) = make();
+    await show(tester, state);
+
+    expect(state.reduceMotion, isFalse);
+    expect(MediaQuery.disableAnimationsOf(tester.element(find.byType(Scaffold).first)), isFalse);
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Reduce motion'), 200);
+    expect(find.text('Reduce motion'), findsOneWidget);
+
+    await tester.tap(find.text('Reduce motion'));
+    await tester.pumpAndSettle();
+
+    expect(state.reduceMotion, isTrue);
+    expect(store.setting('reduceMotion'), '1');
+    expect(MediaQuery.disableAnimationsOf(tester.element(find.byType(Scaffold).last)), isTrue);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+  });
+
   testWidgets('repeating task swipe confirms scope, weekly ritual omits streak, and long-press opens action sheet', (
     tester,
   ) async {

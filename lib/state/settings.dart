@@ -19,6 +19,17 @@ mixin _Settings on ChangeNotifier {
     notifyListeners();
   }
 
+  /// Disables animations and smooth wheel scrolling on this device.
+  late bool _reduceMotion = store.setting('reduceMotion') == '1';
+  bool get reduceMotion => _reduceMotion;
+  late final ValueNotifier<bool> reduceMotionNotifier = ValueNotifier(_reduceMotion);
+  void setReduceMotion(bool on) {
+    _reduceMotion = on;
+    store.setSetting('reduceMotion', on ? '1' : '0');
+    reduceMotionNotifier.value = on;
+    notifyListeners();
+  }
+
   /// The hour a new day starts: 0 for midnight or 4 for night owls.
   late int dayStartHour = parseDayStartHour(store.setting('dayStartHour'));
 
@@ -226,6 +237,7 @@ mixin _Settings on ChangeNotifier {
   @override
   void dispose() {
     themeNotifier.dispose();
+    reduceMotionNotifier.dispose();
     super.dispose();
   }
 }

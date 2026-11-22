@@ -543,3 +543,36 @@ class _ThemeMorphScope extends InheritedWidget {
   @override
   bool updateShouldNotify(_ThemeMorphScope old) => active != old.active;
 }
+
+/// An [AnimatedSize] that omits itself when animations are disabled,
+/// avoiding Flutter's `RenderAnimatedSize` assertion with [Duration.zero].
+class MotionSize extends StatelessWidget {
+  const MotionSize({
+    super.key,
+    required this.duration,
+    this.curve = Curves.linear,
+    this.alignment = Alignment.center,
+    this.clipBehavior = Clip.hardEdge,
+    required this.child,
+  });
+
+  final Duration duration;
+  final Curve curve;
+  final AlignmentGeometry alignment;
+  final Clip clipBehavior;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if ((MediaQuery.maybeDisableAnimationsOf(context) ?? false) || duration == Duration.zero) {
+      return child;
+    }
+    return AnimatedSize(
+      duration: duration,
+      curve: curve,
+      alignment: alignment,
+      clipBehavior: clipBehavior,
+      child: child,
+    );
+  }
+}

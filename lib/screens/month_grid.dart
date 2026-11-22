@@ -143,6 +143,15 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
       if (!ids.contains(h.id) && row != null) _leaving[h.id] = (i, row);
     }
     if ((old.year, old.month) == (widget.year, widget.month)) return;
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _cellSize.from = _cellSize.to;
+      _morph.value = 1;
+      _previous = null;
+      _bandsFrom = null;
+      _bands.value = 1;
+      _shown.value = daysInMonth(widget.year, widget.month).toDouble();
+      return;
+    }
     _cellSize.from = _cellSize.value;
     _morph.forward(from: 0);
     _previous = (old.year, old.month);
@@ -308,7 +317,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
                   child: IgnorePointer(
                     child: AnimatedOpacity(
                       opacity: state.restWeekends ? 1 : 0,
-                      duration: Motion.morph,
+                      duration: context.themed(Motion.morph),
                       curve: Motion.morphCurve,
                       child: CustomPaint(
                         painter: _RestBandPainter(
@@ -399,7 +408,7 @@ class _MonthScore extends StatelessWidget {
             children: [
               TweenAnimationBuilder<double>(
                 tween: Tween(end: logged == 0 ? 0 : done * 100 / logged),
-                duration: Motion.morph,
+                duration: context.themed(Motion.morph),
                 curve: Motion.morphCurve,
                 builder: (context, percent, _) => Text(
                   '${percent.round()}%',

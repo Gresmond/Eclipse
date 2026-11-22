@@ -272,6 +272,8 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
       restWeekends = store.setting('restWeekends') == '1';
       holidays = decodeHolidays(store.setting('holidays'));
       _smartAdd = store.setting('smartAdd') != '0';
+      _reduceMotion = store.setting('reduceMotion') == '1';
+      reduceMotionNotifier.value = _reduceMotion;
       final nextStartHour = parseDayStartHour(store.setting('dayStartHour'));
       if (nextStartHour != dayStartHour) {
         dayStartHour = nextStartHour;
@@ -472,6 +474,8 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     holidays = decodeHolidays(store.setting('holidays'));
     followNightLight = store.setting('followNightLight') != '0';
     _smartAdd = store.setting('smartAdd') != '0';
+    _reduceMotion = store.setting('reduceMotion') == '1';
+    reduceMotionNotifier.value = _reduceMotion;
     dayStartHour = parseDayStartHour(store.setting('dayStartHour'));
     laterBirthdays = store.setting('laterBirthdays') != 'hidden';
     weekEmptyDays = store.setting('weekEmptyDays') == 'shown';

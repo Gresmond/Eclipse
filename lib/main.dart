@@ -347,42 +347,54 @@ class EclipseApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppScope(
       state: state,
-      child: ValueListenableBuilder<String?>(
-        valueListenable: state.themeNotifier,
-        builder: (context, themeName, _) => MaterialApp(
-          title: 'Eclipse',
-          navigatorKey: appNavigator,
-          debugShowCheckedModeBanner: false,
-          theme: themeNamed(themeName),
-          themeAnimationDuration: (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ? Duration.zero : Motion.morph,
-          themeAnimationCurve: Motion.morphCurve,
-          // A line's extra height goes equally above and below it, which
-          // centres the fonts' capitals in their line, and so on the tick
-          // boxes and tints beside them.
-          builder: (context, child) => DefaultTextHeightBehavior(
-            textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
-            child: ThemeMorph(
-              target: paletteNamed(themeName),
-              child: CallbackShortcuts(
-                bindings: {
-                  const SingleActivator(LogicalKeyboardKey.keyK, control: true): _search,
-                  const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _search,
-                  const SingleActivator(LogicalKeyboardKey.keyF, control: true): _search,
-                  const SingleActivator(LogicalKeyboardKey.keyF, meta: true): _search,
-                  const SingleActivator(LogicalKeyboardKey.keyN, control: true): _newTask,
-                  const SingleActivator(LogicalKeyboardKey.keyN, meta: true): _newTask,
-                },
-                child: UndoLayer(cards: CornerCards(updater: updater), child: child!),
+      child: ListenableBuilder(
+        listenable: Listenable.merge([state.themeNotifier, state.reduceMotionNotifier]),
+        builder: (context, _) {
+          final themeName = state.themeName;
+          final reduceMotion = state.reduceMotion;
+          return MaterialApp(
+            title: 'Eclipse',
+            navigatorKey: appNavigator,
+            debugShowCheckedModeBanner: false,
+            theme: themeNamed(themeName),
+            themeAnimationDuration: ((MediaQuery.maybeDisableAnimationsOf(context) ?? false) || reduceMotion)
+                ? Duration.zero
+                : Motion.morph,
+            themeAnimationCurve: Motion.morphCurve,
+            // A line's extra height goes equally above and below it, which
+            // centres the fonts' capitals in their line, and so on the tick
+            // boxes and tints beside them.
+            builder: (context, child) {
+              final media = MediaQuery.of(context);
+              final body = DefaultTextHeightBehavior(
+                textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
+                child: ThemeMorph(
+                  target: paletteNamed(themeName),
+                  child: CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(LogicalKeyboardKey.keyK, control: true): _search,
+                      const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _search,
+                      const SingleActivator(LogicalKeyboardKey.keyF, control: true): _search,
+                      const SingleActivator(LogicalKeyboardKey.keyF, meta: true): _search,
+                      const SingleActivator(LogicalKeyboardKey.keyN, control: true): _newTask,
+                      const SingleActivator(LogicalKeyboardKey.keyN, meta: true): _newTask,
+                    },
+                    child: UndoLayer(cards: CornerCards(updater: updater), child: child!),
+                  ),
+                ),
+              );
+              return reduceMotion && !media.disableAnimations
+                  ? MediaQuery(data: media.copyWith(disableAnimations: true), child: body)
+                  : body;
+            },
+            home: Builder(
+              builder: (context) => AbsorbPointer(
+                absorbing: AppScope.watch(context, (s) => s.closing).closing,
+                child: Shell(updater: updater),
               ),
             ),
-          ),
-          home: Builder(
-            builder: (context) => AbsorbPointer(
-              absorbing: AppScope.watch(context, (s) => s.closing).closing,
-              child: Shell(updater: updater),
-            ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

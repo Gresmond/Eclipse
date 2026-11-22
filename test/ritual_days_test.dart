@@ -3,6 +3,7 @@ import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/screens/year_heatmap.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -210,6 +211,52 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('THE YEAR  ·  100% OF RITUALS DONE'), findsOneWidget);
+  });
+
+  testWidgets('YearHeatmap slips exclude weekends and weekend baseline when restWeekends is enabled', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final store = Store.memory();
+    addTearDown(store.close);
+    final stretch = store.addHabit(2026, 10, 'Stretch', addedOn: DateTime(2026, 10, 1));
+    final read = store.addHabit(2026, 10, 'Read', addedOn: DateTime(2026, 10, 1));
+    // 28 days (4 full Mon-Sun weeks): 4 occurrences of every weekday.
+    for (var d = 1; d <= 28; d++) {
+      final day = DateTime(2026, 10, d);
+      final key = dateKey(day);
+      final isWeekend = day.weekday >= DateTime.saturday;
+      store.setEntry(key, stretch.id, isWeekend ? HabitStatus.missed : HabitStatus.done);
+      store.setEntry(
+        key,
+        read.id,
+        isWeekend || day.weekday == DateTime.friday ? HabitStatus.missed : HabitStatus.done,
+      );
+    }
+
+    final state = AppState(store, clock: () => DateTime(2026, 11, 2, 10));
+    addTearDown(state.dispose);
+    state.setRestWeekends(false);
+    state.showYear();
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Stretch slips on Saturdays  0%, usually 71%', findRichText: true), findsOneWidget);
+    expect(find.textContaining('Read slips on Fridays  0%, usually 57%', findRichText: true), findsOneWidget);
+
+    state.setRestWeekends(true);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(YearHeatmap),
+        matching: find.textContaining('Stretch', findRichText: true),
+      ),
+      findsNothing,
+    );
+    expect(find.textContaining('Saturdays', findRichText: true), findsNothing);
+    expect(find.textContaining('Read slips on Fridays  0%, usually 80%', findRichText: true), findsOneWidget);
   });
 
   group('Habits & Sleep Schedule', () {

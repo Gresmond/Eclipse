@@ -590,21 +590,33 @@ class _TabBarState extends State<_TabBar> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(_TabBar old) {
     super.didUpdateWidget(old);
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     if (widget.past != null) {
       _fold?.cancel();
-      if (_pastOpen.value > 0 && _pastLabel != null && _pastLabel != widget.past) {
-        _fromWidth = _labelWidth;
-        _toWidth = _Tab.boldWidth(context, widget.past!);
-        _relabel.forward(from: 0);
-      } else if (_pastOpen.value == 0) {
+      if (reduced) {
         _relabel.value = 1;
+        _pastLabel = widget.past;
+        _pastOpen.value = 1;
+      } else {
+        if (_pastOpen.value > 0 && _pastLabel != null && _pastLabel != widget.past) {
+          _fromWidth = _labelWidth;
+          _toWidth = _Tab.boldWidth(context, widget.past!);
+          _relabel.forward(from: 0);
+        } else if (_pastOpen.value == 0) {
+          _relabel.value = 1;
+        }
+        _pastLabel = widget.past;
+        _pastOpen.forward();
       }
-      _pastLabel = widget.past;
-      _pastOpen.forward();
     } else if (old.past != null) {
-      _fold = Timer(context.themed(Motion.morph), () {
-        if (mounted) _pastOpen.reverse();
-      });
+      if (reduced) {
+        _fold?.cancel();
+        _pastOpen.value = 0;
+      } else {
+        _fold = Timer(context.themed(Motion.morph), () {
+          if (mounted) _pastOpen.reverse();
+        });
+      }
     }
   }
 

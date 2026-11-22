@@ -56,6 +56,15 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if ((MediaQuery.maybeDisableAnimationsOf(context) ?? false) && _glow != null) {
+      _glow!.dispose();
+      _glow = null;
+    }
+  }
+
+  @override
   void didUpdateWidget(SearchGlow old) {
     super.didUpdateWidget(old);
     if (old.target != widget.target) {
@@ -88,7 +97,14 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
     final duration = parent ? Motion.glowBrief : Motion.glow;
     void light() {
       if (!mounted) return;
-      Scrollable.ensureVisible(context, alignment: 0.3, duration: Motion.morph, curve: Motion.morphCurve);
+      final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0.3,
+        duration: reduced ? Duration.zero : Motion.morph,
+        curve: Motion.morphCurve,
+      );
+      if (reduced) return;
       final controller = _glow ??= AnimationController(vsync: this, duration: duration)
         ..addStatusListener((status) {
           if (status != AnimationStatus.completed) return;

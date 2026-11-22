@@ -105,21 +105,37 @@ class _SmoothTaskScrollState extends State<SmoothTaskScroll> {
   }
 
   @override
-  Widget build(BuildContext context) => ScrollConfiguration(
-    // Task lists scroll without a bar beside them.
-    behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-    child: widget.builder(context, _controller),
-  );
+  Widget build(BuildContext context) {
+    _controller.disableAnimations = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    return ScrollConfiguration(
+      // Task lists scroll without a bar beside them.
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+      child: widget.builder(context, _controller),
+    );
+  }
 }
 
 class _WheelController extends ScrollController {
+  bool disableAnimations = false;
+
   @override
   ScrollPosition createScrollPosition(ScrollPhysics physics, ScrollContext context, ScrollPosition? oldPosition) =>
-      _WheelPosition(physics: physics, context: context, oldPosition: oldPosition);
+      _WheelPosition(
+        physics: physics,
+        context: context,
+        oldPosition: oldPosition,
+        disableAnimations: () => disableAnimations,
+      );
 }
 
 class _WheelPosition extends ScrollPositionWithSingleContext {
-  _WheelPosition({required super.physics, required super.context, super.oldPosition});
+  _WheelPosition({
+    required super.physics,
+    required super.context,
+    super.oldPosition,
+    required this.disableAnimations,
+  });
+  final bool Function() disableAnimations;
   double? _wheelTarget;
   int _generation = 0;
 
@@ -130,6 +146,12 @@ class _WheelPosition extends ScrollPositionWithSingleContext {
     if (delta == 0) return;
     final target = ((_wheelTarget ?? pixels) + delta).clamp(minScrollExtent, maxScrollExtent).toDouble();
     if (target == pixels) return;
+    if (disableAnimations()) {
+      _wheelTarget = null;
+      _generation++;
+      jumpTo(target);
+      return;
+    }
     _wheelTarget = target;
     final generation = ++_generation;
     animateTo(target, duration: Motion.scroll, curve: Motion.clickCurve).whenComplete(() {

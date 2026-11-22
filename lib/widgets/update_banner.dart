@@ -96,8 +96,8 @@ class _Card extends StatelessWidget {
           _Mark(palette: p),
           const SizedBox(width: 14),
           Expanded(
-            child: AnimatedSize(
-              duration: context.themed(Motion.morph),
+            child: MotionSize(
+              duration: Motion.morph,
               curve: Motion.morphCurve,
               alignment: Alignment.topLeft,
               child: FadeThrough(

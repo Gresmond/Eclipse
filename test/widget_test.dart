@@ -1161,6 +1161,42 @@ void main() {
     await _shoot(tester, 'day_start_header');
   });
 
+  testWidgets('Reduce motion in Settings General disables animations per-device', (tester) async {
+    await tester.runAsync(_loadFonts);
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    expect(Store.syncedSettings, isNot(contains('reduceMotion')));
+
+    final store = _testStore();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 24, 10));
+    addTearDown(state.dispose);
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    expect(state.reduceMotion, isFalse);
+    final beforeContext = tester.element(find.byType(TodayView));
+    expect(MediaQuery.disableAnimationsOf(beforeContext), isFalse);
+    expect(beforeContext.themed(Motion.morph), Motion.morph);
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reduce motion'), findsOneWidget);
+
+    await tester.tap(find.text('Reduce motion'));
+    await tester.pumpAndSettle();
+    expect(state.reduceMotion, isTrue);
+    expect(store.setting('reduceMotion'), '1');
+
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    final afterContext = tester.element(find.byType(TodayView));
+    expect(MediaQuery.disableAnimationsOf(afterContext), isTrue);
+    expect(afterContext.themed(Motion.morph), Duration.zero);
+  });
+
   testWidgets('date pill keeps resizing when entering and leaving Today', (tester) async {
     await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);

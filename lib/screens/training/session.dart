@@ -228,8 +228,8 @@ class _DeleteExerciseState extends State<_DeleteExercise> {
       onExit: (_) => setState(() => _asking = false),
       // The bin and the question swap as a fade-through, the room easing
       // between their widths.
-      child: AnimatedSize(
-        duration: context.themed(Motion.morph),
+      child: MotionSize(
+        duration: Motion.morph,
         curve: Motion.morphCurve,
         alignment: Alignment.centerRight,
         child: FadeThrough(
@@ -766,8 +766,8 @@ class AddSessionExerciseState extends State<AddSessionExercise> {
         ),
         // What shows under the field opens and closes its room as it comes
         // and goes.
-        AnimatedSize(
-          duration: context.themed(Motion.morph),
+        MotionSize(
+          duration: Motion.morph,
           curve: Motion.morphCurve,
           alignment: Alignment.topCenter,
           child: Column(

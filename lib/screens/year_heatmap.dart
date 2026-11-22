@@ -230,7 +230,7 @@ class _YearHeatmapState extends State<YearHeatmap> {
         final isDone = e.status == HabitStatus.done;
         logged[e.day] = (logged[e.day] ?? 0) + 1;
         if (isDone) done[e.day] = (done[e.day] ?? 0) + 1;
-        if (h.weekly == null) {
+        if (h.weekly == null && (!state.restWeekends || day.weekday < DateTime.saturday)) {
           final weekday = day.weekday - 1;
           (loggedOn[e.habitId] ??= List.filled(7, 0))[weekday]++;
           (doneOn[e.habitId] ??= List.filled(7, 0))[weekday] += isDone ? 1 : 0;

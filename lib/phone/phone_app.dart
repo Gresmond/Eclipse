@@ -314,29 +314,39 @@ class _PhoneAppState extends State<PhoneApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) => AppScope(
     state: _state,
-    child: ValueListenableBuilder<String?>(
-      valueListenable: _state.themeNotifier,
-      builder: (context, themeName, _) => MaterialApp(
-        title: 'Eclipse',
-        navigatorKey: _navigator,
-        debugShowCheckedModeBanner: false,
-        // A finger has no hover, so a touch keeps Material's ripple here.
-        theme: themeNamed(themeName).copyWith(splashFactory: InkSparkle.splashFactory),
-        themeAnimationDuration:
-            (MediaQuery.maybeDisableAnimationsOf(context) ?? false) ? Duration.zero : Motion.morph,
-        themeAnimationCurve: Motion.morphCurve,
-        builder: (context, child) => DefaultTextHeightBehavior(
-          textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
-          child: ThemeMorph(target: paletteNamed(themeName), child: child!),
-        ),
-        home: _state.sync == null
-            ? _PhoneHome(key: _home, updater: widget.updater)
-            : ListenableBuilder(
-                listenable: _state.sync!,
-                builder: (context, _) =>
-                    _state.sync!.isOn ? _PhoneHome(key: _home, updater: widget.updater) : _SignInPage(sync: _state.sync!),
-              ),
-      ),
+    child: ListenableBuilder(
+      listenable: Listenable.merge([_state.themeNotifier, _state.reduceMotionNotifier]),
+      builder: (context, _) {
+        final themeName = _state.themeName;
+        final reduceMotion = _state.reduceMotion;
+        final reduced = (MediaQuery.maybeDisableAnimationsOf(context) ?? false) || reduceMotion;
+        return MaterialApp(
+          title: 'Eclipse',
+          navigatorKey: _navigator,
+          debugShowCheckedModeBanner: false,
+          // A finger has no hover, so a touch keeps Material's ripple here.
+          theme: themeNamed(themeName).copyWith(splashFactory: reduced ? NoSplash.splashFactory : InkSparkle.splashFactory),
+          themeAnimationDuration: reduced ? Duration.zero : Motion.morph,
+          themeAnimationCurve: Motion.morphCurve,
+          builder: (context, child) {
+            final media = MediaQuery.of(context);
+            final body = DefaultTextHeightBehavior(
+              textHeightBehavior: const TextHeightBehavior(leadingDistribution: TextLeadingDistribution.even),
+              child: ThemeMorph(target: paletteNamed(themeName), child: child!),
+            );
+            return reduceMotion && !media.disableAnimations
+                ? MediaQuery(data: media.copyWith(disableAnimations: true), child: body)
+                : body;
+          },
+          home: _state.sync == null
+              ? _PhoneHome(key: _home, updater: widget.updater)
+              : ListenableBuilder(
+                  listenable: _state.sync!,
+                  builder: (context, _) =>
+                      _state.sync!.isOn ? _PhoneHome(key: _home, updater: widget.updater) : _SignInPage(sync: _state.sync!),
+                ),
+        );
+      },
     ),
   );
 }

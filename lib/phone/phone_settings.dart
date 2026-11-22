@@ -46,7 +46,10 @@ class _SettingsPageState extends State<_SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.themeName, s.restWeekends, s.dayStartHour, s.smartAdd));
+    final state = AppScope.watch(
+      context,
+      (s) => (s.themeName, s.restWeekends, s.dayStartHour, s.smartAdd, s.reduceMotion),
+    );
     final sync = state.sync;
     return Scaffold(
       backgroundColor: p.background,
@@ -136,6 +139,16 @@ class _SettingsPageState extends State<_SettingsPage> {
                 const DayStartPicker(),
                 const HolidaysRow(),
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Tile(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: SettingSwitchRow(
+              title: 'Reduce motion',
+              subtitle: 'Turn off animations and smooth scrolling for a snappier feel.',
+              on: state.reduceMotion,
+              onTap: () => state.setReduceMotion(!state.reduceMotion),
             ),
           ),
           const SizedBox(height: 12),
