@@ -45,7 +45,7 @@ class SearchGlow extends StatefulWidget {
 }
 
 class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateMixin {
-  late final _glow = AnimationController(vsync: this, duration: Motion.glow);
+  AnimationController? _glow;
   DateTime? _shown;
   Timer? _wait;
 
@@ -74,7 +74,7 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
   void dispose() {
     _count(widget.target, -1);
     _wait?.cancel();
-    _glow.dispose();
+    _glow?.dispose();
     super.dispose();
   }
 
@@ -85,11 +85,20 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
     if (found.target != target && !parent) return;
     if (DateTime.now().difference(found.at) > SearchGlow._catch) return;
     _shown = found.at;
-    _glow.duration = parent ? Motion.glowBrief : Motion.glow;
+    final duration = parent ? Motion.glowBrief : Motion.glow;
     void light() {
       if (!mounted) return;
       Scrollable.ensureVisible(context, alignment: 0.3, duration: Motion.morph, curve: Motion.morphCurve);
-      _glow.forward(from: 0);
+      final controller = _glow ??= AnimationController(vsync: this, duration: duration)
+        ..addStatusListener((status) {
+          if (status != AnimationStatus.completed) return;
+          _glow?.dispose();
+          _glow = null;
+          if (mounted) setState(() {});
+        });
+      controller.duration = duration;
+      setState(() {});
+      controller.forward(from: 0);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -104,16 +113,18 @@ class _SearchGlowState extends State<SearchGlow> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final state = AppScope.watch(context, (s) => s.found);
     _check(state.found);
+    final controller = _glow;
+    if (controller == null) return widget.child;
     final p = context.palette;
     final glow = Positioned.fill(
       child: IgnorePointer(
         child: AnimatedBuilder(
-          animation: _glow,
+          animation: controller,
           builder: (context, _) {
-            final t = _glow.value;
+            final t = controller.value;
             // Up in 0.2 s, held to 2.5 s, then away over 1.5 s; a task
             // whose subtask was opened, in a quarter of the time.
-            final alpha = !_glow.isAnimating
+            final alpha = !controller.isAnimating
                 ? 0.0
                 : t < 0.05
                 ? t / 0.05

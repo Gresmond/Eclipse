@@ -35,6 +35,10 @@ part 'training/chart_painter.dart';
 class TrainingView extends StatelessWidget {
   const TrainingView({super.key});
 
+  /// How many times [_ChartPainter] recorded a fresh base picture; for tests.
+  @visibleForTesting
+  static int debugChartBaseRecords = 0;
+
   @override
   Widget build(BuildContext context) {
     if (kIsWeb && MediaQuery.sizeOf(context).width < 900) {

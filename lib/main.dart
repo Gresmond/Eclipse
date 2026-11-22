@@ -258,16 +258,24 @@ void Function() _watchNightLight(AppState state) {
   final isOn = NightLight.forSession()?.isOn;
   if (isOn == null) return () {};
   state.nightLightAvailable = true;
-  Future<void> check() async {
-    if (state.closing) return;
+  Future<void> check({bool force = false}) async {
+    if (state.closing || !state.followNightLight || (!force && !state.windowOpen)) return;
     final on = await isOn();
     if (on != null && !state.closing) state.nightLightIs(on);
   }
 
-  unawaited(check());
+  var wasFollowing = state.followNightLight;
+  void onState() {
+    if (state.followNightLight && !wasFollowing) unawaited(check(force: true));
+    wasFollowing = state.followNightLight;
+  }
+
+  state.addListener(onState);
+  unawaited(check(force: true));
   final timer = Timer.periodic(const Duration(seconds: 5), (_) => check());
-  final listener = AppLifecycleListener(onResume: check, onShow: check);
+  final listener = AppLifecycleListener(onResume: () => check(force: true), onShow: () => check(force: true));
   return () {
+    state.removeListener(onState);
     timer.cancel();
     listener.dispose();
   };

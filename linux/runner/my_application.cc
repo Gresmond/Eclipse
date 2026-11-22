@@ -66,7 +66,9 @@ static void my_application_activate(GApplication* application) {
       project, self->dart_entrypoint_arguments);
   // Impeller's text is far sharper than Skia's. It leaves gradient fills and
   // stroked paths jagged here, so SmoothGradientDecoration and paintMark avoid them.
-  fl_dart_project_set_enable_impeller(project, TRUE);
+  // Opt-in Skia fallback for older integrated GPUs via ECLIPSE_SKIA=1.
+  const gchar* use_skia = g_getenv("ECLIPSE_SKIA");
+  fl_dart_project_set_enable_impeller(project, g_strcmp0(use_skia, "1") != 0 ? TRUE : FALSE);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;

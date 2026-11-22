@@ -7,10 +7,15 @@ import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
 import 'package:eclipse/util/lru_cache.dart';
+import 'package:eclipse/training.dart';
+import 'package:eclipse/widgets/search_glow.dart';
+import 'package:eclipse/widgets/status_cell.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 import 'package:eclipse/screens/month_view.dart';
+import 'package:eclipse/screens/training_view.dart';
 import 'package:eclipse/screens/year_heatmap.dart';
 import 'package:eclipse/theme/app_theme.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -402,5 +407,154 @@ void main() {
     localState.draggingTask.value = true;
     expect(other.openedTasks, isEmpty);
     expect(other.draggingTask.value, isFalse);
+  });
+
+  testWidgets('hovering MonthView rows rebuilds zero rows and zero cells', (tester) async {
+    state.showMonth(10);
+    await show(tester);
+
+    expect(find.byWidgetPredicate((w) => w.runtimeType.toString() == '_MonthHabitRow'), findsWidgets);
+    final cells = find.byType(StatusCell);
+    expect(cells, findsWidgets);
+
+    final hovered = {tester.widget(cells.at(10)), tester.widget(cells.at(12))};
+    var rowRebuilds = 0;
+    final rebuiltCells = <Widget>{};
+    debugOnRebuildDirtyWidget = (element, _) {
+      final type = element.widget.runtimeType.toString();
+      if (type == '_MonthHabitRow') rowRebuilds++;
+      if (type == 'StatusCell') rebuiltCells.add(element.widget);
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+
+    await mouse.moveTo(tester.getCenter(cells.at(10)));
+    await tester.pump();
+    await mouse.moveTo(tester.getCenter(cells.at(12)));
+    await tester.pump();
+    await mouse.moveTo(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    expect(rowRebuilds, 0);
+    expect(rebuiltCells.every(hovered.contains), isTrue, reason: 'hovering a month row must not rebuild unhovered cells');
+  });
+
+  testWidgets('hovering Training _Chart rebuilds zero charts and reuses cached base picture', (tester) async {
+    final exercise = state.training.createExercise('Bench press', MuscleGroup.chest, bodyweight: false);
+    for (final (offset, weight) in [(7, 80.0), (0, 82.5)]) {
+      final day = state.today.subtract(Duration(days: offset));
+      state.training.addToDay(day, exercise);
+      final s = state.training.session(day).firstWhere((x) => x.$1.uid == exercise.uid).$2.first;
+      state.training.updateSet(s, reps: 8, weight: weight);
+    }
+
+    TrainingView.debugChartBaseRecords = 0;
+    state.showingTraining = true;
+    await show(tester);
+
+    final recordsAfterLoad = TrainingView.debugChartBaseRecords;
+    expect(recordsAfterLoad, 1);
+
+    final chart = find.byWidgetPredicate((w) => w is CustomPaint && w.size == Size.infinite);
+    expect(chart, findsOneWidget);
+    final rect = tester.getRect(chart);
+
+    var chartRebuilds = 0;
+    debugOnRebuildDirtyWidget = (element, _) {
+      if (element.widget.runtimeType.toString() == '_Chart') chartRebuilds++;
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+
+    await mouse.moveTo(Offset(rect.left + rect.width * 0.3, rect.center.dy));
+    await tester.pump();
+    await mouse.moveTo(Offset(rect.right - 24, rect.center.dy));
+    await tester.pump();
+    await mouse.moveTo(const Offset(10, 10));
+    await tester.pump();
+
+    expect(chartRebuilds, 0);
+    expect(TrainingView.debugChartBaseRecords, recordsAfterLoad);
+  });
+
+  testWidgets('idle SearchGlow mounts no Stack or AnimatedBuilder until targeted', (tester) async {
+    final localStore = Store.memory();
+    addTearDown(localStore.close);
+    final localState = AppState(localStore, clock: () => DateTime(2026, 10, 26));
+    addTearDown(localState.dispose);
+
+    await tester.pumpWidget(
+      AppScope(
+        state: localState,
+        child: MaterialApp(
+          theme: buildTheme(paletteNamed('Eclipse')),
+          home: ThemeMorph(
+            target: paletteNamed('Eclipse'),
+            child: const Scaffold(
+              body: SearchGlow(target: 'todo:test', child: Text('Row')),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final glow = find.byType(SearchGlow);
+    expect(find.descendant(of: glow, matching: find.byType(Stack)), findsNothing);
+    expect(find.descendant(of: glow, matching: find.byType(AnimatedBuilder)), findsNothing);
+
+    localState.showFound(localState.today, 'todo:test');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.descendant(of: glow, matching: find.byType(Stack)), findsOneWidget);
+    expect(find.descendant(of: glow, matching: find.byType(AnimatedBuilder)), findsOneWidget);
+
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: glow, matching: find.byType(Stack)), findsNothing);
+    expect(find.descendant(of: glow, matching: find.byType(AnimatedBuilder)), findsNothing);
+  });
+
+  test('checkReminders skips redundant SQLite scans until nextDueAt or task mutation', () {
+    var now = DateTime(2026, 10, 26, 9, 0);
+    final localStore = Store.memory();
+    addTearDown(localStore.close);
+    final localState = AppState(localStore, clock: () => now);
+    addTearDown(localState.dispose);
+
+    localState.addTodo(TodoScope.today, 'Call', time: 10 * 60, reminders: Reminder.quarterBefore.bit);
+    localState.debugReminderQueries = 0;
+
+    localState.checkReminders();
+    expect(localState.debugReminderQueries, 1);
+    expect(localState.reminderCards, isEmpty);
+
+    now = DateTime(2026, 10, 26, 9, 10);
+    localState.checkReminders();
+    now = DateTime(2026, 10, 26, 9, 30);
+    localState.checkReminders();
+    now = DateTime(2026, 10, 26, 9, 44);
+    localState.checkReminders();
+    expect(localState.debugReminderQueries, 1);
+    expect(localState.reminderCards, isEmpty);
+
+    now = DateTime(2026, 10, 26, 9, 45);
+    localState.checkReminders();
+    expect(localState.debugReminderQueries, 2);
+    expect(localState.reminderCards, hasLength(1));
+
+    now = DateTime(2026, 10, 26, 9, 46);
+    localState.checkReminders();
+    expect(localState.debugReminderQueries, 2);
+
+    localState.addTodo(TodoScope.today, 'Other task');
+    localState.checkReminders();
+    expect(localState.debugReminderQueries, 3);
   });
 }

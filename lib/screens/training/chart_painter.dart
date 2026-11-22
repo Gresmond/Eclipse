@@ -13,49 +13,80 @@ class _Chart extends StatefulWidget {
 }
 
 class _ChartState extends State<_Chart> {
-  Offset? _pointer;
+  final _pointer = ValueNotifier<({Offset? at, bool touch})>((at: null, touch: false));
+  final _cache = _ChartBaseCache();
 
-  /// [_pointer] is where a finger last tapped, not where a mouse is.
-  bool _touch = false;
+  @override
+  void dispose() {
+    _pointer.dispose();
+    _cache.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return MouseRegion(
-      onHover: (e) => setState(() {
-        _pointer = e.localPosition;
-        _touch = false;
-      }),
-      onExit: (_) => setState(() {
-        if (!_touch) _pointer = null;
-      }),
-      // No hover by touch: a tap shows what is under it, and stays until a
-      // tap somewhere else.
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (e) {
-          if (e.kind == PointerDeviceKind.mouse) return;
-          setState(() {
-            _pointer = e.localPosition;
-            _touch = true;
-          });
+    return RepaintBoundary(
+      child: MouseRegion(
+        onHover: (e) => _pointer.value = (at: e.localPosition, touch: false),
+        onExit: (_) {
+          if (!_pointer.value.touch) _pointer.value = (at: null, touch: false);
         },
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: _ChartPainter(
-            series: widget.series,
-            from: widget.from,
-            to: widget.to,
-            percent: widget.percent,
-            focus: widget.focus,
-            pointer: _pointer,
-            touch: _touch,
-            palette: p,
-            textScaler: MediaQuery.textScalerOf(context),
+        // No hover by touch: a tap shows what is under it, and stays until a
+        // tap somewhere else.
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (e) {
+            if (e.kind == PointerDeviceKind.mouse) return;
+            _pointer.value = (at: e.localPosition, touch: true);
+          },
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: _ChartPainter(
+              series: widget.series,
+              from: widget.from,
+              to: widget.to,
+              percent: widget.percent,
+              focus: widget.focus,
+              pointer: _pointer,
+              cache: _cache,
+              palette: p,
+              textScaler: MediaQuery.textScalerOf(context),
+            ),
           ),
         ),
       ),
     );
+  }
+}
+
+class _ChartBaseCache {
+  bool valid = false;
+  Size? size;
+  List<_Series>? series;
+  DateTime? from;
+  DateTime? to;
+  bool? percent;
+  String? focus;
+  Palette? palette;
+  TextScaler? textScaler;
+  Rect plot = Rect.zero;
+  List<double> yGridCoords = const [];
+  double? zeroLineY;
+  List<(TextPainter, Offset)> labels = const [];
+  List<(_Series, List<Offset>)> fadedDrawn = const [];
+  List<(_Series, List<Offset>)> focusedDrawn = const [];
+  List<_Hit> hits = const [];
+  List<(_Series, List<Offset>)> lines = const [];
+  Set<_Series> dense = const {};
+  bool years = false;
+
+  void dispose() {
+    for (final (tp, _) in labels) {
+      tp.dispose();
+    }
+    labels = const [];
+    valid = false;
   }
 }
 
@@ -67,19 +98,19 @@ class _ChartPainter extends CustomPainter {
     required this.percent,
     required this.focus,
     required this.pointer,
-    required this.touch,
+    required this.cache,
     required this.palette,
     required this.textScaler,
-  });
+  }) : super(repaint: pointer);
 
   final List<_Series> series;
   final DateTime from, to;
   final bool percent;
   final String? focus;
-  final Offset? pointer;
 
-  /// [pointer] is a finger's tap, which gets more room to miss by.
-  final bool touch;
+  /// Where the pointer or last touch landed, and whether [touch] widens the reach.
+  final ValueNotifier<({Offset? at, bool touch})> pointer;
+  final _ChartBaseCache cache;
   final Palette palette;
   final TextScaler textScaler;
 
@@ -88,17 +119,40 @@ class _ChartPainter extends CustomPainter {
   double _value(_Series s, TrainingPoint pt) =>
       percent ? (s.points.first.value <= 0 ? 0.0 : (pt.value / s.points.first.value - 1) * 100) : pt.value;
 
-  @override
-  void paint(Canvas canvas, Size size) {
+  bool _cacheValid(Size size) =>
+      cache.valid &&
+      cache.size == size &&
+      cache.from == from &&
+      cache.to == to &&
+      cache.percent == percent &&
+      cache.focus == focus &&
+      cache.textScaler == textScaler &&
+      cache.palette != null &&
+      (identical(palette, cache.palette) || palette.sameColours(cache.palette!)) &&
+      cache.series != null &&
+      _sameSeries(series, cache.series!);
+
+  (TextPainter, Offset) _layoutText(String text, Offset at, Color colour, {required Alignment align}) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: _label(palette, size: 12, color: colour),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: textScaler,
+    )..layout();
+    final dx = switch (align) {
+      Alignment.centerRight => -tp.width,
+      _ => -tp.width / 2,
+    };
+    final dy = align == Alignment.centerRight ? -tp.height / 2 : 0.0;
+    return (tp, at + Offset(dx, dy));
+  }
+
+  void _buildBaseCache(Size size, Rect plot) {
+    TrainingView.debugChartBaseRecords++;
     final p = palette;
-    final scale = math.max(1.0, textScaler.scale(12) / 12);
-    final plot = Rect.fromLTRB(
-      _left * scale,
-      _top * scale,
-      size.width - _right * scale,
-      size.height - _bottom * scale,
-    );
-    if (plot.width <= 0 || plot.height <= 0) return;
+    cache.dispose();
 
     // Y range, padded a little and rounded to tidy ticks.
     var lo = double.infinity, hi = -double.infinity;
@@ -130,25 +184,16 @@ class _ChartPainter extends CustomPainter {
     double x(DateTime d) => plot.left + plot.width * (daysBetween(start, d) / math.max(1, span));
     double y(double v) => plot.bottom - plot.height * ((v - lo) / (hi - lo));
 
-    // Grid and labels.
-    final grid = Paint()
-      ..color = p.border
-      ..strokeWidth = 1;
+    final yGridCoords = <double>[];
+    final labels = <(TextPainter, Offset)>[];
     for (var v = lo; v <= hi + step / 2; v += step) {
       final yy = y(v);
-      canvas.drawLine(Offset(plot.left, _crisp(yy)), Offset(plot.right, _crisp(yy)), grid);
+      yGridCoords.add(yy);
       final text = percent ? _pct(v, decimals: step < 1 ? 1 : 0) : _kg(v);
-      _text(canvas, text, Offset(plot.left - 10, yy), p.inkMuted, align: Alignment.centerRight);
+      labels.add(_layoutText(text, Offset(plot.left - 10, yy), p.inkMuted, align: Alignment.centerRight));
     }
-    if (percent && lo < 0 && hi > 0) {
-      canvas.drawLine(
-        Offset(plot.left, _crisp(y(0))),
-        Offset(plot.right, _crisp(y(0))),
-        Paint()
-          ..color = p.inkMuted.withValues(alpha: 0.5)
-          ..strokeWidth = 1,
-      );
-    }
+    final zeroLineY = percent && lo < 0 && hi > 0 ? y(0) : null;
+
     // Over more than one calendar year a date says which: on the first label
     // and on the first of each new year. Fewer labels where they would crowd.
     final years = start.year != end.year || start.year != to.year;
@@ -158,50 +203,107 @@ class _ChartPainter extends CustomPainter {
       final d = DateTime(start.year, start.month, start.day + (span * i / math.max(1, ticks)).round());
       final text = years && d.year != year ? '${_shortDate(d)} ${d.year}' : _shortDate(d);
       year = d.year;
-      _text(canvas, text, Offset(x(d), plot.bottom + 8), p.inkMuted, align: Alignment.topCenter);
+      labels.add(_layoutText(text, Offset(x(d), plot.bottom + 8), p.inkMuted, align: Alignment.topCenter));
+    }
+
+    final fadedDrawn = <(_Series, List<Offset>)>[];
+    final focusedDrawn = <(_Series, List<Offset>)>[];
+    final hits = <_Hit>[];
+    final dense = <_Series>{};
+    for (final s in series) {
+      final pts = [for (final pt in s.points) Offset(x(pt.day), y(_value(s, pt)))];
+      for (var i = 0; i + 1 < pts.length; i++) {
+        if ((pts[i + 1] - pts[i]).distance < 8) {
+          dense.add(s);
+          break;
+        }
+      }
+      if (s.focused(focus)) {
+        focusedDrawn.add((s, pts));
+        for (final (i, o) in pts.indexed) {
+          hits.add(_Hit(s, s.points[i], o));
+        }
+      } else {
+        fadedDrawn.add((s, pts));
+      }
+    }
+
+    cache
+      ..plot = plot
+      ..yGridCoords = yGridCoords
+      ..zeroLineY = zeroLineY
+      ..labels = labels
+      ..fadedDrawn = fadedDrawn
+      ..focusedDrawn = focusedDrawn
+      ..hits = hits
+      ..lines = focusedDrawn
+      ..dense = dense
+      ..years = years
+      ..size = size
+      ..series = series
+      ..from = from
+      ..to = to
+      ..percent = percent
+      ..focus = focus
+      ..palette = p
+      ..textScaler = textScaler
+      ..valid = true;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = palette;
+    final scale = math.max(1.0, textScaler.scale(12) / 12);
+    final plot = Rect.fromLTRB(
+      _left * scale,
+      _top * scale,
+      size.width - _right * scale,
+      size.height - _bottom * scale,
+    );
+    if (plot.width <= 0 || plot.height <= 0) return;
+
+    if (!_cacheValid(size)) _buildBaseCache(size, plot);
+
+    final grid = Paint()
+      ..color = p.border
+      ..strokeWidth = 1;
+    for (final yy in cache.yGridCoords) {
+      canvas.drawLine(Offset(plot.left, _crisp(yy)), Offset(plot.right, _crisp(yy)), grid);
+    }
+    if (cache.zeroLineY case final zy?) {
+      canvas.drawLine(
+        Offset(plot.left, _crisp(zy)),
+        Offset(plot.right, _crisp(zy)),
+        Paint()
+          ..color = p.inkMuted.withValues(alpha: 0.5)
+          ..strokeWidth = 1,
+      );
+    }
+    for (final (tp, at) in cache.labels) {
+      tp.paint(canvas, at);
     }
 
     // Unfocused series faded under the focused. Within each, lines, then
     // hollow points, then solid ones, so a hollow centre never covers a
     // solid point on the same spot.
-    final hits = <_Hit>[];
-    final lines = <(_Series, List<Offset>)>[];
-    final dense = <_Series>{};
-    for (final faded in const [true, false]) {
-      final drawn = [
-        for (final s in series)
-          if (s.focused(focus) != faded) (s, [for (final pt in s.points) Offset(x(pt.day), y(_value(s, pt)))]),
-      ];
+    for (final (faded, drawn) in [(true, cache.fadedDrawn), (false, cache.focusedDrawn)]) {
       Color colour(_Series s) => faded ? s.colour.withValues(alpha: 0.18) : s.colour;
       for (final (s, pts) in drawn) {
         if (pts.length > 1) _stroke(canvas, pts, s.dash, colour(s), focus != null && !faded ? 2.6 : 2);
       }
-      // A line whose points would touch goes without them; one shows when
-      // it is pointed at.
-      for (final (s, pts) in drawn) {
-        for (var i = 0; i + 1 < pts.length; i++) {
-          if ((pts[i + 1] - pts[i]).distance < 8) dense.add(s);
-        }
-      }
       for (final rough in const [true, false]) {
         for (final (s, pts) in drawn) {
-          if (dense.contains(s)) continue;
+          if (cache.dense.contains(s)) continue;
           for (final (i, o) in pts.indexed) {
             if (s.points[i].rough != rough) continue;
             _dot(canvas, o, colour(s), p.tile, rough: rough, square: s.square);
           }
         }
       }
-      if (!faded) {
-        lines.addAll(drawn);
-        for (final (s, pts) in drawn) {
-          for (final (i, o) in pts.indexed) {
-            hits.add(_Hit(s, s.points[i], o));
-          }
-        }
-      }
     }
-    final at = pointer;
+
+    final (:at, :touch) = pointer.value;
+    final hits = cache.hits;
     if (at == null || hits.isEmpty) return;
     var nearest = hits.reduce((a, b) => (b.at - at).distance < (a.at - at).distance ? b : a);
     if ((nearest.at - at).distance >= (touch ? 24 : 16)) {
@@ -209,7 +311,7 @@ class _ChartPainter extends CustomPainter {
       // in date.
       (_Series, List<Offset>)? line;
       var reach = touch ? 16.0 : 8.0;
-      for (final (s, pts) in lines) {
+      for (final (s, pts) in cache.lines) {
         for (var i = 0; i + 1 < pts.length; i++) {
           final d = _distanceToSegment(at, pts[i], pts[i + 1]);
           if (d < reach) {
@@ -232,10 +334,10 @@ class _ChartPainter extends CustomPainter {
         if (h.point.day == nearest.point.day && (h.at - nearest.at).distance < 7.2) h,
     ];
     for (final h in stack) {
-      if (!dense.contains(h.series)) continue;
+      if (!cache.dense.contains(h.series)) continue;
       _dot(canvas, h.at, h.series.colour, p.tile, rough: h.point.rough, square: h.series.square);
     }
-    _tooltip(canvas, size, stack, year: years);
+    _tooltip(canvas, size, stack, year: cache.years);
   }
 
   static double _distanceToSegment(Offset p, Offset a, Offset b) {
@@ -406,27 +508,6 @@ class _ChartPainter extends CustomPainter {
     if (fading) canvas.restore();
   }
 
-  void _text(Canvas canvas, String text, Offset at, Color colour, {required Alignment align}) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: _label(palette, size: 12, color: colour),
-      ),
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-    )..layout();
-    try {
-      final dx = switch (align) {
-        Alignment.centerRight => -tp.width,
-        _ => -tp.width / 2,
-      };
-      final dy = align == Alignment.centerRight ? -tp.height / 2 : 0.0;
-      tp.paint(canvas, at + Offset(dx, dy));
-    } finally {
-      tp.dispose();
-    }
-  }
-
   static bool _sameSeries(List<_Series> a, List<_Series> b) {
     if (identical(a, b)) return true;
     if (a.length != b.length) return false;
@@ -470,7 +551,7 @@ class _ChartPainter extends CustomPainter {
       percent != old.percent ||
       focus != old.focus ||
       pointer != old.pointer ||
-      touch != old.touch ||
+      cache != old.cache ||
       textScaler != old.textScaler ||
       (!identical(palette, old.palette) && !palette.sameColours(old.palette)) ||
       !_sameSeries(series, old.series);

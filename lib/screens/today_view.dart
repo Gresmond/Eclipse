@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, listEquals;
 
 import '../data/platform_files.dart';
 import '../app_state.dart';
@@ -11,6 +11,7 @@ import '../models.dart';
 import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../util/lru_cache.dart';
 import '../widgets/fade_through.dart';
 import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
@@ -258,6 +259,8 @@ class _HabitsCard extends StatelessWidget {
   /// that. A name too long for one line wraps, and its row grows to fit,
   /// taking the space from the others. If that would make the list scroll,
   /// the week trails make way to give the names more room.
+  static final _rowHeights = LruCache<(String, double, double), double>(256);
+
   static ({List<double> heights, double cell, bool trail}) _layOutRows(
     BuildContext context,
     AppState state,
@@ -270,21 +273,29 @@ class _HabitsCard extends StatelessWidget {
     final width = constraints.maxWidth, height = constraints.maxHeight;
     final cell = (height / habits.length).clamp(_minRow, _maxRow) - 10;
     final scaler = MediaQuery.textScalerOf(context);
+    final scaleKey = scaler.scale(15);
 
     ({List<double> heights, double cell, bool trail}) layOut({required bool trail}) {
       // Everything else in a row is a fixed width; the name gets the rest.
       final nameWidth =
           width - _HabitRow.fixedWidth(badge) - (trail ? _HabitRow.weekTrailWidth : 0) - cell.clamp(24, 32);
+      final clampedWidth = nameWidth.clamp(0.0, double.infinity);
+      final widthBucket = (clampedWidth * 2).roundToDouble() / 2;
       double rowFor(String name) {
+        final key = (name, widthBucket, scaleKey);
+        final cached = _rowHeights[key];
+        if (cached != null) return cached;
         final painter = TextPainter(
           text: TextSpan(text: name, style: _HabitRow.nameStyle),
           maxLines: _HabitRow.nameLines,
           textDirection: TextDirection.ltr,
           textScaler: scaler,
-        )..layout(maxWidth: nameWidth.clamp(0, double.infinity));
+        )..layout(maxWidth: clampedWidth);
         final textHeight = painter.height;
         painter.dispose();
-        return textHeight + 14;
+        final rowHeight = textHeight + 14;
+        _rowHeights[key] = rowHeight;
+        return rowHeight;
       }
 
       final needed = [for (final h in habits) rowFor(ritualProgress(state, day, h))];
@@ -662,45 +673,139 @@ class _WeekTrail extends StatelessWidget {
     final p = context.palette;
     final state = AppScope.watch(context, (s) => (s.entriesRevision, s.restWeekends, s.holidays, s.habitsRevision));
     final days = state.trailDays(habit, day);
+    final offset = 7 - days.length;
+    final statuses = List<HabitStatus?>.filled(7, null);
+    var restMask = 0;
+    for (var i = 0; i < days.length; i++) {
+      final past = days[days.length - 1 - i];
+      final slot = offset + i;
+      statuses[slot] = state.statusOf(past, habit);
+      if (state.isRestDay(past)) restMask |= 1 << slot;
+    }
     // Another day's week fades through in place.
     return FadeThrough(
-      child: Row(
+      child: _WeekTrailMarks(
         key: ValueKey(dateKey(day)),
-        children: [
-          // The ritual's last 7 days, skipping ones it isn't on; while it has
-          // fewer, the older places are left empty.
-          for (var i = 7; i > days.length; i--) _mark(p, state, null),
-          for (final past in days.reversed) _mark(p, state, past),
-        ],
+        statuses: statuses,
+        restMask: restMask,
+        palette: p,
       ),
     );
+  }
+}
+
+class _WeekTrailMarks extends StatefulWidget {
+  const _WeekTrailMarks({
+    super.key,
+    required this.statuses,
+    required this.restMask,
+    required this.palette,
+  });
+
+  final List<HabitStatus?> statuses;
+  final int restMask;
+  final Palette palette;
+
+  @override
+  State<_WeekTrailMarks> createState() => _WeekTrailMarksState();
+}
+
+class _WeekTrailMarksState extends State<_WeekTrailMarks> {
+  late int _toMask = widget.restMask;
+  late final List<double> _fromRest = List<double>.generate(
+    7,
+    (i) => (widget.restMask & (1 << i)) != 0 ? 1.0 : 0.0,
+  );
+  double _morphStep = 0;
+  double _currentStep = 0;
+
+  double _restAt(int i, double stepValue) {
+    final to = (_toMask & (1 << i)) != 0 ? 1.0 : 0.0;
+    if (_morphStep == 0) return to;
+    final t = (stepValue - (_morphStep - 1)).clamp(0.0, 1.0);
+    return _fromRest[i] + (to - _fromRest[i]) * t;
   }
 
-  // A rest day's blank mark fades rather than snapping; the colour itself
-  // is read from the palette every frame, so it follows a theme change.
-  Widget _mark(Palette p, AppState state, DateTime? past) {
-    final status = past == null ? null : state.statusOf(past, habit);
+  @override
+  void didUpdateWidget(_WeekTrailMarks old) {
+    super.didUpdateWidget(old);
+    if (widget.restMask != _toMask) {
+      for (var i = 0; i < 7; i++) {
+        _fromRest[i] = _restAt(i, _currentStep);
+      }
+      _toMask = widget.restMask;
+      _morphStep += 1.0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
-      tween: Tween(end: past != null && state.isRestDay(past) ? 1 : 0),
+      tween: Tween(end: _morphStep),
       duration: Motion.morph,
       curve: Motion.morphCurve,
-      builder: (context, r, _) => Container(
-        margin: const EdgeInsets.only(left: 4),
-        width: 6,
-        height: 8,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(4),
-          color: switch (status) {
-            null => Colors.transparent,
-            HabitStatus.none => p.empty.withValues(alpha: 1 - 0.55 * r),
-            HabitStatus.done => p.done,
-            HabitStatus.missed => p.missed.withValues(alpha: 0.75),
-            HabitStatus.other => p.other,
-          },
-        ),
-      ),
+      builder: (context, v, _) {
+        _currentStep = v;
+        return CustomPaint(
+          size: const Size(70, 8),
+          painter: _WeekTrailPainter(
+            statuses: widget.statuses,
+            fromRest: _fromRest,
+            toMask: _toMask,
+            morphStep: _morphStep,
+            stepValue: v,
+            palette: widget.palette,
+          ),
+        );
+      },
     );
   }
+}
+
+class _WeekTrailPainter extends CustomPainter {
+  _WeekTrailPainter({
+    required this.statuses,
+    required this.fromRest,
+    required this.toMask,
+    required this.morphStep,
+    required this.stepValue,
+    required this.palette,
+  });
+
+  final List<HabitStatus?> statuses;
+  final List<double> fromRest;
+  final int toMask;
+  final double morphStep;
+  final double stepValue;
+  final Palette palette;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const radius = Radius.circular(4);
+    final paint = Paint();
+    final t = morphStep == 0 ? 1.0 : (stepValue - (morphStep - 1)).clamp(0.0, 1.0);
+    for (var i = 0; i < 7; i++) {
+      final status = statuses[i];
+      if (status == null) continue;
+      final to = (toMask & (1 << i)) != 0 ? 1.0 : 0.0;
+      final r = morphStep == 0 ? to : fromRest[i] + (to - fromRest[i]) * t;
+      paint.color = switch (status) {
+        HabitStatus.none => palette.empty.withValues(alpha: 1 - 0.55 * r),
+        HabitStatus.done => palette.done,
+        HabitStatus.missed => palette.missed.withValues(alpha: 0.75),
+        HabitStatus.other => palette.other,
+      };
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(i * 10.0 + 4.0, 0, 6, 8), radius), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WeekTrailPainter old) =>
+      old.stepValue != stepValue ||
+      old.morphStep != morphStep ||
+      old.toMask != toMask ||
+      old.palette != palette ||
+      !listEquals(old.statuses, statuses);
 }
 
 /// Stays put from day to day; another day's words fade through inside it.

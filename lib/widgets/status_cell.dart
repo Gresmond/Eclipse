@@ -36,6 +36,7 @@ class StatusCell extends StatefulWidget {
     this.off = false,
     this.paletteAnimation,
     this.staysThroughDays = false,
+    this.isolateRepaint = true,
   });
 
   final DateTime day;
@@ -57,6 +58,11 @@ class StatusCell extends StatefulWidget {
   /// from day to day: on a new [day] the old mark and colour fade out and the
   /// new ones fade in on the same beat, the square itself staying put.
   final bool staysThroughDays;
+
+  /// Wrap the cell in its own [RepaintBoundary]. Grids whose rows already
+  /// isolate repainting disable this so hundreds of squares don't allocate
+  /// individual GPU layer textures.
+  final bool isolateRepaint;
 
   @override
   State<StatusCell> createState() => _StatusCellState();
@@ -329,23 +335,22 @@ class _StatusCellState extends State<StatusCell> with TickerProviderStateMixin {
 
     // A note's tooltip coming or going rebuilds only this; the square's
     // animations live in this state.
-    Widget cell = RepaintBoundary(
-      child: CustomPaint(
-        size: Size.square(widget.size),
-        painter: _SquarePainter(
-          from: _from!,
-          to: _to!,
-          progress: _curved ?? kAlwaysCompleteAnimation,
-          through: _through,
-          partial: partial,
-          hover: enabled ? (_hoverAnim ?? kAlwaysDismissedAnimation) : kAlwaysDismissedAnimation,
-          scale: scale,
-          opacity: opacity,
-          basePalette: p,
-          paletteAnimation: widget.paletteAnimation,
-        ),
+    Widget cell = CustomPaint(
+      size: Size.square(widget.size),
+      painter: _SquarePainter(
+        from: _from!,
+        to: _to!,
+        progress: _curved ?? kAlwaysCompleteAnimation,
+        through: _through,
+        partial: partial,
+        hover: enabled ? (_hoverAnim ?? kAlwaysDismissedAnimation) : kAlwaysDismissedAnimation,
+        scale: scale,
+        opacity: opacity,
+        basePalette: p,
+        paletteAnimation: widget.paletteAnimation,
       ),
     );
+    if (widget.isolateRepaint) cell = RepaintBoundary(child: cell);
 
     final unitText = widget.habit.unit;
     final progressTip = target != null && amount > 0
@@ -490,7 +495,9 @@ class _SquarePainter extends CustomPainter {
     final h = hover.value;
     final fade = opacity.value.clamp(0.0, 1.0);
     if (fade <= 0) return;
-    if (fade < 1) {
+    final simpleBlank =
+        fade < 1 && from.base == null && to.base == null && from.icon == null && to.icon == null && partial == 0;
+    if (fade < 1 && !simpleBlank) {
       // The whole square fades as one, as an opacity layer would.
       canvas.saveLayer((Offset.zero & size).inflate(size.width * 0.1), Paint()..color = Color.fromRGBO(0, 0, 0, fade));
     }
@@ -513,6 +520,30 @@ class _SquarePainter extends CustomPainter {
     const rect = Rect.fromLTWH(0, 0, _s, _s);
     final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(_s * 0.28));
     final empty = palette.empty.withValues(alpha: 0.55 + 0.35 * h);
+    if (simpleBlank) {
+      // A faded blank square has no overlapping marks, so it fades via fill and
+      // border alphas directly instead of allocating a GPU saveLayer texture.
+      canvas.drawRRect(rrect.deflate(edge), Paint()..color = empty.withValues(alpha: empty.a * fade));
+      final edgeColor = Color.alphaBlend(_border(const _Look(null, null), h), empty);
+      canvas.drawRRect(
+        rrect.deflate(edge / 2),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = edge
+          ..color = edgeColor.withValues(alpha: edgeColor.a * fade),
+      );
+      if (h > 0) {
+        paintMark(
+          canvas,
+          const Offset(_s / 2, _s / 2),
+          Icons.add_rounded,
+          _s * 0.45,
+          palette.inkMuted.withValues(alpha: 0.4 * fade),
+          h,
+        );
+      }
+      return;
+    }
 
     final a = _fill(from, empty), b = _fill(to, empty);
     // How far from [from], and how far to [to]: one number unless going

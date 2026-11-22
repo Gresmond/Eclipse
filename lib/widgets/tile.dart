@@ -94,20 +94,22 @@ class Tile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          // A light theme's tile darkens a touch towards its foot; a dark
-          // one's stays flat, eased between them through a theme fade.
-          colors: [p.tile, Color.lerp(p.tile, p.background, p.byDarkness(0.14, 0))!],
+    return RepaintBoundary(
+      child: Container(
+        padding: padding,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            // A light theme's tile darkens a touch towards its foot; a dark
+            // one's stays flat, eased between them through a theme fade.
+            colors: [p.tile, Color.lerp(p.tile, p.background, p.byDarkness(0.14, 0))!],
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: p.border, width: 1.0),
         ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: p.border, width: 1.0),
+        child: child,
       ),
-      child: child,
     );
   }
 }

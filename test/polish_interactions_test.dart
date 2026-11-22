@@ -37,20 +37,21 @@ void main() {
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
 
-    final squares = tester
-        .widgetList<Positioned>(
-          find.descendant(
-            of: find.byType(YearHeatmap),
-            matching: find.byWidgetPredicate((w) => w is Positioned && w.width != null && w.width == w.height),
-          ),
-        )
-        .toList();
-    expect(squares, hasLength(365));
+    final squareWidgets = find.descendant(
+      of: find.byType(YearHeatmap),
+      matching: find.byWidgetPredicate((w) => w is Positioned && w.width != null && w.width == w.height),
+    );
+    expect(squareWidgets, findsNothing);
 
-    Offset centerOf(DateTime day) {
-      final doy = day.difference(DateTime(2026, 1, 1)).inDays;
-      return tester.getCenter(find.byWidget(squares[doy]));
-    }
+    final gridPaint = find.descendant(
+      of: find.byType(YearHeatmap),
+      matching: find.byWidgetPredicate((w) => w is CustomPaint && w.painter != null && w.size.width > 300),
+    );
+    expect(gridPaint, findsOneWidget);
+    final paintTopLeft = tester.getTopLeft(gridPaint);
+    final paintWidth = tester.getSize(gridPaint).width;
+
+    Offset centerOf(DateTime day) => paintTopLeft + YearHeatmap.dayCenterInGrid(2026, paintWidth, day);
 
     final computesBefore = YearHeatmap.debugComputes;
     final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);

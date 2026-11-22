@@ -54,8 +54,8 @@ mixin _Todos on ChangeNotifier {
   bool canEditDay(DateTime day) =>
       !dateOnly(day).isAfter(today) && !dateOnly(day).isBefore(DateTime(today.year, today.month, today.day - 1));
 
-  void _reloadTodos() {
-    for (final scope in TodoScope.values) {
+  void _reloadTodos([Iterable<TodoScope> scopes = TodoScope.values]) {
+    for (final scope in scopes) {
       final next = store.todos(scope, scope.period(today));
       final previous = todos[scope]!;
       if (previous.length != next.length ||
@@ -178,11 +178,12 @@ mixin _Todos on ChangeNotifier {
     final target = day ?? today;
     if (!canEditDay(target)) return;
     if (target == today) {
-      store.setTodoDone(item.id, !item.done, day: today);
+      final touched = store.setTodoDone(item.id, !item.done, day: today);
+      _reloadTodos(touched);
     } else {
       store.setPastTodoDone(scope, target, item, !item.done, today);
+      _reloadTodos();
     }
-    _reloadTodos();
     _todosChanged();
   }
 
@@ -209,8 +210,8 @@ mixin _Todos on ChangeNotifier {
   void setTodoNote(TodoScope scope, TodoItem item, String? note, {DateTime? day}) {
     final target = day ?? today;
     if (!canEditDay(target) || cleanNote(note) == item.note) return;
-    store.setTodoNote(scope, item, note, target, today: today);
-    _reloadTodos();
+    final touched = store.setTodoNote(scope, item, note, target, today: today);
+    _reloadTodos(touched);
     _todosChanged();
   }
 

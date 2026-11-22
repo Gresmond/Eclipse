@@ -146,12 +146,15 @@ extension StoreTodos on Store {
     });
   }
 
-  void setTodoDone(int id, bool done, {DateTime? day, bool cascade = true}) {
+  Set<TodoScope> setTodoDone(int id, bool done, {DateTime? day, bool cascade = true}) {
+    final touched = <TodoScope>{};
     transaction(() {
       final rows = _db.select('SELECT * FROM todos WHERE id = ?', [id]);
       if (rows.isEmpty) return;
       final snapshot = Map<String, dynamic>.from(rows.single);
+      touched.add(TodoScope.values.byName(snapshot['scope'] as String));
       _toggleTodoSnapshot(snapshot, done, day ?? _today);
+      touched.add(TodoScope.values.byName(snapshot['scope'] as String));
       if (cascade) {
         snapshot['subtasks'] = TodoSubtask.encode([
           for (final child in TodoSubtask.decode(snapshot['subtasks'] as String?)) child.copyWith(done: done),
@@ -173,6 +176,7 @@ extension StoreTodos on Store {
       );
       _recordTodos(_db.select('SELECT * FROM todos WHERE id = ?', [id]), day ?? _today);
     });
+    return touched;
   }
 
   /// Gives [item] the checklist [children] on [day]. On a day before [today]
@@ -226,14 +230,22 @@ extension StoreTodos on Store {
   /// Gives [item] the note [note], or none for a blank one. The note goes
   /// with the task wherever it's kept: on a day before [today] it's that
   /// day's record and the live task both.
-  void setTodoNote(TodoScope scope, TodoItem item, String? note, DateTime day, {required DateTime today}) {
+  Set<TodoScope> setTodoNote(TodoScope scope, TodoItem item, String? note, DateTime day, {required DateTime today}) {
     final value = cleanNote(note);
+    final touched = <TodoScope>{scope};
     transaction(() {
       if (day != today) _editPastTodo(scope, day, item: item, note: (value: value));
       final (column, key) = item.uid == null ? ('id', item.id as Object) : ('uid', item.uid as Object);
       _db.execute('UPDATE todos SET note = ? WHERE $column = ?', [value, key]);
-      if (_db.updatedRows > 0) _recordTodos(_db.select('SELECT * FROM todos WHERE $column = ?', [key]), today);
+      if (_db.updatedRows > 0) {
+        final updated = _db.select('SELECT * FROM todos WHERE $column = ?', [key]);
+        _recordTodos(updated, today);
+        for (final r in updated) {
+          touched.add(TodoScope.values.byName(r['scope'] as String));
+        }
+      }
     });
+    return touched;
   }
 
   /// [ids], open tasks of one day's list, in the order they were dragged

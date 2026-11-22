@@ -250,7 +250,13 @@ class _MonthHabitRow extends StatefulWidget {
 }
 
 class _MonthHabitRowState extends State<_MonthHabitRow> {
-  bool _hover = false;
+  final _hover = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _hover.dispose();
+    super.dispose();
+  }
 
   /// Lit only while the pointer is over the squares that can be clicked,
   /// not locked past days or future days.
@@ -259,7 +265,7 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
     final first = widget.firstClickableDay;
     final last = widget.lastClickableDay.clamp(0, layout.shown.value);
     final hover = x != null && first > 0 && x >= (first - 1) * layout.col && x < last * layout.col;
-    if (hover != _hover) setState(() => _hover = hover);
+    if (hover != _hover.value) _hover.value = hover;
   }
 
   // Rebuilt each frame of a change of size: the row's height follows the
@@ -319,36 +325,43 @@ class _MonthHabitRowState extends State<_MonthHabitRow> {
             // The squares have nothing for a screen reader, and walking a
             // month of them for the accessibility tree costs a frame.
             child: ExcludeSemantics(
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    // Round the squares, 2 above and 3 below, less the padding.
-                    top: 0,
-                    bottom: 1,
-                    child: IgnorePointer(
-                      child: AnimatedOpacity(
-                        opacity: _hover ? 1 : 0,
-                        duration: Motion.hover,
-                        curve: Motion.hoverCurve,
-                        child: CustomPaint(
-                          painter: _HighlightPainter(
-                            layout: widget.layout,
-                            firstClickableDay: widget.firstClickableDay,
-                            lastClickableDay: widget.lastClickableDay,
-                            cellSize: cellSize,
-                            color: p.empty.withValues(alpha: 0.6),
+              child: RepaintBoundary(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      // Round the squares, 2 above and 3 below, less the padding.
+                      top: 0,
+                      bottom: 1,
+                      child: IgnorePointer(
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: _hover,
+                          builder: (_, hover, child) => AnimatedOpacity(
+                            opacity: hover ? 1 : 0,
+                            duration: Motion.hover,
+                            curve: Motion.hoverCurve,
+                            child: child,
+                          ),
+                          child: CustomPaint(
+                            painter: _HighlightPainter(
+                              layout: widget.layout,
+                              firstClickableDay: widget.firstClickableDay,
+                              lastClickableDay: widget.lastClickableDay,
+                              cellSize: cellSize,
+                              color: p.empty.withValues(alpha: 0.6),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  // Each square is its own repaint boundary already.
-                  Flow.unwrapped(
-                    delegate: _ColumnsDelegate(widget.layout, height, cellSize / _GridState._maxCell),
-                    clipBehavior: Clip.none,
-                    children: widget.cells,
-                  ),
-                ],
+                    // One layer per row rather than one per cell keeps hover
+                    // and square fills isolated without 300+ offscreen textures.
+                    Flow.unwrapped(
+                      delegate: _ColumnsDelegate(widget.layout, height, cellSize / _GridState._maxCell),
+                      clipBehavior: Clip.none,
+                      children: widget.cells,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -423,81 +436,79 @@ class _DayHeader extends StatelessWidget {
     // Fills its column (less a small gap), so it follows the column's
     // width through a morph without being rebuilt.
     return Center(
-      child: RepaintBoundary(
-        // Each column keeps its day number from month to month; only the
-        // weekday letter and the today marker change, and both ease.
-        // Only whether this is today, and whether it's a rest day, are
-        // animated; the colours are read from the palette every frame, so
-        // they follow a theme cross-fade exactly instead of trailing it.
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(end: rest ? 1 : 0),
+      // Each column keeps its day number from month to month; only the
+      // weekday letter and the today marker change, and both ease.
+      // Only whether this is today, and whether it's a rest day, are
+      // animated; the colours are read from the palette every frame, so
+      // they follow a theme cross-fade exactly instead of trailing it.
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(end: rest ? 1 : 0),
+        duration: Motion.morph,
+        curve: Motion.morphCurve,
+        builder: (context, r, _) => TweenAnimationBuilder<double>(
+          tween: Tween(end: isToday ? 1 : 0),
           duration: Motion.morph,
           curve: Motion.morphCurve,
-          builder: (context, r, _) => TweenAnimationBuilder<double>(
-            tween: Tween(end: isToday ? 1 : 0),
-            duration: Motion.morph,
-            curve: Motion.morphCurve,
-            builder: (context, t, _) {
-              final letterFg = holiday
-                  ? p.accent
-                  : Color.lerp(weekend ? p.otherInk : p.inkMuted, p.inkMuted, r)!;
-              final numberFg = holiday ? p.accent : Color.lerp(p.ink, p.inkMuted, r)!;
-              // Inset as it sits inside a rest band, 4px from the band on
-              // every side with corners following the band's, on every day.
-              return Container(
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: p.today.withValues(alpha: t),
-                ),
-                child: Column(
-                  children: [
-                    // The new letter rolls up into place as the old one rolls
-                    // out above it, rather than every letter blinking out at once.
-                    // Clipped to one line, so the two never show stacked.
-                    AnimatedSwitcher(
-                      duration: Motion.morph,
-                      switchInCurve: Motion.morphCurve,
-                      switchOutCurve: Motion.morphCurve,
-                      layoutBuilder: (current, previous) => ClipRect(
-                        child: Stack(alignment: Alignment.center, children: [...previous, ?current]),
-                      ),
-                      transitionBuilder: (child, anim) => SlideTransition(
-                        position: Tween(
-                          begin: Offset(0, child.key == ValueKey(letter) ? 1 : -1),
-                          end: Offset.zero,
-                        ).animate(anim),
-                        child: FadeTransition(opacity: anim, child: child),
-                      ),
-                      child: Text(
-                        letter,
-                        key: ValueKey(letter),
-                        style: TextStyle(
-                          fontFamily: Fonts.ui,
-                          fontSize: 12,
-                          color: Color.lerp(letterFg, p.onToday, t),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+          builder: (context, t, _) {
+            final letterFg = holiday
+                ? p.accent
+                : Color.lerp(weekend ? p.otherInk : p.inkMuted, p.inkMuted, r)!;
+            final numberFg = holiday ? p.accent : Color.lerp(p.ink, p.inkMuted, r)!;
+            // Inset as it sits inside a rest band, 4px from the band on
+            // every side with corners following the band's, on every day.
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: p.today.withValues(alpha: t),
+              ),
+              child: Column(
+                children: [
+                  // The new letter rolls up into place as the old one rolls
+                  // out above it, rather than every letter blinking out at once.
+                  // Clipped to one line, so the two never show stacked.
+                  AnimatedSwitcher(
+                    duration: Motion.morph,
+                    switchInCurve: Motion.morphCurve,
+                    switchOutCurve: Motion.morphCurve,
+                    layoutBuilder: (current, previous) => ClipRect(
+                      child: Stack(alignment: Alignment.center, children: [...previous, ?current]),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${day.day}',
+                    transitionBuilder: (child, anim) => SlideTransition(
+                      position: Tween(
+                        begin: Offset(0, child.key == ValueKey(letter) ? 1 : -1),
+                        end: Offset.zero,
+                      ).animate(anim),
+                      child: FadeTransition(opacity: anim, child: child),
+                    ),
+                    child: Text(
+                      letter,
+                      key: ValueKey(letter),
                       style: TextStyle(
                         fontFamily: Fonts.ui,
-                        fontSize: 14,
-                        color: Color.lerp(numberFg, p.onToday, t),
+                        fontSize: 12,
+                        color: Color.lerp(letterFg, p.onToday, t),
                         fontWeight: FontWeight.w600,
-                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${day.day}',
+                    style: TextStyle(
+                      fontFamily: Fonts.ui,
+                      fontSize: 14,
+                      color: Color.lerp(numberFg, p.onToday, t),
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );

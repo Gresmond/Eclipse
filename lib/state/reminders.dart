@@ -109,6 +109,7 @@ abstract interface class ReminderPermission {
 mixin _Reminders on ChangeNotifier {
   Store get store;
   DateTime get today;
+  int get todosRevision;
   DateTime Function() get _clock;
   int get _nowEpochMs;
   ReminderNotifier? get notifier;
@@ -118,6 +119,14 @@ mixin _Reminders on ChangeNotifier {
   List<Repeat> get repeats;
   List<DateTime> unmadeOccurrences(Repeat repeat, DateTime from, DateTime to);
   void showFound(DateTime day, String target);
+
+  /// SQLite reminder scans executed by [checkReminders]; for tests.
+  @visibleForTesting
+  int debugReminderQueries = 0;
+
+  (DateTime, int, int, int)? _reminderCacheKey;
+  DateTime? _nextDueAt;
+  int? _nextSnoozeEpochMs;
 
   /// The tasks that remind, each on the calendar day it happens: with a
   /// day starting at 4am, a task at 1:00 am is in the small hours after its
@@ -199,6 +208,7 @@ mixin _Reminders on ChangeNotifier {
     store.setSetting('snoozed', jsonEncode(snoozes));
     reminderCards.removeWhere((a) => a.key == key);
     snoozeRevision++;
+    _reminderCacheKey = null;
     notifyListeners();
   }
 
@@ -207,12 +217,19 @@ mixin _Reminders on ChangeNotifier {
     if (_held != null || _disposed) return;
     final now = _clock();
     final nowEpoch = _nowEpochMs;
+    final key = (today, todosRevision, snoozeRevision, dayStartHour);
+    if (_reminderCacheKey == key &&
+        (_nextDueAt == null || now.isBefore(_nextDueAt!)) &&
+        (_nextSnoozeEpochMs == null || nowEpoch < _nextSnoozeEpochMs!)) {
+      return;
+    }
+    debugReminderQueries++;
     final shown = _shownKeys();
     final reminding = _remindingTodos();
     final due = dueReminders(reminding, now, shown, startHour: dayStartHour);
     final snoozed = _snoozed();
+    final live = <String, (ReminderAlert, DateTime)>{};
     if (snoozed.isNotEmpty) {
-      final live = <String, (ReminderAlert, DateTime)>{};
       for (final (task, day) in reminding) {
         final uid = task.uid;
         if (uid == null) continue;
@@ -245,22 +262,84 @@ mixin _Reminders on ChangeNotifier {
       });
       if (snoozed.length != before) store.setSetting('snoozed', jsonEncode(snoozed));
     }
-    if (due.isEmpty) return;
-    for (final (alert, keys) in due) {
-      shown.addAll(keys);
-      notifier?.show(alert, alert.body(now, startHour: dayStartHour));
-      if (windowOpen) {
-        reminderCards.removeWhere((a) => a.uid == alert.uid);
-        reminderCards.add(alert);
+    final fired = due.isNotEmpty;
+    if (fired) {
+      for (final (alert, keys) in due) {
+        shown.addAll(keys);
+        notifier?.show(alert, alert.body(now, startHour: dayStartHour));
+        if (windowOpen) {
+          reminderCards.removeWhere((a) => a.uid == alert.uid);
+          reminderCards.add(alert);
+        }
+      }
+      _keepShown(shown);
+    }
+    final nextWake = _computeNextWake(reminding, shown, snoozed, live, now, nowEpoch);
+    _nextDueAt = nextWake.$1;
+    _nextSnoozeEpochMs = nextWake.$2;
+    _reminderCacheKey = key;
+    if (fired) notifyListeners();
+  }
+
+  (DateTime?, int?) _computeNextWake(
+    List<(TodoItem, DateTime)> reminding,
+    Set<String> shown,
+    Map<String, int> snoozed,
+    Map<String, (ReminderAlert, DateTime)> live,
+    DateTime now,
+    int nowEpoch,
+  ) {
+    DateTime? nextDueAt;
+    int? nextSnoozeEpochMs;
+
+    void considerDate(DateTime candidate) {
+      if (!candidate.isAfter(now)) return;
+      if (nextDueAt == null || candidate.isBefore(nextDueAt!)) nextDueAt = candidate;
+    }
+
+    for (final (item, day) in reminding) {
+      final uid = item.uid;
+      if (uid == null) continue;
+      final time = item.birthday ? null : item.dueTime;
+      final bits = Reminder.allowed(item.reminders, birthday: item.birthday, time: time);
+      if (bits == 0) continue;
+      final dayStart = item.birthday
+          ? DateTime(day.year, day.month, day.day, dayStartHour)
+          : DateTime(day.year, day.month, day.day, 0, time ?? 0);
+      final over = item.birthday ? DateTime(day.year, day.month, day.day + 1, dayStartHour) : dayStart;
+      if (!now.isBefore(over)) continue;
+      for (final reminder in Reminder.of(bits)) {
+        final alertKey = ReminderAlert(
+          uid: uid,
+          text: item.text,
+          day: day,
+          time: time,
+          birthday: item.birthday,
+          reminder: reminder,
+        ).key;
+        if (shown.contains(alertKey)) continue;
+        if (item.birthday && reminder == Reminder.dayBefore && !now.isBefore(dayStart)) continue;
+        considerDate(reminder.at(day, time));
       }
     }
-    _keepShown(shown);
-    notifyListeners();
+
+    for (final entry in snoozed.entries) {
+      final found = live[entry.key];
+      if (found == null) continue;
+      considerDate(found.$2);
+      final ms = entry.value;
+      if (ms > nowEpoch && (nextSnoozeEpochMs == null || ms < nextSnoozeEpochMs)) {
+        nextSnoozeEpochMs = ms;
+      }
+    }
+
+    return (nextDueAt, nextSnoozeEpochMs);
   }
 
   /// Drops cards for completed, deleted, or modified reminders, and updates
   /// titles if a task was renamed.
   void _pruneReminderCards({bool notify = true}) {
+    _reminderCacheKey = null;
     if (reminderCards.isEmpty) return;
     final active = <String, (TodoItem, DateTime)>{};
     for (final (item, day) in _remindingTodos()) {
@@ -307,6 +386,7 @@ mixin _Reminders on ChangeNotifier {
   /// The tasks [which] says were just set: what they'd remind of already
   /// is past, and doesn't go off.
   void _settleReminders(bool Function(String uid) which) {
+    _reminderCacheKey = null;
     final shown = _shownKeys();
     final due = dueReminders(
       [

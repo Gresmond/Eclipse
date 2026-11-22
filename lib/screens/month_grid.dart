@@ -71,6 +71,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
           rest: state.isRestDay(c.day),
           off: !habit.onDay(c.day),
           paletteAnimation: _palette,
+          isolateRepaint: false,
         ),
     ];
     _cells[habit.id] = (key, cells);
@@ -270,25 +271,27 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
         final days = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // The headers are a plain row of 31 boxes, cheap enough to lay
-            // out each frame, so their width follows the columns'.
-            AnimatedBuilder(
-              animation: _shown,
-              builder: (context, _) {
-                final shown = _shown.value;
-                return Row(
-                  children: [
-                    SizedBox(width: nameWidth),
-                    for (final c in columns)
-                      if (shown > c.number - 1)
-                        _Column(
-                          width: layout.widthOf(c.number) * layout.fraction(c.number),
-                          full: layout.widthOf(c.number),
-                          child: headers[c.number]!,
-                        ),
-                  ],
-                );
-              },
+            // The headers morph with column widths; isolating their repaint
+            // keeps column animations from dirtying adjacent rows.
+            RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _shown,
+                builder: (context, _) {
+                  final shown = _shown.value;
+                  return Row(
+                    children: [
+                      SizedBox(width: nameWidth),
+                      for (final c in columns)
+                        if (shown > c.number - 1)
+                          _Column(
+                            width: layout.widthOf(c.number) * layout.fraction(c.number),
+                            full: layout.widthOf(c.number),
+                            child: headers[c.number]!,
+                          ),
+                    ],
+                  );
+                },
+              ),
             ),
             const SizedBox(height: 10),
             ...rows,

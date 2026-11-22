@@ -38,6 +38,8 @@ class Store {
     // app loses nothing; [flushToDisk] covers a power cut at the moments
     // that matter.
     _db.execute('PRAGMA synchronous = NORMAL');
+    _db.execute('PRAGMA temp_store = MEMORY');
+    _db.execute('PRAGMA cache_size = -16000');
     _migrate();
   }
 
