@@ -23,14 +23,23 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
     bool isBirthday(_Later later) => later.item?.birthday ?? later.repeat!.birthday;
     bool shows(_Later later) => birthdays || !isBirthday(later);
     final hiding = !birthdays && !past && [...planned.later.expand((l) => l.$2), ...planned.undated].any(isBirthday);
-    final groups = [
+    final groups = <(String, DateTime?, List<_Later>)>[
       for (final (date, items) in [
         for (final (date, items) in planned.later) (date as DateTime?, items),
         if (planned.undated.isNotEmpty) (null, planned.undated),
-      ])
-        if (items.where(shows).toList() case final shown when shown.isNotEmpty) (date, shown),
+      ]) ...[
+        for (final later in items)
+          if (shows(later) && isBirthday(later))
+            (
+              '${date == null ? 'none' : dateKey(date)}/birthday/${later.item?.id ?? later.repeat!.uid}',
+              date,
+              [later],
+            ),
+        if (items.where((l) => shows(l) && !isBirthday(l)).toList() case final standard when standard.isNotEmpty)
+          (date == null ? 'none' : dateKey(date), date, standard),
+      ],
     ];
-    final count = groups.fold(0, (n, g) => n + g.$2.length);
+    final count = groups.fold(0, (n, g) => n + g.$3.length);
     // Hidden birthdays count as seen, so showing them doesn't fade them in.
     final added = _added(day, [
       for (final (_, items) in [...planned.later, (null, planned.undated)])
@@ -119,7 +128,7 @@ class _LaterList extends StatefulWidget {
     this.topInset = 0,
   });
 
-  final List<(DateTime?, List<_Later>)> groups;
+  final List<(String, DateTime?, List<_Later>)> groups;
 
   /// Whether birthdays show: shown or hidden, they pop in or out at once.
   final bool birthdays;
@@ -155,9 +164,12 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
   /// Birthday repeats just hidden, closing up where they were.
   final _hiding = <String, ({String group, int index, Repeat repeat})>{};
 
-  static String _key(DateTime? date) => date == null ? 'none' : dateKey(date);
+  static DateTime? _dateOf(String key) {
+    final day = key.split('/').first;
+    return day == 'none' ? null : DateTime.parse(day);
+  }
 
-  /// A row by its day and task or repeat, so one that moves day counts as
+  /// A row by its group and task or repeat, so one that moves day counts as
   /// gone from where it was.
   static String _place(String group, _Later later) => '$group/${later.item?.id ?? later.repeat!.uid}';
 
@@ -170,17 +182,16 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
       _drawn
         ..clear()
         ..addAll({
-          for (final (date, items) in widget.groups) _key(date): [for (final later in items) ?later.item?.id],
+          for (final (key, _, items) in widget.groups) key: [for (final later in items) ?later.item?.id],
         });
       return;
     }
     // Whatever's gone (ticked into Today or moved) closes up where it was.
     final now = {
-      for (final (date, items) in widget.groups)
-        for (final later in items) _place(_key(date), later),
+      for (final (key, _, items) in widget.groups)
+        for (final later in items) _place(key, later),
     };
-    for (final (date, items) in old.groups) {
-      final group = _key(date);
+    for (final (group, _, items) in old.groups) {
       var repeats = 0;
       for (final later in items) {
         if (later.repeat != null) repeats++;
@@ -209,10 +220,10 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
     final day = state.shownDay;
     final readOnly = !state.canEditDay(day);
     final groups = [
-      for (final (date, items) in widget.groups)
+      for (final (key, date, items) in widget.groups)
         (
           date: date,
-          key: date == null ? 'none' : dateKey(date),
+          key: key,
           tasks: [
             for (final later in items)
               if (later.item case final item?) (later.scope!, item),
@@ -226,14 +237,21 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
       for (final d in _departing.values) d.group,
       for (final h in _hiding.values) h.group,
     }.difference(current)) {
-      groups.add((date: key == 'none' ? null : DateTime.parse(key), key: key, tasks: const [], repeats: <Repeat>[]));
+      groups.add((date: _dateOf(key), key: key, tasks: const [], repeats: <Repeat>[]));
     }
     for (final h in _hiding.values) {
       final repeats = groups.firstWhere((g) => g.key == h.group).repeats;
       if (!repeats.any((r) => r.uid == h.repeat.uid)) repeats.insert(h.index.clamp(0, repeats.length), h.repeat);
     }
     final hidden = _hiding.keys.toSet();
-    groups.sort((a, b) => a.date == null ? 1 : (b.date == null ? -1 : a.date!.compareTo(b.date!)));
+    groups.sort((a, b) {
+      final byDate = a.date == null ? (b.date == null ? 0 : 1) : (b.date == null ? -1 : a.date!.compareTo(b.date!));
+      if (byDate != 0) return byDate;
+      final aBirthday = a.key.contains('/birthday/');
+      final bBirthday = b.key.contains('/birthday/');
+      if (aBirthday != bBirthday) return aBirthday ? -1 : 1;
+      return 0;
+    });
     final shown = {for (final g in groups) g.key: _shown(g.key, g.tasks, fresh: widget.added)};
     _settle();
     final sought = _sought;
@@ -291,6 +309,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
                               for (final repeat in g.repeats) repeat.uid,
                             ],
                             itemBuilder: (context, index) {
+                              final first = index == 0;
                               final tasks = shown[g.key]!;
                               if (index >= tasks.length) {
                                 final repeat = g.repeats[index - tasks.length];
@@ -312,6 +331,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
                                   TodoItem make() => state.occurrence(repeat, date);
                                   return TaskRow(
                                     upcomingDate: g.date,
+                                    showUpcomingWeekday: first,
                                     key: ValueKey(repeat.uid),
                                     scope: TodoScope.month,
                                     item: made ?? repeat.unmade(date),
@@ -327,7 +347,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
                                 // Leaving, it looks up how it ended.
                                 return leaving
                                     ? build()
-                                    : _row(repeat.uid, null, (repeat, g.date, day, state.today, readOnly), build);
+                                    : _row(repeat.uid, null, (repeat, g.date, day, state.today, readOnly, first), build);
                               }
                               final (:task, :arriving, :leaving) = tasks[index];
                               final (scope, item) = task;
@@ -351,6 +371,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
                                 final latest = leaving ? _latest(state, item) : null;
                                 return TaskRow(
                                   upcomingDate: g.date,
+                                  showUpcomingWeekday: first,
                                   key: ValueKey((scope, item.id)),
                                   scope: latest?.$1 ?? scope,
                                   item: latest?.$2 ?? item,
@@ -368,7 +389,7 @@ class _LaterListState extends State<_LaterList> with _DayMotion, _RevealsFound {
                                   : _row(
                                       (scope, item.id),
                                       item,
-                                      (g.key, day, state.today, readOnly, fadeIn, state.repeatOf(item)),
+                                      (g.key, day, state.today, readOnly, fadeIn, state.repeatOf(item), first),
                                       build,
                                     );
                             },

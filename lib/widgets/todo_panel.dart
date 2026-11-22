@@ -128,6 +128,7 @@ class TaskRow extends StatelessWidget {
     required this.day,
     this.readOnly = false,
     this.upcomingDate,
+    this.showUpcomingWeekday = true,
     this.fadeIn = false,
     this.arriving = false,
     this.leaving = false,
@@ -137,6 +138,10 @@ class TaskRow extends StatelessWidget {
   });
 
   final DateTime? upcomingDate;
+
+  /// Whether [upcomingDate]'s weekday heads this row; false for subsequent
+  /// tasks grouped under the same day in Further ahead.
+  final bool showUpcomingWeekday;
 
   final TodoScope scope;
   final TodoItem item;
@@ -175,6 +180,7 @@ class TaskRow extends StatelessWidget {
       child: _TodoRow(
         scope: scope,
         upcomingDate: upcomingDate,
+        showUpcomingWeekday: showUpcomingWeekday,
         item: item,
         day: day,
         readOnly: readOnly,

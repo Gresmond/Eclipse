@@ -7,6 +7,7 @@ class _TodoRow extends StatefulWidget {
     required this.day,
     this.readOnly = false,
     this.upcomingDate,
+    this.showUpcomingWeekday = true,
     this.fadeIn = false,
     this.arriving = false,
     this.leaving = false,
@@ -16,6 +17,7 @@ class _TodoRow extends StatefulWidget {
   });
 
   final DateTime? upcomingDate;
+  final bool showUpcomingWeekday;
 
   final TodoScope scope;
   final TodoItem item;
@@ -500,7 +502,10 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                         if (_touchActions) _actions = true;
                       }),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
+              padding: EdgeInsets.only(
+                top: widget.upcomingDate != null && !widget.showUpcomingWeekday ? 6 : 2,
+                bottom: 2,
+              ),
               child: HoverFill(
                 hover: _hover,
                 child: Padding(
@@ -544,11 +549,13 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      if (widget.upcomingDate != null || item.dueTime != null || item.location != null)
+                                      if ((widget.upcomingDate != null && widget.showUpcomingWeekday) ||
+                                          item.dueTime != null ||
+                                          item.location != null)
                                         _Caption(
                                           weekday: switch (widget.upcomingDate) {
-                                            final date? => weekdayNames[date.weekday - 1],
-                                            null => null,
+                                            final date? when widget.showUpcomingWeekday => weekdayNames[date.weekday - 1],
+                                            _ => null,
                                           },
                                           time: item.dueTime,
                                           location: item.location,

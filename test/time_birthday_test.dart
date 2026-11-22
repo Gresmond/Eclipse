@@ -488,4 +488,35 @@ void main() {
       expect(icon.size, 18);
     }
   });
+
+  testWidgets('Further ahead gives each birthday its own entry and groups standard tasks under one weekday', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 11, 22, 9));
+    addTearDown(state.dispose);
+    final nov30 = DateTime(2026, 11, 30);
+    state.addTodo(TodoScope.month, 'Morning task', dueDate: nov30, time: 9 * 60);
+    state.addTodo(TodoScope.month, 'Afternoon task', dueDate: nov30, time: 15 * 60);
+    state.addTodo(TodoScope.month, 'Untimed task', dueDate: nov30);
+    state.addRepeat("Papa Dawes's Birthday", const RepeatRule.yearly(1), nov30, birthday: true);
+    state.addTodo(TodoScope.month, "Auntie's Birthday", dueDate: nov30, birthday: true);
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    final later = find.byType(FurtherAheadCard);
+    expect(find.descendant(of: later, matching: find.text('NOV')), findsNWidgets(3));
+    expect(find.descendant(of: later, matching: find.text('30')), findsNWidgets(3));
+    expect(find.descendant(of: later, matching: find.text('In 8 days')), findsNWidgets(3));
+    expect(find.descendant(of: later, matching: find.text('Monday')), findsNWidgets(3));
+    expect(find.descendant(of: later, matching: find.text('Birthday')), findsNWidgets(2));
+    expect(find.descendant(of: later, matching: find.text('9:00 am')), findsOneWidget);
+    expect(find.descendant(of: later, matching: find.text('3:00 pm')), findsOneWidget);
+    expect(find.descendant(of: later, matching: find.text('Untimed task')), findsOneWidget);
+    expect(find.descendant(of: later, matching: find.bySemanticsLabel('5 PLANNED')), findsOneWidget);
+  });
 }
