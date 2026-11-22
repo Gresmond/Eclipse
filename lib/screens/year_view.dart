@@ -8,6 +8,7 @@ import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../theme/oklch.dart';
+import '../widgets/hover_fill.dart';
 import '../widgets/tile.dart';
 import 'year_heatmap.dart';
 
@@ -231,6 +232,12 @@ class _Table extends StatelessWidget {
     final label = labelStyle(p);
 
     Widget row(String name, List<_Score> months, {Habit? habit, bool total = false}) {
+      final yearScore = sum(months);
+      final yearPct = yearScore.ratio == null ? null : (yearScore.ratio! * 100).round();
+      final yearLabel = year == state.today.year ? 'Year to date' : '$year';
+      final yearTip = yearScore.logged == 0
+          ? '$name · $yearLabel: nothing logged'
+          : '$name · $yearLabel: ${yearScore.done} of ${yearScore.logged} ($yearPct%)';
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -245,18 +252,30 @@ class _Table extends StatelessWidget {
               ),
             ),
             for (final (i, m) in shown.indexed)
-              Expanded(
-                child: _Cell(
-                  ratio: months[i].ratio,
-                  height: cell,
-                  future: habit != null && (notYet?.call(habit, m) ?? false),
-                ),
-              ),
+              () {
+                final score = months[i];
+                final isFuture = habit != null && (notYet?.call(habit, m) ?? false);
+                final pct = score.ratio == null ? null : (score.ratio! * 100).round();
+                final tip = isFuture
+                    ? null
+                    : score.logged == 0
+                    ? '$name · ${monthNames[m - 1]}: nothing logged'
+                    : '$name · ${monthNames[m - 1]}: ${score.done} of ${score.logged} ($pct%)';
+                return Expanded(
+                  child: _Cell(
+                    ratio: score.ratio,
+                    height: cell,
+                    future: isFuture,
+                    tooltip: tip,
+                    onTap: isFuture ? null : () => state.showMonth(m),
+                  ),
+                );
+              }(),
             if (shown.length < 12) Spacer(flex: 12 - shown.length),
             const SizedBox(width: 10),
             Expanded(
               flex: 2,
-              child: _Cell(ratio: sum(months).ratio, height: cell, strong: true),
+              child: _Cell(ratio: yearScore.ratio, height: cell, strong: true, tooltip: yearTip),
             ),
           ],
         ),
@@ -272,7 +291,26 @@ class _Table extends StatelessWidget {
                 const SizedBox(width: _nameWidth),
                 for (final m in shown)
                   Expanded(
-                    child: Center(child: Text(shortMonth(m).toUpperCase(), style: label)),
+                    child: Center(
+                      child: PixelTooltip(
+                        message: 'Open ${monthNames[m - 1]}',
+                        child: Hoverable(
+                          focusable: true,
+                          semanticLabel: 'Open ${monthNames[m - 1]}',
+                          onTap: () => state.showMonth(m),
+                          builder: (hover) => AnimatedContainer(
+                            duration: context.themed(Motion.hover),
+                            curve: Motion.hoverCurve,
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            decoration: BoxDecoration(
+                              color: hover ? p.empty.withValues(alpha: 0.6) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(shortMonth(m).toUpperCase(), style: hover ? capsLabel(p.ink) : label),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 if (shown.length < 12) Spacer(flex: 12 - shown.length),
                 const SizedBox(width: 10),
@@ -313,12 +351,21 @@ class _Table extends StatelessWidget {
 /// A percentage on a square tinted by how high it is, from missed through
 /// other to done; a dash when nothing was logged.
 class _Cell extends StatelessWidget {
-  const _Cell({required this.ratio, required this.height, this.future = false, this.strong = false});
+  const _Cell({
+    required this.ratio,
+    required this.height,
+    this.future = false,
+    this.strong = false,
+    this.tooltip,
+    this.onTap,
+  });
 
   final double? ratio;
   final double height;
   final bool future;
   final bool strong;
+  final String? tooltip;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -331,28 +378,40 @@ class _Cell extends StatelessWidget {
         ? Color.lerp(p.missed, p.other, r * 2)!
         : Color.lerp(p.other, p.done, r * 2 - 1)!;
     const darkInk = Color(0xFF030305);
+
+    Widget box(bool hover) => AnimatedContainer(
+      duration: context.themed(Motion.morph),
+      curve: Motion.morphCurve,
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: fill,
+        border: onTap == null
+            ? null
+            : Border.all(color: hover ? p.ink.withValues(alpha: 0.45) : Colors.transparent, width: 1.5),
+      ),
+      child: Text(
+        r == null ? '–' : '${(r * 100).round()}%',
+        style: TextStyle(
+          fontFamily: Fonts.ui,
+          fontSize: strong ? 15 : 14,
+          fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
+          color: r == null
+              ? p.inkMuted.withValues(alpha: future ? 0.25 : 0.5)
+              : (contrast(fill, Colors.white) >= contrast(fill, darkInk) ? Colors.white : darkInk),
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+
+    final cell = onTap == null
+        ? box(false)
+        : Hoverable(focusable: true, semanticLabel: tooltip, onTap: onTap, builder: box);
     return Padding(
       // The year's total ends flush with the rule beneath it.
       padding: EdgeInsets.only(left: 4, right: strong ? 0 : 4),
-      child: AnimatedContainer(
-        duration: context.themed(Motion.morph),
-        curve: Motion.morphCurve,
-        height: height,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: fill),
-        child: Text(
-          r == null ? '–' : '${(r * 100).round()}%',
-          style: TextStyle(
-            fontFamily: Fonts.ui,
-            fontSize: strong ? 15 : 14,
-            fontWeight: strong ? FontWeight.w700 : FontWeight.w600,
-            color: r == null
-                ? p.inkMuted.withValues(alpha: future ? 0.25 : 0.5)
-                : (contrast(fill, Colors.white) >= contrast(fill, darkInk) ? Colors.white : darkInk),
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ),
+      child: tooltip == null ? cell : PixelTooltip(message: tooltip!, child: cell),
     );
   }
 }

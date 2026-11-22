@@ -38,13 +38,7 @@ class TrainingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (kIsWeb && MediaQuery.sizeOf(context).width < 900) {
-      return ListView(padding: const EdgeInsets.all(16), children: const [
-        SizedBox(height: 420, child: _SessionTile()),
-        SizedBox(height: 16),
-        SizedBox(height: 380, child: _ChartTile()),
-        SizedBox(height: 16),
-        SizedBox(height: 320, child: _HistoryTile()),
-      ]);
+      return const _NarrowTraining();
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
@@ -62,6 +56,46 @@ class TrainingView extends StatelessWidget {
                 SizedBox(width: 20),
                 Expanded(flex: 2, child: _HistoryTile()),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NarrowTraining extends StatefulWidget {
+  const _NarrowTraining();
+
+  @override
+  State<_NarrowTraining> createState() => _NarrowTrainingState();
+}
+
+class _NarrowTrainingState extends State<_NarrowTraining> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SegmentedPills(
+            labels: const ['Session', 'Chart', 'History'],
+            selected: _tab,
+            expand: true,
+            onSelect: (i) => setState(() => _tab = i),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: FadeThrough(
+              layoutBuilder: FadeThrough.fill,
+              child: switch (_tab) {
+                0 => const KeyedSubtree(key: ValueKey('narrow-session'), child: _SessionTile()),
+                1 => const KeyedSubtree(key: ValueKey('narrow-chart'), child: _ChartTile()),
+                _ => const KeyedSubtree(key: ValueKey('narrow-history'), child: _HistoryTile()),
+              },
             ),
           ),
         ],

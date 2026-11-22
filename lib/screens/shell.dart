@@ -160,86 +160,116 @@ class _Header extends StatelessWidget {
           )
         : ('${state.viewYear}$holiday', monthNames[month - 1]);
     if (kIsWeb && MediaQuery.sizeOf(context).width < 850) {
+      final narrowTitleStyle = TextStyle(
+        fontFamily: Fonts.display,
+        fontSize: 28,
+        fontWeight: FontWeight.w600,
+        letterSpacing: -0.4,
+        height: 1.05,
+        color: p.ink,
+      );
       return SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.only(right: 10),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
           child: Row(
             children: [
               Expanded(
-                child: PopupMenuButton<VoidCallback>(
-                  tooltip: 'Change view',
-                  onSelected: (action) => action(),
-                  itemBuilder: (_) => [
-                    PopupMenuItem(value: state.showToday, child: const Text('Today')),
-                    for (final m in months)
-                      PopupMenuItem(value: () => state.showMonth(m), child: Text(monthNames[m - 1])),
-                    PopupMenuItem(value: state.showYear, child: const Text('Year')),
-                    PopupMenuItem(
-                      value: () {
-                        if (!state.showingTraining) state.toggleTraining();
-                      },
-                      child: const Text('Training'),
-                    ),
-                    if (!elsewhere && (state.viewYear > state.firstMonth.$1 || state.viewYear < today.year)) ...[
-                      const PopupMenuDivider(),
-                      if (state.viewYear > state.firstMonth.$1)
-                        PopupMenuItem(
-                          value: () => state.shiftYear(-1),
-                          child: Text('Previous year (${state.viewYear - 1})'),
-                        ),
-                      if (state.viewYear < today.year)
-                        PopupMenuItem(
-                          value: () => state.shiftYear(1),
-                          child: Text('Next year (${state.viewYear + 1})'),
-                        ),
-                    ],
-                  ],
-                  child: Material(
-                    color: Colors.transparent,
-                    child: ListTile(
-                      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      subtitle: Text(
-                        kicker.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: capsLabel(p.inkMuted),
+                child: Builder(
+                  builder: (anchor) => Hoverable(
+                    focusable: true,
+                    semanticLabel: 'Change view',
+                    onTap: () => showFadeMenu(
+                      anchor,
+                      alignLeft: true,
+                      width: 240,
+                      builder: (_) => _NarrowViewMenu(
+                        onDay: onDay && state.viewDay == null,
+                        month: elsewhere ? null : month,
+                        viewingYear: !elsewhere && state.viewingYear,
+                        showingTraining: elsewhere,
+                        months: months,
+                        viewYear: state.viewYear,
+                        firstYear: state.firstMonth.$1,
+                        todayYear: today.year,
                       ),
-                      trailing: const Icon(Icons.expand_more_rounded),
+                    ),
+                    builder: (hover) => AnimatedContainer(
+                      duration: context.themed(Motion.hover),
+                      curve: Motion.hoverCurve,
+                      padding: const EdgeInsets.fromLTRB(8, 6, 10, 6),
+                      decoration: BoxDecoration(
+                        color: hover ? p.empty.withValues(alpha: 0.5) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            kicker.toUpperCase(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: capsLabel(p.inkMuted),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: narrowTitleStyle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.expand_more_rounded, size: 18, color: p.inkMuted),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
               if (onDay) ...[
-                IconButton(
-                  tooltip: 'Look back at another day',
-                  icon: const Icon(Icons.calendar_today_rounded),
-                  onPressed: () => showFadeMenu(
-                    context,
-                    alignLeft: true,
-                    width: 312,
-                    builder: (_) {
-                      final (y, m) = state.firstMonth;
-                      return DayPicker(
-                        today: state.today,
-                        first: DateTime(y, m),
-                        selected: state.shownDay,
-                        onPick: state.showDay,
-                      );
-                    },
+                Builder(
+                  builder: (anchor) => _RoundHeaderButton(
+                    icon: Icons.calendar_today_rounded,
+                    tooltip: 'Look back at another day',
+                    size: 40,
+                    iconSize: 18,
+                    onTap: () => showFadeMenu(
+                      anchor,
+                      width: 312,
+                      builder: (_) {
+                        final (y, m) = state.firstMonth;
+                        return DayPicker(
+                          today: state.today,
+                          first: DateTime(y, m),
+                          selected: state.shownDay,
+                          onPick: state.showDay,
+                        );
+                      },
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
               ],
-              IconButton(
+              _RoundHeaderButton(
+                icon: Icons.search_rounded,
                 tooltip: 'Search',
-                icon: const Icon(Icons.search_rounded),
-                onPressed: () => showAppDialog<void>(context: context, builder: (_) => const SearchDialog()),
+                size: 40,
+                iconSize: 18,
+                onTap: () => showAppDialog<void>(context: context, builder: (_) => const SearchDialog()),
               ),
-              const SizedBox(width: 10),
-              const _SettingsButton(),
-              const SizedBox(width: 10),
-              const _ThemeButton(),
+              const SizedBox(width: 6),
+              const _SettingsButton(size: 40, iconSize: 18),
+              const SizedBox(width: 6),
+              const _ThemeButton(size: 40),
             ],
           ),
         ),
@@ -828,30 +858,112 @@ Future<void> openSettings(BuildContext context, {int ribbon = 0}) async {
   AppScope.read(context).noteRestored(from);
 }
 
-class _SettingsButton extends StatelessWidget {
-  const _SettingsButton();
+class _NarrowViewMenu extends StatelessWidget {
+  const _NarrowViewMenu({
+    required this.onDay,
+    required this.month,
+    required this.viewingYear,
+    required this.showingTraining,
+    required this.months,
+    required this.viewYear,
+    required this.firstYear,
+    required this.todayYear,
+  });
+
+  final bool onDay;
+  final int? month;
+  final bool viewingYear;
+  final bool showingTraining;
+  final List<int> months;
+  final int viewYear;
+  final int firstYear;
+  final int todayYear;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final state = AppScope.read(context);
+
+    Widget item(String label, bool selected, VoidCallback onTap) => FadeMenuRow(
+      height: 44,
+      onTap: () {
+        Navigator.pop(context);
+        onTap();
+      },
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontFamily: Fonts.ui,
+                fontSize: 15,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: p.ink,
+              ),
+            ),
+          ),
+          if (selected) Icon(Icons.check_rounded, size: 18, color: p.accent),
+        ],
+      ),
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        item('Today', onDay, state.showToday),
+        for (final m in months) item(monthNames[m - 1], month == m, () => state.showMonth(m)),
+        item('Year', viewingYear, state.showYear),
+        item('Training', showingTraining, () {
+          if (!state.showingTraining) state.toggleTraining();
+        }),
+        if (!showingTraining && (viewYear > firstYear || viewYear < todayYear)) ...[
+          const FadeMenuDivider(),
+          if (viewYear > firstYear) item('Previous year (${viewYear - 1})', false, () => state.shiftYear(-1)),
+          if (viewYear < todayYear) item('Next year (${viewYear + 1})', false, () => state.shiftYear(1)),
+        ],
+      ],
+    );
+  }
+}
+
+class _RoundHeaderButton extends StatelessWidget {
+  const _RoundHeaderButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.size = 46,
+    this.iconSize = 22,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final double size;
+  final double iconSize;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     return PixelTooltip(
-      message: 'Settings',
+      message: tooltip,
       child: Material(
         color: Colors.transparent,
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
           mouseCursor: SystemMouseCursors.click,
-          onTap: () => openSettings(context),
+          onTap: onTap,
           child: Container(
-            width: 46,
-            height: 46,
+            width: size,
+            height: size,
             decoration: BoxDecoration(
               color: p.tile.withValues(alpha: 0.8),
               shape: BoxShape.circle,
               border: Border.all(color: p.border),
             ),
-            child: Icon(Icons.settings_rounded, size: 22, color: p.inkMuted),
+            child: Icon(icon, size: iconSize, color: p.inkMuted),
           ),
         ),
       ),
@@ -859,10 +971,28 @@ class _SettingsButton extends StatelessWidget {
   }
 }
 
+class _SettingsButton extends StatelessWidget {
+  const _SettingsButton({this.size = 46, this.iconSize = 22});
+
+  final double size;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) => _RoundHeaderButton(
+    icon: Icons.settings_rounded,
+    tooltip: 'Settings',
+    size: size,
+    iconSize: iconSize,
+    onTap: () => openSettings(context),
+  );
+}
+
 /// Round swatch of the current theme; opens a menu of all themes and
 /// whether to follow night light.
 class _ThemeButton extends StatelessWidget {
-  const _ThemeButton();
+  const _ThemeButton({this.size = 46});
+
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -886,7 +1016,7 @@ class _ThemeButton extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: p.border),
               ),
-              child: _Swatch(palette: p, size: 36),
+              child: _Swatch(palette: p, size: size - 10),
             ),
           ),
         ),

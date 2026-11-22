@@ -12,6 +12,7 @@ import '../theme/pixels.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/fade_through.dart';
+import '../widgets/glide_pill.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/note_input.dart';
 import '../widgets/rolling_number.dart';
@@ -35,6 +36,8 @@ class TodayView extends StatefulWidget {
 
 class _TodayViewState extends State<TodayView> {
   final _firstCheckboxInset = ValueNotifier<double>(0);
+  int _narrowTab = 0;
+  DateTime? _lastFoundAt;
 
   // Made once, outside the LayoutBuilder, so resizing the window lays the
   // cards out again without building them again. Opening the page, they
@@ -53,66 +56,119 @@ class _TodayViewState extends State<TodayView> {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.habitsRevision));
+    final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.habitsRevision, s.found));
+    final found = state.found;
+    if (found != null && found.at != _lastFoundAt) {
+      _lastFoundAt = found.at;
+      if (found.target.startsWith('habit:')) {
+        _narrowTab = 0;
+      } else if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(found.target)) {
+        _narrowTab = 2;
+      } else {
+        _narrowTab = 1;
+      }
+    }
     final day = state.shownDay;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 0, 32, 28),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // These are the usable bounds after the outer padding. Keep enough
-          // room for names, badges and controls, including with larger text.
-          final textScale = MediaQuery.textScalerOf(context).scale(15) / 15;
-          final minContentWidth = 1216.0 * max(1.0, textScale);
-          final sleepHeight = _HabitColumn.sleepHeight(state, day, constraints.maxHeight);
-
-          if (kIsWeb && constraints.maxWidth < 900) {
-            return ListView(children: [
-              SizedBox(height: 550, child: _rituals),
-              const SizedBox(height: TodayView._gap),
-              const SizedBox(height: 460, child: WeekCard()),
-              const SizedBox(height: TodayView._gap),
-              SizedBox(height: 360, child: _further),
-              const SizedBox(height: TodayView._gap),
-              const SizedBox(height: 320, child: JournalCard()),
-            ]);
-          }
-
-          final content = Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Expanded(flex: 22, child: WeekCard()),
-              const SizedBox(width: TodayView._gap),
-              Expanded(flex: 19, child: _rituals),
-              const SizedBox(width: TodayView._gap),
-              Expanded(
-                flex: 17,
-                child: Column(
+    return LayoutBuilder(
+      builder: (context, outer) {
+        final narrowWeb = kIsWeb && outer.maxWidth < 900;
+        final padding = narrowWeb ? const EdgeInsets.fromLTRB(16, 0, 16, 16) : const EdgeInsets.fromLTRB(32, 0, 32, 28);
+        return Padding(
+          padding: padding,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (narrowWeb) {
+                return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(child: _further),
-                    const SizedBox(height: TodayView._gap),
-                    SizedBox(
-                      height: sleepHeight,
-                      child: const StagedBuild(frames: 2, child: JournalCard()),
+                    SegmentedPills(
+                      labels: const ['Rituals', 'Tasks', 'Journal'],
+                      selected: _narrowTab,
+                      expand: true,
+                      onSelect: (i) {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        if (_narrowTab == 2 && i != 2) AppScope.read(context).saveJournalDraft();
+                        setState(() => _narrowTab = i);
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Expanded(
+                      child: FadeThrough(
+                        layoutBuilder: FadeThrough.fill,
+                        child: switch (_narrowTab) {
+                          0 => KeyedSubtree(key: const ValueKey('narrow-rituals'), child: _rituals),
+                          1 => KeyedSubtree(
+                            key: const ValueKey('narrow-tasks'),
+                            child: constraints.maxHeight < 620
+                                ? ListView(
+                                    padding: EdgeInsets.zero,
+                                    children: [
+                                      const SizedBox(height: 380, child: WeekCard()),
+                                      const SizedBox(height: 14),
+                                      SizedBox(height: 300, child: _further),
+                                    ],
+                                  )
+                                : Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      const Expanded(flex: 3, child: WeekCard()),
+                                      const SizedBox(height: 14),
+                                      Expanded(flex: 2, child: _further),
+                                    ],
+                                  ),
+                          ),
+                          _ => const KeyedSubtree(key: ValueKey('narrow-journal'), child: JournalCard()),
+                        },
+                      ),
                     ),
                   ],
-                ),
-              ),
-            ],
-          );
+                );
+              }
 
-          // Keep the same scroll view when resizing so task fields retain their
-          // state as the window crosses the minimum width.
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: max(minContentWidth, constraints.maxWidth),
-              height: constraints.maxHeight,
-              child: content,
-            ),
-          );
-        },
-      ),
+              // These are the usable bounds after the outer padding. Keep enough
+              // room for names, badges and controls, including with larger text.
+              final textScale = MediaQuery.textScalerOf(context).scale(15) / 15;
+              final minContentWidth = 1216.0 * max(1.0, textScale);
+              final sleepHeight = _HabitColumn.sleepHeight(state, day, constraints.maxHeight);
+
+              final content = Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Expanded(flex: 22, child: WeekCard()),
+                  const SizedBox(width: TodayView._gap),
+                  Expanded(flex: 19, child: _rituals),
+                  const SizedBox(width: TodayView._gap),
+                  Expanded(
+                    flex: 17,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: _further),
+                        const SizedBox(height: TodayView._gap),
+                        SizedBox(
+                          height: sleepHeight,
+                          child: const StagedBuild(frames: 2, child: JournalCard()),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+
+              // Keep the same scroll view when resizing so task fields retain their
+              // state as the window crosses the minimum width.
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: max(minContentWidth, constraints.maxWidth),
+                  height: constraints.maxHeight,
+                  child: content,
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

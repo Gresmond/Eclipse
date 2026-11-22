@@ -104,7 +104,12 @@ class _SettingsPageState extends State<_SettingsPage> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                   child: Text('DAYS', style: capsLabel(p.inkMuted)),
                 ),
-                SwitchListTile(title: const Text('Smart quick-add'), value: state.smartAdd, onChanged: state.setSmartAdd),
+                SettingSwitchRow(
+                  title: 'Smart quick-add',
+                  subtitle: 'Read schedules and places from phrases like “tomorrow at 3pm at the library”.',
+                  on: state.smartAdd,
+                  onTap: () => state.setSmartAdd(!state.smartAdd),
+                ),
                 InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: () => state.setRestWeekends(!state.restWeekends),

@@ -219,7 +219,7 @@ class _WorkoutPageState extends State<_WorkoutPage> with WidgetsBindingObserver 
     final previous = log.lastPerformed(day, exercise);
     var reps = previous?.reps.toString() ?? '';
     var weight = (empty?.weight ?? previous?.weight)?.toString() ?? '';
-    final result = await showDialog<(int, double?)>(
+    final result = await showAppDialog<(int, double?)>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, refresh) {
@@ -236,18 +236,19 @@ class _WorkoutPageState extends State<_WorkoutPage> with WidgetsBindingObserver 
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextFormField(
+                  DialogField(
+                    label: exercise.bodyweight ? 'Added weight (+kg, optional)' : 'Weight (kg)',
                     initialValue: weight,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: exercise.bodyweight ? 'Added weight (+kg, optional)' : 'Weight (kg)',
-                    ),
+                    textInputAction: TextInputAction.next,
                     onChanged: (v) => refresh(() => weight = v),
                   ),
-                  TextFormField(
+                  const SizedBox(height: 10),
+                  DialogField(
+                    label: 'Reps',
                     initialValue: reps,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Reps'),
+                    textInputAction: TextInputAction.done,
                     onChanged: (v) => refresh(() => reps = v),
                   ),
                 ],
@@ -309,30 +310,35 @@ class _WorkoutPageState extends State<_WorkoutPage> with WidgetsBindingObserver 
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextFormField(
+                  DialogField(
+                    label: exercise.bodyweight ? 'Added weight (+kg, optional)' : 'Weight (kg)',
                     initialValue: weight,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: exercise.bodyweight ? 'Added weight (+kg, optional)' : 'Weight (kg)',
-                    ),
+                    textInputAction: TextInputAction.next,
                     onChanged: (v) => refresh(() => weight = v),
                   ),
-                  TextFormField(
+                  const SizedBox(height: 10),
+                  DialogField(
+                    label: 'Reps',
                     initialValue: reps,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Reps'),
+                    textInputAction: TextInputAction.next,
                     onChanged: (v) => refresh(() => reps = v),
                   ),
-                  TextFormField(
+                  const SizedBox(height: 10),
+                  DialogField(
+                    label: 'Effort (RPE 1–10)',
                     initialValue: effort,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Effort (RPE 1–10)'),
+                    textInputAction: TextInputAction.next,
                     onChanged: (v) => refresh(() => effort = v),
                   ),
-                  TextFormField(
+                  const SizedBox(height: 10),
+                  DialogField(
+                    label: 'Set note',
                     initialValue: note,
                     maxLines: 2,
-                    decoration: const InputDecoration(labelText: 'Set note'),
+                    textCapitalization: TextCapitalization.sentences,
                     onChanged: (v) => note = v,
                   ),
                 ],
@@ -388,19 +394,22 @@ class _WorkoutPageState extends State<_WorkoutPage> with WidgetsBindingObserver 
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextFormField(
+                  DialogField(
+                    label: 'Exercise name',
                     initialValue: name,
                     textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(labelText: 'Exercise name'),
                     onChanged: (v) => refresh(() => name = v),
                   ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Bodyweight'),
-                    value: bodyweight,
-                    onChanged: (v) => refresh(() => bodyweight = v),
+                  const SizedBox(height: 12),
+                  DialogSection(
+                    child: SettingSwitchRow(
+                      title: 'Bodyweight',
+                      subtitle: 'Track reps, with optional added weight.',
+                      on: bodyweight,
+                      onTap: () => refresh(() => bodyweight = !bodyweight),
+                    ),
                   ),
                 ],
               ),

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryMouseButton;
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -8,6 +9,7 @@ import '../models.dart';
 import '../theme/app_theme.dart';
 import '../theme/pixels.dart';
 import '../theme/tokens.dart';
+import '../widgets/hover_fill.dart';
 import '../widgets/tile.dart';
 
 /// The year day by day, each month its own block, tinted by the share of
@@ -100,6 +102,8 @@ class _HeatmapData {
 }
 
 class _YearHeatmapState extends State<YearHeatmap> {
+  final _hoveredDay = ValueNotifier<DateTime?>(null);
+
   AppState? _state;
   int? _year, _habitsRevision, _entriesRevision;
   DateTime? _today;
@@ -107,6 +111,18 @@ class _YearHeatmapState extends State<YearHeatmap> {
   List<Holiday>? _holidays;
   Map<int, Set<int>>? _rituals;
   _HeatmapData? _cached;
+
+  @override
+  void didUpdateWidget(YearHeatmap old) {
+    super.didUpdateWidget(old);
+    if (old.year != widget.year) _hoveredDay.value = null;
+  }
+
+  @override
+  void dispose() {
+    _hoveredDay.dispose();
+    super.dispose();
+  }
 
   static bool _sameHolidays(List<Holiday>? a, List<Holiday> b) {
     if (a == null || a.length != b.length) return false;
@@ -220,6 +236,23 @@ class _YearHeatmapState extends State<YearHeatmap> {
         ? 'THE YEAR'
         : 'THE YEAR  ·  ${(data.allDone * 100 / data.allLogged).round()}% OF RITUALS DONE';
     final topSlips = data.slips.take(YearHeatmap._findings).toList();
+    final first = state.firstMonth;
+    final firstDay = DateTime(first.$1, first.$2);
+    final shownMonths = state.shownMonths(widget.year).toSet();
+    final headerRow = Row(
+      children: [
+        Expanded(
+          child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: label),
+        ),
+        const SizedBox(width: 12),
+        _HeatmapLegend(
+          hoveredDay: _hoveredDay,
+          data: data,
+          holidays: state.holidays,
+          restWeekends: state.restWeekends,
+        ),
+      ],
+    );
     return LayoutBuilder(
       builder: (context, c) {
         final stacked = YearHeatmap._isStacked(c.maxWidth);
@@ -227,9 +260,14 @@ class _YearHeatmapState extends State<YearHeatmap> {
         final gridWidget = _Grid(
           year: widget.year,
           today: state.today,
+          firstDay: firstDay,
+          shownMonths: shownMonths,
           width: grid,
           done: data.done,
           logged: data.logged,
+          hoveredDay: _hoveredDay,
+          onOpenDay: state.showDay,
+          onOpenMonth: state.showMonth,
         );
         if (stacked) {
           final gridHeight = YearHeatmap._gridHeight(widget.year, grid);
@@ -237,7 +275,7 @@ class _YearHeatmapState extends State<YearHeatmap> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: label),
+                headerRow,
                 const SizedBox(height: 18),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -257,7 +295,7 @@ class _YearHeatmapState extends State<YearHeatmap> {
             children: [
               Row(
                 children: [
-                  SizedBox(width: grid, child: Text(title, style: label)),
+                  SizedBox(width: grid, child: headerRow),
                   const SizedBox(width: YearHeatmap._between),
                   Expanded(child: Text('WHERE THINGS SLIP', style: label)),
                 ],
@@ -282,24 +320,121 @@ class _YearHeatmapState extends State<YearHeatmap> {
   }
 }
 
-class _Grid extends StatelessWidget {
-  const _Grid({required this.year, required this.today, required this.width, required this.done, required this.logged});
+class _HeatmapLegend extends StatelessWidget {
+  const _HeatmapLegend({
+    required this.hoveredDay,
+    required this.data,
+    required this.holidays,
+    required this.restWeekends,
+  });
+
+  final ValueNotifier<DateTime?> hoveredDay;
+  final _HeatmapData data;
+  final List<Holiday> holidays;
+  final bool restWeekends;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final muted = TextStyle(
+      fontFamily: Fonts.ui,
+      fontSize: 12,
+      color: p.inkMuted,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return ValueListenableBuilder<DateTime?>(
+      valueListenable: hoveredDay,
+      builder: (context, day, _) {
+        if (day == null) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('0%', style: muted),
+              const SizedBox(width: 6),
+              for (final color in [p.missed, p.other, p.done]) ...[
+                Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.only(right: 3),
+                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
+                ),
+              ],
+              const SizedBox(width: 3),
+              Text('100%', style: muted),
+            ],
+          );
+        }
+        final key = dateKey(day);
+        final dateStr = '${day.day} ${shortMonth(day.month)}';
+        final count = data.logged[key];
+        final doneCount = data.done[key] ?? 0;
+        final summary = count != null && count > 0
+            ? '$dateStr · $doneCount of $count done (${(doneCount * 100 / count).round()}%)'
+            : holidayOn(holidays, day) != null
+            ? '$dateStr · On holiday'
+            : restWeekends && (day.weekday == DateTime.saturday || day.weekday == DateTime.sunday)
+            ? '$dateStr · Rest day'
+            : '$dateStr · Nothing logged';
+        return Text(
+          summary,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: Fonts.ui,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: p.ink,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _Grid extends StatefulWidget {
+  const _Grid({
+    required this.year,
+    required this.today,
+    required this.firstDay,
+    required this.shownMonths,
+    required this.width,
+    required this.done,
+    required this.logged,
+    required this.hoveredDay,
+    required this.onOpenDay,
+    required this.onOpenMonth,
+  });
 
   final int year;
   final DateTime today;
+  final DateTime firstDay;
+  final Set<int> shownMonths;
   final double width;
   final Map<String, int> done, logged;
+  final ValueNotifier<DateTime?> hoveredDay;
+  final ValueChanged<DateTime> onOpenDay;
+  final ValueChanged<int> onOpenMonth;
+
+  @override
+  State<_Grid> createState() => _GridState();
+}
+
+class _GridState extends State<_Grid> {
+  int? _pressedPointer;
+  Offset? _downPos;
+  DateTime? _pressedDay;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     const gap = YearHeatmap._gap, top = YearHeatmap._monthsHeight, left = YearHeatmap._labelWidth;
-    final cell = YearHeatmap._cell(year, width);
+    final cell = YearHeatmap._cell(widget.year, widget.width);
     final step = cell + gap;
-    final columns = [for (var m = 1; m <= 12; m++) YearHeatmap._columns(year, m)];
+    final columns = [for (var m = 1; m <= 12; m++) YearHeatmap._columns(widget.year, m)];
     final used = columns.fold(0.0, (a, c) => a + c * cell + (c - 1) * gap);
     // Spare width goes between the months, so they run the card's width.
-    final monthGap = math.max(0.0, pixelFloor((width - left - used) / 11));
+    final monthGap = math.max(0.0, pixelFloor((widget.width - left - used) / 11));
     const dayLine = 16.0;
     final dayStyle = TextStyle(fontFamily: Fonts.ui, fontSize: 12, height: dayLine / 12, color: p.inkMuted);
     // Rows shorter than a line of text name every other day, so no two
@@ -309,6 +444,7 @@ class _Grid extends StatelessWidget {
 
     Color fill(double r) => r < 0.5 ? Color.lerp(p.missed, p.other, r * 2)! : Color.lerp(p.other, p.done, r * 2 - 1)!;
 
+    final monthX = List<double>.filled(12, 0);
     final children = <Widget>[
       for (final (i, name) in dayNames.indexed)
         if (!everyOther || i.isEven)
@@ -317,15 +453,34 @@ class _Grid extends StatelessWidget {
     ];
     var x = left;
     for (var month = 1; month <= 12; month++) {
+      monthX[month - 1] = x;
+      final canOpenMonth = widget.shownMonths.contains(month);
       children.add(
-        Positioned(left: x, top: 0, child: Text(shortMonth(month).toUpperCase(), style: capsLabel(p.inkMuted))),
+        Positioned(
+          left: x,
+          top: 0,
+          child: canOpenMonth
+              ? PixelTooltip(
+                  message: 'Open ${monthNames[month - 1]}',
+                  child: Hoverable(
+                    focusable: true,
+                    semanticLabel: 'Open ${monthNames[month - 1]}',
+                    onTap: () => widget.onOpenMonth(month),
+                    builder: (hover) => Text(
+                      shortMonth(month).toUpperCase(),
+                      style: capsLabel(hover ? p.ink : p.inkMuted),
+                    ),
+                  ),
+                )
+              : Text(shortMonth(month).toUpperCase(), style: capsLabel(p.inkMuted)),
+        ),
       );
-      final skipped = DateTime(year, month).weekday - 1;
-      for (var d = 1; d <= DateUtils.getDaysInMonth(year, month); d++) {
-        final day = DateTime(year, month, d);
+      final skipped = DateTime(widget.year, month).weekday - 1;
+      for (var d = 1; d <= DateUtils.getDaysInMonth(widget.year, month); d++) {
+        final day = DateTime(widget.year, month, d);
         final at = skipped + d - 1;
         final key = dateKey(day);
-        final count = logged[key];
+        final count = widget.logged[key];
         children.add(
           Positioned(
             left: x + (at ~/ 7) * step,
@@ -336,9 +491,9 @@ class _Grid extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
                 color: count == null
-                    ? p.empty.withValues(alpha: day.isAfter(today) ? 0.25 : 0.55)
-                    : fill((done[key] ?? 0) / count),
-                border: day == today ? Border.all(color: p.ink, width: 2) : null,
+                    ? p.empty.withValues(alpha: day.isAfter(widget.today) ? 0.25 : 0.55)
+                    : fill((widget.done[key] ?? 0) / count),
+                border: day == widget.today ? Border.all(color: p.ink, width: 2) : null,
               ),
             ),
           ),
@@ -346,6 +501,120 @@ class _Grid extends StatelessWidget {
       }
       x += columns[month - 1] * cell + (columns[month - 1] - 1) * gap + monthGap;
     }
+
+    final totalGridWidth = math.max(widget.width - left, x - monthGap - left);
+    final totalGridHeight = 7 * cell + 6 * gap;
+
+    DateTime? dayAt(Offset local) {
+      final dy = local.dy;
+      if (dy < 0 || dy >= totalGridHeight) return null;
+      final row = (dy / step).floor();
+      if (row < 0 || row >= 7 || dy - row * step > cell) return null;
+      final dx = local.dx;
+      for (var month = 1; month <= 12; month++) {
+        final mx = monthX[month - 1] - left;
+        final mWidth = columns[month - 1] * cell + (columns[month - 1] - 1) * gap;
+        if (dx < mx || dx > mx + mWidth) continue;
+        final col = ((dx - mx) / step).floor();
+        if (col < 0 || col >= columns[month - 1] || dx - mx - col * step > cell) return null;
+        final skipped = DateTime(widget.year, month).weekday - 1;
+        final d = col * 7 + row - skipped + 1;
+        if (d < 1 || d > DateUtils.getDaysInMonth(widget.year, month)) return null;
+        final day = DateTime(widget.year, month, d);
+        if (day.isAfter(widget.today) || day.isBefore(widget.firstDay)) return null;
+        return day;
+      }
+      return null;
+    }
+
+    Rect? rectFor(DateTime day) {
+      if (day.year != widget.year) return null;
+      final m = day.month;
+      final skipped = DateTime(widget.year, m).weekday - 1;
+      final at = skipped + day.day - 1;
+      return Rect.fromLTWH((monthX[m - 1] - left) + (at ~/ 7) * step, (at % 7) * step, cell, cell);
+    }
+
+    children.add(
+      Positioned(
+        left: left,
+        top: top,
+        width: totalGridWidth,
+        height: totalGridHeight,
+        child: ValueListenableBuilder<DateTime?>(
+          valueListenable: widget.hoveredDay,
+          builder: (context, hovered, _) {
+            final rect = hovered == null ? null : rectFor(hovered);
+            return MouseRegion(
+              cursor: hovered == null ? MouseCursor.defer : SystemMouseCursors.click,
+              hitTestBehavior: HitTestBehavior.translucent,
+              onHover: (e) {
+                final day = dayAt(e.localPosition);
+                if (widget.hoveredDay.value != day) widget.hoveredDay.value = day;
+              },
+              onExit: (_) {
+                if (widget.hoveredDay.value != null) widget.hoveredDay.value = null;
+              },
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (e) {
+                  if (e.kind != PointerDeviceKind.mouse || e.buttons == kPrimaryMouseButton) {
+                    _pressedPointer = e.pointer;
+                    _downPos = e.position;
+                    _pressedDay = dayAt(e.localPosition);
+                  }
+                },
+                onPointerCancel: (e) {
+                  if (e.pointer == _pressedPointer) {
+                    _pressedPointer = null;
+                    _downPos = null;
+                    _pressedDay = null;
+                  }
+                },
+                onPointerUp: (e) {
+                  if (e.pointer != _pressedPointer) return;
+                  final day = _pressedDay;
+                  final down = _downPos;
+                  _pressedPointer = null;
+                  _downPos = null;
+                  _pressedDay = null;
+                  if (day != null &&
+                      down != null &&
+                      (e.position - down).distance <= 8.0 &&
+                      dayAt(e.localPosition) == day) {
+                    widget.onOpenDay(day);
+                  }
+                },
+                child: rect == null
+                    ? const SizedBox.expand()
+                    : Stack(
+                        children: [
+                          Positioned(
+                            left: rect.left,
+                            top: rect.top,
+                            width: rect.width,
+                            height: rect.height,
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: hovered == widget.today ? p.accent : p.ink,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
     return Stack(clipBehavior: Clip.none, children: children);
   }
 }
@@ -362,6 +631,7 @@ class _Slips extends StatelessWidget {
     final p = context.palette;
     final style = TextStyle(fontFamily: Fonts.body, fontSize: 14, fontWeight: FontWeight.w500, color: p.ink);
     final muted = TextStyle(color: p.inkMuted);
+    final rates = TextStyle(color: p.inkMuted, fontFeatures: const [FontFeature.tabularFigures()]);
     if (slips.isEmpty) return Text('Nothing stands out yet.', style: style.copyWith(color: p.inkMuted));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,18 +639,34 @@ class _Slips extends StatelessWidget {
         for (final s in slips)
           SizedBox(
             height: YearHeatmap._findingHeight,
-            child: Text.rich(
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              TextSpan(
-                style: style,
-                children: [
-                  TextSpan(text: s.name),
-                  TextSpan(text: ' slips on ', style: muted),
-                  TextSpan(text: _weekdays[s.weekday]),
-                  TextSpan(text: '  ${s.rate}%, usually ${s.usual}%', style: muted),
-                ],
-              ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: (s.usual - s.rate) >= 30 ? p.missed : p.other,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                Expanded(
+                  child: Text.rich(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    TextSpan(
+                      style: style,
+                      children: [
+                        TextSpan(text: s.name),
+                        TextSpan(text: ' slips on ', style: muted),
+                        TextSpan(text: _weekdays[s.weekday]),
+                        TextSpan(text: '  ${s.rate}%, usually ${s.usual}%', style: rates),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
       ],
