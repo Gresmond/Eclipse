@@ -242,7 +242,7 @@ class TaskDetailsMenu extends StatelessWidget {
           return;
         }
         if (index == -2) {
-          await _editTask(context, scope, item, state.today, make: make);
+          await editTask(context, scope, item, state.today, make: make);
           return;
         }
         final sub = index < 0 ? null : item.subtasks[index];
@@ -302,7 +302,7 @@ class PhonePlan extends StatelessWidget {
     }
 
     Widget row(TodoScope scope, TodoItem item, [TodoItem Function()? make]) {
-      final hasMeta = item.dueTime != null || item.location != null || item.repeatUid != null || item.birthday;
+      final hasMeta = item.dueTime != null || item.location != null || (!item.birthday && item.repeatUid != null);
       return Dismissible(
         key: ValueKey('plan-${item.uid ?? item.id}-${item.repeatDay?.millisecondsSinceEpoch ?? 0}'),
         direction: DismissDirection.endToStart,
@@ -321,7 +321,7 @@ class PhonePlan extends StatelessWidget {
             children: [
               InkWell(
                 borderRadius: BorderRadius.circular(12),
-                onTap: () => _editTask(context, scope, item, state.today, make: make),
+                onTap: () => editTask(context, scope, item, state.today, make: make),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 52),
                   child: Row(
@@ -381,13 +381,9 @@ class PhonePlan extends StatelessWidget {
                                           child: Text(loc, maxLines: 1, overflow: TextOverflow.ellipsis, style: mutedStyle),
                                         ),
                                       ],
-                                      if (item.birthday || item.repeatUid != null) ...[
+                                      if (!item.birthday && item.repeatUid != null) ...[
                                         if (item.dueTime != null || item.location != null) const SizedBox(width: 8),
-                                        Icon(
-                                          item.birthday ? Icons.cake_rounded : Icons.repeat_rounded,
-                                          size: 12,
-                                          color: p.inkMuted,
-                                        ),
+                                        Icon(Icons.repeat_rounded, size: 12, color: p.inkMuted),
                                       ],
                                     ],
                                   ),

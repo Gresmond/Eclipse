@@ -410,27 +410,34 @@ class _TaskRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final state = AppScope.read(context);
-    final hasMeta = task.dueTime != null || task.location != null || task.repeatUid != null || task.birthday;
+    final hasMeta = task.dueTime != null || task.location != null || (!task.birthday && task.repeatUid != null);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => state.toggleTodo(task),
+          onTap: task.birthday ? () => editTask(context, TodoScope.today, task, state.today) : () => state.toggleTodo(task),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 52),
             child: Row(
               children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: task.done ? p.done : Colors.transparent,
-                    border: task.done ? null : Border.all(color: p.inkMuted, width: 1.5),
+                if (task.birthday)
+                  SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: Icon(Icons.cake_rounded, size: 18, color: p.accent),
+                  )
+                else
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: task.done ? p.done : Colors.transparent,
+                      border: task.done ? null : Border.all(color: p.inkMuted, width: 1.5),
+                    ),
+                    child: task.done ? Icon(Icons.check_rounded, size: 18, color: p.onDone) : null,
                   ),
-                  child: task.done ? Icon(Icons.check_rounded, size: 18, color: p.onDone) : null,
-                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Padding(
@@ -461,13 +468,9 @@ class _TaskRow extends StatelessWidget {
                                     ),
                                   ),
                                 ],
-                                if (task.birthday || task.repeatUid != null) ...[
+                                if (!task.birthday && task.repeatUid != null) ...[
                                   if (task.dueTime != null || task.location != null) const SizedBox(width: 8),
-                                  Icon(
-                                    task.birthday ? Icons.cake_rounded : Icons.repeat_rounded,
-                                    size: 12,
-                                    color: p.inkMuted,
-                                  ),
+                                  Icon(Icons.repeat_rounded, size: 12, color: p.inkMuted),
                                 ],
                               ],
                             ),

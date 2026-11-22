@@ -207,7 +207,7 @@ typedef _TaskEdit = ({
 /// Edits [item], asking whether a change to a repeating task's name is
 /// for that time only or every time from it on. A new rule always is.
 /// [make]: makes a time of a repeat not made yet, to change on its own.
-Future<void> _editTask(
+Future<void> editTask(
   BuildContext context,
   TodoScope scope,
   TodoItem item,
@@ -229,7 +229,7 @@ Future<void> _editTask(
   state.setTodoNote(scope, make?.call() ?? item, result.note, day: day);
 }
 
-/// Saves all but the note of [_editTask]: whether the repeat itself
+/// Saves all but the note of [editTask]: whether the repeat itself
 /// changed, or null when the question of which times was dismissed.
 Future<bool?> _editTaskDetails(
   BuildContext context,

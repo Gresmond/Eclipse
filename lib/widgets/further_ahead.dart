@@ -486,7 +486,7 @@ class _LaterRowState extends State<_LaterRow> {
                 if (node.hasPrimaryFocus &&
                     event is KeyDownEvent &&
                     (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.space)) {
-                  _editTask(context, scope, item, widget.day, make: made ? null : _make);
+                  editTask(context, scope, item, widget.day, make: made ? null : _make);
                   return KeyEventResult.handled;
                 }
                 return KeyEventResult.ignored;
@@ -505,7 +505,7 @@ class _LaterRowState extends State<_LaterRow> {
                 behavior: HitTestBehavior.opaque,
                 onTap: widget.readOnly
                     ? null
-                    : () => _editTask(context, scope, item, widget.day, make: made ? null : _make),
+                    : () => editTask(context, scope, item, widget.day, make: made ? null : _make),
                 onLongPress: widget.readOnly
                     ? null
                     : () => setState(() => _touchActions = !_touchActions),
@@ -554,7 +554,7 @@ class _LaterRowState extends State<_LaterRow> {
                                     tooltip: 'Edit task',
                                     icon: Icons.edit_rounded,
                                     onPressed: () =>
-                                        _editTask(context, scope, item, widget.day, make: made ? null : _make),
+                                        editTask(context, scope, item, widget.day, make: made ? null : _make),
                                   ),
                                   _TaskAction(
                                     tooltip: 'Remove',

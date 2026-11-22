@@ -160,7 +160,7 @@ class _Card extends StatelessWidget {
                 height: 30,
                 decoration: BoxDecoration(shape: BoxShape.circle, color: p.done.withValues(alpha: 0.16)),
                 child: Icon(
-                  alert.birthday ? Icons.celebration_rounded : Icons.notifications_rounded,
+                  alert.birthday ? Icons.cake_rounded : Icons.notifications_rounded,
                   size: 16,
                   color: briefBadgeInk(p),
                 ),

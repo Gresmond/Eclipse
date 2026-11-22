@@ -24,7 +24,7 @@ import '../screens/today_view.dart' show JournalCard;
 import '../screens/training_view.dart' show AddSessionExercise;
 import '../training.dart';
 import '../training_log.dart';
-import '../widgets/todo_panel.dart' show PhonePlan, TaskDetailsMenu, addTaskAnywhere, confirmRemoveTask;
+import '../widgets/todo_panel.dart' show PhonePlan, TaskDetailsMenu, addTaskAnywhere, confirmRemoveTask, editTask;
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/app_dialog.dart';

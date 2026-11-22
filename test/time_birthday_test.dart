@@ -8,6 +8,7 @@ import 'package:eclipse/data/store.dart';
 import 'package:eclipse/data/sync.dart';
 import 'package:eclipse/main.dart';
 import 'package:eclipse/models.dart';
+import 'package:eclipse/phone/phone_app.dart';
 import 'package:eclipse/widgets/todo_panel.dart';
 
 void main() {
@@ -126,7 +127,7 @@ void main() {
     final later = find.byType(FurtherAheadCard);
     expect(find.descendant(of: later, matching: find.text('Papa')), findsOneWidget);
     expect(find.descendant(of: later, matching: find.text('Every year')), findsNothing);
-    expect(find.descendant(of: later, matching: find.byIcon(Icons.celebration_rounded)), findsNWidgets(2));
+    expect(find.descendant(of: later, matching: find.byIcon(Icons.cake_rounded)), findsNWidgets(2));
     expect(find.descendant(of: later, matching: find.bySemanticsLabel('2 PLANNED')), findsOneWidget);
 
     await tester.tap(find.byTooltip('Hide birthdays'));
@@ -411,5 +412,80 @@ void main() {
       expect(find.descendant(of: week, matching: find.byIcon(Icons.event_available_rounded)), findsNothing);
       expect(find.descendant(of: week, matching: find.text('Dentist')), findsOneWidget);
     });
+  });
+
+  testWidgets('desktop WeekCard shows cake icon instead of checkbox for birthdays and opens edit on tap', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 28, 9));
+    addTearDown(state.dispose);
+    state.addTodo(
+      TodoScope.today,
+      'Mum',
+      dueDate: DateTime(2026, 10, 28),
+      birthday: true,
+    );
+    final mum = state.todos[TodoScope.today]!.firstWhere((t) => t.text == 'Mum');
+    state.setTodoSubtasks(TodoScope.today, mum, const [TodoSubtask('Buy flowers')]);
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    final week = find.byType(WeekCard);
+    final row = find.ancestor(of: find.text('Mum'), matching: find.byType(TaskRow));
+    expect(find.descendant(of: row, matching: find.byIcon(Icons.cake_rounded)), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.text('0 of 1 subtasks complete')), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.byTooltip('Expand subtasks')), findsOneWidget);
+
+    // Tapping the birthday row opens the edit dialog rather than marking it done.
+    await tester.tap(find.descendant(of: week, matching: find.text('Mum')));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit task'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(state.todos[TodoScope.today]!.firstWhere((t) => t.text == 'Mum').done, isFalse);
+  });
+
+  testWidgets('phone Today and Plan show only one big cake icon for birthdays', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final store = Store.memory();
+    addTearDown(store.close);
+    final state = AppState(store, clock: () => DateTime(2026, 10, 28, 9));
+    addTearDown(state.dispose);
+    state.addTodo(TodoScope.today, 'Mum', dueDate: DateTime(2026, 10, 28), birthday: true);
+    state.addRepeat('Papa', const RepeatRule.yearly(1), DateTime(2026, 10, 30), birthday: true);
+    await tester.pumpWidget(PhoneApp(state: state, schedule: (_) async {}));
+    await tester.pumpAndSettle();
+
+    // Today tab: single cake icon (size 18), no small cake icon, tapping opens edit.
+    await tester.scrollUntilVisible(find.text('Mum'), 200);
+    await tester.pumpAndSettle();
+    final todayCakes = tester.widgetList<Icon>(find.byIcon(Icons.cake_rounded)).toList();
+    expect(todayCakes, hasLength(1));
+    expect(todayCakes.single.size, 18);
+
+    await tester.tap(find.text('Mum'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit task'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    // Plan tab: each birthday has only one cake icon (size 18), not a second small one.
+    await tester.tap(find.text('Plan'));
+    await tester.pumpAndSettle();
+    final plan = find.byType(PhonePlan);
+    final planCakes = tester
+        .widgetList<Icon>(find.descendant(of: plan, matching: find.byIcon(Icons.cake_rounded)))
+        .where((icon) => icon.size != 22) // exclude header toggle icon
+        .toList();
+    expect(find.descendant(of: plan, matching: find.text('Papa')), findsOneWidget);
+    expect(planCakes, hasLength(1));
+    for (final icon in planCakes) {
+      expect(icon.size, 18);
+    }
   });
 }

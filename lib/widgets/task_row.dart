@@ -485,10 +485,14 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
               },
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTapDown: widget.readOnly ? null : (_) => setState(() => _pressed = true),
-                onTapUp: widget.readOnly ? null : (_) => setState(() => _pressed = false),
-                onTapCancel: widget.readOnly ? null : () => setState(() => _pressed = false),
-                onTap: widget.readOnly ? null : () => state.toggleTodo(_real(), day: widget.day, scope: widget.scope),
+                onTapDown: widget.readOnly || item.birthday ? null : (_) => setState(() => _pressed = true),
+                onTapUp: widget.readOnly || item.birthday ? null : (_) => setState(() => _pressed = false),
+                onTapCancel: widget.readOnly || item.birthday ? null : () => setState(() => _pressed = false),
+                onTap: widget.readOnly
+                    ? null
+                    : item.birthday
+                    ? () => editTask(context, widget.scope, item, widget.day, make: widget.make)
+                    : () => state.toggleTodo(_real(), day: widget.day, scope: widget.scope),
                 onLongPress: widget.readOnly
                     ? null
                     : () => setState(() {
@@ -506,7 +510,13 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                     child: Row(
                       children: [
                         if (widget.upcomingDate == null) ...[
-                          _Check(done: done, hover: _hover, pressed: _pressed),
+                          if (item.birthday)
+                            SizedBox.square(
+                              dimension: MediaQuery.textScalerOf(context).scale(20),
+                              child: Center(child: Icon(_birthdayIcon, size: 18, color: p.accent)),
+                            )
+                          else
+                            _Check(done: done, hover: _hover, pressed: _pressed),
                           const SizedBox(width: 12),
                         ],
                         Expanded(
@@ -623,7 +633,7 @@ class _TodoRowState extends State<_TodoRow> with _HoverUnlessDragging {
                                             tooltip: 'Edit task',
                                             icon: Icons.edit_rounded,
                                             onPressed: () =>
-                                                _editTask(context, widget.scope, item, widget.day, make: widget.make),
+                                                editTask(context, widget.scope, item, widget.day, make: widget.make),
                                           ),
                                           _TaskAction(
                                             tooltip: 'Remove',

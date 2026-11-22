@@ -570,7 +570,7 @@ class _Field extends StatelessWidget {
 }
 
 /// A birthday's mark, in place of the repeat arrows in Further ahead.
-const _birthdayIcon = Icons.celebration_rounded;
+const _birthdayIcon = Icons.cake_rounded;
 
 /// A card's button that shows or hides something: lit while it shows.
 class _ShowToggle extends StatelessWidget {
