@@ -75,7 +75,8 @@ mixin _Todos on ChangeNotifier {
     String? location,
     bool allowSmart = true,
   }) {
-    if (allowSmart && !birthday) {
+    if (allowSmart) {
+      final explicitBirthday = birthday;
       final defaultDay =
           dueDate ?? (scope == TodoScope.tomorrow ? DateTime(today.year, today.month, today.day + 1) : today);
       final parsed = parseQuickTask(text, today, defaultDay: defaultDay, defaultTime: time);
@@ -83,16 +84,19 @@ mixin _Todos on ChangeNotifier {
       if (parsed.day case final day?) {
         if (dueDate == null) (scope, dueDate) = scopeForDay(today, day);
       }
-      time ??= parsed.minutes;
+      birthday = birthday || parsed.birthday;
+      time = birthday ? null : (time ?? parsed.minutes);
       location ??= parsed.location;
-      reminders |= parsed.reminders;
-      if (parsed.repeat case final rule?) {
+      reminders = Reminder.allowed(reminders | parsed.reminders, birthday: birthday, time: time);
+      final rule = parsed.repeat ?? (!explicitBirthday && birthday ? const RepeatRule.yearly(1) : null);
+      if (rule != null) {
         addRepeat(
           text,
           rule,
-          dueDate ?? parsed.day!,
-          until: parsed.until,
+          dueDate ?? parsed.day ?? defaultDay,
+          until: parsed.repeat != null ? parsed.until : null,
           time: time,
+          birthday: birthday,
           location: location,
           reminders: reminders,
         );

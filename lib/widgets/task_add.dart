@@ -5,16 +5,20 @@ part of 'todo_panel.dart';
 Future<void> addTaskAnywhere(BuildContext context) async {
   final state = AppScope.read(context);
   var name = '';
-  var allowSmart = true;
+  var keepDay = false;
   final choice = await showAppDialog<_DayChoice>(
     context: context,
-    builder: (_) => _DueDateDialog(first: state.today, birthdays: true, onName: (text, parseName) {
-      name = text;
-      allowSmart = parseName;
-    }),
+    builder: (_) => _DueDateDialog(
+      first: state.today,
+      birthdays: true,
+      onName: (text, pickedDay) {
+        name = text;
+        keepDay = pickedDay;
+      },
+    ),
   );
   if (choice == null || !context.mounted) return;
-  _addChosen(state, name, choice.day, choice, allowSmart: allowSmart);
+  _addChosen(state, name, choice.day, choice, allowSmart: true, keepDay: keepDay);
 }
 
 /// The field at a card's foot for a new task on a day between [first] and
@@ -60,22 +64,38 @@ class _DatedAddState extends State<_DatedAdd> {
 
   Future<_DayChoice?> _pick() async {
     final (choice, typing, selection) = (_choice, _focus.hasFocus, _controller.selection);
+    final state = AppScope.read(context);
+    QuickTask? parsed;
+    if (choice == null && _controller.text.trim().isNotEmpty) {
+      parsed = parseQuickTask(_controller.text, state.today, defaultDay: widget.first);
+    }
+    final preRepeat =
+        choice?.repeat ?? (parsed?.repeat == null ? null : (rule: parsed!.repeat!, until: parsed.until));
+    final preBirthday = choice?.birthday ?? (widget.birthdays && (parsed?.birthday ?? false));
     final picked = await _pickDayAndRepeat(
       context,
       first: widget.first,
       last: widget.last,
-      selected: choice?.day,
-      repeat: choice?.repeat,
-      time: choice?.time,
-      birthday: choice?.birthday ?? false,
+      selected: choice?.day ?? parsed?.day,
+      repeat: preRepeat,
+      time: choice?.time ?? (preBirthday ? null : parsed?.minutes),
+      birthday: preBirthday,
       birthdays: widget.birthdays,
-      reminders: choice?.reminders ?? 0,
-      location: choice?.location,
+      reminders: choice?.reminders ?? parsed?.reminders ?? 0,
+      location: choice?.location ?? parsed?.location,
     );
     if (!mounted) return null;
+    final renamed = picked != null && parsed != null && parsed.name != _controller.text.trim();
+    if (renamed) {
+      _controller.text = parsed.name;
+      _text = parsed.name;
+    }
     // Cancelling clears all that was set up, back to the plain field.
     setState(() => _choice = picked);
-    if (picked != null || typing) _refocus(_focus, _controller, selection);
+    if (picked != null || typing) {
+      final targetSelection = renamed ? TextSelection.collapsed(offset: _controller.text.length) : selection;
+      _refocus(_focus, _controller, targetSelection);
+    }
     return picked;
   }
 
@@ -84,15 +104,19 @@ class _DatedAddState extends State<_DatedAdd> {
     final state = AppScope.read(context);
     if (_choice == null) {
       final parsed = parseQuickTask(_controller.text, state.today, defaultDay: widget.first);
-      if (parsed.repeat case final rule?) {
+      final isBirthday = widget.birthdays && parsed.birthday;
+      final rule = parsed.repeat ?? (isBirthday && parsed.day != null ? const RepeatRule.yearly(1) : null);
+      if (rule != null) {
+        final effectiveTime = isBirthday ? null : parsed.minutes;
         state.addRepeat(
           parsed.name,
           rule,
           parsed.day ?? widget.first,
-          until: parsed.until,
-          time: parsed.minutes,
+          until: parsed.repeat != null ? parsed.until : null,
+          time: effectiveTime,
+          birthday: isBirthday,
           location: parsed.location,
-          reminders: parsed.reminders,
+          reminders: Reminder.allowed(parsed.reminders, birthday: isBirthday, time: effectiveTime),
         );
         _controller.clear();
         _focus.requestFocus();
@@ -126,9 +150,16 @@ class _DatedAddState extends State<_DatedAdd> {
     final state = AppScope.watch(context, (s) => s.today);
     final today = state.today;
     final choice = _choice, due = choice?.day;
-    final preview = choice == null && _text.trim().isNotEmpty
-        ? _SmartAddPreview(parsed: parseQuickTask(_text, today, defaultDay: widget.first), today: today)
-        : null;
+    final preview = _text.trim().isEmpty
+        ? null
+        : _SmartAddPreview(
+            parsed: _remainingPreviewTask(
+              parseQuickTask(_text, today, defaultDay: choice?.day ?? widget.first, defaultTime: choice?.time),
+              choice,
+            ),
+            today: today,
+            raw: _text,
+          );
     return Padding(
       padding: const EdgeInsets.only(top: 6, right: 6),
       child: Column(
@@ -210,28 +241,47 @@ class _AddTaskState extends State<_AddTask> {
     if (widget.past case final past?) {
       final parsed = parseQuickTask(text, past, defaultDay: widget.day);
       final day = parsed.day ?? widget.day;
-      if (parsed.repeat case final rule?) {
+      final effectiveTime = parsed.birthday ? null : parsed.minutes;
+      final rule = parsed.repeat ?? (parsed.birthday ? const RepeatRule.yearly(1) : null);
+      final reminders = Reminder.allowed(parsed.reminders, birthday: parsed.birthday, time: effectiveTime);
+      if (rule != null) {
         final repeatStart = day.isBefore(state.today) ? state.today : day;
         state.addRepeat(
           parsed.name,
           rule,
           repeatStart,
-          until: parsed.until,
-          time: parsed.minutes,
+          until: parsed.repeat != null ? parsed.until : null,
+          time: effectiveTime,
+          birthday: parsed.birthday,
           location: parsed.location,
-          reminders: parsed.reminders,
+          reminders: reminders,
         );
       } else if (parsed.day != null && day.isAfter(state.today)) {
         final (scope, due) = scopeForDay(state.today, day);
-        state.addTodo(scope, parsed.name, dueDate: due, time: parsed.minutes, location: parsed.location, reminders: parsed.reminders);
+        state.addTodo(
+          scope,
+          parsed.name,
+          dueDate: due,
+          time: effectiveTime,
+          birthday: parsed.birthday,
+          location: parsed.location,
+          reminders: reminders,
+        );
       } else {
-        state.addTodo(day == past ? TodoScope.today : TodoScope.tomorrow, parsed.name,
-            day: past, time: parsed.minutes, location: parsed.location, reminders: parsed.reminders);
+        state.addTodo(
+          day == past ? TodoScope.today : TodoScope.tomorrow,
+          parsed.name,
+          day: past,
+          time: effectiveTime,
+          birthday: parsed.birthday,
+          location: parsed.location,
+          reminders: reminders,
+        );
       }
     } else {
       switch (_choice) {
         case final choice?:
-          _addChosen(state, text, choice.day, choice);
+          _addChosen(state, text, choice.day, choice, allowSmart: true, keepDay: true);
         case null:
           _addDue(state, text, widget.day);
       }
@@ -244,22 +294,36 @@ class _AddTaskState extends State<_AddTask> {
   Future<void> _pick() async {
     setState(() => _picking = true);
     final (choice, selection, today) = (_choice, _controller.selection, widget.today);
+    final state = AppScope.read(context);
+    QuickTask? parsed;
+    if (choice == null && _controller.text.trim().isNotEmpty) {
+      parsed = parseQuickTask(_controller.text, widget.past ?? state.today, defaultDay: widget.day);
+    }
+    final preRepeat =
+        choice?.repeat ?? (parsed?.repeat == null ? null : (rule: parsed!.repeat!, until: parsed.until));
+    final preBirthday = choice?.birthday ?? (parsed?.birthday ?? false);
     final picked = await _pickDayAndRepeat(
       context,
       first: today,
       last: DateTime(today.year, today.month, today.day + WeekCard.span),
-      selected: choice?.day ?? widget.day,
-      repeat: choice?.repeat,
-      time: choice?.time,
-      birthday: choice?.birthday ?? false,
+      selected: choice?.day ?? parsed?.day ?? widget.day,
+      repeat: preRepeat,
+      time: choice?.time ?? (preBirthday ? null : parsed?.minutes),
+      birthday: preBirthday,
       birthdays: true,
-      reminders: choice?.reminders ?? 0,
-      location: choice?.location,
+      reminders: choice?.reminders ?? parsed?.reminders ?? 0,
+      location: choice?.location ?? parsed?.location,
     );
     _picking = false;
     if (!mounted) return;
+    final renamed = picked != null && parsed != null && parsed.name != _controller.text.trim();
+    if (renamed) {
+      _controller.text = parsed.name;
+      _text = parsed.name;
+    }
     setState(() => _choice = picked);
-    _refocus(_focus, _controller, selection);
+    final targetSelection = renamed ? TextSelection.collapsed(offset: _controller.text.length) : selection;
+    _refocus(_focus, _controller, targetSelection);
   }
 
   @override
@@ -270,12 +334,21 @@ class _AddTaskState extends State<_AddTask> {
     final moved = choice != null && choice.day != widget.day;
     // Its calendar only once it's been clicked, or while a day is picked.
     final timed = widget.past == null && (_focus.hasFocus || _picking || choice != null);
-    final preview = choice == null && _text.trim().isNotEmpty
-        ? _SmartAddPreview(
-            parsed: parseQuickTask(_text, widget.past ?? state.today, defaultDay: widget.day),
+    final preview = _text.trim().isEmpty
+        ? null
+        : _SmartAddPreview(
+            parsed: _remainingPreviewTask(
+              parseQuickTask(
+                _text,
+                widget.past ?? state.today,
+                defaultDay: choice?.day ?? widget.day,
+                defaultTime: choice?.time,
+              ),
+              choice,
+            ),
             today: widget.today,
-          )
-        : null;
+            raw: _text,
+          );
     return Padding(
       padding: const EdgeInsets.only(left: 18, top: 2, bottom: 2),
       child: Column(
@@ -442,20 +515,50 @@ TextStyle _taskTimeStyle(Palette p) =>
 /// Both task-entry fields use the same typography as the tasks they create.
 TextStyle _taskInputStyle(Palette p) => TextStyle(fontFamily: Fonts.body, fontSize: 15, height: 1.35, color: p.ink);
 
+/// Masks out natural language preview tags already set in [choice], so the
+/// live preview only shows additional details parsed from typed text.
+QuickTask _remainingPreviewTask(QuickTask parsed, _DayChoice? choice) {
+  if (choice == null) return parsed;
+  final birthday = choice.birthday ? false : parsed.birthday;
+  final effectiveBirthday = choice.birthday || parsed.birthday;
+  final effectiveTime = effectiveBirthday ? null : (choice.time ?? parsed.minutes);
+  return (
+    name: parsed.name,
+    day: null,
+    minutes: (choice.birthday || choice.time != null) ? null : parsed.minutes,
+    location: choice.location != null ? null : parsed.location,
+    repeat: choice.repeat != null ? null : parsed.repeat,
+    until: choice.repeat != null ? null : parsed.until,
+    reminders: choice.reminders != 0
+        ? 0
+        : Reminder.allowed(parsed.reminders, birthday: effectiveBirthday, time: effectiveTime),
+    birthday: birthday,
+  );
+}
+
 /// Compact live Quick Add preview pill shown under an active task entry field
 /// when natural language scheduling tags were recognized.
 class _SmartAddPreview extends StatelessWidget {
-  const _SmartAddPreview({required this.parsed, required this.today});
+  const _SmartAddPreview({required this.parsed, required this.today, this.raw});
 
   final QuickTask parsed;
   final DateTime today;
+  final String? raw;
 
   bool get hasTags =>
       parsed.day != null ||
       parsed.minutes != null ||
       parsed.repeat != null ||
       parsed.location != null ||
-      parsed.reminders != 0;
+      parsed.reminders != 0 ||
+      parsed.birthday;
+
+  bool get _showCleanedTitle {
+    if (raw == null) return false;
+    final trimmed = raw!.trim();
+    if (trimmed.isEmpty || parsed.name == trimmed) return false;
+    return !trimmed.toLowerCase().startsWith(parsed.name.toLowerCase());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -472,7 +575,14 @@ class _SmartAddPreview extends StatelessWidget {
         children: [
           Icon(icon, size: 12, color: color ?? p.inkMuted),
           const SizedBox(width: 4),
-          Text(text, style: color == null ? style : style.copyWith(color: color)),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: color == null ? style : style.copyWith(color: color),
+            ),
+          ),
         ],
       ),
     );
@@ -483,16 +593,23 @@ class _SmartAddPreview extends StatelessWidget {
         spacing: 6,
         runSpacing: 4,
         children: [
+          if (_showCleanedTitle) tag(Icons.short_text_rounded, '“${parsed.name}”'),
           if (parsed.day case final d?) tag(Icons.event_rounded, dayAndMonth(d, today: today)),
           if (parsed.minutes case final m?) tag(Icons.schedule_rounded, clockLabel(m)),
           if (parsed.location case final loc?) tag(Icons.place_rounded, loc),
-          if (parsed.repeat case final rule?)
+          if (parsed.birthday)
+            tag(_birthdayIcon, 'Birthday', color: p.accent)
+          else if (parsed.repeat case final rule?)
             tag(
               Icons.repeat_rounded,
               _repeatLabel((rule: rule, until: parsed.until)),
               color: p.accent,
             ),
-          if (parsed.reminders != 0) tag(Icons.notifications_rounded, 'Reminder'),
+          if (parsed.reminders != 0)
+            tag(
+              Icons.notifications_rounded,
+              _NotifyRow._label(Reminder.of(parsed.reminders), parsed.birthday),
+            ),
         ],
       ),
     );

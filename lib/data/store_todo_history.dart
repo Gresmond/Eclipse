@@ -1,5 +1,15 @@
 part of 'store.dart';
 
+typedef DayTaskStats = ({
+  int planned,
+  int done,
+  int unfinished,
+  int freshPlanned,
+  int freshDone,
+  int carriedPlanned,
+  int carriedDone,
+});
+
 /// Historical to-do snapshots and past-day corrections.
 extension StoreTodoHistory on Store {
   /// The lists as they stood on [day]: everything added by then and still
@@ -276,6 +286,205 @@ extension StoreTodoHistory on Store {
     );
   }
 
+  /// Per-day Today task counts across past days in [year] (strictly before
+  /// [today]), reconstructed in a single pass over `todo_history` and legacy
+  /// `todos` rows. Birthdays and deleted snapshots are excluded.
+  Map<String, DayTaskStats> yearTaskStats(int year, DateTime today) {
+    final yearStart = DateTime(year, 1, 1);
+    final yesterday = DateTime(today.year, today.month, today.day - 1);
+    final yearEnd = DateTime(year, 12, 31);
+    final limit = yesterday.isBefore(yearEnd) ? yesterday : yearEnd;
+    if (limit.isBefore(yearStart)) return const {};
+
+    final limitKey = dateKey(limit);
+    final stats = <String, _MutableDayTaskStats>{};
+
+    void recordDay(String key, {required bool isDone, required bool isCarried}) {
+      final entry = stats.putIfAbsent(key, _MutableDayTaskStats.new);
+      entry.planned++;
+      if (isDone) {
+        entry.done++;
+      } else {
+        entry.unfinished++;
+      }
+      if (isCarried) {
+        entry.carriedPlanned++;
+        if (isDone) entry.carriedDone++;
+      } else {
+        entry.freshPlanned++;
+        if (isDone) entry.freshDone++;
+      }
+    }
+
+    final snapshots = _db.select(
+      '''
+      SELECT h.uid, h.day,
+        json_extract(h.snapshot, '\$.scope') AS scope,
+        json_extract(h.snapshot, '\$.period') AS period,
+        json_extract(h.snapshot, '\$.since') AS since,
+        json_extract(h.snapshot, '\$.done') AS done,
+        json_extract(h.snapshot, '\$.carried') AS carried,
+        json_extract(h.snapshot, '\$.deleted') AS deleted,
+        json_extract(h.snapshot, '\$.category') AS category,
+        CASE WHEN t.done = 1 AND t.scope = 'today' THEN t.period END AS ticked,
+        t.carried AS live_carried,
+        t.since AS live_since,
+        t.category AS live_category
+      FROM todo_history h
+      LEFT JOIN todos t ON t.uid = h.uid
+      WHERE h.day <= ?1
+      ORDER BY h.uid, h.day
+      ''',
+      [limitKey],
+    );
+
+    bool flag(Object? v) => v == true || v == 1;
+    DateTime earlier(DateTime a, DateTime b) => a.isBefore(b) ? a : b;
+    DateTime later(DateTime a, DateTime b) => a.isAfter(b) ? a : b;
+
+    // Reconstruct per-uid timelines in one linear sweep.
+    for (var i = 0; i < snapshots.length;) {
+      final uid = snapshots[i]['uid'] as String;
+      var j = i + 1;
+      while (j < snapshots.length && snapshots[j]['uid'] == uid) {
+        j++;
+      }
+
+      final firstRow = snapshots[i];
+      final tickedDay = DateTime.tryParse(firstRow['ticked'] as String? ?? '');
+      final liveCarried = (firstRow['live_carried'] as int?) ?? 0;
+      final liveSinceDay = DateTime.tryParse(firstRow['live_since'] as String? ?? '');
+      final liveCategory = firstRow['live_category'];
+      Object? lastCategory = liveCategory;
+      DateTime? firstOpenTodayDay;
+      final countedDays = <String>{};
+
+      for (var k = i; k < j; k++) {
+        final row = snapshots[k];
+        lastCategory = row['category'] ?? lastCategory;
+        final snapDay = DateTime.tryParse(row['day'] as String? ?? '');
+        if (snapDay == null) continue;
+
+        final nextSnapDay = (k + 1 < j) ? DateTime.tryParse(snapshots[k + 1]['day'] as String? ?? '') : null;
+        if (flag(row['deleted']) || isBirthday(row['category']) || row['scope'] != TodoScope.today.name) {
+          continue;
+        }
+        final sinceDay = DateTime.tryParse(row['since'] as String? ?? '');
+        if (sinceDay == null) continue;
+        final carried = (row['carried'] as int?) ?? 0;
+        final isDone = flag(row['done']);
+        final periodDay = DateTime.tryParse(row['period'] as String? ?? '');
+        firstOpenTodayDay ??= periodDay != null && periodDay.isBefore(snapDay) ? periodDay : snapDay;
+
+        if (isDone) {
+          if (periodDay != null &&
+              !periodDay.isBefore(yearStart) &&
+              !periodDay.isAfter(limit) &&
+              !periodDay.isBefore(sinceDay) &&
+              (tickedDay != null
+                  ? periodDay == tickedDay
+                  : (!periodDay.isBefore(snapDay) && (nextSnapDay == null || periodDay.isBefore(nextSnapDay))))) {
+            final key = dateKey(periodDay);
+            if (countedDays.add(key)) {
+              recordDay(
+                key,
+                isDone: true,
+                isCarried: carried > 0 || periodDay.isAfter(firstOpenTodayDay),
+              );
+            }
+          }
+        } else {
+          var end = nextSnapDay == null ? limit : earlier(limit, DateTime(nextSnapDay.year, nextSnapDay.month, nextSnapDay.day - 1));
+          if (tickedDay != null) {
+            end = earlier(end, DateTime(tickedDay.year, tickedDay.month, tickedDay.day - 1));
+          }
+          final start = later(later(snapDay, sinceDay), yearStart);
+          for (var d = start; !d.isAfter(end); d = DateTime(d.year, d.month, d.day + 1)) {
+            final key = dateKey(d);
+            if (countedDays.add(key)) {
+              recordDay(
+                key,
+                isDone: false,
+                isCarried: carried > 0 || d.isAfter(firstOpenTodayDay),
+              );
+            }
+          }
+        }
+      }
+
+      if (tickedDay != null &&
+          !tickedDay.isBefore(yearStart) &&
+          !tickedDay.isAfter(limit) &&
+          !isBirthday(liveCategory ?? lastCategory)) {
+        final key = dateKey(tickedDay);
+        if (countedDays.add(key)) {
+          final isCarried = liveCarried > 0 ||
+              (firstOpenTodayDay != null
+                  ? tickedDay.isAfter(firstOpenTodayDay)
+                  : (liveSinceDay != null && tickedDay.isAfter(liveSinceDay)));
+          recordDay(key, isDone: true, isCarried: isCarried);
+        }
+      }
+
+      i = j;
+    }
+
+    // Legacy tasks without snapshots by limit.
+    for (final r in _db.select(
+      '''
+      SELECT scope, period, since, done, carried, category
+      FROM todos t
+      WHERE t.scope = 'today' AND t.since <= ?1 AND NOT EXISTS (
+        SELECT 1 FROM todo_history h WHERE h.uid = t.uid AND h.day <= ?1
+      )
+      ''',
+      [limitKey],
+    )) {
+      if (isBirthday(r['category'])) continue;
+      final sinceDay = DateTime.tryParse(r['since'] as String? ?? '');
+      final periodDay = DateTime.tryParse(r['period'] as String? ?? '');
+      if (sinceDay == null || periodDay == null) continue;
+      final carried = (r['carried'] as int?) ?? 0;
+      final isDone = r['done'] == 1;
+      if (isDone) {
+        final openEnd = earlier(limit, DateTime(periodDay.year, periodDay.month, periodDay.day - 1));
+        for (var d = later(sinceDay, yearStart); !d.isAfter(openEnd); d = DateTime(d.year, d.month, d.day + 1)) {
+          recordDay(dateKey(d), isDone: false, isCarried: d.isAfter(sinceDay));
+        }
+        if (!periodDay.isBefore(yearStart) && !periodDay.isAfter(limit)) {
+          recordDay(dateKey(periodDay), isDone: true, isCarried: carried > 0 || periodDay.isAfter(sinceDay));
+        }
+      } else {
+        for (var d = later(sinceDay, yearStart); !d.isAfter(limit); d = DateTime(d.year, d.month, d.day + 1)) {
+          recordDay(dateKey(d), isDone: false, isCarried: carried > 0 || d.isAfter(sinceDay));
+        }
+      }
+    }
+
+    return {
+      for (final e in stats.entries) e.key: e.value.freeze(),
+    };
+  }
+}
+
+class _MutableDayTaskStats {
+  int planned = 0;
+  int done = 0;
+  int unfinished = 0;
+  int freshPlanned = 0;
+  int freshDone = 0;
+  int carriedPlanned = 0;
+  int carriedDone = 0;
+
+  DayTaskStats freeze() => (
+    planned: planned,
+    done: done,
+    unfinished: unfinished,
+    freshPlanned: freshPlanned,
+    freshDone: freshDone,
+    carriedPlanned: carriedPlanned,
+    carriedDone: carriedDone,
+  );
 }
 
 /// Move completed plans into the day's record, retaining their undo destination.

@@ -13,7 +13,7 @@ import '../widgets/hover_fill.dart';
 import '../widgets/tile.dart';
 
 /// The year day by day, each month its own block, tinted by the share of
-/// its rituals done, beside the rituals that slip most on one weekday.
+/// its rituals done.
 class YearHeatmap extends StatefulWidget {
   const YearHeatmap({super.key, required this.year, required this.rituals});
 
@@ -30,19 +30,13 @@ class YearHeatmap extends StatefulWidget {
   static const _monthGap = 10.0;
   static const _labelWidth = 44.0;
   static const _monthsHeight = 26.0;
-  static const _findings = 5;
-  static const _findingHeight = 30.0;
 
-  /// A weekday's logged days needed before it can be called out.
-  static const _minDays = 4;
-
-  /// Points under its usual that make a weekday worth calling out.
-  static const _minDrop = 15;
+  /// Maximum cell size so stretching across wide windows stays compact enough
+  /// for the top cards to fit on one screen before scrolling.
+  static const _maxCell = 20.0;
 
   /// The tile's padding and border, each side.
   static const _tileInset = 25.0;
-  static const _between = 40.0;
-  static const _narrowBreakpoint = 1155.0;
   static const _minGridWidth = 745.0;
 
   static int _columns(int year, int month) {
@@ -50,11 +44,7 @@ class YearHeatmap extends StatefulWidget {
     return (skipped + DateUtils.getDaysInMonth(year, month) - 1) ~/ 7 + 1;
   }
 
-  static bool _isStacked(double width) => width < _narrowBreakpoint;
-
-  static double _gridWidth(double width) => _isStacked(width)
-      ? math.max(width - 2 * _tileInset, _minGridWidth)
-      : pixelFloor((width - 2 * _tileInset - _between) * 0.7);
+  static double _gridWidth(double width) => math.max(width - 2 * _tileInset, _minGridWidth);
 
   static double _cell(int year, double gridWidth) {
     var columns = 0;
@@ -62,7 +52,7 @@ class YearHeatmap extends StatefulWidget {
       columns += _columns(year, m);
     }
     final room = gridWidth - _labelWidth - 11 * _monthGap - (columns - 12) * _gap;
-    return pixelFloor(room / columns).clamp(8.0, 40.0);
+    return pixelFloor(room / columns).clamp(8.0, _maxCell);
   }
 
   static double _gridHeight(int year, double gridWidth) =>
@@ -104,20 +94,9 @@ class YearHeatmap extends StatefulWidget {
     );
   }
 
-  static double _bodyHeight(int year, double width) {
-    final grid = _gridHeight(year, _gridWidth(width));
-    if (_isStacked(width)) return grid;
-    return grid > _findings * _findingHeight ? grid : _findings * _findingHeight;
-  }
-
   /// The card's height across [width], with its title of [titleHeight].
-  static double heightFor(int year, double width, double titleHeight) {
-    final gridHeight = _gridHeight(year, _gridWidth(width));
-    if (_isStacked(width)) {
-      return 2 * _tileInset + titleHeight + 18 + gridHeight + 20 + titleHeight + 12 + _findings * _findingHeight;
-    }
-    return 2 * _tileInset + titleHeight + 18 + _bodyHeight(year, width);
-  }
+  static double heightFor(int year, double width, double titleHeight) =>
+      2 * _tileInset + titleHeight + 18 + _gridHeight(year, _gridWidth(width));
 
   @override
   State<YearHeatmap> createState() => _YearHeatmapState();
@@ -129,12 +108,10 @@ class _HeatmapData {
     required this.logged,
     required this.allDone,
     required this.allLogged,
-    required this.slips,
   });
 
   final Map<String, int> done, logged;
   final int allDone, allLogged;
-  final List<({String name, int weekday, int rate, int usual})> slips;
 }
 
 class _YearHeatmapState extends State<YearHeatmap> {
@@ -200,14 +177,11 @@ class _YearHeatmapState extends State<YearHeatmap> {
 
   static _HeatmapData _compute(AppState state, int year, Map<int, Set<int>> rituals) {
     final done = <String, int>{}, logged = <String, int>{};
-    final doneOn = <int, List<int>>{}, loggedOn = <int, List<int>>{};
-    final names = <int, String>{};
     var allDone = 0, allLogged = 0;
     for (final MapEntry(key: month, value: ids) in rituals.entries) {
       if (!state.isShownMonth(year, month) || state.isPreviewMonth(year, month)) continue;
       final byId = <int, Habit>{};
       for (final h in state.habitsFor(year, month)) {
-        names[h.id] = h.name;
         byId[h.id] = h;
         if (ids.contains(h.id)) {
           final (mDone, mLogged) = state.scoreOf(year, month, h);
@@ -227,32 +201,9 @@ class _YearHeatmapState extends State<YearHeatmap> {
         final isDone = e.status == HabitStatus.done;
         logged[e.day] = (logged[e.day] ?? 0) + 1;
         if (isDone) done[e.day] = (done[e.day] ?? 0) + 1;
-        if (h.weekly == null && day.weekday < DateTime.saturday) {
-          final weekday = day.weekday - 1;
-          (loggedOn[e.habitId] ??= List.filled(7, 0))[weekday]++;
-          (doneOn[e.habitId] ??= List.filled(7, 0))[weekday] += isDone ? 1 : 0;
-        }
       }
     }
-
-    final slips = <({String name, int weekday, int rate, int usual})>[];
-    for (final MapEntry(key: id, value: days) in loggedOn.entries) {
-      final ticks = doneOn[id]!;
-      final total = days.fold(0, (a, b) => a + b);
-      final usual = ticks.fold(0, (a, b) => a + b) * 100 / total;
-      int? worst;
-      double? lowest;
-      for (var i = 0; i < 7; i++) {
-        if (days[i] < YearHeatmap._minDays) continue;
-        final rate = ticks[i] * 100 / days[i];
-        if (lowest == null || rate < lowest) (worst, lowest) = (i, rate);
-      }
-      if (worst != null && usual - lowest! >= YearHeatmap._minDrop) {
-        slips.add((name: names[id] ?? '', weekday: worst, rate: lowest.round(), usual: usual.round()));
-      }
-    }
-    slips.sort((a, b) => (a.rate - a.usual).compareTo(b.rate - b.usual));
-    return _HeatmapData(done: done, logged: logged, allDone: allDone, allLogged: allLogged, slips: slips);
+    return _HeatmapData(done: done, logged: logged, allDone: allDone, allLogged: allLogged);
   }
 
   @override
@@ -268,7 +219,6 @@ class _YearHeatmapState extends State<YearHeatmap> {
     final title = data.allLogged == 0
         ? 'THE YEAR'
         : 'THE YEAR  ·  ${(data.allDone * 100 / data.allLogged).round()}% OF RITUALS DONE';
-    final topSlips = data.slips.take(YearHeatmap._findings).toList();
     final first = state.firstMonth;
     final firstDay = DateTime(first.$1, first.$2);
     final shownMonths = state.shownMonths(widget.year).toSet();
@@ -287,63 +237,35 @@ class _YearHeatmapState extends State<YearHeatmap> {
     );
     return LayoutBuilder(
       builder: (context, c) {
-        final stacked = YearHeatmap._isStacked(c.maxWidth);
-        final grid = YearHeatmap._gridWidth(c.maxWidth);
-        final gridWidget = _Grid(
-          year: widget.year,
-          today: state.today,
-          firstDay: firstDay,
-          shownMonths: shownMonths,
+        final inner = c.maxWidth - 2 * YearHeatmap._tileInset;
+        final grid = math.max(inner, YearHeatmap._minGridWidth);
+        final gridHeight = YearHeatmap._gridHeight(widget.year, grid);
+        final gridWidget = SizedBox(
           width: grid,
-          done: data.done,
-          logged: data.logged,
-          hoveredDay: _hoveredDay,
-          onOpenDay: state.showDay,
-          onOpenMonth: state.showMonth,
+          height: gridHeight,
+          child: _Grid(
+            year: widget.year,
+            today: state.today,
+            firstDay: firstDay,
+            shownMonths: shownMonths,
+            width: grid,
+            done: data.done,
+            logged: data.logged,
+            hoveredDay: _hoveredDay,
+            onOpenDay: state.showDay,
+            onOpenMonth: state.showMonth,
+          ),
         );
-        if (stacked) {
-          final gridHeight = YearHeatmap._gridHeight(widget.year, grid);
-          return Tile(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                headerRow,
-                const SizedBox(height: 18),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(width: grid, height: gridHeight, child: gridWidget),
-                ),
-                const SizedBox(height: 20),
-                Text('WHERE THINGS SLIP', style: label),
-                const SizedBox(height: 12),
-                _Slips(slips: topSlips),
-              ],
-            ),
-          );
-        }
         return Tile(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  SizedBox(width: grid, child: headerRow),
-                  const SizedBox(width: YearHeatmap._between),
-                  Expanded(child: Text('WHERE THINGS SLIP', style: label)),
-                ],
-              ),
+              headerRow,
               const SizedBox(height: 18),
-              SizedBox(
-                height: YearHeatmap._bodyHeight(widget.year, c.maxWidth),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: grid, child: gridWidget),
-                    const SizedBox(width: YearHeatmap._between),
-                    Expanded(child: _Slips(slips: topSlips)),
-                  ],
-                ),
-              ),
+              if (inner < YearHeatmap._minGridWidth)
+                SingleChildScrollView(scrollDirection: Axis.horizontal, child: gridWidget)
+              else
+                gridWidget,
             ],
           ),
         );
@@ -686,59 +608,4 @@ class _YearDaysPainter extends CustomPainter {
       old.logged != logged ||
       old.palette != palette ||
       old.hoveredDay != hoveredDay;
-}
-
-class _Slips extends StatelessWidget {
-  const _Slips({required this.slips});
-
-  final List<({String name, int weekday, int rate, int usual})> slips;
-
-  static const _weekdays = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final style = TextStyle(fontFamily: Fonts.body, fontSize: 14, fontWeight: FontWeight.w500, color: p.ink);
-    final muted = TextStyle(color: p.inkMuted);
-    final rates = TextStyle(color: p.inkMuted, fontFeatures: const [FontFeature.tabularFigures()]);
-    if (slips.isEmpty) return Text('Nothing stands out yet.', style: style.copyWith(color: p.inkMuted));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final s in slips)
-          SizedBox(
-            height: YearHeatmap._findingHeight,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: (s.usual - s.rate) >= 30 ? p.missed : p.other,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                Expanded(
-                  child: Text.rich(
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    TextSpan(
-                      style: style,
-                      children: [
-                        TextSpan(text: s.name),
-                        TextSpan(text: ' slips on ', style: muted),
-                        TextSpan(text: _weekdays[s.weekday]),
-                        TextSpan(text: '  ${s.rate}%, usually ${s.usual}%', style: rates),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
 }

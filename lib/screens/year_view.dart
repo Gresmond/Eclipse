@@ -11,6 +11,7 @@ import '../theme/oklch.dart';
 import '../widgets/hover_fill.dart';
 import '../widgets/tile.dart';
 import 'year_heatmap.dart';
+import 'year_insights.dart';
 
 /// The year at a glance: its days, then each ritual's month percentages side by side, then
 /// the year so far. Months are worked out as on their own tabs (ticks out
@@ -154,6 +155,8 @@ class _YearViewState extends State<YearView> {
               ],
             ),
           ),
+          const SizedBox(height: 20),
+          YearInsightsCard(year: year, rituals: inMonth),
         ],
       ),
     );

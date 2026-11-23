@@ -115,7 +115,7 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
               child: _DatedAdd(
                 first: DateTime(today.year, today.month, today.day + WeekCard.span + 1),
                 birthdays: true,
-                onAdd: (text, choice) => _addChosen(state, text, choice.day, choice),
+                onAdd: (text, choice) => _addChosen(state, text, choice.day, choice, allowSmart: true, keepDay: true),
               ),
             ),
           ],

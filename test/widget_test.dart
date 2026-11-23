@@ -2058,14 +2058,26 @@ void main() {
     expect(find.text('YEAR TO DATE'), findsNWidgets(3), reason: 'kicker and both tables');
     expect(find.text('91%'), findsWidgets, reason: 'August: 10 of 11');
     expect(find.text('80%'), findsWidgets, reason: 'Sketch so far: 16 of 20');
-    // At this width a heatmap row is shorter than its day's name.
+    // Full width fits all seven day labels without two names touching.
+    expect(find.text('Tue'), findsOneWidget, reason: 'full-width rows are tall enough to name every day');
+    expect(
+      tester.getRect(find.text('Tue')).top,
+      greaterThanOrEqualTo(tester.getRect(find.text('Mon')).bottom),
+      reason: 'the names clear each other',
+    );
+    await _shoot(tester, 'year');
+
+    // On a narrower window, rows shrink below a label's height and every other day is named.
+    tester.view.physicalSize = const Size(1000, 900);
+    await tester.pumpAndSettle();
     expect(find.text('Tue'), findsNothing, reason: 'every other day is named, so no two names touch');
     expect(
       tester.getRect(find.text('Wed')).top,
       greaterThanOrEqualTo(tester.getRect(find.text('Mon')).bottom),
       reason: 'the names clear each other',
     );
-    await _shoot(tester, 'year');
+    tester.view.physicalSize = const Size(1440, 900);
+    await tester.pumpAndSettle();
 
     // The tables show only the months since the first one logged, up to this
     // one; the year's card above them always has all twelve.

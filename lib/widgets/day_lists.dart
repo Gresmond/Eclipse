@@ -332,32 +332,76 @@ void _addDue(
 }
 
 /// Adds [text] on [day] as [choice] says: a task, or a repeating one.
-void _addChosen(AppState state, String text, DateTime day, _DayChoice choice, {bool allowSmart = false}) {
-  final (time, birthday, reminders, location) = (choice.time, choice.birthday, choice.reminders, choice.location);
-  if (choice.repeat case final repeat?) {
-    final parsed = allowSmart && !birthday
-        ? parseQuickTask(text, state.today, defaultDay: day, defaultTime: time)
-        : null;
+/// When [allowSmart] is true, any unset details are filled from natural
+/// language parsing of [text], preserving explicit [choice] values (and [day]
+/// when [keepDay] is true).
+void _addChosen(
+  AppState state,
+  String text,
+  DateTime day,
+  _DayChoice choice, {
+  bool allowSmart = false,
+  bool keepDay = false,
+}) {
+  if (!allowSmart) {
+    final (time, birthday, reminders, location) = (choice.time, choice.birthday, choice.reminders, choice.location);
+    if (choice.repeat case final repeat?) {
+      state.addRepeat(
+        text,
+        repeat.rule,
+        day,
+        until: repeat.until,
+        time: time,
+        birthday: birthday,
+        reminders: reminders,
+        location: location,
+      );
+    } else {
+      _addDue(
+        state,
+        text,
+        day,
+        time: time,
+        birthday: birthday,
+        reminders: reminders,
+        location: location,
+        allowSmart: false,
+      );
+    }
+    return;
+  }
+
+  final parsed = parseQuickTask(text, state.today, defaultDay: day, defaultTime: choice.time);
+  final name = parsed.name;
+  final targetDay = keepDay ? day : (parsed.day ?? day);
+  final birthday = choice.birthday || parsed.birthday;
+  final time = birthday ? null : (choice.time ?? parsed.minutes);
+  final location = choice.location ?? parsed.location;
+  final reminders = Reminder.allowed(choice.reminders | parsed.reminders, birthday: birthday, time: time);
+  final rule = choice.repeat?.rule ?? parsed.repeat ?? (birthday ? const RepeatRule.yearly(1) : null);
+  final until = choice.repeat != null ? choice.repeat!.until : (parsed.repeat != null ? parsed.until : null);
+
+  if (rule != null) {
     state.addRepeat(
-      parsed?.name ?? text,
-      repeat.rule,
-      parsed?.day ?? day,
-      until: repeat.until ?? parsed?.until,
-      time: time ?? parsed?.minutes,
-      birthday: birthday,
-      reminders: reminders | (parsed?.reminders ?? 0),
-      location: location ?? parsed?.location,
-    );
-  } else {
-    _addDue(
-      state,
-      text,
-      day,
+      name,
+      rule,
+      targetDay,
+      until: until,
       time: time,
       birthday: birthday,
       reminders: reminders,
       location: location,
-      allowSmart: allowSmart,
+    );
+  } else {
+    _addDue(
+      state,
+      name,
+      targetDay,
+      time: time,
+      birthday: birthday,
+      reminders: reminders,
+      location: location,
+      allowSmart: false,
     );
   }
 }

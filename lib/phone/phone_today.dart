@@ -637,19 +637,25 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: _name,
               builder: (context, value, _) {
+                final trimmed = value.text.trim();
                 final parsed = parseQuickTask(value.text, today, defaultDay: _day);
-                if (parsed.name == value.text.trim()) return const SizedBox.shrink();
+                if (parsed.name == trimmed && !parsed.birthday) return const SizedBox.shrink();
                 final day = parsed.day ?? _day;
-                final time = parsed.minutes;
+                final time = parsed.birthday ? null : parsed.minutes;
                 final actualDay = afterMidnight(time, AppScope.read(context).dayStartHour)
                     ? DateTime(day.year, day.month, day.day + 1)
                     : day;
+                final renamed = parsed.name != trimmed && !trimmed.toLowerCase().startsWith(parsed.name.toLowerCase());
                 final details = [
+                  if (renamed) '“${parsed.name}”',
                   shortDay(actualDay, today: today),
                   if (time != null) clockLabel(time),
                   ?parsed.location,
-                  if (parsed.repeat case final rule?) rule.label,
-                  if (parsed.until case final end?) 'Until ${shortDay(end, today: today)}',
+                  if (parsed.birthday)
+                    'Birthday'
+                  else if (parsed.repeat case final rule?)
+                    rule.label,
+                  if (!parsed.birthday && parsed.until != null) 'Until ${shortDay(parsed.until!, today: today)}',
                   for (final at in Reminder.of(parsed.reminders).map((r) => r.at(actualDay, time)))
                     'Remind ${shortDay(at, today: today)} at ${clockLabel(at.hour * 60 + at.minute)}',
                 ];
