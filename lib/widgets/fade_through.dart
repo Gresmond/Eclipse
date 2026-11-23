@@ -45,6 +45,7 @@ class FadeThrough extends StatefulWidget {
   /// True only over its first frames, while it's all but invisible: a thing
   /// mounted later (another day's list) is on show at once.
   static bool arriving(BuildContext context) =>
+      !(context.getInheritedWidgetOfExactType<MediaQuery>()?.data.disableAnimations ?? false) &&
       (context.getInheritedWidgetOfExactType<_Arriving>()?.animation.value ?? 1) < _arrivingUntil;
 
   static const _arrivingUntil = 0.75;
@@ -273,6 +274,14 @@ class _StagedBuildState extends State<StagedBuild> {
   late int _left = FadeThrough.arriving(context) ? widget.frames : 0;
   bool _scheduled = false;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if ((MediaQuery.maybeDisableAnimationsOf(context) ?? false) && _left > 0) {
+      _left = 0;
+    }
+  }
+
   void _next(Duration _) {
     _scheduled = false;
     if (!mounted) return;
@@ -308,6 +317,14 @@ class StagedHeight extends StatefulWidget {
 class _StagedHeightState extends State<StagedHeight> {
   late int _step = FadeThrough.arriving(context) ? 1 : widget.steps;
   bool _scheduled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if ((MediaQuery.maybeDisableAnimationsOf(context) ?? false) && _step < widget.steps) {
+      _step = widget.steps;
+    }
+  }
 
   void _next(Duration _) {
     _scheduled = false;

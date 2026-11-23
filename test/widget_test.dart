@@ -1191,6 +1191,119 @@ void main() {
     expect(afterContext.themed(Motion.morph), Duration.zero);
   });
 
+  testWidgets('Reduce motion keeps Further ahead aligned on frame 1 when opening or switching days', (tester) async {
+    await tester.runAsync(_loadFonts);
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final store = _testStore();
+    addTearDown(store.close);
+    var now = DateTime(2026, 10, 23, 10);
+    final state = AppState(store, clock: () => now);
+    addTearDown(state.dispose);
+    state.setReduceMotion(true);
+    state.addHabit(2026, 10, 'Friday review', days: weekdayBit(DateTime.friday));
+    state.addHoliday(DateTime(2026, 10, 23), DateTime(2026, 10, 23));
+    state.addTodo(TodoScope.month, 'Future check', dueDate: DateTime(2026, 11, 10));
+    now = DateTime(2026, 10, 24, 10);
+    state.checkDate();
+    state.showMonth(10);
+
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    Finder dateTile() => find.ancestor(of: find.text('NOV'), matching: find.byType(Container)).first;
+
+    // Switching from a month tab into Today aligns Further ahead immediately.
+    await tester.tap(find.text('Today').hitTestable());
+    await tester.pump();
+    expect(find.text('Future check'), findsOneWidget);
+    final todayTile = tester.getRect(dateTile());
+    final todayTask = tester.getRect(find.text('Future check'));
+    expect(todayTile.top, closeTo(tester.getRect(find.byType(StatusCell).first).top, 0.1));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(tester.getRect(dateTile()), todayTile);
+    expect(tester.getRect(find.text('Future check')), todayTask);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(dateTile()), todayTile);
+    expect(tester.getRect(find.text('Future check')), todayTask);
+
+    // Switching to a past holiday with an extra ritual aligns on frame 1 too.
+    state.showDay(DateTime(2026, 10, 23));
+    await tester.pump();
+    expect(find.text('On holiday'), findsNWidgets(2));
+    final pastTile = tester.getRect(dateTile());
+    final pastTask = tester.getRect(find.text('Future check'));
+    expect(pastTile.top, greaterThan(todayTile.top));
+    expect(pastTile.top, closeTo(tester.getRect(find.byType(StatusCell).first).top, 0.1));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(tester.getRect(dateTile()), pastTile);
+    expect(tester.getRect(find.text('Future check')), pastTask);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(dateTile()), pastTile);
+    expect(tester.getRect(find.text('Future check')), pastTask);
+
+    // Returning to Today via the tab bar stays aligned on frame 1 as well.
+    await tester.tap(find.text('Today').hitTestable());
+    await tester.pump();
+    expect(tester.getRect(dateTile()), todayTile);
+    expect(tester.getRect(find.text('Future check')), todayTask);
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(tester.getRect(dateTile()), todayTile);
+    expect(tester.getRect(find.text('Future check')), todayTask);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(dateTile()), todayTile);
+    expect(tester.getRect(find.text('Future check')), todayTask);
+
+    // Leaving Today and coming right back stays aligned on frame 1.
+    await tester.tap(find.text('Oct').hitTestable());
+    await tester.pump();
+    expect(find.byType(MonthView), findsOneWidget);
+    await tester.tap(find.text('Today').hitTestable());
+    await tester.pump();
+    expect(tester.getRect(dateTile()), todayTile);
+    expect(tester.getRect(find.text('Future check')), todayTask);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(dateTile()), todayTile);
+    expect(tester.getRect(find.text('Future check')), todayTask);
+  });
+
+  testWidgets('Reduce motion builds all monthly ritual rows and checkboxes on frame 1', (tester) async {
+    await tester.runAsync(_loadFonts);
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final store = Store.memory();
+    addTearDown(store.close);
+    for (var i = 0; i < 10; i++) {
+      store.addHabit(2026, 10, 'Monthly ritual $i');
+    }
+    final state = AppState(store, clock: () => DateTime(2026, 10, 24, 10));
+    addTearDown(state.dispose);
+    state.setReduceMotion(true);
+
+    await tester.pumpWidget(EclipseApp(state: state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Oct').hitTestable());
+    await tester.pump();
+    expect(find.byType(MonthView), findsOneWidget);
+    for (var i = 0; i < 10; i++) {
+      expect(find.text('Monthly ritual $i'), findsOneWidget);
+    }
+    final frame1Cells = find.descendant(of: find.byType(MonthView), matching: find.byType(StatusCell)).evaluate().length;
+    final expectedCells = (10 + state.sleepHabitsFor(2026, 10).length) * 31;
+    expect(frame1Cells, expectedCells);
+
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: find.byType(MonthView), matching: find.byType(StatusCell)).evaluate().length,
+      frame1Cells,
+    );
+  });
+
   testWidgets('date pill keeps resizing when entering and leaving Today', (tester) async {
     await tester.runAsync(_loadFonts);
     tester.view.physicalSize = const Size(1440, 900);

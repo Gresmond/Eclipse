@@ -1,11 +1,24 @@
 part of 'todo_panel.dart';
 
+/// Provides the top inset aligning Further ahead's first date tile with the
+/// first ritual checkbox on [day].
+class FurtherAheadInset extends InheritedWidget {
+  const FurtherAheadInset({super.key, required this.day, required this.inset, required super.child});
+
+  final DateTime day;
+  final double inset;
+
+  static FurtherAheadInset? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<FurtherAheadInset>();
+
+  @override
+  bool updateShouldNotify(FurtherAheadInset old) => old.day != day || (inset - old.inset).abs() > 0.01;
+}
+
 /// Tasks more than a week away, under their days (only days with any),
 /// and the next time each repeating task comes round after the week.
 class FurtherAheadCard extends StatefulWidget {
-  const FurtherAheadCard({super.key, this.firstCheckboxInset});
-
-  final ValueNotifier<double>? firstCheckboxInset;
+  const FurtherAheadCard({super.key});
 
   @override
   State<FurtherAheadCard> createState() => _FurtherAheadCardState();
@@ -86,18 +99,13 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
                   layoutBuilder: FadeThrough.fill,
                   child: StagedHeight(
                     key: ValueKey(dateKey(day)),
-                    child: widget.firstCheckboxInset == null
-                        ? _LaterList(groups: groups, birthdays: birthdays, hiding: hiding, added: added)
-                        : ValueListenableBuilder<double>(
-                            valueListenable: widget.firstCheckboxInset!,
-                            builder: (context, inset, _) => _LaterList(
-                              groups: groups,
-                              birthdays: birthdays,
-                              hiding: hiding,
-                              added: added,
-                              topInset: inset,
-                            ),
-                          ),
+                    child: _AlignedLaterList(
+                      day: day,
+                      groups: groups,
+                      birthdays: birthdays,
+                      hiding: hiding,
+                      added: added,
+                    ),
                   ),
                 ),
               ),
@@ -113,6 +121,49 @@ class _FurtherAheadCardState extends State<FurtherAheadCard> with _NewTasks {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Reads [FurtherAheadInset] for [day] without rebuilding [FurtherAheadCard]
+/// when the window resizes, and keeps an outgoing day at its own inset while
+/// it fades out.
+class _AlignedLaterList extends StatefulWidget {
+  const _AlignedLaterList({
+    required this.day,
+    required this.groups,
+    required this.birthdays,
+    required this.hiding,
+    required this.added,
+  });
+
+  final DateTime day;
+  final List<(String, DateTime?, List<_Later>)> groups;
+  final bool birthdays;
+  final bool hiding;
+  final Set<int> added;
+
+  @override
+  State<_AlignedLaterList> createState() => _AlignedLaterListState();
+}
+
+class _AlignedLaterListState extends State<_AlignedLaterList> {
+  double _inset = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = FurtherAheadInset.maybeOf(context);
+    if (scope == null) {
+      _inset = 0;
+    } else if (scope.day == widget.day) {
+      _inset = scope.inset;
+    }
+    return _LaterList(
+      groups: widget.groups,
+      birthdays: widget.birthdays,
+      hiding: widget.hiding,
+      added: widget.added,
+      topInset: _inset,
     );
   }
 }

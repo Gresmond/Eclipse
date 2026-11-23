@@ -112,7 +112,8 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   /// and the rest, held open at their height, in the next. Its page is
   /// still fading in from nothing then, so opening a month never costs one
   /// long frame.
-  late bool _staged = widget.habits.length > 6;
+  late bool _staged = widget.habits.length > 6 && FadeThrough.arriving(context);
+  bool _scheduledUnstage = false;
 
   /// The squares' size in a grid [width] wide: as big as a 31-day month
   /// across the card allows, and no taller than [maxCell].
@@ -122,13 +123,17 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   }
 
   @override
-  void initState() {
-    super.initState();
-    if (_staged) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _staged = false);
-      });
-    }
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!(MediaQuery.maybeDisableAnimationsOf(context) ?? false)) return;
+    _staged = false;
+    _cellSize.from = _cellSize.to;
+    _morph.value = 1;
+    _previous = null;
+    _bandsFrom = null;
+    _bands.value = 1;
+    _leaving.clear();
+    _shown.value = daysInMonth(widget.year, widget.month).toDouble();
   }
 
   @override
@@ -136,13 +141,18 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
     super.didUpdateWidget(old);
     _known = {for (final h in old.habits) h.id};
     final ids = {for (final h in widget.habits) h.id};
-    _leaving.removeWhere((id, _) => ids.contains(id));
-    for (final (i, h) in old.habits.indexed) {
-      final row = _rows[h.id];
-      if (!ids.contains(h.id) && row != null) _leaving[h.id] = (i, row);
+    final reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (reduced) {
+      _leaving.clear();
+    } else {
+      _leaving.removeWhere((id, _) => ids.contains(id));
+      for (final (i, h) in old.habits.indexed) {
+        final row = _rows[h.id];
+        if (!ids.contains(h.id) && row != null) _leaving[h.id] = (i, row);
+      }
     }
     if ((old.year, old.month) == (widget.year, widget.month)) return;
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+    if (reduced) {
       _cellSize.from = _cellSize.to;
       _morph.value = 1;
       _previous = null;
@@ -192,6 +202,13 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
     _rows.removeWhere((id, _) => !ids.contains(id) && !_leaving.containsKey(id));
     final (year, month, habits, nameWidth) = (widget.year, widget.month, widget.habits, widget.nameWidth);
     final dayCount = daysInMonth(year, month);
+    if (_staged && !_scheduledUnstage) {
+      _scheduledUnstage = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _staged) setState(() => _staged = false);
+      });
+      WidgetsBinding.instance.scheduleFrame();
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {

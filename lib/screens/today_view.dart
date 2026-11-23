@@ -36,24 +36,14 @@ class TodayView extends StatefulWidget {
 }
 
 class _TodayViewState extends State<TodayView> {
-  final _firstCheckboxInset = ValueNotifier<double>(0);
   int _narrowTab = 0;
   DateTime? _lastFoundAt;
 
   // Made once, outside the LayoutBuilder, so resizing the window lays the
   // cards out again without building them again. Opening the page, they
   // build a frame apart: see [StagedBuild].
-  late final _rituals = StagedBuild(frames: 1, child: _HabitColumn(firstCheckboxInset: _firstCheckboxInset));
-  late final _further = StagedBuild(
-    frames: 2,
-    child: FurtherAheadCard(firstCheckboxInset: _firstCheckboxInset),
-  );
-
-  @override
-  void dispose() {
-    _firstCheckboxInset.dispose();
-    super.dispose();
-  }
+  final _rituals = const StagedBuild(frames: 1, child: _HabitColumn());
+  final _further = const StagedBuild(frames: 2, child: FurtherAheadCard());
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +120,10 @@ class _TodayViewState extends State<TodayView> {
               // room for names, badges and controls, including with larger text.
               final textScale = MediaQuery.textScalerOf(context).scale(15) / 15;
               final minContentWidth = 1216.0 * max(1.0, textScale);
+              final contentWidth = max(minContentWidth, constraints.maxWidth);
               final sleepHeight = _HabitColumn.sleepHeight(state, day, constraints.maxHeight);
+              final ritualsColumnWidth = (contentWidth - 2 * TodayView._gap) * 19 / (22 + 19 + 17);
+              final ritualsCardHeight = constraints.maxHeight - sleepHeight - TodayView._gap;
 
               final content = Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -144,7 +137,14 @@ class _TodayViewState extends State<TodayView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(child: _further),
+                        Expanded(
+                          child: _FurtherAheadScope(
+                            day: day,
+                            ritualsColumnWidth: ritualsColumnWidth,
+                            ritualsCardHeight: ritualsCardHeight,
+                            child: _further,
+                          ),
+                        ),
                         const SizedBox(height: TodayView._gap),
                         SizedBox(
                           height: sleepHeight,
@@ -161,7 +161,7 @@ class _TodayViewState extends State<TodayView> {
               return SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: SizedBox(
-                  width: max(minContentWidth, constraints.maxWidth),
+                  width: contentWidth,
                   height: constraints.maxHeight,
                   child: content,
                 ),
@@ -174,12 +174,42 @@ class _TodayViewState extends State<TodayView> {
   }
 }
 
+/// Computes Further ahead's alignment inset synchronously from the rituals
+/// card's layout metrics so frame 1 already aligns without waiting a frame.
+class _FurtherAheadScope extends StatelessWidget {
+  const _FurtherAheadScope({
+    required this.day,
+    required this.ritualsColumnWidth,
+    required this.ritualsCardHeight,
+    required this.child,
+  });
+
+  final DateTime day;
+  final double ritualsColumnWidth;
+  final double ritualsCardHeight;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.watch(
+      context,
+      (s) => (s.shownDay, s.today, s.habitsRevision, s.entriesRevision, s.holidays),
+    );
+    final inset = _HabitsCard.firstCheckboxInsetFor(
+      context,
+      state,
+      day,
+      columnWidth: ritualsColumnWidth,
+      cardHeight: ritualsCardHeight,
+    );
+    return FurtherAheadInset(day: day, inset: inset, child: child);
+  }
+}
+
 /// The rituals' card with the sleep schedule's below it. Their rows share
 /// the column's height evenly, so rows are the same height in both.
 class _HabitColumn extends StatelessWidget {
-  const _HabitColumn({required this.firstCheckboxInset});
-
-  final ValueNotifier<double> firstCheckboxInset;
+  const _HabitColumn();
 
   /// The sleep card's height in a column [height] tall, which the journal
   /// beside it matches.
@@ -217,8 +247,6 @@ class _HabitColumn extends StatelessWidget {
               child: _HabitsCard(
                 title: 'Daily rituals',
                 habits: rituals,
-                cardHeight: constraints.maxHeight - sleepHeight - TodayView._gap,
-                firstCheckboxInset: firstCheckboxInset,
               ),
             ),
             const SizedBox(height: TodayView._gap),
@@ -238,22 +266,71 @@ class _HabitsCard extends StatelessWidget {
     required this.title,
     required this.habits,
     this.times = false,
-    this.cardHeight,
-    this.firstCheckboxInset,
   });
 
   final String title;
   final List<Habit> habits;
-  final double? cardHeight;
-  final ValueNotifier<double>? firstCheckboxInset;
 
   /// The sleep schedule: each item's scheduled time is shown on hover.
   final bool times;
+
+  static const _holidayStyle = TextStyle(fontFamily: Fonts.body, fontSize: 14);
 
   /// The card's height less its rows: padding, header and gap.
   static const chrome = 24.0 + 54 + 22 + 24;
 
   static const _minRow = 34.0, _maxRow = 55.0;
+
+  static double _holidaySubtitleHeight(BuildContext context, double maxWidth) {
+    final style = DefaultTextStyle.of(context).style;
+    final painter = TextPainter(
+      text: TextSpan(text: 'On holiday', style: style.merge(_holidayStyle)),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      textHeightBehavior:
+          DefaultTextStyle.of(context).textHeightBehavior ?? DefaultTextHeightBehavior.maybeOf(context),
+    )..layout(maxWidth: maxWidth);
+    final height = painter.height;
+    painter.dispose();
+    return 6.0 + height;
+  }
+
+  /// Top inset aligning Further ahead's first date tile with the first ritual
+  /// checkbox on [day].
+  static double firstCheckboxInsetFor(
+    BuildContext context,
+    AppState state,
+    DateTime day, {
+    required double columnWidth,
+    required double cardHeight,
+  }) {
+    final rituals = [
+      for (final h in state.habitsFor(day.year, day.month))
+        if (h.onDay(day)) h,
+    ];
+    if (rituals.isEmpty) return 0;
+    final listWidth = max(0.0, columnWidth - 2 * (24.0 + 1));
+    final headerHeight = TileHeader.titleHeight(context, 'Daily rituals');
+    final normalChrome = 2 * (24.0 + 1) + headerHeight + 22;
+    final onHoliday = holidayOn(state.holidays, day) != null;
+    final subtitleHeight = onHoliday ? _holidaySubtitleHeight(context, listWidth) : 0.0;
+    final listHeight = max(0.0, cardHeight - normalChrome - subtitleHeight);
+    final streaks = [
+      for (final h in rituals)
+        if (h.weekly == null) state.bestStreak(h),
+    ];
+    final badge = _HabitRow.badgeFor(context, streaks.fold(0, max));
+    final rows = _layOutRows(
+      context,
+      state,
+      day,
+      rituals,
+      BoxConstraints.tightFor(width: listWidth, height: listHeight),
+      badge,
+    );
+    if (rows.heights.isEmpty) return 0;
+    return max(0.0, cardHeight - listHeight - normalChrome + (rows.heights.first - rows.cell) / 2);
+  }
 
   /// Rows share the card's height, 34 to 52px each, and scroll only below
   /// that. A name too long for one line wraps, and its row grows to fit,
@@ -362,7 +439,7 @@ class _HabitsCard extends StatelessWidget {
                           alignment: Alignment.centerLeft,
                           child: Text(
                             'On holiday',
-                            style: TextStyle(fontFamily: Fonts.body, fontSize: 14, color: p.inkMuted),
+                            style: _holidayStyle.copyWith(color: p.inkMuted),
                           ),
                         ),
                       ),
@@ -386,23 +463,6 @@ class _HabitsCard extends StatelessWidget {
                 final badge = _HabitRow.badgeFor(context, streaks.fold(0, max));
                 final rows = _layOutRows(context, state, day, habits, constraints, badge);
                 final sleepNames = times ? [for (final h in habits) h.name] : null;
-                final alignment = firstCheckboxInset;
-                if (alignment != null && rows.heights.isNotEmpty) {
-                  // Both cards share their padding, title and gap. Their
-                  // titles grow together with text scaling; only the ritual
-                  // subtitle and the space inside its first row add an inset.
-                  final headerHeight = TileHeader.titleHeight(context, title);
-                  final normalChrome = 2 * (24.0 + 1) + headerHeight + 22;
-                  final inset = max(
-                    0.0,
-                    cardHeight! - constraints.maxHeight - normalChrome + (rows.heights.first - rows.cell) / 2,
-                  );
-                  if ((alignment.value - inset).abs() > 0.01) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (context.mounted && (alignment.value - inset).abs() > 0.01) alignment.value = inset;
-                    });
-                  }
-                }
                 // Yesterday stays editable. A different month's ritual list
                 // fades through; otherwise only the marks change.
                 return FadeThrough(
