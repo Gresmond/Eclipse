@@ -10,7 +10,7 @@ class _TodayPage extends StatelessWidget {
     final p = context.palette;
     final state = AppScope.watch(
       context,
-      (s) => (s.today, s.habitsRevision, s.entriesRevision, s.todosRevision, s.restWeekends, s.holidays),
+      (s) => (s.today, s.habitsRevision, s.entriesRevision, s.todosRevision, s.holidays),
     );
     final today = state.today;
     final rest = state.isRestDay(today);
@@ -220,7 +220,7 @@ class _MarkRow extends StatelessWidget {
     final p = context.palette;
     final state = AppScope.watch(
       context,
-      (s) => (s.today, s.entriesRevision, s.habitsRevision, s.restWeekends, s.holidays),
+      (s) => (s.today, s.entriesRevision, s.habitsRevision, s.holidays),
     );
     final today = state.today;
     final status = state.statusOf(today, habit);
@@ -634,29 +634,28 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
               ),
               onSubmitted: (_) => _save(),
             ),
-            if (AppScope.read(context).smartAdd)
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _name,
-                builder: (context, value, _) {
-                  final parsed = parseQuickTask(value.text, today, defaultDay: _day);
-                  if (parsed.name == value.text.trim()) return const SizedBox.shrink();
-                  final day = parsed.day ?? _day;
-                  final time = parsed.minutes;
-                  final actualDay = afterMidnight(time, AppScope.read(context).dayStartHour)
-                      ? DateTime(day.year, day.month, day.day + 1)
-                      : day;
-                  final details = [
-                    shortDay(actualDay, today: today),
-                    if (time != null) clockLabel(time),
-                    ?parsed.location,
-                    if (parsed.repeat case final rule?) rule.label,
-                    if (parsed.until case final end?) 'Until ${shortDay(end, today: today)}',
-                    for (final at in Reminder.of(parsed.reminders).map((r) => r.at(actualDay, time)))
-                      'Remind ${shortDay(at, today: today)} at ${clockLabel(at.hour * 60 + at.minute)}',
-                  ];
-                  return Text(details.join(' · '), style: _body(p, size: 12, colour: p.inkMuted));
-                },
-              ),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _name,
+              builder: (context, value, _) {
+                final parsed = parseQuickTask(value.text, today, defaultDay: _day);
+                if (parsed.name == value.text.trim()) return const SizedBox.shrink();
+                final day = parsed.day ?? _day;
+                final time = parsed.minutes;
+                final actualDay = afterMidnight(time, AppScope.read(context).dayStartHour)
+                    ? DateTime(day.year, day.month, day.day + 1)
+                    : day;
+                final details = [
+                  shortDay(actualDay, today: today),
+                  if (time != null) clockLabel(time),
+                  ?parsed.location,
+                  if (parsed.repeat case final rule?) rule.label,
+                  if (parsed.until case final end?) 'Until ${shortDay(end, today: today)}',
+                  for (final at in Reminder.of(parsed.reminders).map((r) => r.at(actualDay, time)))
+                    'Remind ${shortDay(at, today: today)} at ${clockLabel(at.hour * 60 + at.minute)}',
+                ];
+                return Text(details.join(' · '), style: _body(p, size: 12, colour: p.inkMuted));
+              },
+            ),
             const SizedBox(height: 8),
             Row(
               children: [

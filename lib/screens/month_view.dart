@@ -59,7 +59,7 @@ class _MonthViewState extends State<MonthView> {
 
   Widget _build(BuildContext context, double height) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.today, s.restWeekends, s.holidays));
+    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.today, s.holidays));
     final (year, month) = (widget.year, widget.month);
     final future = state.isFutureMonth(year, month);
     final habits = state.habitsFor(year, month);

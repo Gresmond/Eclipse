@@ -250,13 +250,11 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     expect(find.text('DAYS'), findsOneWidget);
-    expect(find.text('Weekends as rest days'), findsOneWidget);
+    expect(find.text('Weekends as rest days'), findsNothing);
+    expect(find.text('Smart quick-add'), findsNothing);
     expect(find.text('New day starts at'), findsOneWidget);
     expect(find.text('Holidays'), findsOneWidget);
-
-    await tester.tap(find.text('Weekends as rest days'));
-    await tester.pumpAndSettle();
-    expect(state.restWeekends, isTrue);
+    expect(find.text('Reduce motion'), findsOneWidget);
 
     await tester.tap(find.text('4am'));
     await tester.pumpAndSettle();

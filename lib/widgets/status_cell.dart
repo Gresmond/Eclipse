@@ -44,7 +44,7 @@ class StatusCell extends StatefulWidget {
   final double size;
   final bool enabled;
 
-  /// A rest day (a weekend, when that's turned on): greyed while blank.
+  /// A rest day (a weekend or holiday): greyed while blank.
   final bool rest;
 
   /// A day the ritual isn't on: no square, and nothing to click. Still a

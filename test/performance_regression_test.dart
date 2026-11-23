@@ -200,14 +200,12 @@ void main() {
     store.setEntry('2010-01-01', habit.id, HabitStatus.done);
     store.setEntry('2026-10-22', habit.id, HabitStatus.done);
     store.setEntry('2026-10-23', habit.id, HabitStatus.other);
-    expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: true), (1, 1));
-    expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: false), (0, 1));
+    expect(store.streaks(habit.id, DateTime(2026, 10, 26)), (1, 1));
     store.setEntry('2026-10-26', habit.id, HabitStatus.done);
-    expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: true), (2, 2));
-    // A missed rest weekend is passed over too, but only when weekends rest.
+    expect(store.streaks(habit.id, DateTime(2026, 10, 26)), (2, 2));
+    // A missed rest weekend is passed over too.
     store.setEntry('2026-10-24', habit.id, HabitStatus.missed);
-    expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: true), (2, 2));
-    expect(store.streaks(habit.id, DateTime(2026, 10, 26), restWeekends: false), (1, 1));
+    expect(store.streaks(habit.id, DateTime(2026, 10, 26)), (2, 2));
   });
 
   test('LRU eviction and clearing release resources exactly once', () {
@@ -352,7 +350,6 @@ void main() {
     expect(localState.firstMonth, (2026, 10));
     final lookupsBefore = localState.debugFirstMonthLookups;
     localState.setTheme('Lunar Eclipse');
-    localState.setRestWeekends(true);
     expect(localState.firstMonth, (2026, 10));
     expect(localState.debugFirstMonthLookups, lookupsBefore);
 

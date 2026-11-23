@@ -128,7 +128,7 @@ extension StoreBackups on Store {
     }
     final now = DateTime.now();
     for (final r in _db.select('SELECT DISTINCT habit_id FROM entries')) {
-      streaks(r['habit_id'] as int, now, restWeekends: false);
+      streaks(r['habit_id'] as int, now);
     }
     for (final r in _db.select('SELECT DISTINCT scope, period FROM todos')) {
       todos(TodoScope.values.byName(r['scope'] as String), r['period'] as String);

@@ -1,7 +1,7 @@
 part of '../app_state.dart';
 
 /// Choices kept in the database: when a day starts, the colour theme and
-/// night light, rest weekends, and what the to-do lists show.
+/// night light, holidays, and what the to-do lists show.
 mixin _Settings on ChangeNotifier {
   Store get store;
   LruCache<int, (int, int)> get _streaks;
@@ -10,14 +10,6 @@ mixin _Settings on ChangeNotifier {
   void holidaysChanged();
   void _removed(String label, List<RowsBefore> before);
   void _todosChanged();
-
-  late bool _smartAdd = store.setting('smartAdd') != '0';
-  bool get smartAdd => _smartAdd;
-  void setSmartAdd(bool on) {
-    _smartAdd = on;
-    store.setSetting('smartAdd', on ? '1' : '0');
-    notifyListeners();
-  }
 
   /// Disables animations and smooth wheel scrolling on this device.
   late bool _reduceMotion = store.setting('reduceMotion') == '1';
@@ -126,18 +118,7 @@ mixin _Settings on ChangeNotifier {
     if (name != themeName) setTheme(name, notify: notify);
   }
 
-  /// Weekends shown greyed as rest days. A blank rest day doesn't break a
-  /// streak; a ritual done on one still counts.
-  late bool restWeekends = store.setting('restWeekends') == '1';
-
-  void setRestWeekends(bool rest) {
-    restWeekends = rest;
-    store.setSetting('restWeekends', rest ? '1' : '0');
-    _streaks.clear();
-    notifyListeners();
-  }
-
-  bool isRestDay(DateTime day) => restsOn(day, restWeekends: restWeekends, holidays: holidays);
+  bool isRestDay(DateTime day) => restsOn(day, holidays: holidays);
 
   /// Holidays, earliest first: the same on every computer.
   late List<Holiday> holidays = decodeHolidays(store.setting('holidays'));

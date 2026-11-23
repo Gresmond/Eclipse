@@ -366,20 +366,6 @@ extension on _SettingsDialogState {
               children: [
                 const SizedBox(height: 4),
                 SettingSwitchRow(
-                  title: 'Weekends as rest days',
-                  subtitle: "Greyed out. A blank or missed one won’t break a streak.",
-                  on: state.restWeekends,
-                  onTap: () => state.setRestWeekends(!state.restWeekends),
-                ),
-                const FadeMenuDivider(),
-                SettingSwitchRow(
-                  title: 'Smart quick-add',
-                  subtitle: 'Read schedules and places from phrases like “tomorrow at 3pm at the library”.',
-                  on: state.smartAdd,
-                  onTap: () => state.setSmartAdd(!state.smartAdd),
-                ),
-                const FadeMenuDivider(),
-                SettingSwitchRow(
                   title: 'Reduce motion',
                   subtitle: 'Turn off animations and smooth scrolling for a snappier feel.',
                   on: state.reduceMotion,

@@ -77,8 +77,8 @@ class HolidaysRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Rest days for rituals and sleep: a blank one won’t break a streak. '
-                      'Repeating tasks pause too, except birthdays.',
+                      'Extra rest days alongside weekends. Blank rest days won’t break ritual or sleep streaks; '
+                      'holidays also pause repeating tasks (except birthdays).',
                       style: TextStyle(fontFamily: Fonts.ui, fontSize: 14, color: p.inkMuted),
                     ),
                   ],

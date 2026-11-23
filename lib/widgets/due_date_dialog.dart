@@ -230,7 +230,7 @@ class _DueDateDialogState extends State<_DueDateDialog> with _DetailPages {
                   listenable: Listenable.merge([_name, _location]),
                   builder: (context, _) {
                     final state = AppScope.read(context);
-                    if (!_allowSmart || !state.smartAdd) return const SizedBox.shrink();
+                    if (!_allowSmart) return const SizedBox.shrink();
                     final preview = _SmartAddPreview(
                       parsed: parseQuickTask(_name.text, state.today),
                       today: state.today,

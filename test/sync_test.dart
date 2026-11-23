@@ -72,7 +72,7 @@ class _Computer {
       'todos': rows('SELECT uid, scope, period, text, done, carried, since FROM todos'),
       'journal': rows('SELECT day, text FROM journal'),
       'sleep': rows('SELECT year, month, item, note FROM sleep_notes'),
-      'settings': rows("SELECT key, value FROM settings WHERE key IN ('dayStartHour', 'restWeekends')"),
+      'settings': rows("SELECT key, value FROM settings WHERE key IN ('dayStartHour')"),
     };
   }
 }
@@ -223,7 +223,7 @@ void main() {
     pc.store.setNote('2026-10-23', read.id, 'Too tired');
     pc.store.addTodo(TodoScope.today, day, 'Post the letter');
     pc.store.setJournal('2025-06-01', 'A long time ago');
-    pc.store.setSetting('restWeekends', '1');
+    pc.store.setSetting('dayStartHour', '0');
     pc.store.setSetting('theme', 'Lunar Eclipse');
     pc.store.setSleepNote(2026, 10, SleepItem.sleepEarly, '22:30');
     laptop.store.addHabit(2026, 10, 'Make the bed');
@@ -1603,7 +1603,7 @@ void main() {
     final pc = SyncEngine(pcStore, 'pc', clock: () => pcClock);
     final laptop = SyncEngine(laptopStore, 'laptop', clock: () => laptopClock);
 
-    pcStore.setSetting('restWeekends', '0');
+    pcStore.setSetting('dayStartHour', '0');
     pc.claimAll();
     laptop.mergeAll([(pc.changesSince(0).values.expand((d) => d), 'pc')]);
 
@@ -2499,8 +2499,8 @@ class _World {
       final item = pick(SleepItem.values), time = '2${random.nextInt(4)}:${pick(['00', '30'])}';
       edit(c, (s) => s.setSleepNote(today.year, today.month, item, time));
     } else if (r < 0.96) {
-      final value = chance(0.5) ? '1' : '0';
-      edit(c, (s) => s.setSetting('restWeekends', value));
+      final value = chance(0.5) ? '4' : '0';
+      edit(c, (s) => s.setSetting('dayStartHour', value));
     } else {
       final sets = s.trainingSets();
       edit(c, (s) {

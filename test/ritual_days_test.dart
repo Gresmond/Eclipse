@@ -41,9 +41,9 @@ void main() {
     }
     store.setEntry('2026-10-20', habit.id, HabitStatus.missed);
     expect(store.monthScores(2026, 10)[habit.id], (4, 4));
-    expect(store.streaks(habit.id, DateTime(2026, 10, 27), restWeekends: false), (4, 4));
+    expect(store.streaks(habit.id, DateTime(2026, 10, 27)), (4, 4));
     // Wednesday left blank breaks it once Thursday comes.
-    expect(store.streaks(habit.id, DateTime(2026, 10, 29), restWeekends: false), (0, 4));
+    expect(store.streaks(habit.id, DateTime(2026, 10, 29)), (0, 4));
   });
 
   test("the week trail is a ritual's last 7 days, back across months, and no further than it goes", () {
@@ -213,7 +213,7 @@ void main() {
     expect(find.text('THE YEAR  ·  100% OF RITUALS DONE'), findsOneWidget);
   });
 
-  testWidgets('YearHeatmap slips exclude weekends and weekend baseline when restWeekends is enabled', (tester) async {
+  testWidgets('YearHeatmap slips always exclude weekends and weekend baseline', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -237,15 +237,8 @@ void main() {
 
     final state = AppState(store, clock: () => DateTime(2026, 11, 2, 10));
     addTearDown(state.dispose);
-    state.setRestWeekends(false);
     state.showYear();
     await tester.pumpWidget(EclipseApp(state: state));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('Stretch slips on Saturdays  0%, usually 71%', findRichText: true), findsOneWidget);
-    expect(find.textContaining('Read slips on Fridays  0%, usually 57%', findRichText: true), findsOneWidget);
-
-    state.setRestWeekends(true);
     await tester.pumpAndSettle();
 
     expect(

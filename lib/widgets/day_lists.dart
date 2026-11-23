@@ -335,7 +335,7 @@ void _addDue(
 void _addChosen(AppState state, String text, DateTime day, _DayChoice choice, {bool allowSmart = false}) {
   final (time, birthday, reminders, location) = (choice.time, choice.birthday, choice.reminders, choice.location);
   if (choice.repeat case final repeat?) {
-    final parsed = allowSmart && state.smartAdd && !birthday
+    final parsed = allowSmart && !birthday
         ? parseQuickTask(text, state.today, defaultDay: day, defaultTime: time)
         : null;
     state.addRepeat(

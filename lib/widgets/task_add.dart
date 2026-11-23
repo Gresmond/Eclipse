@@ -82,7 +82,7 @@ class _DatedAddState extends State<_DatedAdd> {
   Future<void> _submit() async {
     if (_controller.text.trim().isEmpty) return;
     final state = AppScope.read(context);
-    if (_choice == null && state.smartAdd) {
+    if (_choice == null) {
       final parsed = parseQuickTask(_controller.text, state.today, defaultDay: widget.first);
       if (parsed.repeat case final rule?) {
         state.addRepeat(
@@ -123,10 +123,10 @@ class _DatedAddState extends State<_DatedAdd> {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.watch(context, (s) => (s.today, s.smartAdd));
+    final state = AppScope.watch(context, (s) => s.today);
     final today = state.today;
     final choice = _choice, due = choice?.day;
-    final preview = choice == null && state.smartAdd && _text.trim().isNotEmpty
+    final preview = choice == null && _text.trim().isNotEmpty
         ? _SmartAddPreview(parsed: parseQuickTask(_text, today, defaultDay: widget.first), today: today)
         : null;
     return Padding(
@@ -208,12 +208,12 @@ class _AddTaskState extends State<_AddTask> {
     final text = _controller.text;
     if (text.trim().isEmpty) return _focus.requestFocus();
     if (widget.past case final past?) {
-      final parsed = state.smartAdd ? parseQuickTask(text, past, defaultDay: widget.day) : null;
-      final day = parsed?.day ?? widget.day;
-      if (parsed?.repeat case final rule?) {
+      final parsed = parseQuickTask(text, past, defaultDay: widget.day);
+      final day = parsed.day ?? widget.day;
+      if (parsed.repeat case final rule?) {
         final repeatStart = day.isBefore(state.today) ? state.today : day;
         state.addRepeat(
-          parsed!.name,
+          parsed.name,
           rule,
           repeatStart,
           until: parsed.until,
@@ -221,12 +221,12 @@ class _AddTaskState extends State<_AddTask> {
           location: parsed.location,
           reminders: parsed.reminders,
         );
-      } else if (parsed?.day != null && day.isAfter(state.today)) {
+      } else if (parsed.day != null && day.isAfter(state.today)) {
         final (scope, due) = scopeForDay(state.today, day);
-        state.addTodo(scope, parsed!.name, dueDate: due, time: parsed.minutes, location: parsed.location, reminders: parsed.reminders);
+        state.addTodo(scope, parsed.name, dueDate: due, time: parsed.minutes, location: parsed.location, reminders: parsed.reminders);
       } else {
-        state.addTodo(day == past ? TodoScope.today : TodoScope.tomorrow, parsed?.name ?? text,
-            day: past, time: parsed?.minutes, location: parsed?.location, reminders: parsed?.reminders ?? 0);
+        state.addTodo(day == past ? TodoScope.today : TodoScope.tomorrow, parsed.name,
+            day: past, time: parsed.minutes, location: parsed.location, reminders: parsed.reminders);
       }
     } else {
       switch (_choice) {
@@ -265,12 +265,12 @@ class _AddTaskState extends State<_AddTask> {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.today, s.smartAdd));
+    final state = AppScope.watch(context, (s) => s.today);
     final choice = _choice;
     final moved = choice != null && choice.day != widget.day;
     // Its calendar only once it's been clicked, or while a day is picked.
     final timed = widget.past == null && (_focus.hasFocus || _picking || choice != null);
-    final preview = choice == null && state.smartAdd && _text.trim().isNotEmpty
+    final preview = choice == null && _text.trim().isNotEmpty
         ? _SmartAddPreview(
             parsed: parseQuickTask(_text, widget.past ?? state.today, defaultDay: widget.day),
             today: widget.today,

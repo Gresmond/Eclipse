@@ -48,7 +48,7 @@ class _SettingsPageState extends State<_SettingsPage> {
     final p = context.palette;
     final state = AppScope.watch(
       context,
-      (s) => (s.themeName, s.restWeekends, s.dayStartHour, s.smartAdd, s.reduceMotion),
+      (s) => (s.themeName, s.dayStartHour, s.reduceMotion),
     );
     final sync = state.sync;
     return Scaffold(
@@ -106,35 +106,6 @@ class _SettingsPageState extends State<_SettingsPage> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                   child: Text('DAYS', style: capsLabel(p.inkMuted)),
-                ),
-                SettingSwitchRow(
-                  title: 'Smart quick-add',
-                  subtitle: 'Read schedules and places from phrases like “tomorrow at 3pm at the library”.',
-                  on: state.smartAdd,
-                  onTap: () => state.setSmartAdd(!state.smartAdd),
-                ),
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => state.setRestWeekends(!state.restWeekends),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Weekends as rest days', style: _body(p)),
-                              const SizedBox(height: 2),
-                              Text('Saturdays and Sundays don’t count against streaks.', style: _body(p, size: 14, colour: p.inkMuted)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        SettingToggle(on: state.restWeekends),
-                      ],
-                    ),
-                  ),
                 ),
                 const DayStartPicker(),
                 const HolidaysRow(),

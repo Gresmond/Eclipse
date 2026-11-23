@@ -335,7 +335,7 @@ class _HabitsCard extends StatelessWidget {
     final p = context.palette;
     final state = AppScope.watch(
       context,
-      (s) => (s.shownDay, s.today, s.habitsRevision, s.entriesRevision, s.restWeekends, s.holidays),
+      (s) => (s.shownDay, s.today, s.habitsRevision, s.entriesRevision, s.holidays),
     );
     final day = state.shownDay;
     // A holiday needs nothing tracked.
@@ -537,7 +537,7 @@ class _HabitRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.entriesRevision, s.restWeekends, s.holidays));
+    final state = AppScope.watch(context, (s) => (s.shownDay, s.today, s.entriesRevision, s.holidays));
     final (streak, best) = habit.weekly == null ? state.streaksOn(habit, day) : (0, 0);
 
     return SearchGlow(
@@ -671,7 +671,7 @@ class _WeekTrail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.entriesRevision, s.restWeekends, s.holidays, s.habitsRevision));
+    final state = AppScope.watch(context, (s) => (s.entriesRevision, s.holidays, s.habitsRevision));
     final days = state.trailDays(habit, day);
     final offset = 7 - days.length;
     final statuses = List<HabitStatus?>.filled(7, null);

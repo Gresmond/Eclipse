@@ -135,7 +135,7 @@ class Store {
 
   /// Settings that are the same on every computer. The theme isn't: each
   /// follows its own night light.
-  static const syncedSettings = ['dayStartHour', 'restWeekends', 'holidays'];
+  static const syncedSettings = ['dayStartHour', 'holidays'];
 
   /// Marks every row as changed, for sync to compare with what it knows.
   void markAllChanged() {
@@ -443,7 +443,6 @@ class Store {
   (int, int) streaks(
     int habitId,
     DateTime today, {
-    required bool restWeekends,
     List<Holiday> holidays = const [],
     bool dayOver = false,
   }) {
@@ -457,13 +456,12 @@ class Store {
         (r['year'] as int, r['month'] as int): r['weekly'] != null ? const <(DateTime?, int)>[] : decodeDays(r['days'] as String?),
     };
     bool off(DateTime day) => !isOnDay(months[(day.year, day.month)] ?? const [], day);
-    bool rest(DateTime day) => restsOn(day, restWeekends: restWeekends, holidays: holidays);
+    bool rest(DateTime day) => restsOn(day, holidays: holidays);
     bool excused(DateTime day) => off(day) || rest(day);
 
     bool gapBreaks(DateTime from, DateTime until) {
       final gap = daysBetween(from, until) - 1;
       if (gap <= 0) return false;
-      if (!restWeekends && holidays.isEmpty && months.isEmpty) return true;
       for (var i = 1; i <= gap; i++) {
         if (!excused(DateTime(from.year, from.month, from.day + i))) return true;
       }

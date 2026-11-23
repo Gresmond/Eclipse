@@ -751,7 +751,7 @@ List<TodoItem> sortTodos(Iterable<TodoItem> todos) {
 }
 
 /// A holiday: every day from [start] to [end], both kept, rests the
-/// rituals and sleep schedule as a rest weekend does.
+/// rituals and sleep schedule just as weekends do.
 typedef Holiday = ({DateTime start, DateTime end});
 
 /// The holiday [day] falls in, if any.
@@ -760,10 +760,9 @@ Holiday? holidayOn(List<Holiday> holidays, DateTime day) {
   return holidays.where((h) => !d.isBefore(h.start) && !d.isAfter(h.end)).firstOrNull;
 }
 
-/// Whether rituals and sleep rest on [day]: a weekend, with [restWeekends],
-/// or a holiday.
-bool restsOn(DateTime day, {required bool restWeekends, required List<Holiday> holidays}) =>
-    restWeekends && day.weekday >= DateTime.saturday || holidayOn(holidays, day) != null;
+/// Whether rituals and sleep rest on [day]: a weekend or a holiday.
+bool restsOn(DateTime day, {required List<Holiday> holidays}) =>
+    day.weekday >= DateTime.saturday || holidayOn(holidays, day) != null;
 
 /// Holidays as kept in the synced `holidays` setting: day-key pairs.
 String encodeHolidays(List<Holiday> holidays) => jsonEncode([

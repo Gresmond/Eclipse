@@ -628,24 +628,20 @@ void main() {
     test('step by calendar day over a clock change', () {
       final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 6));
       final h = state.habits.first;
-      for (final d in [3, 5, 6]) {
+      for (final d in [3, 4, 6]) {
         state.selectStatus(DateTime(2026, 10, d), h, HabitStatus.done);
       }
-      expect(state.currentStreak(h), 2, reason: 'the blank 4th breaks it');
+      expect(state.currentStreak(h), 1, reason: 'the blank 5th breaks it');
       expect(state.bestStreak(h), 2);
     });
 
-    test('a blank or missed weekend is excused only when weekends are rest days', () {
+    test('a blank or missed weekend is always excused as a rest day', () {
       final store = _testStore();
       var state = AppState(store, clock: () => DateTime(2026, 10, 27)); // Tuesday
       final h = state.habits.first;
       for (final d in [22, 23, 26, 27]) {
         state.selectStatus(DateTime(2026, 10, d), h, HabitStatus.done); // Thu, Fri, then Mon, Tue
       }
-      expect(state.currentStreak(h), 2);
-      expect(state.isRestDay(DateTime(2026, 10, 24)), isFalse);
-
-      state.setRestWeekends(true);
       expect(state.isRestDay(DateTime(2026, 10, 24)), isTrue);
       expect(state.isRestDay(DateTime(2026, 10, 23)), isFalse);
       expect(state.currentStreak(h), 4, reason: 'Saturday and Sunday neither break nor add');
@@ -655,9 +651,6 @@ void main() {
       expect(state.currentStreak(h), 5, reason: 'a ritual done on a rest day still counts');
       state.selectStatus(DateTime(2026, 10, 25), h, HabitStatus.missed);
       expect(state.currentStreak(h), 4, reason: 'marked not done on a rest day, it neither breaks nor adds');
-
-      state = AppState(store, clock: () => DateTime(2026, 10, 27));
-      expect(state.restWeekends, isTrue, reason: 'remembered');
     });
   });
 
@@ -915,10 +908,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
-    expect(find.text('Weekends as rest days'), findsOneWidget, reason: 'Settings opens on General');
+    expect(find.text('Reduce motion'), findsOneWidget, reason: 'Settings opens on General');
+    expect(find.text('Weekends as rest days'), findsNothing);
+    expect(find.text('Smart quick-add'), findsNothing);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(find.text('Weekends as rest days'), findsNothing);
+    expect(find.text('Reduce motion'), findsNothing);
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Data').hitTestable());
@@ -1120,7 +1115,6 @@ void main() {
     addTearDown(tester.view.reset);
 
     final state = AppState(_testStore(), clock: () => DateTime(2026, 10, 24));
-    state.setRestWeekends(true);
     await tester.pumpWidget(EclipseApp(state: state));
     await tester.pumpAndSettle();
 
@@ -2023,17 +2017,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.themeName, 'Morning Pastel');
 
-    await tester.tap(find.byTooltip('Settings'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Weekends as rest days'));
-    await tester.pumpAndSettle();
-    expect(state.restWeekends, isTrue);
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
     state.showMonth(10);
     await tester.pumpAndSettle();
     await _shoot(tester, 'rest_weekends_month');
-    state.setRestWeekends(false);
 
     for (final palette in palettes) {
       final slug = palette.name.toLowerCase().replaceAll(RegExp('[^a-z0-9]+'), '_');

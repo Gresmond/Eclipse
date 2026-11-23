@@ -143,7 +143,6 @@ class _YearHeatmapState extends State<YearHeatmap> {
   AppState? _state;
   int? _year, _habitsRevision, _entriesRevision;
   DateTime? _today;
-  bool? _restWeekends;
   List<Holiday>? _holidays;
   Map<int, Set<int>>? _rituals;
   _HeatmapData? _cached;
@@ -183,7 +182,6 @@ class _YearHeatmapState extends State<YearHeatmap> {
         _habitsRevision == state.habitsRevision &&
         _entriesRevision == state.entriesRevision &&
         _today == state.today &&
-        _restWeekends == state.restWeekends &&
         _sameHolidays(_holidays, state.holidays) &&
         _sameRituals(_rituals, widget.rituals)) {
       return _cached!;
@@ -195,7 +193,6 @@ class _YearHeatmapState extends State<YearHeatmap> {
     _habitsRevision = state.habitsRevision;
     _entriesRevision = state.entriesRevision;
     _today = state.today;
-    _restWeekends = state.restWeekends;
     _holidays = List<Holiday>.of(state.holidays);
     _rituals = {for (final e in widget.rituals.entries) e.key: Set<int>.of(e.value)};
     return _cached = data;
@@ -230,7 +227,7 @@ class _YearHeatmapState extends State<YearHeatmap> {
         final isDone = e.status == HabitStatus.done;
         logged[e.day] = (logged[e.day] ?? 0) + 1;
         if (isDone) done[e.day] = (done[e.day] ?? 0) + 1;
-        if (h.weekly == null && (!state.restWeekends || day.weekday < DateTime.saturday)) {
+        if (h.weekly == null && day.weekday < DateTime.saturday) {
           final weekday = day.weekday - 1;
           (loggedOn[e.habitId] ??= List.filled(7, 0))[weekday]++;
           (doneOn[e.habitId] ??= List.filled(7, 0))[weekday] += isDone ? 1 : 0;
@@ -263,7 +260,7 @@ class _YearHeatmapState extends State<YearHeatmap> {
     final p = context.palette;
     final state = AppScope.watch(
       context,
-      (s) => (s.habitsRevision, s.entriesRevision, s.today, s.restWeekends, s.holidays),
+      (s) => (s.habitsRevision, s.entriesRevision, s.today, s.holidays),
     );
     final data = _dataFor(state);
 
@@ -285,7 +282,6 @@ class _YearHeatmapState extends State<YearHeatmap> {
           hoveredDay: _hoveredDay,
           data: data,
           holidays: state.holidays,
-          restWeekends: state.restWeekends,
         ),
       ],
     );
@@ -361,13 +357,11 @@ class _HeatmapLegend extends StatelessWidget {
     required this.hoveredDay,
     required this.data,
     required this.holidays,
-    required this.restWeekends,
   });
 
   final ValueNotifier<DateTime?> hoveredDay;
   final _HeatmapData data;
   final List<Holiday> holidays;
-  final bool restWeekends;
 
   @override
   Widget build(BuildContext context) {
@@ -408,7 +402,7 @@ class _HeatmapLegend extends StatelessWidget {
             ? '$dateStr · $doneCount of $count done (${(doneCount * 100 / count).round()}%)'
             : holidayOn(holidays, day) != null
             ? '$dateStr · On holiday'
-            : restWeekends && (day.weekday == DateTime.saturday || day.weekday == DateTime.sunday)
+            : day.weekday == DateTime.saturday || day.weekday == DateTime.sunday
             ? '$dateStr · Rest day'
             : '$dateStr · Nothing logged';
         return Text(

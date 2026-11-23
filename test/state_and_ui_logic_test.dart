@@ -592,8 +592,8 @@ void main() {
     test('today can remain open, but an explicit miss breaks the streak', () {
       final s = localMemory();
       final habit = s.addHabit(2026, 10, 'Read');
-      s.setEntry('2026-10-24', habit.id, HabitStatus.done);
-      final st = AppState(s, clock: () => DateTime(2026, 10, 25));
+      s.setEntry('2026-10-21', habit.id, HabitStatus.done);
+      final st = AppState(s, clock: () => DateTime(2026, 10, 22));
       addTearDown(st.dispose);
       expect(st.currentStreak(habit), 1);
       st.selectStatus(st.today, habit, HabitStatus.done);

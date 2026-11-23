@@ -269,9 +269,7 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     }
     if (reloadTraining) training.reload();
     if (reloadSettings) {
-      restWeekends = store.setting('restWeekends') == '1';
       holidays = decodeHolidays(store.setting('holidays'));
-      _smartAdd = store.setting('smartAdd') != '0';
       _reduceMotion = store.setting('reduceMotion') == '1';
       reduceMotionNotifier.value = _reduceMotion;
       final nextStartHour = parseDayStartHour(store.setting('dayStartHour'));
@@ -470,10 +468,8 @@ class AppState extends ChangeNotifier with _Settings, _Navigation, _Habits, _Tod
     journalRevision++;
     themeName = _savedTheme();
     themeNotifier.value = themeName;
-    restWeekends = store.setting('restWeekends') == '1';
     holidays = decodeHolidays(store.setting('holidays'));
     followNightLight = store.setting('followNightLight') != '0';
-    _smartAdd = store.setting('smartAdd') != '0';
     _reduceMotion = store.setting('reduceMotion') == '1';
     reduceMotionNotifier.value = _reduceMotion;
     dayStartHour = parseDayStartHour(store.setting('dayStartHour'));

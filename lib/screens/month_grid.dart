@@ -52,7 +52,6 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
       habit,
       habit.days,
       state.today,
-      state.restWeekends,
       state.holidays,
     );
     final cached = _cells[habit.id];
@@ -186,7 +185,7 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.today, s.restWeekends, s.holidays));
+    final state = AppScope.watch(context, (s) => (s.habitsRevision, s.today, s.holidays));
     if (_palette.value != p) _palette.value = p;
     final ids = {for (final habit in widget.habits) habit.id};
     _cells.removeWhere((id, _) => !ids.contains(id));
@@ -315,24 +314,19 @@ class _GridState extends State<_Grid> with TickerProviderStateMixin {
                 Positioned.fill(
                   left: nameWidth,
                   child: IgnorePointer(
-                    child: AnimatedOpacity(
-                      opacity: state.restWeekends ? 1 : 0,
-                      duration: context.themed(Motion.morph),
-                      curve: Motion.morphCurve,
-                      child: CustomPaint(
-                        painter: _RestBandPainter(
-                          layout: layout,
-                          weekend: [for (final c in columns) c.day.weekday >= DateTime.saturday],
-                          was: [
-                            for (final c in columns)
-                              if (_bandsFrom case (final y, final m) when c.number <= daysInMonth(y, m))
-                                DateTime(y, m, c.number).weekday >= DateTime.saturday
-                              else
-                                false,
-                          ],
-                          fade: _bandsCurved,
-                          color: p.inkMuted.withValues(alpha: p.byDarkness(0.06, 0.09)),
-                        ),
+                    child: CustomPaint(
+                      painter: _RestBandPainter(
+                        layout: layout,
+                        weekend: [for (final c in columns) c.day.weekday >= DateTime.saturday],
+                        was: [
+                          for (final c in columns)
+                            if (_bandsFrom case (final y, final m) when c.number <= daysInMonth(y, m))
+                              DateTime(y, m, c.number).weekday >= DateTime.saturday
+                            else
+                              false,
+                        ],
+                        fade: _bandsCurved,
+                        color: p.inkMuted.withValues(alpha: p.byDarkness(0.06, 0.09)),
                       ),
                     ),
                   ),

@@ -30,7 +30,6 @@ void main() {
 
     final state = AppState(store, clock: () => DateTime(2026, 11, 10, 9));
     addTearDown(state.dispose);
-    state.setRestWeekends(true);
     state.addHoliday(DateTime(2026, 11, 4), DateTime(2026, 11, 4));
     state.showYear();
 

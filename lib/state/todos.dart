@@ -65,8 +65,6 @@ mixin _Todos on ChangeNotifier {
     }
   }
 
-  bool get smartAdd;
-
   void quickAddTodo(
     TodoScope scope,
     String text, {
@@ -77,7 +75,7 @@ mixin _Todos on ChangeNotifier {
     String? location,
     bool allowSmart = true,
   }) {
-    if (smartAdd && allowSmart && !birthday) {
+    if (allowSmart && !birthday) {
       final defaultDay =
           dueDate ?? (scope == TodoScope.tomorrow ? DateTime(today.year, today.month, today.day + 1) : today);
       final parsed = parseQuickTask(text, today, defaultDay: defaultDay, defaultTime: time);
