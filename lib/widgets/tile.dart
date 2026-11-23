@@ -106,7 +106,6 @@ class Tile extends StatelessWidget {
             colors: [p.tile, Color.lerp(p.tile, p.background, p.byDarkness(0.14, 0))!],
           ),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: p.border, width: 1.0),
         ),
         child: child,
       ),
