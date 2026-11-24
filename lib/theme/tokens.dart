@@ -2,8 +2,7 @@ import 'package:flutter/painting.dart';
 
 import 'app_theme.dart';
 
-/// The shared scales the UI is drawn from. `ui_consistency_test.dart` fails
-/// on a literal outside them, so a new value is a decision made here.
+/// The shared scales the UI is drawn from.
 abstract final class Scale {
   /// Corner radii: bars and handles, chips, controls, cards, dialogs, pills.
   static final radii = <double>{4, 8, 12, 16, 20, 24, 30};
